@@ -1,0 +1,6 @@
+{
+  "name": "سامانه فاکتور و انبارداری",
+  "description": "نرم‌افزار یکپارچه صدور فاکتور فروش، کنترل موجودی انبار، مدیریت مشتریان و چاپ فاکتور استاندارد",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

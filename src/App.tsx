@@ -1,0 +1,535 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect } from 'react';
+import { Product, Customer, Invoice, StockMovement, StoreSettings, AppUser } from './types';
+import { StorageService } from './utils/storage';
+import { getCurrentJalaliDate } from './utils/jalali';
+import { Header } from './components/Header';
+import { InvoiceBuilder } from './components/InvoiceBuilder';
+import { InvoicesList } from './components/InvoicesList';
+import { InventoryManager } from './components/InventoryManager';
+import { CustomersManager } from './components/CustomersManager';
+import { ReportsDashboard } from './components/ReportsDashboard';
+import { InvoiceViewModal } from './components/InvoiceViewModal';
+import { SettingsModal } from './components/SettingsModal';
+import { AdminPanel } from './components/AdminPanel';
+import { MobileBottomNav } from './components/MobileBottomNav';
+import { UserLoginModal } from './components/UserLoginModal';
+import { CheckCircle2 } from 'lucide-react';
+
+export default function App() {
+  // Application Data States
+  const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [settings, setSettings] = useState<StoreSettings>(StorageService.getSettings());
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+
+  // UI State
+  const [activeTab, setActiveTab] = useState<string>('new-invoice');
+  const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
+  const [loginTargetUser, setLoginTargetUser] = useState<AppUser | null>(null);
+  const [toastMessage, setToastMessage] = useState<string>('');
+
+  // Load initial data
+  const loadData = () => {
+    setProducts(StorageService.getProducts());
+    setCustomers(StorageService.getCustomers());
+    setInvoices(StorageService.getInvoices());
+    setMovements(StorageService.getMovements());
+    setSettings(StorageService.getSettings());
+    const loadedUsers = StorageService.getUsers();
+    setUsers(loadedUsers);
+    const active = StorageService.getCurrentUser();
+    setCurrentUser(active);
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage('');
+    }, 3500);
+  };
+
+  // 1. INVOICE SAVE WITH AUTOMATIC STOCK DEDUCTION
+  const handleSaveInvoice = (newInvoice: Invoice, shouldPrint: boolean) => {
+    // 1. Update Invoices list
+    const updatedInvoices = [newInvoice, ...invoices];
+    setInvoices(updatedInvoices);
+    StorageService.saveInvoices(updatedInvoices);
+
+    // 2. If auto-deduct is enabled, decrement inventory stock and record movements
+    if (settings.autoDeductStock) {
+      let currentProducts = [...products];
+      const newMovements: StockMovement[] = [];
+      const today = getCurrentJalaliDate();
+
+      newInvoice.items.forEach((item) => {
+        const prodIndex = currentProducts.findIndex((p) => p.id === item.productId);
+        if (prodIndex !== -1) {
+          const prod = currentProducts[prodIndex];
+          const newStock = Math.max(0, prod.stock - item.quantity);
+
+          currentProducts[prodIndex] = {
+            ...prod,
+            stock: newStock,
+            updatedAt: today,
+          };
+
+          // Record kardex / stock movement
+          newMovements.push({
+            id: `mov-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+            productId: prod.id,
+            productName: prod.name,
+            type: 'sale',
+            quantity: -item.quantity,
+            remainingStock: newStock,
+            invoiceId: newInvoice.id,
+            invoiceNumber: newInvoice.invoiceNumber,
+            date: today,
+            note: `کسر بابت فاکتور فروش شماره ${newInvoice.invoiceNumber}`,
+          });
+        }
+      });
+
+      setProducts(currentProducts);
+      StorageService.saveProducts(currentProducts);
+
+      const updatedMovements = [...newMovements, ...movements];
+      setMovements(updatedMovements);
+      StorageService.saveMovements(updatedMovements);
+    }
+
+    showToast(`فاکتور شماره ${newInvoice.invoiceNumber} با موفقیت ثبت و از انبار کسر شد.`);
+
+    if (shouldPrint) {
+      setViewingInvoice(newInvoice);
+    }
+
+    setActiveTab('invoices');
+  };
+
+  // 2. RETURN INVOICE TO INVENTORY (مرجوعی به انبار)
+  const handleReturnInvoiceToStock = (invoice: Invoice) => {
+    const today = getCurrentJalaliDate();
+    let currentProducts = [...products];
+    const returnMovements: StockMovement[] = [];
+
+    invoice.items.forEach((item) => {
+      const prodIndex = currentProducts.findIndex((p) => p.id === item.productId);
+      if (prodIndex !== -1) {
+        const prod = currentProducts[prodIndex];
+        const newStock = prod.stock + item.quantity;
+
+        currentProducts[prodIndex] = {
+          ...prod,
+          stock: newStock,
+          updatedAt: today,
+        };
+
+        returnMovements.push({
+          id: `mov-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+          productId: prod.id,
+          productName: prod.name,
+          type: 'return',
+          quantity: item.quantity,
+          remainingStock: newStock,
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          date: today,
+          note: `برگشت به انبار بابت مرجوعی فاکتور ${invoice.invoiceNumber}`,
+        });
+      }
+    });
+
+    setProducts(currentProducts);
+    StorageService.saveProducts(currentProducts);
+
+    const updatedMovements = [...returnMovements, ...movements];
+    setMovements(updatedMovements);
+    StorageService.saveMovements(updatedMovements);
+
+    // Remove or cancel invoice
+    const updatedInvoices = invoices.filter((i) => i.id !== invoice.id);
+    setInvoices(updatedInvoices);
+    StorageService.saveInvoices(updatedInvoices);
+
+    showToast(`کالاهای فاکتور ${invoice.invoiceNumber} به انبار بازگردانده شدند.`);
+  };
+
+  // 3. DELETE INVOICE (بدون بازگردانی کالا)
+  const handleDeleteInvoice = (invoiceId: string) => {
+    const updatedInvoices = invoices.filter((i) => i.id !== invoiceId);
+    setInvoices(updatedInvoices);
+    StorageService.saveInvoices(updatedInvoices);
+    showToast('فاکتور مورد نظر حذف شد.');
+  };
+
+  // 4. UPDATE PAYMENT STATUS
+  const handleUpdatePaymentStatus = (
+    invoiceId: string,
+    status: 'paid' | 'unpaid' | 'partial',
+    paidAmount?: number
+  ) => {
+    const updated = invoices.map((inv) => {
+      if (inv.id === invoiceId) {
+        return {
+          ...inv,
+          paymentStatus: status,
+          paidAmount: status === 'paid' ? inv.finalTotal : paidAmount !== undefined ? paidAmount : inv.paidAmount,
+        };
+      }
+      return inv;
+    });
+    setInvoices(updated);
+    StorageService.saveInvoices(updated);
+    showToast('وضعیت تسویه فاکتور بروزرسانی شد.');
+  };
+
+  // 5. INVENTORY PRODUCT MANAGEMENT
+  const handleSaveProduct = (product: Product) => {
+    let updatedProducts: Product[];
+    const exists = products.some((p) => p.id === product.id);
+
+    if (exists) {
+      updatedProducts = products.map((p) => (p.id === product.id ? product : p));
+      showToast(`مشخصات کالای "${product.name}" بروزرسانی شد.`);
+    } else {
+      updatedProducts = [product, ...products];
+      // If product has initial stock > 0, log an initial stock intake
+      if (product.stock > 0) {
+        const initialMov: StockMovement = {
+          id: `mov-${Date.now()}`,
+          productId: product.id,
+          productName: product.name,
+          type: 'purchase',
+          quantity: product.stock,
+          remainingStock: product.stock,
+          date: getCurrentJalaliDate(),
+          note: 'موجودی اولیه هنگام تعریف کالا',
+        };
+        const updatedMovements = [initialMov, ...movements];
+        setMovements(updatedMovements);
+        StorageService.saveMovements(updatedMovements);
+      }
+      showToast(`کالای "${product.name}" با موفقیت در انبار ثبت شد.`);
+    }
+
+    setProducts(updatedProducts);
+    StorageService.saveProducts(updatedProducts);
+  };
+
+  const handleDeleteProduct = (productId: string) => {
+    const updated = products.filter((p) => p.id !== productId);
+    setProducts(updated);
+    StorageService.saveProducts(updated);
+    showToast('کالای مورد نظر از انبار حذف شد.');
+  };
+
+  // 6. MANUAL STOCK ADJUSTMENT / INTAKE
+  const handleAdjustStock = (
+    productId: string,
+    type: 'purchase' | 'adjustment' | 'return',
+    quantity: number,
+    note: string
+  ) => {
+    const prodIndex = products.findIndex((p) => p.id === productId);
+    if (prodIndex === -1) return;
+
+    const prod = products[prodIndex];
+    const isAdding = type === 'purchase' || type === 'return';
+    const delta = isAdding ? quantity : -quantity;
+    const newStock = Math.max(0, prod.stock + delta);
+
+    const updatedProd = {
+      ...prod,
+      stock: newStock,
+      updatedAt: getCurrentJalaliDate(),
+    };
+
+    const updatedProducts = [...products];
+    updatedProducts[prodIndex] = updatedProd;
+    setProducts(updatedProducts);
+    StorageService.saveProducts(updatedProducts);
+
+    const newMov: StockMovement = {
+      id: `mov-${Date.now()}`,
+      productId: prod.id,
+      productName: prod.name,
+      type,
+      quantity: delta,
+      remainingStock: newStock,
+      date: getCurrentJalaliDate(),
+      note: note || (isAdding ? 'ورود به انبار' : 'خروج از انبار'),
+    };
+
+    const updatedMovements = [newMov, ...movements];
+    setMovements(updatedMovements);
+    StorageService.saveMovements(updatedMovements);
+
+    showToast(`موجودی انبار "${prod.name}" به ${newStock} ${prod.unit} تغییر یافت.`);
+  };
+
+  // 7. CUSTOMERS MANAGEMENT
+  const handleSaveCustomer = (customer: Customer) => {
+    let updated: Customer[];
+    const exists = customers.some((c) => c.id === customer.id);
+    if (exists) {
+      updated = customers.map((c) => (c.id === customer.id ? customer : c));
+    } else {
+      updated = [customer, ...customers];
+    }
+    setCustomers(updated);
+    StorageService.saveCustomers(updated);
+    showToast(`اطلاعات مشتری "${customer.name}" ذخیره شد.`);
+  };
+
+  const handleAddNewCustomerQuick = (customerData: Omit<Customer, 'id' | 'createdAt'>): Customer => {
+    const newCust: Customer = {
+      ...customerData,
+      id: `cust-${Date.now()}`,
+      createdAt: getCurrentJalaliDate(),
+    };
+    const updated = [newCust, ...customers];
+    setCustomers(updated);
+    StorageService.saveCustomers(updated);
+    showToast(`مشتری "${newCust.name}" در دفترچه مشتریان ذخیره شد.`);
+    return newCust;
+  };
+
+  const handleDeleteCustomer = (customerId: string) => {
+    const updated = customers.filter((c) => c.id !== customerId);
+    setCustomers(updated);
+    StorageService.saveCustomers(updated);
+    showToast('مشتری حذف شد.');
+  };
+
+  const handleSelectCustomerForInvoice = (customer: Customer) => {
+    setActiveTab('new-invoice');
+  };
+
+  // 8. USERS & ACCESS MANAGEMENT
+  const handleAddUser = (userData: Omit<AppUser, 'id' | 'createdAt'>) => {
+    const newUser = StorageService.addUser(userData);
+    const updatedUsers = StorageService.getUsers();
+    setUsers(updatedUsers);
+    showToast(`کاربر جدید «${newUser.fullName}» با موفقیت ثبت شد.`);
+  };
+
+  const handleUpdateUser = (user: AppUser) => {
+    StorageService.updateUser(user);
+    const updatedUsers = StorageService.getUsers();
+    setUsers(updatedUsers);
+
+    if (currentUser?.id === user.id) {
+      setCurrentUser(user);
+      StorageService.setCurrentUser(user);
+    }
+    showToast(`اطلاعات کاربر «${user.fullName}» به‌روزرسانی شد.`);
+  };
+
+  const handleDeleteUser = (userId: string): { success: boolean; message?: string } => {
+    if (currentUser?.id === userId) {
+      showToast('امکان حذف کاربر فعال فعلی وجود ندارد.');
+      return { success: false, message: 'امکان حذف کاربر فعال فعلی وجود ندارد.' };
+    }
+    const result = StorageService.deleteUser(userId);
+    if (result.success) {
+      const updatedUsers = StorageService.getUsers();
+      setUsers(updatedUsers);
+      const active = StorageService.getCurrentUser();
+      setCurrentUser(active);
+      showToast('کاربر با موفقیت حذف شد.');
+    }
+    return result;
+  };
+
+  const handleRequestLogin = (targetUser?: AppUser | null) => {
+    setLoginTargetUser(targetUser || null);
+    setIsLoginModalOpen(true);
+  };
+
+  const handleLoginSuccess = (user: AppUser) => {
+    setCurrentUser(user);
+    StorageService.setCurrentUser(user);
+    setIsLoginModalOpen(false);
+    setLoginTargetUser(null);
+    showToast(`ورود موفقیت‌آمیز بود. خوش آمدید «${user.fullName}».`);
+  };
+
+  const handleSwitchUser = (user: AppUser) => {
+    handleRequestLogin(user);
+  };
+
+  // 9. SETTINGS
+  const handleSaveSettings = (newSettings: StoreSettings) => {
+    setSettings(newSettings);
+    StorageService.saveSettings(newSettings);
+    showToast('تنظیمات فروشگاه با موفقیت ذخیره شد.');
+  };
+
+  // Low stock count for alert badge
+  const lowStockCount = products.filter((p) => p.stock <= p.minStockAlert).length;
+
+  return (
+    <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col selection:bg-emerald-500 selection:text-white">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="no-print fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-50 flex items-center gap-2.5 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-xl border border-slate-700 animate-bounce max-w-[90vw]">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Main App Header */}
+      <Header
+        settings={settings}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        lowStockCount={lowStockCount}
+        currentUser={currentUser || undefined}
+        users={users}
+        onSwitchUser={handleSwitchUser}
+        onRequestLogin={handleRequestLogin}
+        onOpenNewInvoice={() => setActiveTab('new-invoice')}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
+
+      {/* Main Body Content View */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-24 sm:pb-12">
+        {activeTab === 'new-invoice' && (
+          <InvoiceBuilder
+            products={products}
+            customers={customers}
+            settings={settings}
+            onSaveInvoice={handleSaveInvoice}
+            onAddNewCustomer={handleAddNewCustomerQuick}
+            onCancel={() => setActiveTab('invoices')}
+          />
+        )}
+
+        {activeTab === 'invoices' && (
+          <InvoicesList
+            invoices={invoices}
+            settings={settings}
+            currentUser={currentUser || undefined}
+            onViewInvoice={(inv) => setViewingInvoice(inv)}
+            onDeleteInvoice={handleDeleteInvoice}
+            onReturnInvoiceToStock={handleReturnInvoiceToStock}
+            onUpdatePaymentStatus={handleUpdatePaymentStatus}
+            onNewInvoice={() => setActiveTab('new-invoice')}
+          />
+        )}
+
+        {activeTab === 'inventory' && (
+          <InventoryManager
+            products={products}
+            movements={movements}
+            invoices={invoices}
+            settings={settings}
+            currentUser={currentUser || undefined}
+            onSaveProduct={handleSaveProduct}
+            onDeleteProduct={handleDeleteProduct}
+            onAdjustStock={handleAdjustStock}
+            onUpdateSettings={handleSaveSettings}
+          />
+        )}
+
+        {activeTab === 'customers' && (
+          <CustomersManager
+            customers={customers}
+            invoices={invoices}
+            settings={settings}
+            onSaveCustomer={handleSaveCustomer}
+            onDeleteCustomer={handleDeleteCustomer}
+            onSelectCustomerForInvoice={handleSelectCustomerForInvoice}
+          />
+        )}
+
+        {activeTab === 'reports' && (
+          <ReportsDashboard
+            products={products}
+            invoices={invoices}
+            settings={settings}
+            onOpenNewInvoice={() => setActiveTab('new-invoice')}
+            onOpenInventory={() => setActiveTab('inventory')}
+          />
+        )}
+
+        {activeTab === 'admin' && (
+          <AdminPanel
+            settings={settings}
+            products={products}
+            customers={customers}
+            invoices={invoices}
+            movements={movements}
+            users={users}
+            currentUser={currentUser || undefined}
+            onAddUser={handleAddUser}
+            onUpdateUser={handleUpdateUser}
+            onDeleteUser={handleDeleteUser}
+            onSwitchUser={handleSwitchUser}
+            onSaveSettings={handleSaveSettings}
+            onReloadData={loadData}
+            onNavigateToTab={(tab) => setActiveTab(tab)}
+          />
+        )}
+      </main>
+
+      {/* Printable Invoice Modal */}
+      {viewingInvoice && (
+        <InvoiceViewModal
+          invoice={viewingInvoice}
+          settings={settings}
+          onClose={() => setViewingInvoice(null)}
+        />
+      )}
+
+      {/* Settings & Backup Modal */}
+      {isSettingsOpen && (
+        <SettingsModal
+          settings={settings}
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          onSaveSettings={handleSaveSettings}
+          onReloadData={loadData}
+        />
+      )}
+
+      {/* Password Authentication Modal */}
+      {isLoginModalOpen && (
+        <UserLoginModal
+          isOpen={isLoginModalOpen}
+          onClose={() => {
+            setIsLoginModalOpen(false);
+            setLoginTargetUser(null);
+          }}
+          onLoginSuccess={handleLoginSuccess}
+          users={users}
+          targetUser={loginTargetUser}
+          currentUserId={currentUser?.id}
+        />
+      )}
+
+      {/* Mobile Bottom Navigation Bar */}
+      <MobileBottomNav
+        settings={settings}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        lowStockCount={lowStockCount}
+        currentUser={currentUser || undefined}
+      />
+    </div>
+  );
+}
