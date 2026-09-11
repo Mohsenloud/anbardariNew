@@ -115,15 +115,15 @@ export default function App() {
     }, 3500);
   };
 
-  // 1. INVOICE SAVE WITH AUTOMATIC STOCK DEDUCTION
+  // 1. INVOICE SAVE WITH AUTOMATIC STOCK DEDUCTION (پیش‌فاکتورها کسر از انبار ندارند)
   const handleSaveInvoice = (newInvoice: Invoice, shouldPrint: boolean) => {
     // 1. Update Invoices list
     const updatedInvoices = [newInvoice, ...invoices];
     setInvoices(updatedInvoices);
     StorageService.saveInvoices(updatedInvoices);
 
-    // 2. If auto-deduct is enabled, decrement inventory stock and record movements
-    if (settings.autoDeductStock) {
+    // 2. If auto-deduct is enabled and NOT a proforma, decrement inventory stock and record movements
+    if (settings.autoDeductStock && !newInvoice.isProforma) {
       let currentProducts = [...products];
       const newMovements: StockMovement[] = [];
       const today = getCurrentJalaliDate();
@@ -164,13 +164,110 @@ export default function App() {
       StorageService.saveMovements(updatedMovements);
     }
 
-    showToast(`فاکتور شماره ${newInvoice.invoiceNumber} با موفقیت ثبت و از انبار کسر شد.`);
+    if (newInvoice.isProforma) {
+      showToast(`پیش‌فاکتور شماره ${newInvoice.invoiceNumber} با موفقیت ثبت شد (بدون کسر از موجودی انبار).`);
+    } else {
+      showToast(`فاکتور شماره ${newInvoice.invoiceNumber} با موفقیت ثبت و از انبار کسر شد.`);
+    }
 
     if (shouldPrint) {
       setViewingInvoice(newInvoice);
     }
 
     setActiveTab('invoices');
+  };
+
+  // 1.1 CONVERT PROFORMA TO OFFICIAL INVOICE (تبدیل پیش‌فاکتور به فاکتور قطعی و کسر از انبار)
+  const handleConvertProforma = (proformaInvoice: Invoice, customInvoiceNumber?: string) => {
+    const today = getCurrentJalaliDate();
+    const finalNumber = customInvoiceNumber?.trim() || 
+      (proformaInvoice.invoiceNumber.startsWith('PF-') 
+        ? proformaInvoice.invoiceNumber.replace('PF-', 'INV-') 
+        : `INV-${Math.floor(1000 + Math.random() * 9000)}`);
+
+    // Check stock warning if negative stock not allowed
+    if (settings.autoDeductStock && settings.allowNegativeStock === false) {
+      const shortages: string[] = [];
+      proformaInvoice.items.forEach((item) => {
+        const prod = products.find((p) => p.id === item.productId);
+        const currentStock = prod ? prod.stock : 0;
+        if (currentStock < item.quantity) {
+          shortages.push(`کالای "${item.productName}": موجودی فعلی ${currentStock} ${item.unit}، تعداد فاکتور ${item.quantity} ${item.unit}`);
+        }
+      });
+
+      if (shortages.length > 0) {
+        showToast(`خطای تبدیل: موجودی انبار کافی نیست و ثبت موجودی منفی در تنظیمات غیرفعال است.`);
+        return false;
+      }
+    }
+
+    // Deduct stock and record movements
+    let currentProducts = [...products];
+    const newMovements: StockMovement[] = [];
+
+    if (settings.autoDeductStock) {
+      proformaInvoice.items.forEach((item) => {
+        const prodIndex = currentProducts.findIndex((p) => p.id === item.productId);
+        if (prodIndex !== -1) {
+          const prod = currentProducts[prodIndex];
+          const newStock = Math.max(0, prod.stock - item.quantity);
+
+          currentProducts[prodIndex] = {
+            ...prod,
+            stock: newStock,
+            updatedAt: today,
+          };
+
+          newMovements.push({
+            id: `mov-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+            productId: prod.id,
+            productName: prod.name,
+            type: 'sale',
+            quantity: -item.quantity,
+            remainingStock: newStock,
+            invoiceId: proformaInvoice.id,
+            invoiceNumber: finalNumber,
+            date: today,
+            note: `کسر بابت تبدیل پیش‌فاکتور ${proformaInvoice.invoiceNumber} به فاکتور رسمی ${finalNumber}`,
+          });
+        }
+      });
+
+      setProducts(currentProducts);
+      StorageService.saveProducts(currentProducts);
+
+      if (newMovements.length > 0) {
+        const updatedMovements = [...newMovements, ...movements];
+        setMovements(updatedMovements);
+        StorageService.saveMovements(updatedMovements);
+      }
+    }
+
+    // Update invoice record: change isProforma to false, new number, convertedAt, convertedFromProforma
+    const convertedInvoice: Invoice = {
+      ...proformaInvoice,
+      isProforma: false,
+      invoiceNumber: finalNumber,
+      date: today,
+      convertedAt: today,
+      convertedFromProforma: proformaInvoice.invoiceNumber,
+      notes: proformaInvoice.notes 
+        ? `${proformaInvoice.notes} (تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today})` 
+        : `تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today}`,
+    };
+
+    const updatedInvoices = invoices.map((inv) => inv.id === proformaInvoice.id ? convertedInvoice : inv);
+    setInvoices(updatedInvoices);
+    StorageService.saveInvoices(updatedInvoices);
+
+    // If modal was open viewing this invoice, update it
+    if (viewingInvoice && viewingInvoice.id === proformaInvoice.id) {
+      setViewingInvoice(convertedInvoice);
+    }
+
+    showToast(`پیش‌فاکتور ${proformaInvoice.invoiceNumber} با موفقیت به فاکتور رسمی ${finalNumber} تبدیل و اقلام از انبار کسر شد.`);
+    return true;
   };
 
   // 2. RETURN INVOICE TO INVENTORY (مرجوعی به انبار)
@@ -508,6 +605,7 @@ export default function App() {
         {activeTab === 'invoices' && isTabPermitted('invoices', currentUser, settings) && (
           <InvoicesList
             invoices={invoices}
+            products={products}
             settings={settings}
             currentUser={currentUser || undefined}
             onViewInvoice={(inv) => setViewingInvoice(inv)}
@@ -519,6 +617,7 @@ export default function App() {
                 setActiveTab('new-invoice');
               }
             }}
+            onConvertProforma={handleConvertProforma}
           />
         )}
 
@@ -620,6 +719,12 @@ export default function App() {
           invoice={viewingInvoice}
           settings={settings}
           onClose={() => setViewingInvoice(null)}
+          onConvertProforma={(inv) => {
+            const success = handleConvertProforma(inv);
+            if (success !== false) {
+              setViewingInvoice(null);
+            }
+          }}
         />
       )}
 
