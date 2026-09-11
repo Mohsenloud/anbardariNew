@@ -9,5 +9,9 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    volumes:
+      # ذخیره دائمی دیتابیس در پوشه data سرور شما (ماندگاری ۱۰۰٪ حتی پس از خاموش شدن یا آپدیت کانتینر)
+      - ./data:/app/data
     environment:
       - NODE_ENV=production
+      - DATA_DIR=/app/data

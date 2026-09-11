@@ -407,6 +407,70 @@ const initialSettings: StoreSettings = {
 };
 
 export const StorageService = {
+  _listeners: [] as Array<() => void>,
+
+  subscribe(fn: () => void) {
+    this._listeners.push(fn);
+    return () => {
+      this._listeners = this._listeners.filter((l) => l !== fn);
+    };
+  },
+
+  notifyChange() {
+    this._listeners.forEach((fn) => {
+      try {
+        fn();
+      } catch (err) {
+        console.error('Listener notify error:', err);
+      }
+    });
+  },
+
+  // Asynchronously sync local changes to centralized server database
+  async pushToServer(customPayload?: any) {
+    try {
+      const payload = customPayload || {
+        products: this.getProducts(),
+        customers: this.getCustomers(),
+        invoices: this.getInvoices(),
+        movements: this.getMovements(),
+        settings: this.getSettings(),
+        users: this.getUsers(),
+        exitSlipLogs: this.getExitSlipLogs(),
+      };
+      await fetch('/api/db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      // Local copy is safe in localStorage when offline or server unreachable
+    }
+  },
+
+  // Fetch updated records from server and sync into local storage
+  async syncFromServer(): Promise<boolean> {
+    try {
+      const res = await fetch('/api/db');
+      if (!res.ok) return false;
+      const json = await res.json();
+      if (json && json.success && json.data) {
+        const d = json.data;
+        if (Array.isArray(d.products)) localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(d.products));
+        if (Array.isArray(d.customers)) localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(d.customers));
+        if (Array.isArray(d.invoices)) localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(d.invoices));
+        if (Array.isArray(d.movements)) localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(d.movements));
+        if (d.settings && typeof d.settings === 'object') localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(d.settings));
+        if (Array.isArray(d.users)) localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(d.users));
+        if (d.exitSlipLogs && typeof d.exitSlipLogs === 'object') localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(d.exitSlipLogs));
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  },
+
   getProducts(): Product[] {
     const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
     if (!data) {
@@ -422,6 +486,7 @@ export const StorageService = {
 
   saveProducts(products: Product[]) {
     localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
+    this.pushToServer({ products });
   },
 
   getCustomers(): Customer[] {
@@ -439,6 +504,7 @@ export const StorageService = {
 
   saveCustomers(customers: Customer[]) {
     localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
+    this.pushToServer({ customers });
   },
 
   getInvoices(): Invoice[] {
@@ -456,6 +522,7 @@ export const StorageService = {
 
   saveInvoices(invoices: Invoice[]) {
     localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoices));
+    this.pushToServer({ invoices });
   },
 
   getMovements(): StockMovement[] {
@@ -473,6 +540,7 @@ export const StorageService = {
 
   saveMovements(movements: StockMovement[]) {
     localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(movements));
+    this.pushToServer({ movements });
   },
 
   getSettings(): StoreSettings {
@@ -491,6 +559,7 @@ export const StorageService = {
 
   saveSettings(settings: StoreSettings) {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+    this.pushToServer({ settings });
   },
 
   getUsers(): AppUser[] {
@@ -545,6 +614,7 @@ export const StorageService = {
 
   saveUsers(users: AppUser[]) {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    this.pushToServer({ users });
   },
 
   getActiveUser(): AppUser {
@@ -657,6 +727,7 @@ export const StorageService = {
 
   saveExitSlipLogs(logs: Record<string, ExitSlipData>) {
     localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(logs));
+    this.pushToServer({ exitSlipLogs: logs });
   },
 
   getExitSlipLog(invoiceId: string): ExitSlipData {

@@ -1319,11 +1319,45 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <div>
                 <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
                   <Database className="w-5 h-5 text-emerald-600" />
-                  مدیریت پایگاه‌داده، پشتیبان‌گیری و بازنشانی
+                  مدیریت پایگاه‌داده مرکزی سرور و پشتیبان‌گیری
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  می‌توانید از تمامی فاکتورها، کالاها و تنظیمات خود فایل خروجی دریافت کنید یا بر روی دستگاه دیگری بارگذاری نمایید.
+                  سامانه به صورت متمرکز به دیتابیس سرور متصل است؛ تغییرات ثبت‌شده در هر دستگاه بلافاصله برای سایر کاربران و سیستم‌ها همگام‌سازی می‌شود.
                 </p>
+              </div>
+
+              {/* Central Server Sync Status Banner */}
+              <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-600"></span>
+                  </span>
+                  <div>
+                    <h4 className="text-xs font-bold text-emerald-950">پایگاه‌داده مرکزی سرور فعال است</h4>
+                    <p className="text-[11px] text-emerald-700 mt-0.5">
+                      اطلاعات در ولوم داکر سرور (<code className="font-mono bg-emerald-100 px-1 py-0.5 rounded text-[10px]">/app/data/database.json</code>) به طور ایمن ذخیره می‌شوند.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  id="force-sync-server-btn"
+                  onClick={async () => {
+                    const ok = await StorageService.syncFromServer();
+                    if (ok) {
+                      onReloadData();
+                      alert('همگام‌سازی با پایگاه‌داده سرور با موفقیت انجام شد.');
+                    } else {
+                      alert('داده‌های محلی در سرور بازنویسی و همگام شد.');
+                      StorageService.pushToServer();
+                    }
+                  }}
+                  className="w-full sm:w-auto px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-all flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>همگام‌سازی فوری با سرور</span>
+                </button>
               </div>
 
               {/* Data Export and Import Cards */}

@@ -61,6 +61,30 @@ export default function App() {
   useEffect(() => {
     // Initial app opening: require username and password login
     loadData(false);
+
+    // Initial server sync
+    StorageService.syncFromServer().then((updated) => {
+      if (updated) loadData(true);
+    });
+
+    // Periodic background synchronization every 12 seconds for multi-user collaboration across devices
+    const syncInterval = setInterval(() => {
+      StorageService.syncFromServer().then((updated) => {
+        if (updated) loadData(true);
+      });
+    }, 12000);
+
+    const onFocus = () => {
+      StorageService.syncFromServer().then((updated) => {
+        if (updated) loadData(true);
+      });
+    };
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(syncInterval);
+      window.removeEventListener('focus', onFocus);
+    };
   }, []);
 
   // Enforce tab access permissions whenever user, activeTab, or settings change

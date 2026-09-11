@@ -1,30 +1,37 @@
-# Stage 1: Build the Vite React application
+# Stage 1: Build client and bundle backend server
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files and install dependencies
+# Copy package files and install all dependencies
 COPY package*.json ./
 RUN npm install
 
-# Copy source code and build
+# Copy all source files and run production build
 COPY . .
 RUN npm run build
 
-# Stage 2: Serve static files with lightweight Nginx
-FROM nginx:alpine
+# Stage 2: Production runner container
+FROM node:20-alpine AS runner
 
-# Remove default nginx static assets
-RUN rm -rf /usr/share/nginx/html/*
+WORKDIR /app
 
-# Copy built files from builder stage
-COPY --from=builder /app/dist /usr/share/nginx/html
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV DATA_DIR=/app/data
 
-# Copy custom Nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Install only production dependencies
+COPY package*.json ./
+RUN npm install --omit=dev
 
-# Expose port 3000
+# Copy compiled frontend and bundled server from builder stage
+COPY --from=builder /app/dist ./dist
+
+# Create persistent data directory for database
+RUN mkdir -p /app/data
+
+VOLUME ["/app/data"]
+
 EXPOSE 3000
 
-# Start Nginx
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["node", "dist/server.cjs"]
