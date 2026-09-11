@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StoreSettings, Product, Customer, Invoice, StockMovement, AppUser } from '../types';
 import { StorageService } from '../utils/storage';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
+import { exportInvoicesToCsv } from '../utils/csvExport';
 import { UsersManager } from './UsersManager';
 import {
   ShieldCheck,
@@ -31,7 +32,11 @@ import {
   Eye,
   Settings,
   HelpCircle,
-  UserCheck
+  UserCheck,
+  Search,
+  FileSpreadsheet,
+  ExternalLink,
+  Filter
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -73,9 +78,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const canAccessFullAdmin = !currentUser || currentUser.permissions.canAccessAdmin;
   const canManageUsers = !currentUser || currentUser.permissions.canManageUsers;
 
-  const [activeSection, setActiveSection] = useState<'overview' | 'modules' | 'invoice' | 'templates' | 'store' | 'users' | 'data'>(
+  const [activeSection, setActiveSection] = useState<'overview' | 'invoices' | 'modules' | 'invoice' | 'templates' | 'store' | 'users' | 'data'>(
     canAccessFullAdmin ? 'overview' : 'users'
   );
+  const [adminInvoiceSearch, setAdminInvoiceSearch] = useState('');
+  const [adminInvoiceStatus, setAdminInvoiceStatus] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [importStatus, setImportStatus] = useState<string>('');
 
@@ -88,6 +95,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const storageStats = StorageService.getStorageStats();
   const totalRevenue = invoices.reduce((sum, inv) => sum + inv.finalTotal, 0);
   const lowStockProducts = products.filter(p => p.stock <= p.minStockAlert);
+
+  const filteredAdminInvoices = invoices.filter((inv) => {
+    const matchesSearch =
+      inv.invoiceNumber.toLowerCase().includes(adminInvoiceSearch.toLowerCase()) ||
+      inv.customerName.toLowerCase().includes(adminInvoiceSearch.toLowerCase()) ||
+      (inv.customerPhone && inv.customerPhone.includes(adminInvoiceSearch));
+    const matchesStatus = adminInvoiceStatus === 'all' || inv.paymentStatus === adminInvoiceStatus;
+    return matchesSearch && matchesStatus;
+  });
 
   const handleToggle = (key: keyof StoreSettings) => {
     setFormData((prev) => ({
@@ -187,6 +203,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     ...(canAccessFullAdmin
       ? [
           { id: 'overview', label: 'داشبورد و وضعیت اجزا', icon: LayoutGrid },
+          { id: 'invoices', label: 'لیست فاکتورها و خروجی CSV', icon: FileSpreadsheet },
           { id: 'modules', label: 'کنترل ماژول‌های سیستم', icon: SlidersHorizontal },
           { id: 'invoice', label: 'قوانین و رفتار فاکتورساز', icon: ReceiptText },
           { id: 'templates', label: 'قالب‌های چاپ و پرداخت', icon: Printer },
@@ -325,14 +342,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       گردش فروش: {formatPrice(totalRevenue, formData.currency)}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => onNavigateToTab('invoices')}
-                    className="mt-3 text-xs text-emerald-700 font-bold hover:underline text-right flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>مشاهده فاکتورها</span>
-                    <span>←</span>
-                  </button>
+                  <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => onNavigateToTab('invoices')}
+                      className="text-emerald-700 font-bold hover:underline text-right flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>مشاهده فاکتورها</span>
+                      <span>←</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveSection('invoices')}
+                      className="text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                      title="لیست فاکتورها و خروجی CSV حسابداری در پنل مدیریت"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>خروجی CSV</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Inventory Component */}
@@ -458,6 +486,241 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </span>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* 1.5. INVOICES & ACCOUNTING CSV EXPORT (لیست فاکتورها و خروجی حسابداری) */}
+          {activeSection === 'invoices' && (
+            <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                    <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                    لیست فاکتورها و خروجی نرم‌افزارهای حسابداری (CSV)
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    مشاهده، فیلترگذاری و صدور خروجی جامع با انکودینگ استاندارد UTF-8 BOM جهت ورود به سیستم‌های مالی (هلو، سپیدار، راه‌کاران، پارسیان و اکسل)
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  id="admin-export-filtered-csv-btn"
+                  onClick={() => {
+                    const filterLabel =
+                      adminInvoiceStatus === 'all'
+                        ? 'همه'
+                        : adminInvoiceStatus === 'paid'
+                        ? 'تسویه_شده'
+                        : adminInvoiceStatus === 'partial'
+                        ? 'اقساطی'
+                        : 'نسیه';
+                    exportInvoicesToCsv(
+                      filteredAdminInvoices,
+                      formData,
+                      `خروجی_حسابداری_فاکتورها_${filterLabel}_${filteredAdminInvoices.length}_فقره`
+                    );
+                  }}
+                  disabled={filteredAdminInvoices.length === 0}
+                  className="flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-800 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
+                  title="دانلود فایل CSV سازگار با نرم‌افزارهای حسابداری و اکسل"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>دانلود خروجی CSV ({toPersianDigits(filteredAdminInvoices.length)} فاکتور فیلترشده)</span>
+                </button>
+              </div>
+
+              {/* KPI Summary for filtered invoices */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+                  <span className="text-[11px] text-slate-500 block">فاکتورهای فیلترشده</span>
+                  <span className="text-base font-black text-slate-900 mt-0.5 block">
+                    {toPersianDigits(filteredAdminInvoices.length)} فاکتور
+                  </span>
+                </div>
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+                  <span className="text-[11px] text-slate-500 block">مجموع مبلغ کل فاکتورها</span>
+                  <span className="text-base font-black text-slate-900 mt-0.5 block">
+                    {formatPrice(filteredAdminInvoices.reduce((s, i) => s + i.finalTotal, 0), formData.currency)}
+                  </span>
+                </div>
+                <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200">
+                  <span className="text-[11px] text-emerald-800 block">مجموع دریافتی وصول شده</span>
+                  <span className="text-base font-black text-emerald-700 mt-0.5 block">
+                    {formatPrice(
+                      filteredAdminInvoices.reduce((s, i) => {
+                        if (i.paymentStatus === 'paid') return s + i.finalTotal;
+                        if (i.paymentStatus === 'partial') return s + (i.paidAmount || 0);
+                        return s;
+                      }, 0),
+                      formData.currency
+                    )}
+                  </span>
+                </div>
+                <div className="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200">
+                  <span className="text-[11px] text-amber-800 block">مانده مطالبات و نسیه</span>
+                  <span className="text-base font-black text-amber-700 mt-0.5 block">
+                    {formatPrice(
+                      Math.max(
+                        0,
+                        filteredAdminInvoices.reduce((s, i) => s + i.finalTotal, 0) -
+                          filteredAdminInvoices.reduce((s, i) => {
+                            if (i.paymentStatus === 'paid') return s + i.finalTotal;
+                            if (i.paymentStatus === 'partial') return s + (i.paidAmount || 0);
+                            return s;
+                          }, 0)
+                      ),
+                      formData.currency
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              {/* Filter bar */}
+              <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200/90">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    id="admin-invoice-search-input"
+                    placeholder="جستجو بر اساس شماره فاکتور، نام خریدار یا تلفن..."
+                    value={adminInvoiceSearch}
+                    onChange={(e) => setAdminInvoiceSearch(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl pr-9 pl-4 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+
+                <div className="flex bg-white border border-slate-200 rounded-xl p-1 text-xs self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setAdminInvoiceStatus('all')}
+                    className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                      adminInvoiceStatus === 'all'
+                        ? 'bg-slate-900 text-white font-medium'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    همه ({toPersianDigits(invoices.length)})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminInvoiceStatus('paid')}
+                    className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                      adminInvoiceStatus === 'paid'
+                        ? 'bg-emerald-600 text-white font-medium'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    تسویه شده
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminInvoiceStatus('partial')}
+                    className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                      adminInvoiceStatus === 'partial'
+                        ? 'bg-amber-600 text-white font-medium'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    اقساطی / بیعانه
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminInvoiceStatus('unpaid')}
+                    className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                      adminInvoiceStatus === 'unpaid'
+                        ? 'bg-rose-600 text-white font-medium'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    نسیه
+                  </button>
+                </div>
+              </div>
+
+              {/* Table of Invoices */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden overflow-x-auto">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="p-3 w-12 text-center">#</th>
+                      <th className="p-3">شماره فاکتور</th>
+                      <th className="p-3">تاریخ و ساعت</th>
+                      <th className="p-3">خریدار / مشتری</th>
+                      <th className="p-3">تعداد اقلام</th>
+                      <th className="p-3">مبلغ کل</th>
+                      <th className="p-3">وضعیت تسویه</th>
+                      <th className="p-3">روش پرداخت</th>
+                      <th className="p-3 text-center">عملیات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredAdminInvoices.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="p-8 text-center text-slate-400">
+                          هیچ فاکتوری با معیارهای جستجو یافت نشد.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredAdminInvoices.map((inv, idx) => (
+                        <tr key={inv.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="p-3 text-center text-slate-400 font-mono">{toPersianDigits(idx + 1)}</td>
+                          <td className="p-3 font-mono font-bold text-slate-900">#{toPersianDigits(inv.invoiceNumber)}</td>
+                          <td className="p-3 text-slate-500 font-mono text-[11px]">
+                            {inv.date}
+                          </td>
+                          <td className="p-3">
+                            <div className="font-bold text-slate-800">{inv.customerName || 'مشتری گذری'}</div>
+                            {inv.customerPhone && <div className="text-[10px] text-slate-400 font-mono">{inv.customerPhone}</div>}
+                          </td>
+                          <td className="p-3 text-slate-600">{toPersianDigits(inv.items?.length || 0)} قلم</td>
+                          <td className="p-3 font-black text-slate-900">{formatPrice(inv.finalTotal, formData.currency)}</td>
+                          <td className="p-3">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                inv.paymentStatus === 'paid'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : inv.paymentStatus === 'partial'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-rose-100 text-rose-800'
+                              }`}
+                            >
+                              {inv.paymentStatus === 'paid'
+                                ? 'تسویه کامل'
+                                : inv.paymentStatus === 'partial'
+                                ? 'اقساط / بیعانه'
+                                : 'نسیه'}
+                            </span>
+                          </td>
+                          <td className="p-3 text-slate-500 text-[11px]">
+                            {inv.paymentMethod === 'pos'
+                              ? 'کارتخوان'
+                              : inv.paymentMethod === 'cash'
+                              ? 'نقدی'
+                              : inv.paymentMethod === 'transfer'
+                              ? 'واریز/شبا'
+                              : inv.paymentMethod === 'cheque'
+                              ? 'چک'
+                              : inv.paymentMethod === 'credit'
+                              ? 'نسیه'
+                              : 'سایر'}
+                          </td>
+                          <td className="p-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => onNavigateToTab('invoices')}
+                              className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                              title="مشاهده فاکتور در صفحه فاکتورها"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -1400,6 +1663,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       className="hidden"
                     />
                   </label>
+                </div>
+
+                {/* Accounting CSV Export Card */}
+                <div className="p-4 rounded-xl border border-emerald-300/80 bg-emerald-50/40 space-y-3 sm:col-span-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-emerald-800">
+                      <FileSpreadsheet className="w-5 h-5 text-emerald-600 shrink-0" />
+                      <h4 className="font-bold text-xs text-slate-800">خروجی اکسل و CSV فاکتورها (ویژه نرم‌افزارهای حسابداری)</h4>
+                    </div>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold self-start sm:self-auto">
+                      سازگار با هلو، سپیدار، راه‌کاران، پارسیان و اکسل
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    استخراج جامع کلیه فاکتورهای فروش ثبت‌شده به همراه مشخصات خریدار، شماره تماس، کد پیگیری، اقلام فاکتور، مبالغ مالیات و تخفیفات، وضعیت تسویه و روش پرداخت با انکودینگ استاندارد UTF-8 BOM جهت گزارش‌گیری و ثبت اسناد حسابداری.
+                  </p>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button
+                      type="button"
+                      id="admin-datacenter-export-csv-btn"
+                      onClick={() => exportInvoicesToCsv(invoices, formData, 'خروجی_حسابداری_کل_فاکتورها')}
+                      disabled={invoices.length === 0}
+                      className="py-2.5 px-4 bg-emerald-700 hover:bg-emerald-800 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>دانلود CSV همه فاکتورها ({toPersianDigits(invoices.length)} فاکتور)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveSection('invoices')}
+                      className="py-2.5 px-4 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Filter className="w-4 h-4 text-slate-500" />
+                      <span>مشاهده و فیلترگذاری قبل از خروجی</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 

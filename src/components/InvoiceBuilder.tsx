@@ -19,13 +19,19 @@ import {
   Calendar,
   Hash,
   User,
-  HelpCircle
+  HelpCircle,
+  Search,
+  X,
+  ChevronDown,
+  Check,
+  Barcode
 } from 'lucide-react';
 
 interface InvoiceBuilderProps {
   products: Product[];
   customers: Customer[];
   settings: StoreSettings;
+  initialIsProforma?: boolean;
   onSaveInvoice: (invoice: Invoice, shouldPrint: boolean) => void;
   onAddNewCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => Customer;
   onCancel?: () => void;
@@ -35,16 +41,36 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   products,
   customers,
   settings,
+  initialIsProforma = false,
   onSaveInvoice,
   onAddNewCustomer,
   onCancel,
 }) => {
-  // Generate a random / incremental invoice number
-  const initialInvoiceNum = `INV-${Math.floor(1000 + Math.random() * 9000)}`;
+  const [isProforma, setIsProforma] = useState<boolean>(initialIsProforma);
+
+  // Generate a random / incremental invoice number (PF- for proforma, INV- for regular)
+  const initialInvoiceNum = initialIsProforma
+    ? `PF-${Math.floor(1000 + Math.random() * 9000)}`
+    : `INV-${Math.floor(1000 + Math.random() * 9000)}`;
 
   const [invoiceNumber, setInvoiceNumber] = useState<string>(initialInvoiceNum);
   const [invoiceType, setInvoiceType] = useState<'standard' | 'official' | 'thermal'>(settings.defaultTemplate || 'standard');
   const [invoiceDate, setInvoiceDate] = useState<string>(getCurrentJalaliDate());
+
+  const handleToggleDocumentMode = (targetProforma: boolean) => {
+    setIsProforma(targetProforma);
+    if (targetProforma) {
+      if (invoiceNumber.startsWith('INV-')) {
+        setInvoiceNumber(invoiceNumber.replace('INV-', 'PF-'));
+      } else if (!invoiceNumber.startsWith('PF-')) {
+        setInvoiceNumber(`PF-${invoiceNumber}`);
+      }
+    } else {
+      if (invoiceNumber.startsWith('PF-')) {
+        setInvoiceNumber(invoiceNumber.replace('PF-', 'INV-'));
+      }
+    }
+  };
 
   // Customer state
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
@@ -93,14 +119,28 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   // فیلدهای الزامی و مجاز واریز به حساب (ثبت توضیحات)
   const [transferDescription, setTransferDescription] = useState<string>('');
 
+  // Customer Search States
+  const [customerSearchQuery, setCustomerSearchQuery] = useState<string>('');
+  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState<boolean>(false);
+
+  // Quick Product Add Bar State (Top of Items Table)
+  const [quickProductSearch, setQuickProductSearch] = useState<string>('');
+  const [isQuickProductDropdownOpen, setIsQuickProductDropdownOpen] = useState<boolean>(false);
+
+  // Row Search Open State (Row index -> boolean)
+  const [rowSearchOpen, setRowSearchOpen] = useState<Record<number, boolean>>({});
+  const [rowSearchQuery, setRowSearchQuery] = useState<Record<number, string>>({});
+
   // Handle Customer Selection
   const handleCustomerSelect = (id: string) => {
     setSelectedCustomerId(id);
+    setIsCustomerDropdownOpen(false);
     if (!id) {
       setCustomerName('');
       setCustomerPhone('');
       setCustomerAddress('');
       setCustomerNationalId('');
+      setCustomerSearchQuery('');
       return;
     }
     const found = customers.find((c) => c.id === id);
@@ -109,7 +149,39 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       setCustomerPhone(found.phone || '');
       setCustomerAddress(found.address || '');
       setCustomerNationalId(found.nationalId || '');
+      setCustomerSearchQuery(found.name);
     }
+  };
+
+  // Quick Add Product from search bar
+  const handleQuickAddProduct = (prod: Product) => {
+    // If there is an existing empty row (no product selected), fill it
+    const emptyRowIndex = items.findIndex((it) => !it.productId && !it.productName);
+    if (emptyRowIndex !== -1) {
+      handleProductSelect(emptyRowIndex, prod.id);
+    } else {
+      // Check if already in items list
+      const existingIdx = items.findIndex((it) => it.productId === prod.id);
+      if (existingIdx !== -1) {
+        handleItemChange(existingIdx, 'quantity', items[existingIdx].quantity + 1);
+      } else {
+        const newItem: InvoiceItem = {
+          id: `row-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+          productId: prod.id,
+          productName: prod.name,
+          productCode: prod.code,
+          unit: prod.unit,
+          quantity: 1,
+          unitPrice: prod.sellPrice,
+          buyPrice: prod.buyPrice,
+          discount: 0,
+          total: prod.sellPrice,
+        };
+        setItems((prev) => [...prev, newItem]);
+      }
+    }
+    setQuickProductSearch('');
+    setIsQuickProductDropdownOpen(false);
   };
 
   // Quick Save New Customer
@@ -259,7 +331,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       }
     });
 
-    if (stockIssues.length > 0 && settings.autoDeductStock) {
+    // Only enforce stock check if auto-deduct is enabled and NOT a proforma (since proforma never deducts stock)
+    if (stockIssues.length > 0 && settings.autoDeductStock && !isProforma) {
       if (settings.allowNegativeStock === false) {
         setErrorMessage(
           `خطای کنترل موجودی انبار: اجازه ثبت کالای ناموجود در پنل مدیریت غیرفعال است.\n${stockIssues.join('\n')}`
@@ -274,8 +347,9 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
     const newInvoice: Invoice = {
       id: `inv-${Date.now()}`,
-      invoiceNumber: invoiceNumber.trim() || `INV-${Date.now().toString().slice(-4)}`,
+      invoiceNumber: invoiceNumber.trim() || (isProforma ? `PF-${Date.now().toString().slice(-4)}` : `INV-${Date.now().toString().slice(-4)}`),
       type: invoiceType,
+      isProforma,
       customerId: selectedCustomerId || 'guest',
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
@@ -307,22 +381,66 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   return (
     <div className="max-w-7xl mx-auto pb-12">
       {/* Header Info */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
           <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
+            <span className={`p-2 rounded-xl transition-colors ${isProforma ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'}`}>
               <ShoppingBag className="w-5 h-5" />
             </span>
-            <h2 className="text-xl font-bold text-slate-800">صدور فاکتور فروش جدید</h2>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-bold text-slate-800">
+                  {isProforma ? 'صدور پیش‌فاکتور فروش' : 'صدور فاکتور فروش جدید'}
+                </h2>
+                {isProforma && (
+                  <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full border border-indigo-200">
+                    بدون کسر از انبار
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {isProforma
+                  ? 'این سند به عنوان پیش‌فاکتور ثبت می‌شود؛ موجودی انبار کسر نخواهد شد و در هر زمان در لیست فاکتورها قابل تبدیل به فاکتور اصلی است.'
+                  : 'با ثبت فاکتور قطعی، اقلام به صورت خودکار از انبار کسر شده و تاریخچه ثبت می‌شود.'}
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            با ثبت فاکتور، اقلام به صورت خودکار از انبار کسر شده و تاریخچه ثبت می‌شود.
-          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Document Mode Switcher: فاکتور قطعی / پیش‌فاکتور */}
+          <div className="flex bg-slate-100 p-1 rounded-xl text-xs border border-slate-200">
+            <button
+              type="button"
+              id="mode-invoice-btn"
+              onClick={() => handleToggleDocumentMode(false)}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                !isProforma
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              فاکتور فروش
+            </button>
+            <button
+              type="button"
+              id="mode-proforma-btn"
+              onClick={() => handleToggleDocumentMode(true)}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                isProforma
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>پیش‌فاکتور</span>
+              <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${isProforma ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-200 text-slate-600'}`}>
+                غیرقطعی
+              </span>
+            </button>
+          </div>
+
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs">
-            <span className="text-slate-500 font-medium">شماره فاکتور:</span>
+            <span className="text-slate-500 font-medium">{isProforma ? 'شماره پیش‌فاکتور:' : 'شماره فاکتور:'}</span>
             <input
               type="text"
               id="invoice-number-input"
@@ -344,6 +462,24 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
           </div>
         </div>
       </div>
+
+      {isProforma && (
+        <div className="mb-5 p-3.5 rounded-xl bg-indigo-50/90 border border-indigo-200 text-indigo-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+            <span>
+              <strong>حالت صدور پیش‌فاکتور:</strong> موجودی کالاهای انتخابی از انبار کسر نخواهد شد. هر زمان مشتری خرید خود را قطعی نمود، از بخش «لیست فاکتورها» می‌توانید با یک کلیک آن را به فاکتور اصلی فروش تبدیل کنید تا اقلام کسر و اسناد ثبت شوند.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleToggleDocumentMode(false)}
+            className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 hover:underline shrink-0 cursor-pointer self-start sm:self-auto"
+          >
+            تغییر به فاکتور فروش
+          </button>
+        </div>
+      )}
 
       {errorMessage && (
         <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-center gap-2">
@@ -375,23 +511,131 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
             {!isAddingNewCustomer ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                    انتخاب مشتری از لیست:
-                  </label>
-                  <select
-                    id="customer-dropdown-select"
-                    value={selectedCustomerId}
-                    onChange={(e) => handleCustomerSelect(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
-                  >
-                    <option value="">-- مشتری گذری / بدون پرونده --</option>
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} {c.phone ? `(${c.phone})` : ''}
-                      </option>
-                    ))}
-                  </select>
+                {/* Searchable Customer Selection */}
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-medium text-slate-600">
+                      انتخاب یا جستجوی مشتری:
+                    </label>
+                    {selectedCustomerId && (
+                      <button
+                        type="button"
+                        onClick={() => handleCustomerSelect('')}
+                        className="text-[11px] text-rose-600 hover:text-rose-700 font-medium flex items-center gap-1 cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                        حذف انتخاب / مشتری گذری
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <div className="relative flex items-center">
+                      <Search className="w-4 h-4 text-slate-400 absolute right-3 pointer-events-none" />
+                      <input
+                        type="text"
+                        id="customer-search-input"
+                        placeholder="نام، شماره تماس یا کد مشتری را جستجو کنید..."
+                        value={customerSearchQuery}
+                        onFocus={() => setIsCustomerDropdownOpen(true)}
+                        onChange={(e) => {
+                          setCustomerSearchQuery(e.target.value);
+                          setIsCustomerDropdownOpen(true);
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-9 pl-8 py-2.5 text-xs sm:text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomerDropdownOpen(!isCustomerDropdownOpen)}
+                        className="absolute left-2.5 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                        title="مشاهده لیست کامل"
+                      >
+                        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isCustomerDropdownOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                    </div>
+
+                    {/* Floating Customers Dropdown */}
+                    {isCustomerDropdownOpen && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-20" 
+                          onClick={() => setIsCustomerDropdownOpen(false)} 
+                        />
+                        <div className="absolute top-full right-0 left-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 z-30 max-h-64 overflow-y-auto py-1">
+                          {/* Option: Walk-in / Guest */}
+                          <div
+                            onClick={() => handleCustomerSelect('')}
+                            className={`px-3 py-2 text-xs flex items-center justify-between cursor-pointer hover:bg-slate-50 border-b border-slate-100 ${
+                              !selectedCustomerId ? 'bg-emerald-50/70 text-emerald-800 font-bold' : 'text-slate-600'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <User className="w-3.5 h-3.5 text-slate-400" />
+                              <span>مشتری گذری / بدون پرونده (فروش نقدی متفرقه)</span>
+                            </div>
+                            {!selectedCustomerId && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+                          </div>
+
+                          {/* Filtered customers list */}
+                          {customers
+                            .filter((c) => {
+                              if (!customerSearchQuery.trim()) return true;
+                              const q = customerSearchQuery.trim().toLowerCase();
+                              return (
+                                c.name.toLowerCase().includes(q) ||
+                                (c.phone && c.phone.includes(q)) ||
+                                (c.nationalId && c.nationalId.includes(q)) ||
+                                (c.address && c.address.toLowerCase().includes(q))
+                              );
+                            })
+                            .map((c) => {
+                              const isSelected = selectedCustomerId === c.id;
+                              return (
+                                <div
+                                  key={c.id}
+                                  onClick={() => handleCustomerSelect(c.id)}
+                                  className={`px-3 py-2 text-xs cursor-pointer hover:bg-slate-50 border-b border-slate-50 last:border-b-0 flex items-center justify-between transition-colors ${
+                                    isSelected ? 'bg-emerald-50 text-emerald-900 font-bold' : 'text-slate-800'
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                                      <span>{c.name}</span>
+                                      {c.phone && (
+                                        <span className="text-[11px] font-normal text-slate-500 dir-ltr">
+                                          ({toPersianDigits(c.phone)})
+                                        </span>
+                                      )}
+                                    </div>
+                                    {c.address && (
+                                      <div className="text-[10px] text-slate-400 truncate max-w-xs mt-0.5">
+                                        {c.address}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {isSelected && <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
+                                </div>
+                              );
+                            })}
+
+                          {customers.filter((c) => {
+                            if (!customerSearchQuery.trim()) return true;
+                            const q = customerSearchQuery.trim().toLowerCase();
+                            return (
+                              c.name.toLowerCase().includes(q) ||
+                              (c.phone && c.phone.includes(q)) ||
+                              (c.nationalId && c.nationalId.includes(q)) ||
+                              (c.address && c.address.toLowerCase().includes(q))
+                            );
+                          }).length === 0 && (
+                            <div className="px-4 py-3 text-center text-xs text-slate-500">
+                              مشتری با مشخصات «{customerSearchQuery}» یافت نشد.
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -538,12 +782,141 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               </button>
             </div>
 
+            {/* Quick Product Search & Rapid Add Bar */}
+            <div className="relative mb-5 bg-emerald-50/50 border border-emerald-200/80 rounded-2xl p-3.5 sm:p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="p-1 rounded-lg bg-emerald-600 text-white">
+                    <Barcode className="w-3.5 h-3.5" />
+                  </span>
+                  <label htmlFor="quick-product-search-bar" className="text-xs font-bold text-emerald-950">
+                    جستجو و افزودن سریع کالا به فاکتور (نام، کد یا بارکد):
+                  </label>
+                </div>
+                <span className="text-[11px] text-emerald-700">
+                  با تایپ یا اسکن بارکد، کالا بلافاصله به اقلام فاکتور اضافه می‌گردد
+                </span>
+              </div>
+
+              <div className="relative">
+                <div className="relative flex items-center">
+                  <Search className="w-4 h-4 text-emerald-600 absolute right-3 pointer-events-none" />
+                  <input
+                    type="text"
+                    id="quick-product-search-bar"
+                    value={quickProductSearch}
+                    onFocus={() => setIsQuickProductDropdownOpen(true)}
+                    onChange={(e) => {
+                      setQuickProductSearch(e.target.value);
+                      setIsQuickProductDropdownOpen(true);
+                    }}
+                    placeholder="نام کالا، کد انبار، بارکد یا دسته‌بندی را جستجو کنید..."
+                    className="w-full bg-white border border-emerald-300 rounded-xl pr-9 pl-9 py-2.5 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all shadow-2xs"
+                  />
+                  {quickProductSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuickProductSearch('');
+                        setIsQuickProductDropdownOpen(false);
+                      }}
+                      className="absolute left-3 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Quick Results Dropdown */}
+                {isQuickProductDropdownOpen && quickProductSearch.trim() && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-30"
+                      onClick={() => setIsQuickProductDropdownOpen(false)}
+                    />
+                    <div className="absolute top-full right-0 left-0 mt-1.5 bg-white rounded-xl shadow-2xl border border-slate-200 z-40 max-h-72 overflow-y-auto divide-y divide-slate-100">
+                      {products
+                        .filter((p) => {
+                          const q = quickProductSearch.trim().toLowerCase();
+                          return (
+                            p.name.toLowerCase().includes(q) ||
+                            (p.code && p.code.toLowerCase().includes(q)) ||
+                            (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+                            (p.category && p.category.toLowerCase().includes(q))
+                          );
+                        })
+                        .map((prod) => (
+                          <div
+                            key={prod.id}
+                            onClick={() => handleQuickAddProduct(prod)}
+                            className="p-3 hover:bg-emerald-50/70 cursor-pointer flex items-center justify-between gap-3 transition-colors"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-xs text-slate-800 truncate">
+                                  {prod.name}
+                                </span>
+                                {prod.category && (
+                                  <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                    {prod.category}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
+                                <span>کد: {toPersianDigits(prod.code)}</span>
+                                {prod.barcode && <span>بارکد: {toPersianDigits(prod.barcode)}</span>}
+                                <span
+                                  className={`px-1.5 py-0.5 rounded font-bold ${
+                                    prod.stock === 0
+                                      ? 'bg-rose-100 text-rose-700'
+                                      : prod.stock <= prod.minStockAlert
+                                      ? 'bg-amber-100 text-amber-700'
+                                      : 'bg-emerald-100 text-emerald-800'
+                                  }`}
+                                >
+                                  موجودی: {toPersianDigits(prod.stock)} {prod.unit}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-left shrink-0">
+                              <div className="text-xs font-black text-emerald-700">
+                                {formatPrice(prod.sellPrice, settings.currency)}
+                              </div>
+                              <span className="mt-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                                <Plus className="w-3 h-3" />
+                                افزودن
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+
+                      {products.filter((p) => {
+                        const q = quickProductSearch.trim().toLowerCase();
+                        return (
+                          p.name.toLowerCase().includes(q) ||
+                          (p.code && p.code.toLowerCase().includes(q)) ||
+                          (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+                          (p.category && p.category.toLowerCase().includes(q))
+                        );
+                      }).length === 0 && (
+                        <div className="p-4 text-center text-xs text-slate-500">
+                          کالایی با عبارت «{quickProductSearch}» در انبار یافت نشد.
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
             {/* Items List */}
             <div className="space-y-3">
               {items.map((item, index) => {
                 const selectedProd = products.find((p) => p.id === item.productId);
                 const isOverStock = selectedProd && item.quantity > selectedProd.stock;
                 const isLowStock = selectedProd && selectedProd.stock <= selectedProd.minStockAlert;
+                const isSearchingRow = rowSearchOpen[index] || !item.productId;
+                const currentRowQuery = rowSearchQuery[index] || '';
 
                 return (
                   <div
@@ -555,11 +928,11 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     }`}
                   >
                     <div className="grid grid-cols-12 gap-3 items-end">
-                      {/* Product Selector */}
-                      <div className="col-span-12 lg:col-span-5">
+                      {/* Searchable Product Selector */}
+                      <div className="col-span-12 lg:col-span-5 relative">
                         <div className="flex items-center justify-between mb-1.5">
                           <label className="text-xs font-semibold text-slate-700">
-                            ردیف {index + 1}: انتخاب کالا
+                            ردیف {index + 1}: انتخاب و جستجوی کالا
                           </label>
                           {selectedProd && (
                             <span
@@ -575,19 +948,128 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                             </span>
                           )}
                         </div>
-                        <select
-                          id={`product-select-row-${index}`}
-                          value={item.productId}
-                          onChange={(e) => handleProductSelect(index, e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-medium"
-                        >
-                          <option value="">-- انتخاب کالا از انبار --</option>
-                          {products.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} (کد: {p.code} | موجودی: {p.stock} | فی: {formatPrice(p.sellPrice, '', false)})
-                            </option>
-                          ))}
-                        </select>
+
+                        {/* If product is selected and search is closed, show selected badge with Change button */}
+                        {selectedProd && !rowSearchOpen[index] ? (
+                          <div className="flex items-center justify-between bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs">
+                            <div className="truncate pl-2">
+                              <span className="font-bold text-slate-900 block truncate">
+                                {selectedProd.name}
+                              </span>
+                              <span className="text-[10px] text-slate-500">
+                                کد: {toPersianDigits(selectedProd.code)} {selectedProd.barcode ? `| بارکد: ${toPersianDigits(selectedProd.barcode)}` : ''}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRowSearchOpen((prev) => ({ ...prev, [index]: true }));
+                                setRowSearchQuery((prev) => ({ ...prev, [index]: '' }));
+                              }}
+                              className="text-[11px] text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-lg font-bold flex items-center gap-1 shrink-0 cursor-pointer transition-colors"
+                            >
+                              <Search className="w-3 h-3" />
+                              تغییر کالا
+                            </button>
+                          </div>
+                        ) : (
+                          /* Search Input Combobox for Row */
+                          <div className="relative">
+                            <div className="relative flex items-center">
+                              <Search className="w-4 h-4 text-slate-400 absolute right-3 pointer-events-none" />
+                              <input
+                                type="text"
+                                id={`product-search-input-row-${index}`}
+                                placeholder="جستجوی نام یا کد کالا..."
+                                value={currentRowQuery}
+                                onFocus={() => setRowSearchOpen((prev) => ({ ...prev, [index]: true }))}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setRowSearchQuery((prev) => ({ ...prev, [index]: val }));
+                                  setRowSearchOpen((prev) => ({ ...prev, [index]: true }));
+                                }}
+                                className="w-full bg-white border border-slate-300 rounded-xl pr-9 pl-8 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-medium"
+                              />
+                              {selectedProd && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRowSearchOpen((prev) => ({ ...prev, [index]: false }))}
+                                  className="absolute left-2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                                  title="انصراف از تغییر"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Dropdown list for this row */}
+                            {rowSearchOpen[index] && (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-20"
+                                  onClick={() => setRowSearchOpen((prev) => ({ ...prev, [index]: false }))}
+                                />
+                                <div className="absolute top-full right-0 left-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 z-30 max-h-56 overflow-y-auto divide-y divide-slate-100">
+                                  {products
+                                    .filter((p) => {
+                                      if (!currentRowQuery.trim()) return true;
+                                      const q = currentRowQuery.trim().toLowerCase();
+                                      return (
+                                        p.name.toLowerCase().includes(q) ||
+                                        (p.code && p.code.toLowerCase().includes(q)) ||
+                                        (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+                                        (p.category && p.category.toLowerCase().includes(q))
+                                      );
+                                    })
+                                    .map((p) => {
+                                      const isCur = item.productId === p.id;
+                                      return (
+                                        <div
+                                          key={p.id}
+                                          onClick={() => {
+                                            handleProductSelect(index, p.id);
+                                            setRowSearchOpen((prev) => ({ ...prev, [index]: false }));
+                                            setRowSearchQuery((prev) => ({ ...prev, [index]: '' }));
+                                          }}
+                                          className={`p-2.5 text-xs hover:bg-emerald-50/60 cursor-pointer flex items-center justify-between gap-2 transition-colors ${
+                                            isCur ? 'bg-emerald-50 text-emerald-900 font-bold' : ''
+                                          }`}
+                                        >
+                                          <div className="truncate">
+                                            <div className="font-semibold text-slate-800 truncate">
+                                              {p.name}
+                                            </div>
+                                            <div className="text-[10px] text-slate-500 mt-0.5">
+                                              کد: {toPersianDigits(p.code)} | موجودی: {toPersianDigits(p.stock)} {p.unit}
+                                            </div>
+                                          </div>
+                                          <div className="text-left shrink-0">
+                                            <div className="font-bold text-emerald-700 text-xs">
+                                              {formatPrice(p.sellPrice, '', false)}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+
+                                  {products.filter((p) => {
+                                    if (!currentRowQuery.trim()) return true;
+                                    const q = currentRowQuery.trim().toLowerCase();
+                                    return (
+                                      p.name.toLowerCase().includes(q) ||
+                                      (p.code && p.code.toLowerCase().includes(q)) ||
+                                      (p.barcode && p.barcode.toLowerCase().includes(q))
+                                    );
+                                  }).length === 0 && (
+                                    <div className="p-3 text-center text-xs text-slate-500">
+                                      کالایی یافت نشد.
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Quantity with touch-friendly Stepper */}
@@ -1090,10 +1572,14 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               type="button"
               id="save-and-print-invoice-btn"
               onClick={() => handleSubmit(true)}
-              className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-sm font-bold shadow-md shadow-emerald-200 flex items-center justify-center gap-2 transition-all cursor-pointer"
+              className={`w-full py-3 px-4 ${
+                isProforma
+                  ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+                  : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+              } active:scale-98 text-white rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer`}
             >
               <Printer className="w-4 h-4" />
-              <span>ثبت فاکتور و چاپ فوری</span>
+              <span>{isProforma ? 'ثبت پیش‌فاکتور و چاپ فوری' : 'ثبت فاکتور و چاپ فوری'}</span>
             </button>
 
             <button
@@ -1102,8 +1588,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               onClick={() => handleSubmit(false)}
               className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>فقط ثبت در سیستم و کسر از انبار</span>
+              <CheckCircle2 className={`w-4 h-4 ${isProforma ? 'text-indigo-600' : 'text-emerald-600'}`} />
+              <span>{isProforma ? 'فقط ثبت پیش‌فاکتور (بدون کسر از انبار)' : 'فقط ثبت در سیستم و کسر از انبار'}</span>
             </button>
 
             {onCancel && (
@@ -1124,8 +1610,10 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       {/* Sticky Mobile Summary & Checkout Bar (Shown only on small screens) */}
       <div className="sm:hidden fixed bottom-[57px] left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-3 py-2 shadow-[0_-3px_12px_rgba(0,0,0,0.06)] flex items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <span className="text-[10px] text-slate-500 block leading-tight">مبلغ نهایی:</span>
-          <span className="text-xs font-black text-emerald-700 truncate block">
+          <span className="text-[10px] text-slate-500 block leading-tight">
+            {isProforma ? 'مبلغ پیش‌فاکتور:' : 'مبلغ نهایی:'}
+          </span>
+          <span className={`text-xs font-black truncate block ${isProforma ? 'text-indigo-700' : 'text-emerald-700'}`}>
             {formatPrice(finalTotal, settings.currency)}
           </span>
         </div>
@@ -1135,15 +1623,17 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             onClick={() => handleSubmit(false)}
             className="px-3 py-2 bg-slate-100 active:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold border border-slate-300 active:scale-95 cursor-pointer"
           >
-            ثبت
+            {isProforma ? 'ثبت پیش‌فاکتور' : 'ثبت'}
           </button>
           <button
             type="button"
             onClick={() => handleSubmit(true)}
-            className="px-3.5 py-2 bg-emerald-600 active:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1 active:scale-95 cursor-pointer"
+            className={`px-3.5 py-2 ${
+              isProforma ? 'bg-indigo-600 active:bg-indigo-700' : 'bg-emerald-600 active:bg-emerald-700'
+            } text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1 active:scale-95 cursor-pointer`}
           >
             <Printer className="w-3.5 h-3.5" />
-            <span>ثبت و چاپ</span>
+            <span>{isProforma ? 'ثبت و چاپ' : 'ثبت و چاپ'}</span>
           </button>
         </div>
       </div>

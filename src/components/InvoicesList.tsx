@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Invoice, StoreSettings, AppUser } from '../types';
+import { Invoice, StoreSettings, AppUser, Product } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
+import { exportInvoicesToCsv } from '../utils/csvExport';
 import { 
   Search, 
   Printer, 
@@ -11,11 +12,19 @@ import {
   Clock, 
   FileText,
   AlertCircle,
-  Plus
+  Plus,
+  Download,
+  FileSpreadsheet,
+  ArrowRightLeft,
+  FileClock,
+  CheckCircle2,
+  X,
+  PackageCheck
 } from 'lucide-react';
 
 interface InvoicesListProps {
   invoices: Invoice[];
+  products?: Product[];
   settings: StoreSettings;
   currentUser?: AppUser;
   onViewInvoice: (invoice: Invoice) => void;
@@ -23,10 +32,13 @@ interface InvoicesListProps {
   onReturnInvoiceToStock: (invoice: Invoice) => void;
   onUpdatePaymentStatus: (invoiceId: string, status: 'paid' | 'unpaid' | 'partial', paidAmount?: number) => void;
   onNewInvoice: () => void;
+  onNewProforma?: () => void;
+  onConvertProforma?: (invoice: Invoice, newInvoiceNumber?: string) => boolean | void;
 }
 
 export const InvoicesList: React.FC<InvoicesListProps> = ({
   invoices,
+  products = [],
   settings,
   currentUser,
   onViewInvoice,
@@ -34,11 +46,19 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   onReturnInvoiceToStock,
   onUpdatePaymentStatus,
   onNewInvoice,
+  onNewProforma,
+  onConvertProforma,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
+  const [docTypeFilter, setDocTypeFilter] = useState<'all' | 'regular' | 'proforma'>('all');
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const [invoiceToReturn, setInvoiceToReturn] = useState<Invoice | null>(null);
+  const [proformaToConvert, setProformaToConvert] = useState<Invoice | null>(null);
+  const [conversionNewNumber, setConversionNewNumber] = useState<string>('');
+
+  const regularInvoicesCount = invoices.filter((i) => !i.isProforma).length;
+  const proformaInvoicesCount = invoices.filter((i) => i.isProforma).length;
 
   const filteredInvoices = invoices.filter((inv) => {
     const matchesSearch =
@@ -46,10 +66,36 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
       inv.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (inv.customerPhone && inv.customerPhone.includes(searchQuery));
 
+    const matchesDocType =
+      docTypeFilter === 'all'
+        ? true
+        : docTypeFilter === 'proforma'
+        ? !!inv.isProforma
+        : !inv.isProforma;
+
     const matchesStatus = statusFilter === 'all' || inv.paymentStatus === statusFilter;
 
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesDocType && matchesStatus;
   });
+
+  const handleOpenConvertModal = (inv: Invoice) => {
+    setProformaToConvert(inv);
+    let defaultNum = '';
+    if (inv.invoiceNumber.startsWith('PF-')) {
+      defaultNum = inv.invoiceNumber.replace('PF-', 'INV-');
+    } else {
+      defaultNum = `INV-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+    setConversionNewNumber(defaultNum);
+  };
+
+  const handleConfirmConvert = () => {
+    if (!proformaToConvert || !onConvertProforma) return;
+    const success = onConvertProforma(proformaToConvert, conversionNewNumber.trim());
+    if (success !== false) {
+      setProformaToConvert(null);
+    }
+  };
 
   // KPI calculations
   const totalSalesVolume = invoices.reduce((sum, inv) => sum + inv.finalTotal, 0);
@@ -62,6 +108,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
 
   const canCreate = !currentUser || currentUser.permissions.canCreateInvoice;
   const canDelete = !currentUser || currentUser.permissions.canDeleteInvoice;
+  const canAccessAdmin = !currentUser || currentUser.role === 'admin' || currentUser.permissions.canAccessAdmin;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
@@ -80,14 +127,26 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
         </div>
 
         {canCreate && (
-          <button
-            id="invoices-list-new-btn"
-            onClick={onNewInvoice}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200 cursor-pointer self-start sm:self-auto"
-          >
-            <Plus className="w-4 h-4" />
-            <span>صدور فاکتور جدید</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <button
+              id="invoices-list-new-btn"
+              onClick={onNewInvoice}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>صدور فاکتور جدید</span>
+            </button>
+            {onNewProforma && (
+              <button
+                id="invoices-list-new-proforma-btn"
+                onClick={onNewProforma}
+                className="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 active:scale-98 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
+              >
+                <FileClock className="w-4 h-4 text-indigo-600" />
+                <span>صدور پیش‌فاکتور جدید</span>
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -99,7 +158,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
             {formatPrice(totalSalesVolume, settings.currency)}
           </div>
           <span className="text-[11px] text-slate-400 mt-0.5 block">
-            تعداد کل: {toPersianDigits(invoices.length)} فاکتور
+            تعداد: {toPersianDigits(regularInvoicesCount)} فاکتور قطعی | {toPersianDigits(proformaInvoicesCount)} پیش‌فاکتور
           </span>
         </div>
 
@@ -126,6 +185,62 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
 
       {/* List Container */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+        {/* Document Type Selector Tabs */}
+        <div className="bg-slate-100/80 p-2.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex bg-white/90 p-1 rounded-xl border border-slate-200 text-xs shadow-2xs">
+            <button
+              id="doc-filter-all"
+              onClick={() => setDocTypeFilter('all')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-bold ${
+                docTypeFilter === 'all'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              همه اسناد ({toPersianDigits(invoices.length)})
+            </button>
+            <button
+              id="doc-filter-regular"
+              onClick={() => setDocTypeFilter('regular')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-bold ${
+                docTypeFilter === 'regular'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              فاکتورهای فروش ({toPersianDigits(regularInvoicesCount)})
+            </button>
+            <button
+              id="doc-filter-proforma"
+              onClick={() => setDocTypeFilter('proforma')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer font-bold flex items-center gap-1.5 ${
+                docTypeFilter === 'proforma'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-indigo-700 hover:text-indigo-900'
+              }`}
+            >
+              <FileClock className="w-3.5 h-3.5" />
+              <span>پیش‌فاکتورها ({toPersianDigits(proformaInvoicesCount)})</span>
+            </button>
+          </div>
+
+          <div className="text-[11px] text-slate-500 font-medium hidden sm:block">
+            {docTypeFilter === 'proforma'
+              ? 'پیش‌فاکتورها پیش از تبدیل نهایی، از موجودی انبار کسر نمی‌گردند.'
+              : 'فیلتر بر اساس نوع سند فروش'}
+          </div>
+        </div>
+
+        {/* Proforma info banner when filtered */}
+        {docTypeFilter === 'proforma' && (
+          <div className="bg-indigo-50/90 border-b border-indigo-100 px-4 py-2.5 text-xs text-indigo-900 flex items-center gap-2">
+            <FileClock className="w-4 h-4 text-indigo-600 shrink-0" />
+            <span>
+              <strong>راهنما:</strong> پیش‌فاکتورها اسناد غیرقطعی هستند و تا زمان نهایی شدن، موجودی انبار را کسر نمی‌کنند. با کلیک بر روی دکمه «تبدیل به فاکتور اصلی» می‌توانید پیش‌فاکتور را به فاکتور قطعی تبدیل کرده و اقلام آن را از موجودی انبار کسر نمایید.
+            </span>
+          </div>
+        )}
+
         {/* Filter bar */}
         <div className="p-4 border-b border-slate-200/80 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between bg-slate-50/60">
           <div className="relative flex-1 max-w-md">
@@ -140,43 +255,63 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
             />
           </div>
 
-          <div className="flex bg-white border border-slate-200 rounded-xl p-1 text-xs self-start sm:self-auto">
-            <button
-              id="filter-inv-all"
-              onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
-                statusFilter === 'all' ? 'bg-slate-900 text-white font-medium' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              همه ({invoices.length})
-            </button>
-            <button
-              id="filter-inv-paid"
-              onClick={() => setStatusFilter('paid')}
-              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
-                statusFilter === 'paid' ? 'bg-emerald-600 text-white font-medium' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              تسویه شده
-            </button>
-            <button
-              id="filter-inv-partial"
-              onClick={() => setStatusFilter('partial')}
-              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
-                statusFilter === 'partial' ? 'bg-amber-600 text-white font-medium' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              بیعانه / اقساط
-            </button>
-            <button
-              id="filter-inv-unpaid"
-              onClick={() => setStatusFilter('unpaid')}
-              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
-                statusFilter === 'unpaid' ? 'bg-rose-600 text-white font-medium' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              نسیه
-            </button>
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <div className="flex bg-white border border-slate-200 rounded-xl p-1 text-xs">
+              <button
+                id="filter-inv-all"
+                onClick={() => setStatusFilter('all')}
+                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  statusFilter === 'all' ? 'bg-slate-900 text-white font-medium' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                همه ({toPersianDigits(invoices.length)})
+              </button>
+              <button
+                id="filter-inv-paid"
+                onClick={() => setStatusFilter('paid')}
+                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  statusFilter === 'paid' ? 'bg-emerald-600 text-white font-medium' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                تسویه شده
+              </button>
+              <button
+                id="filter-inv-partial"
+                onClick={() => setStatusFilter('partial')}
+                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  statusFilter === 'partial' ? 'bg-amber-600 text-white font-medium' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                بیعانه / اقساط
+              </button>
+              <button
+                id="filter-inv-unpaid"
+                onClick={() => setStatusFilter('unpaid')}
+                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  statusFilter === 'unpaid' ? 'bg-rose-600 text-white font-medium' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                نسیه
+              </button>
+            </div>
+
+            {/* Admin-only CSV Export button for accounting software */}
+            {canAccessAdmin && (
+              <button
+                type="button"
+                id="export-filtered-invoices-csv-btn"
+                onClick={() => {
+                  const filterLabel = statusFilter === 'all' ? 'همه' : statusFilter === 'paid' ? 'تسویه_شده' : statusFilter === 'partial' ? 'اقساطی' : 'نسیه';
+                  exportInvoicesToCsv(filteredInvoices, settings, `گزارش_فاکتورها_${filterLabel}_${filteredInvoices.length}_فقره`);
+                }}
+                disabled={filteredInvoices.length === 0}
+                className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                title="دانلود فایل اکسل / CSV فاکتورهای فیلترشده جهت ورود به نرم‌افزارهای حسابداری (هلو، سپیدار، راه‌کاران، پارسیان)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-200" />
+                <span>خروجی CSV حسابداری ({toPersianDigits(filteredInvoices.length)})</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -196,13 +331,24 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                   {/* Card Header: Invoice No + Date + Status */}
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <span className="font-mono font-black text-slate-900 text-sm">
                           #{toPersianDigits(inv.invoiceNumber)}
                         </span>
-                        <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
-                          {inv.type === 'official' ? 'رسمی' : inv.type === 'thermal' ? 'حرارتی' : 'فروشگاهی'}
-                        </span>
+                        {inv.isProforma ? (
+                          <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded-md font-bold">
+                            پیش‌فاکتور (بدون کسر انبار)
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
+                            {inv.type === 'official' ? 'رسمی' : inv.type === 'thermal' ? 'حرارتی' : 'فروشگاهی'}
+                          </span>
+                        )}
+                        {inv.convertedFromProforma && (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-semibold">
+                            تبدیل از {inv.convertedFromProforma}
+                          </span>
+                        )}
                       </div>
                       <span className="text-[11px] text-slate-400 font-mono mt-0.5 block">
                         {inv.date}
@@ -309,39 +455,54 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                   </div>
 
                   {/* Action Buttons for Mobile */}
-                  <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => onViewInvoice(inv)}
-                      className="flex-1 py-2 px-3 bg-emerald-600 active:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <Printer className="w-3.5 h-3.5" />
-                      <span>مشاهده و چاپ</span>
-                    </button>
-
-                    {canDelete && (
-                      <>
-                        <button
-                          type="button"
-                          id={`mobile-return-invoice-btn-${inv.id}`}
-                          onClick={() => setInvoiceToReturn(inv)}
-                          title="مرجوعی به انبار"
-                          className="p-2 text-amber-700 bg-amber-50 active:bg-amber-100 rounded-xl border border-amber-200 cursor-pointer"
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                        </button>
-
-                        <button
-                          type="button"
-                          id={`mobile-delete-invoice-btn-${inv.id}`}
-                          onClick={() => setInvoiceToDelete(inv)}
-                          title="حذف فاکتور"
-                          className="p-2 text-rose-600 bg-rose-50 active:bg-rose-100 rounded-xl border border-rose-200 cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </>
+                  <div className="flex flex-col gap-2 pt-1 border-t border-slate-100">
+                    {/* Convert Proforma button if proforma */}
+                    {inv.isProforma && onConvertProforma && (
+                      <button
+                        type="button"
+                        id={`mobile-convert-proforma-btn-${inv.id}`}
+                        onClick={() => handleOpenConvertModal(inv)}
+                        className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                      >
+                        <ArrowRightLeft className="w-4 h-4" />
+                        <span>تبدیل به فاکتور اصلی (با کسر از انبار)</span>
+                      </button>
                     )}
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onViewInvoice(inv)}
+                        className="flex-1 py-2 px-3 bg-emerald-600 active:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>{inv.isProforma ? 'مشاهده و چاپ پیش‌فاکتور' : 'مشاهده و چاپ'}</span>
+                      </button>
+
+                      {canDelete && (
+                        <>
+                          <button
+                            type="button"
+                            id={`mobile-return-invoice-btn-${inv.id}`}
+                            onClick={() => setInvoiceToReturn(inv)}
+                            title={inv.isProforma ? 'لغو و حذف پیش‌فاکتور' : 'مرجوعی به انبار'}
+                            className="p-2 text-amber-700 bg-amber-50 active:bg-amber-100 rounded-xl border border-amber-200 cursor-pointer"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            type="button"
+                            id={`mobile-delete-invoice-btn-${inv.id}`}
+                            onClick={() => setInvoiceToDelete(inv)}
+                            title="حذف سند"
+                            className="p-2 text-rose-600 bg-rose-50 active:bg-rose-100 rounded-xl border border-rose-200 cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -379,12 +540,30 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                   return (
                     <tr key={inv.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="p-3.5">
-                        <div className="font-bold text-slate-900 font-mono">
-                          {toPersianDigits(inv.invoiceNumber)}
+                        <div className="font-bold text-slate-900 font-mono flex items-center gap-1.5">
+                          <span>{toPersianDigits(inv.invoiceNumber)}</span>
+                          {inv.isProforma && (
+                            <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-200 px-1.5 py-0.5 rounded font-bold">
+                              پیش‌فاکتور
+                            </span>
+                          )}
                         </div>
-                        <span className="text-[10px] text-slate-400">
-                          {inv.type === 'official' ? 'فاکتور رسمی' : inv.type === 'thermal' ? 'رسید حرارتی' : 'فروشگاهی'}
-                        </span>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className="text-[10px] text-slate-400">
+                            {inv.isProforma
+                              ? 'غیرقطعی (بدون کسر انبار)'
+                              : inv.type === 'official'
+                              ? 'فاکتور رسمی'
+                              : inv.type === 'thermal'
+                              ? 'رسید حرارتی'
+                              : 'فروشگاهی'}
+                          </span>
+                          {inv.convertedFromProforma && (
+                            <span className="text-[10px] text-emerald-700 font-medium">
+                              (تبدیل از {inv.convertedFromProforma})
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="p-3.5 text-slate-600 font-mono">
@@ -484,24 +663,38 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                       {/* Actions */}
                       <td className="p-3.5 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          {/* Convert Proforma to Official Invoice */}
+                          {inv.isProforma && onConvertProforma && (
+                            <button
+                              id={`convert-proforma-btn-${inv.id}`}
+                              type="button"
+                              onClick={() => handleOpenConvertModal(inv)}
+                              title="تبدیل به فاکتور رسمی فروش و کسر از انبار"
+                              className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5" />
+                              <span>تبدیل به فاکتور</span>
+                            </button>
+                          )}
+
                           {/* Print / View */}
                           <button
                             id={`view-invoice-btn-${inv.id}`}
                             onClick={() => onViewInvoice(inv)}
-                            title="مشاهده و چاپ فاکتور"
+                            title={inv.isProforma ? 'مشاهده و چاپ پیش‌فاکتور' : 'مشاهده و چاپ فاکتور'}
                             className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
                           >
                             <Printer className="w-4 h-4" />
                           </button>
 
-                          {/* Return products to stock and cancel invoice */}
+                          {/* Return products to stock or cancel proforma */}
                           {canDelete && (
                             <>
                               <button
                                 id={`return-invoice-btn-${inv.id}`}
                                 type="button"
                                 onClick={() => setInvoiceToReturn(inv)}
-                                title="مرجوعی کالاها به انبار و لغو فاکتور"
+                                title={inv.isProforma ? 'لغو و حذف پیش‌فاکتور' : 'مرجوعی کالاها به انبار و لغو فاکتور'}
                                 className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
                               >
                                 <RotateCcw className="w-4 h-4" />
@@ -612,6 +805,167 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
               >
                 <RotateCcw className="w-4 h-4" />
                 <span>تایید مرجوعی</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Convert Proforma to Invoice Modal */}
+      {proformaToConvert && (
+        <div
+          id="convert-proforma-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 text-right overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <div className="flex items-center gap-2 text-indigo-700">
+                <div className="p-2 rounded-xl bg-indigo-50">
+                  <ArrowRightLeft className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    تبدیل پیش‌فاکتور به فاکتور رسمی فروش
+                  </h3>
+                  <span className="text-xs text-slate-500">
+                    نهایی‌سازی سند و کسر خودکار اقلام از موجودی انبار
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                id="close-convert-proforma-modal-btn"
+                onClick={() => setProformaToConvert(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto space-y-4 pr-1 text-xs">
+              {/* Summary card */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div>
+                  <span className="text-[11px] text-slate-400 block">شماره پیش‌فاکتور:</span>
+                  <strong className="text-slate-800 font-mono">{toPersianDigits(proformaToConvert.invoiceNumber)}</strong>
+                </div>
+                <div>
+                  <span className="text-[11px] text-slate-400 block">خریدار:</span>
+                  <strong className="text-slate-800">{proformaToConvert.customerName}</strong>
+                </div>
+                <div>
+                  <span className="text-[11px] text-slate-400 block">تاریخ صدور:</span>
+                  <strong className="text-slate-800 font-mono">{proformaToConvert.date}</strong>
+                </div>
+                <div>
+                  <span className="text-[11px] text-slate-400 block">جمع کل مبلغ:</span>
+                  <strong className="text-slate-900 font-bold">{formatPrice(proformaToConvert.finalTotal, settings.currency)}</strong>
+                </div>
+              </div>
+
+              {/* New Invoice Number Input */}
+              <div className="space-y-1">
+                <label htmlFor="conversion-new-number-input" className="font-bold text-slate-700">
+                  شماره فاکتور رسمی جدید:
+                </label>
+                <input
+                  type="text"
+                  id="conversion-new-number-input"
+                  value={conversionNewNumber}
+                  onChange={(e) => setConversionNewNumber(e.target.value)}
+                  placeholder="مثال: INV-1001"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                />
+                <span className="text-[10px] text-slate-500 block">
+                  پیش‌فرض بر اساس پیشوند فاکتورهای قطعی (INV-) ایجاد شده و قابل ویرایش است.
+                </span>
+              </div>
+
+              {/* Inventory Stock Verification Check */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                    <PackageCheck className="w-4 h-4 text-slate-600" />
+                    <span>بررسی وضعیت موجودی انبار برای اقلام پیش‌فاکتور:</span>
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    {toPersianDigits(proformaToConvert.items.length)} ردیف کالا
+                  </span>
+                </div>
+
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-right text-xs">
+                    <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
+                      <tr>
+                        <th className="p-2 font-bold">نام کالا</th>
+                        <th className="p-2 font-bold text-center">تعداد فاکتور</th>
+                        <th className="p-2 font-bold text-center">موجودی فعلی انبار</th>
+                        <th className="p-2 font-bold text-center">وضعیت</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {proformaToConvert.items.map((item, idx) => {
+                        const prod = products.find((p) => p.id === item.productId);
+                        const currentStock = prod ? prod.stock : 0;
+                        const isSufficient = currentStock >= item.quantity;
+                        const remaining = currentStock - item.quantity;
+
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="p-2 font-medium text-slate-800">{item.productName}</td>
+                            <td className="p-2 text-center font-bold font-mono">
+                              {toPersianDigits(item.quantity)} {item.unit}
+                            </td>
+                            <td className="p-2 text-center font-mono text-slate-700">
+                              {toPersianDigits(currentStock)} {item.unit}
+                            </td>
+                            <td className="p-2 text-center">
+                              {isSufficient ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-bold">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  <span>کافی (باقی: {toPersianDigits(remaining)})</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] text-rose-700 bg-rose-50 px-2 py-0.5 rounded font-bold">
+                                  <AlertCircle className="w-3 h-3" />
+                                  <span>کسری موجودی ({toPersianDigits(Math.abs(remaining))})</span>
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Explanation Note */}
+              <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3 text-indigo-900 leading-relaxed">
+                <strong>توجه:</strong> با تایید این عملیات، این سند بلافاصله از حالت پیش‌فاکتور خارج شده و با شماره انتخابی به فاکتور قطعی تبدیل می‌گردد؛ همچنین کلیه اقلام فوق از کاردکس و موجودی انبار کسر خواهند شد.
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center gap-3 pt-4 border-t border-slate-100 mt-2">
+              <button
+                type="button"
+                id="cancel-convert-proforma-btn"
+                onClick={() => setProformaToConvert(null)}
+                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                انصراف
+              </button>
+              <button
+                type="button"
+                id="confirm-convert-proforma-btn"
+                onClick={handleConfirmConvert}
+                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm shadow-indigo-200 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>تایید تبدیل و کسر از انبار</span>
               </button>
             </div>
           </div>

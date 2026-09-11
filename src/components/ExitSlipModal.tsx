@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Invoice, StoreSettings, AppUser, ExitSlipData } from '../types';
 import { toPersianDigits } from '../utils/jalali';
-import { exportElementToPdf, printElementDirectly, printElementInNewWindow } from '../utils/pdfHelper';
+import { exportElementToPdf, printElementDirectly, printElementInNewWindow, generatePdfBlob } from '../utils/pdfHelper';
 import { 
   Printer, 
   X, 
@@ -153,34 +153,105 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
     }
   };
 
-  // WhatsApp
+  // Helper to ensure PDF file is created and downloaded when sending to a messenger
+  const sendWithPdfToMessenger = async (appName: string, openUrl: () => void) => {
+    setIsExportingPdf(true);
+    try {
+      const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}.pdf`;
+      const { success, blob, file, error } = await generatePdfBlob('printable-exit-slip', filename);
+      if (success && (blob || file)) {
+        const shareFile = file || new File([blob!], filename, { type: 'application/pdf' });
+        const url = URL.createObjectURL(shareFile);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        onRecordPrint();
+        showNotification(`فایل PDF برگه خروج دانلود شد. پنجره ${appName} باز گردید تا فایل را پیوست و ارسال فرمایید.`);
+      } else {
+        showNotification(error || 'خطا در ایجاد فایل PDF');
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsExportingPdf(false);
+      openUrl();
+    }
+  };
+
+  // Direct native PDF sharing (uses Android/iOS/Desktop share sheet with actual PDF file)
+  const handleSharePdfDirectly = async () => {
+    setIsExportingPdf(true);
+    try {
+      const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}.pdf`;
+      const { success, blob, file, error } = await generatePdfBlob('printable-exit-slip', filename);
+      if (!success || (!file && !blob)) {
+        showNotification(error || 'خطا در تولید فایل PDF');
+        return;
+      }
+      const shareFile = file || new File([blob!], filename, { type: 'application/pdf' });
+      onRecordPrint();
+
+      if (navigator.canShare && navigator.canShare({ files: [shareFile] })) {
+        await navigator.share({
+          files: [shareFile],
+          title: `برگه خروج انبار - فاکتور ${toPersianDigits(invoice.invoiceNumber)}`,
+          text: `فایل PDF حواله خروج کالا برای ${invoice.customerName} (فاکتور: ${toPersianDigits(invoice.invoiceNumber)})`,
+        });
+        showNotification('فایل PDF برگه خروج با موفقیت به اشتراک گذاشته شد.');
+      } else {
+        // Fallback: auto download + inform user
+        const url = URL.createObjectURL(shareFile);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showNotification('فایل PDF برگه خروج دانلود شد و آماده ارسال در هر برنامه و پیام‌رسان است.');
+      }
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        console.error(err);
+        showNotification('خطا در اشتراک‌گذاری مستقیم فایل PDF');
+      }
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
+  // WhatsApp with PDF preparation
   const handleSendWhatsApp = () => {
     const text = encodeURIComponent(getExitSlipShareText());
     const phone = invoice.customerPhone ? invoice.customerPhone.replace(/[^0-9]/g, '') : (settings.whatsappNumber ? settings.whatsappNumber.replace(/[^0-9]/g, '') : '');
     const intlPhone = phone.startsWith('09') ? `98${phone.slice(1)}` : phone;
     const url = intlPhone ? `https://api.whatsapp.com/send?phone=${intlPhone}&text=${text}` : `https://api.whatsapp.com/send?text=${text}`;
-    window.open(url, '_blank');
+    sendWithPdfToMessenger('واتساپ', () => window.open(url, '_blank'));
   };
 
-  // Telegram
+  // Telegram with PDF preparation
   const handleSendTelegram = () => {
     const text = encodeURIComponent(getExitSlipShareText());
     const url = `https://t.me/share/url?url=${encodeURIComponent(window.location.origin)}&text=${text}`;
-    window.open(url, '_blank');
+    sendWithPdfToMessenger('تلگرام', () => window.open(url, '_blank'));
   };
 
-  // Eitaa
+  // Eitaa with PDF preparation
   const handleSendEitaa = () => {
     const text = encodeURIComponent(getExitSlipShareText());
     const url = `https://eitaa.com/share/url?url=${encodeURIComponent(window.location.origin)}&text=${text}`;
-    window.open(url, '_blank');
+    sendWithPdfToMessenger('ایتا', () => window.open(url, '_blank'));
   };
 
-  // Bale
+  // Bale with PDF preparation
   const handleSendBale = () => {
     const text = encodeURIComponent(getExitSlipShareText());
     const url = `https://ble.ir/share/compile?text=${text}`;
-    window.open(url, '_blank');
+    sendWithPdfToMessenger('بله', () => window.open(url, '_blank'));
   };
 
   return (
@@ -683,57 +754,97 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             </div>
 
             <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* PRIMARY: DIRECT PDF SHARE */}
+              <div className="bg-sky-50 border border-sky-200 rounded-xl p-3.5 space-y-2">
+                <div className="flex items-center gap-2">
+                  <FileDown className="w-4 h-4 text-sky-700 shrink-0" />
+                  <span className="text-xs font-bold text-sky-950">
+                    ارسال فاکتور/برگه خروج به صورت فایل PDF
+                  </span>
+                </div>
+                <p className="text-[11px] text-sky-800 leading-relaxed">
+                  فایل PDF کم‌حجم تولید شده و از طریق منوی اشتراک‌گذاری سیستم یا پیام‌رسان‌ها به عنوان سند رسمی ارسال می‌گردد:
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSharePdfDirectly}
+                  disabled={isExportingPdf}
+                  className="w-full flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-700 active:scale-98 disabled:opacity-60 text-white py-2.5 px-4 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                >
+                  {isExportingPdf ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>در حال آماده‌سازی و ارسال فایل PDF...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="w-4 h-4" />
+                      <span>📲 ارسال مستقیم فایل PDF در شبکه‌های اجتماعی</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
               {/* QUICK MESSENGERS LIST */}
               <div className="space-y-2">
-                <span className="text-xs font-bold text-slate-700 block">
-                  ارسال سریع به پیام‌رسان‌ها:
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700">
+                    ارسال اختصاصی به پیام‌رسان‌ها (همراه با دانلود PDF):
+                  </span>
+                  <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-medium">
+                    PDF آماده پیوست
+                  </span>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   {/* WhatsApp */}
                   <button
                     type="button"
                     onClick={handleSendWhatsApp}
-                    className="flex items-center justify-center gap-1.5 bg-[#25D366] hover:bg-[#1EBE5D] text-white py-2 px-3 rounded-xl text-xs font-bold cursor-pointer transition-all"
+                    disabled={isExportingPdf}
+                    className="flex items-center justify-center gap-1.5 bg-[#25D366] hover:bg-[#1EBE5D] text-white py-2.5 px-3 rounded-xl text-xs font-bold cursor-pointer transition-all disabled:opacity-50"
                   >
                     <MessageCircle className="w-4 h-4" />
-                    <span>واتساپ (WhatsApp)</span>
+                    <span>واتساپ (با PDF)</span>
                   </button>
 
                   {/* Telegram */}
                   <button
                     type="button"
                     onClick={handleSendTelegram}
-                    className="flex items-center justify-center gap-1.5 bg-[#229ED9] hover:bg-[#1C8AC2] text-white py-2 px-3 rounded-xl text-xs font-bold cursor-pointer transition-all"
+                    disabled={isExportingPdf}
+                    className="flex items-center justify-center gap-1.5 bg-[#229ED9] hover:bg-[#1C8AC2] text-white py-2.5 px-3 rounded-xl text-xs font-bold cursor-pointer transition-all disabled:opacity-50"
                   >
                     <Send className="w-4 h-4" />
-                    <span>تلگرام (Telegram)</span>
+                    <span>تلگرام (با PDF)</span>
                   </button>
 
                   {/* Eitaa */}
                   <button
                     type="button"
                     onClick={handleSendEitaa}
-                    className="flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white py-2 px-3 rounded-xl text-xs font-bold cursor-pointer transition-all"
+                    disabled={isExportingPdf}
+                    className="flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white py-2.5 px-3 rounded-xl text-xs font-bold cursor-pointer transition-all disabled:opacity-50"
                   >
                     <ExternalLink className="w-4 h-4" />
-                    <span>ایتا (Eitaa)</span>
+                    <span>ایتا (با PDF)</span>
                   </button>
 
                   {/* Bale */}
                   <button
                     type="button"
                     onClick={handleSendBale}
-                    className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-3 rounded-xl text-xs font-bold cursor-pointer transition-all"
+                    disabled={isExportingPdf}
+                    className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-3 rounded-xl text-xs font-bold cursor-pointer transition-all disabled:opacity-50"
                   >
                     <MessageCircle className="w-4 h-4" />
-                    <span>بله (Bale)</span>
+                    <span>بله (با PDF)</span>
                   </button>
                 </div>
               </div>
 
               {/* SECTION 3: COPY COMPLETE TEXT */}
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-xs text-slate-500">کپی متن حواله جهت الصاق در هر نرم‌افزار:</span>
+                <span className="text-xs text-slate-500">کپی متن خلاصه حواله در حافظه:</span>
                 <button
                   type="button"
                   onClick={handleCopyText}

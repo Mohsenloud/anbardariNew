@@ -78,6 +78,82 @@ export const exportElementToPdf = async (
 };
 
 /**
+ * Generates an ultra-compact PDF Blob and File without forcing immediate save,
+ * making it possible to share the file directly via Web Share API or attach to messengers.
+ */
+export const generatePdfBlob = async (
+  elementId: string,
+  filename: string
+): Promise<{ success: boolean; blob?: Blob; file?: File; error?: string }> => {
+  const element = document.getElementById(elementId);
+  if (!element) {
+    return { success: false, error: 'عنصر مورد نظر جهت تولید PDF یافت نشد.' };
+  }
+
+  try {
+    const canvas = await html2canvas(element, {
+      scale: 1.5,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      windowWidth: Math.max(element.scrollWidth, 800),
+      onclone: (clonedDoc, clonedElement) => {
+        clonedElement.style.overflow = 'visible';
+        clonedElement.style.maxWidth = 'none';
+        clonedElement.style.width = '780px';
+        clonedElement.style.margin = '0 auto';
+        clonedElement.style.boxShadow = 'none';
+      },
+    });
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.80);
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+      compress: true,
+    });
+
+    const pageWidth = 210;
+    const pageHeight = 297;
+    const margin = 8;
+    const contentWidth = pageWidth - margin * 2;
+    const contentHeight = (canvas.height * contentWidth) / canvas.width;
+
+    if (contentHeight <= pageHeight - margin * 2) {
+      pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, contentHeight, undefined, 'FAST');
+    } else {
+      let heightLeft = contentHeight;
+      let position = margin;
+      const usableHeight = pageHeight - margin * 2;
+
+      pdf.addImage(imgData, 'JPEG', margin, position, contentWidth, contentHeight, undefined, 'FAST');
+      heightLeft -= usableHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - contentHeight + margin;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', margin, position, contentWidth, contentHeight, undefined, 'FAST');
+        heightLeft -= usableHeight;
+      }
+    }
+
+    const safeFilename = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
+    const blob = pdf.output('blob');
+    let file: File | undefined;
+    try {
+      file = new File([blob], safeFilename, { type: 'application/pdf' });
+    } catch {
+      // In environments where File constructor is restricted
+    }
+    return { success: true, blob, file };
+  } catch (err: any) {
+    console.error('PDF generation error:', err);
+    return { success: false, error: err?.message || 'خطا در ایجاد فایل PDF' };
+  }
+};
+
+/**
  * Triggers direct browser printing synchronously within user gesture.
  * Applies temporary clean CSS scoping so only the target sheet prints.
  */

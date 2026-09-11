@@ -30,18 +30,21 @@ export default function App() {
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [settings, setSettings] = useState<StoreSettings>(StorageService.getSettings());
   const [users, setUsers] = useState<AppUser[]>([]);
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(() => StorageService.getLoggedInUser());
 
   // UI State
-  const [activeTab, setActiveTab] = useState<string>('new-invoice');
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const saved = localStorage.getItem('sepehr_last_tab');
+    return saved || 'new-invoice';
+  });
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [loginTargetUser, setLoginTargetUser] = useState<AppUser | null>(null);
   const [toastMessage, setToastMessage] = useState<string>('');
 
-  // Load initial data - username & password must be asked on open
-  const loadData = (preserveCurrentUser = false) => {
+  // Load initial data - preserves authenticated user session across page reloads
+  const loadData = (preserveCurrentUser = true) => {
     setProducts(StorageService.getProducts());
     setCustomers(StorageService.getCustomers());
     setInvoices(StorageService.getInvoices());
@@ -52,15 +55,23 @@ export default function App() {
 
     if (preserveCurrentUser) {
       setCurrentUser((prev) => {
-        if (!prev) return null;
-        return loadedUsers.find((u) => u.id === prev.id && u.isActive) || null;
+        const target = prev || StorageService.getLoggedInUser();
+        if (!target) return null;
+        return loadedUsers.find((u) => u.id === target.id && u.isActive) || null;
       });
     }
   };
 
+  // Sync active tab to localStorage for seamless refresh restoration
   useEffect(() => {
-    // Initial app opening: require username and password login
-    loadData(false);
+    if (activeTab) {
+      localStorage.setItem('sepehr_last_tab', activeTab);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    // Initial app opening: restore authenticated user session if present
+    loadData(true);
 
     // Initial server sync
     StorageService.syncFromServer().then((updated) => {

@@ -65,6 +65,9 @@ export interface Invoice {
   // مشخصات ثبت واریز به حساب (توضیحات واریز، شماره پیگیری/ارجاع، نام بانک و ...)
   transferDescription?: string;
   notes?: string;
+  isProforma?: boolean; // آیا پیش‌فاکتور است؟
+  convertedAt?: string; // تاریخ تبدیل به فاکتور اصلی فروش
+  convertedFromProforma?: string; // شماره پیش‌فاکتور اولیه قبل از تبدیل به فاکتور رسمی
   createdAt: string;
 }
 

@@ -94,12 +94,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }, 250);
   };
 
-  const handleQuickFill = (targetUser: AppUser) => {
-    setUsername(targetUser.username);
-    setPassword(targetUser.password || targetUser.pin || '1234');
-    setErrorMessage('');
-  };
-
   const displayStoreName = settings?.appName || settings?.storeName || 'سامانه صدور فاکتور و مدیریت فروشگاه';
 
   return (
@@ -229,60 +223,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 </button>
               </div>
             </form>
-
-            {/* Quick Demo Helper Section */}
-            {users && users.length > 0 && (
-              <div className="pt-4 border-t border-slate-100">
-                <div className="flex items-center justify-between mb-2 text-[11px] font-bold text-slate-500">
-                  <span>حساب‌های پیش‌فرض جهت ورود آزمایشی:</span>
-                  <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md">
-                    کلیک برای پر کردن فرم
-                  </span>
-                </div>
-                <div className="space-y-1.5 max-h-52 overflow-y-auto pr-0.5">
-                  {users.slice(0, 4).map((u) => (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => handleQuickFill(u)}
-                      className="w-full flex items-center justify-between p-2 rounded-xl text-xs border border-slate-100 bg-slate-50/80 hover:bg-emerald-50 hover:border-emerald-200 transition-colors text-right cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div
-                          className={`w-6 h-6 rounded-md ${
-                            u.role === 'admin'
-                              ? 'bg-emerald-600'
-                              : u.role === 'cashier'
-                              ? 'bg-blue-600'
-                              : u.role === 'warehouse'
-                              ? 'bg-amber-600'
-                              : 'bg-purple-600'
-                          } text-white flex items-center justify-center font-bold text-[10px] shrink-0`}
-                        >
-                          {u.fullName.slice(0, 1)}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-bold text-slate-800 text-[11px] group-hover:text-emerald-800">
-                              {u.fullName}
-                            </span>
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-200/80 text-slate-700 font-medium">
-                              {u.roleTitle}
-                            </span>
-                          </div>
-                          <span className="text-[10px] text-slate-400 font-mono block" dir="ltr">
-                            user: <b className="text-slate-600">{u.username}</b> | pass: <b className="text-slate-600">{u.password || u.pin || '1234'}</b>
-                          </span>
-                        </div>
-                      </div>
-                      <span className="text-[10px] text-emerald-600 font-medium group-hover:underline shrink-0 mr-2">
-                        انتخاب
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </main>

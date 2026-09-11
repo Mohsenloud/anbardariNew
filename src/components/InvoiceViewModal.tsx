@@ -2,18 +2,20 @@ import React, { useState } from 'react';
 import { Invoice, StoreSettings } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { exportElementToPdf, printElementDirectly, printElementInNewWindow } from '../utils/pdfHelper';
-import { Printer, X, FileText, CheckCircle, Receipt, Building2, Share2, MessageCircle, Copy, Check, FileDown, Loader2, Globe } from 'lucide-react';
+import { Printer, X, FileText, CheckCircle, Receipt, Building2, Share2, MessageCircle, Copy, Check, FileDown, Loader2, Globe, ArrowRightLeft } from 'lucide-react';
 
 interface InvoiceViewModalProps {
   invoice: Invoice | null;
   settings: StoreSettings;
   onClose: () => void;
+  onConvertProforma?: (invoice: Invoice) => void;
 }
 
 export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   invoice,
   settings,
   onClose,
+  onConvertProforma,
 }) => {
   const defaultTpl = invoice.type || settings.defaultTemplate || 'standard';
   const [template, setTemplate] = useState<'standard' | 'official' | 'thermal'>(defaultTpl);
@@ -25,7 +27,10 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   const currentTemplate = template;
 
   const handlePrint = () => {
-    const opened = printElementInNewWindow('printable-invoice', `فاکتور فروش شماره ${invoice.invoiceNumber}`);
+    const docTitle = invoice.isProforma
+      ? `پیش‌فاکتور فروش شماره ${invoice.invoiceNumber}`
+      : `فاکتور فروش شماره ${invoice.invoiceNumber}`;
+    const opened = printElementInNewWindow('printable-invoice', docTitle);
     if (!opened) {
       printElementDirectly('printable-invoice');
     }
@@ -34,16 +39,23 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   const handleExportPdf = async () => {
     try {
       setIsExportingPdf(true);
-      await exportElementToPdf('printable-invoice', `فاکتور_فروش_${invoice.invoiceNumber}`);
+      const filename = invoice.isProforma
+        ? `پیش_فاکتور_${invoice.invoiceNumber}`
+        : `فاکتور_فروش_${invoice.invoiceNumber}`;
+      await exportElementToPdf('printable-invoice', filename);
     } finally {
       setIsExportingPdf(false);
     }
   };
 
   const getInvoiceShareText = () => {
+    const titleText = invoice.isProforma
+      ? `🧾 *پیش‌فاکتور فروش ${settings.storeName || 'فروشگاه'}*`
+      : `🧾 *فاکتور فروش ${settings.storeName || 'فروشگاه'}*`;
+    const numLabel = invoice.isProforma ? 'شماره پیش‌فاکتور' : 'شماره فاکتور';
     const lines = [
-      `🧾 *فاکتور فروش ${settings.storeName || 'فروشگاه'}*`,
-      `شماره فاکتور: ${toPersianDigits(invoice.invoiceNumber)}`,
+      titleText,
+      `${numLabel}: ${toPersianDigits(invoice.invoiceNumber)}`,
       `تاریخ صدور: ${invoice.date}`,
       `خریدار: ${invoice.customerName}`,
       `---------------------------------`,
@@ -101,10 +113,24 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
         <div className="no-print bg-slate-900 text-white p-3 sm:px-5 sm:py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0">
           <div className="flex items-center justify-between sm:justify-start gap-2.5">
             <div className="flex items-center gap-2">
-              <Receipt className="w-5 h-5 text-emerald-400 shrink-0" />
-              <h3 className="font-bold text-xs sm:text-sm">
-                فاکتور شماره {toPersianDigits(invoice.invoiceNumber)}
-              </h3>
+              <Receipt className={`w-5 h-5 ${invoice.isProforma ? 'text-indigo-400' : 'text-emerald-400'} shrink-0`} />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-xs sm:text-sm">
+                    {invoice.isProforma ? 'پیش‌فاکتور شماره' : 'فاکتور شماره'} {toPersianDigits(invoice.invoiceNumber)}
+                  </h3>
+                  {invoice.isProforma && (
+                    <span className="text-[10px] bg-indigo-500/30 text-indigo-300 font-bold px-2 py-0.5 rounded border border-indigo-400/40">
+                      غیرقطعی - بدون کسر انبار
+                    </span>
+                  )}
+                  {invoice.convertedFromProforma && (
+                    <span className="text-[10px] bg-emerald-500/30 text-emerald-300 font-bold px-2 py-0.5 rounded border border-emerald-400/40">
+                      تبدیل‌شده از پیش‌فاکتور
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Mobile close button on top right */}
@@ -118,6 +144,19 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2">
+            {/* Convert Proforma to Official Invoice button */}
+            {invoice.isProforma && onConvertProforma && (
+              <button
+                type="button"
+                id="modal-convert-proforma-btn"
+                onClick={() => onConvertProforma(invoice)}
+                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>تبدیل به فاکتور اصلی</span>
+              </button>
+            )}
+
             {/* Template Selector */}
             <div className="flex bg-slate-800 p-0.5 rounded-lg text-xs">
               {settings.enableStandardTemplate !== false && (
@@ -247,15 +286,35 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                     {/* Badge / Title */}
                     <div className="text-center sm:text-left self-center sm:self-auto">
                       <h1 className="text-lg font-black text-slate-900 tracking-wide border-b-2 border-slate-800 pb-1">
-                        {currentTemplate === 'official' ? 'صورتحساب فروش کالا و خدمات' : 'فاکتور فروش کالا'}
+                        {invoice.isProforma
+                          ? currentTemplate === 'official'
+                            ? 'پیش‌فاکتور فروش کالا و خدمات'
+                            : 'پیش‌فاکتور فروش کالا'
+                          : currentTemplate === 'official'
+                          ? 'صورتحساب فروش کالا و خدمات'
+                          : 'فاکتور فروش کالا'}
                       </h1>
                       <div className="flex items-center gap-4 mt-1.5 text-xs text-slate-600">
-                        <span>شماره فاکتور: <strong className="text-slate-900">{toPersianDigits(invoice.invoiceNumber)}</strong></span>
+                        <span>
+                          {invoice.isProforma ? 'شماره پیش‌فاکتور:' : 'شماره فاکتور:'}{' '}
+                          <strong className="text-slate-900">{toPersianDigits(invoice.invoiceNumber)}</strong>
+                        </span>
                         <span>تاریخ: <strong className="text-slate-900">{invoice.date}</strong></span>
                       </div>
                     </div>
                   </div>
                 </div>
+
+                {invoice.isProforma && (
+                  <div className="bg-indigo-50/90 border border-indigo-200 text-indigo-900 rounded-xl p-3 text-center text-xs font-semibold">
+                    این سند صرفاً «پیش‌فاکتور» است و فاقد اثر مالیاتی یا کسر قطعی از انبار می‌باشد. (برای نهایی شدن باید به فاکتور اصلی تبدیل شود)
+                  </div>
+                )}
+                {invoice.convertedFromProforma && (
+                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl p-2.5 text-center text-xs font-medium">
+                    این فاکتور رسمی بر اساس پیش‌فاکتور شماره <strong>{toPersianDigits(invoice.convertedFromProforma)}</strong> صادر و نهایی شده است.
+                  </div>
+                )}
 
                 {/* Seller & Buyer Info Blocks */}
                 {currentTemplate === 'official' ? (
@@ -460,11 +519,16 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                 <div className="border-b-2 border-dashed border-slate-400 pb-2">
                   <h2 className="font-bold text-sm text-slate-900">{settings.storeName}</h2>
                   <p className="text-[11px] text-slate-500">{settings.phone}</p>
-                  <p className="text-[11px] font-bold text-slate-800 mt-1">رسید فروش کالا</p>
+                  <p className="text-[11px] font-bold text-slate-800 mt-1">
+                    {invoice.isProforma ? 'پیش‌فاکتور فروش کالا (غیرقطعی)' : 'رسید فروش کالا'}
+                  </p>
                 </div>
 
                 <div className="text-right text-[11px] space-y-1 border-b border-dashed border-slate-300 pb-2">
-                  <div>فاکتور: <strong>{toPersianDigits(invoice.invoiceNumber)}</strong></div>
+                  <div>
+                    {invoice.isProforma ? 'پیش‌فاکتور:' : 'فاکتور:'}{' '}
+                    <strong>{toPersianDigits(invoice.invoiceNumber)}</strong>
+                  </div>
                   <div>تاریخ: {invoice.date}</div>
                   <div>مشتری: {invoice.customerName}</div>
                 </div>
