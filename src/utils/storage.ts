@@ -124,6 +124,20 @@ const initialUsers: AppUser[] = [
     password: '1234',
     createdAt: getCurrentJalaliDate(),
   },
+  {
+    id: 'user-4',
+    username: 'accountant1',
+    fullName: 'مریم احمدی',
+    role: 'accountant',
+    roleTitle: 'حسابدار و تحلیلگر مالی',
+    permissions: { ...DEFAULT_ROLE_PERMISSIONS.accountant },
+    isActive: true,
+    avatarColor: 'purple',
+    phone: '۰۹۱۲۸۸۸۹۹۰۰',
+    pin: '1234',
+    password: '1234',
+    createdAt: getCurrentJalaliDate(),
+  },
 ];
 
 const initialProducts: Product[] = [
@@ -494,7 +508,7 @@ export const StorageService = {
       // Ensure all users have valid unique IDs
       const seenIds = new Set<string>();
       let needsSave = false;
-      const sanitized = users.map((u, idx) => {
+      const sanitized: AppUser[] = users.map((u, idx): AppUser => {
         let validId = u.id && u.id.trim() ? u.id.trim() : `user-migrated-${idx}-${Date.now()}`;
         if (seenIds.has(validId)) {
           validId = `${validId}-${idx}`;
@@ -516,7 +530,11 @@ export const StorageService = {
           pin: userPin,
         };
       });
-      if (needsSave) {
+      if (needsSave || !sanitized.some((u) => u.username === 'accountant1')) {
+        if (!sanitized.some((u) => u.username === 'accountant1')) {
+          const accountant = initialUsers.find((u) => u.username === 'accountant1');
+          if (accountant) sanitized.push(accountant);
+        }
         this.saveUsers(sanitized);
       }
       return sanitized;
@@ -543,6 +561,21 @@ export const StorageService = {
       return admin;
     }
     return initialUsers[0];
+  },
+
+  // Returns the currently logged in user if an explicit session exists, or null
+  getLoggedInUser(): AppUser | null {
+    const users = this.getUsers();
+    const activeUserId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID);
+    if (activeUserId) {
+      const found = users.find((u) => u.id === activeUserId && u.isActive);
+      if (found) return found;
+    }
+    return null;
+  },
+
+  logout(): void {
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID);
   },
 
   setActiveUserId(userId: string): AppUser {

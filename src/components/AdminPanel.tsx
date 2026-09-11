@@ -69,7 +69,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 }) => {
   const safeInitialSettings = settings || StorageService.getSettings();
   const [formData, setFormData] = useState<StoreSettings>({ ...safeInitialSettings });
-  const [activeSection, setActiveSection] = useState<'overview' | 'modules' | 'invoice' | 'templates' | 'store' | 'users' | 'data'>('overview');
+
+  const canAccessFullAdmin = !currentUser || currentUser.permissions.canAccessAdmin;
+  const canManageUsers = !currentUser || currentUser.permissions.canManageUsers;
+
+  const [activeSection, setActiveSection] = useState<'overview' | 'modules' | 'invoice' | 'templates' | 'store' | 'users' | 'data'>(
+    canAccessFullAdmin ? 'overview' : 'users'
+  );
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [importStatus, setImportStatus] = useState<string>('');
 
@@ -178,13 +184,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const sections = [
-    { id: 'overview', label: 'داشبورد و وضعیت اجزا', icon: LayoutGrid },
-    { id: 'modules', label: 'کنترل ماژول‌های سیستم', icon: SlidersHorizontal },
-    { id: 'invoice', label: 'قوانین و رفتار فاکتورساز', icon: ReceiptText },
-    { id: 'templates', label: 'قالب‌های چاپ و پرداخت', icon: Printer },
-    { id: 'store', label: 'مشخصات فروشگاه و برند', icon: Building2 },
-    { id: 'users', label: 'کاربران و سطوح دسترسی', icon: UserCheck },
-    { id: 'data', label: 'مرکز داده و پشتیبان‌گیری', icon: Database },
+    ...(canAccessFullAdmin
+      ? [
+          { id: 'overview', label: 'داشبورد و وضعیت اجزا', icon: LayoutGrid },
+          { id: 'modules', label: 'کنترل ماژول‌های سیستم', icon: SlidersHorizontal },
+          { id: 'invoice', label: 'قوانین و رفتار فاکتورساز', icon: ReceiptText },
+          { id: 'templates', label: 'قالب‌های چاپ و پرداخت', icon: Printer },
+          { id: 'store', label: 'مشخصات فروشگاه و برند', icon: Building2 },
+        ]
+      : []),
+    ...(canManageUsers
+      ? [{ id: 'users', label: 'کاربران و سطوح دسترسی', icon: UserCheck }]
+      : []),
+    ...(canAccessFullAdmin
+      ? [{ id: 'data', label: 'مرکز داده و پشتیبان‌گیری', icon: Database }]
+      : []),
   ];
 
   return (

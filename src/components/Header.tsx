@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { StoreSettings, AppUser } from '../types';
 import { StorageService, ROLE_LABELS } from '../utils/storage';
 import { getCurrentJalaliDate, getCurrentJalaliTime } from '../utils/jalali';
+import { isTabPermitted, getRoleBadgeConfig } from '../utils/permissions';
 import { 
   ReceiptText, 
   Boxes, 
@@ -19,7 +20,8 @@ import {
   ArrowRightLeft,
   KeyRound,
   Lock,
-  LogIn
+  LogIn,
+  LogOut
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -31,6 +33,7 @@ interface HeaderProps {
   users?: AppUser[];
   onSwitchUser?: (user: AppUser) => void;
   onRequestLogin?: (targetUser?: AppUser | null) => void;
+  onLogout?: () => void;
   onOpenNewInvoice: () => void;
   onOpenSettings: () => void;
 }
@@ -44,6 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
   users = [],
   onSwitchUser,
   onRequestLogin,
+  onLogout,
   onOpenNewInvoice,
   onOpenSettings,
 }) => {
@@ -90,7 +94,7 @@ export const Header: React.FC<HeaderProps> = ({
       description: 'ثبت سریع فاکتور فروشگاهی، رسمی یا حرارتی',
       icon: PlusCircle, 
       isPrimary: true, 
-      enabled: currentUser ? currentUser.permissions.canCreateInvoice : true,
+      enabled: isTabPermitted('new-invoice', currentUser, safeSettings),
       onClick: () => {
         onOpenNewInvoice();
         setIsMenuOpen(false);
@@ -101,7 +105,7 @@ export const Header: React.FC<HeaderProps> = ({
       label: 'لیست فاکتورها', 
       description: 'مشاهده، چاپ، اشتراک‌گذاری و جستجوی فاکتورها',
       icon: ReceiptText, 
-      enabled: currentUser ? currentUser.permissions.canViewInvoices : true,
+      enabled: isTabPermitted('invoices', currentUser, safeSettings),
       onClick: () => {
         setActiveTab('invoices');
         setIsMenuOpen(false);
@@ -113,7 +117,7 @@ export const Header: React.FC<HeaderProps> = ({
       description: 'کنترل موجودی، بارکد، کاردکس و گردش کالاها',
       icon: Boxes, 
       badge: lowStockCount > 0 ? lowStockCount : undefined,
-      enabled: safeSettings?.enableInventory !== false && (currentUser ? currentUser.permissions.canManageInventory : true),
+      enabled: isTabPermitted('inventory', currentUser, safeSettings),
       onClick: () => {
         setActiveTab('inventory');
         setIsMenuOpen(false);
@@ -124,7 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
       label: 'مشتریان', 
       description: 'پرونده مشتریان، سابقه خرید و مانده‌حساب',
       icon: Users,
-      enabled: safeSettings?.enableCustomers !== false && (currentUser ? currentUser.permissions.canManageCustomers : true),
+      enabled: isTabPermitted('customers', currentUser, safeSettings),
       onClick: () => {
         setActiveTab('customers');
         setIsMenuOpen(false);
@@ -135,7 +139,7 @@ export const Header: React.FC<HeaderProps> = ({
       label: 'گزارشات و سود', 
       description: 'آمار مالی، سود ناخالص و کالاهای پرفروش',
       icon: BarChart3,
-      enabled: safeSettings?.enableReports !== false && (currentUser ? currentUser.permissions.canViewReports : true),
+      enabled: isTabPermitted('reports', currentUser, safeSettings),
       onClick: () => {
         setActiveTab('reports');
         setIsMenuOpen(false);
@@ -146,7 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
       label: 'پنل مدیریت', 
       description: 'تنظیمات جامع سیستم، کاربران و پشتیبان‌گیری',
       icon: ShieldCheck, 
-      enabled: currentUser ? (currentUser.permissions.canAccessAdmin || currentUser.permissions.canManageUsers) : true,
+      enabled: isTabPermitted('admin', currentUser, safeSettings),
       onClick: () => {
         setActiveTab('admin');
         setIsMenuOpen(false);
@@ -465,8 +469,8 @@ export const Header: React.FC<HeaderProps> = ({
                       </div>
                     )}
 
-                    {/* Login with another account button */}
-                    <div className="pt-2 border-t border-slate-100 mt-1 space-y-1">
+                    {/* Login with another account button & Logout */}
+                    <div className="pt-2 border-t border-slate-100 mt-1 space-y-1.5">
                       <button
                         type="button"
                         id="header-switch-with-password-btn"
@@ -479,7 +483,23 @@ export const Header: React.FC<HeaderProps> = ({
                         className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
                       >
                         <LogIn className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>خروج / ورود با حساب کاربری دیگر</span>
+                        <span>تغییر حساب کاربری با رمز</span>
+                      </button>
+
+                      {/* Explicit Logout Button */}
+                      <button
+                        type="button"
+                        id="header-logout-btn"
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          if (onLogout) {
+                            onLogout();
+                          }
+                        }}
+                        className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer"
+                      >
+                        <LogOut className="w-3.5 h-3.5 text-rose-600" />
+                        <span>خروج از حساب و قفل برنامه</span>
                       </button>
 
                       {/* Direct link to Users management if admin */}

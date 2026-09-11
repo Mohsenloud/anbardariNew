@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  sepehr_invoice:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sepehr_invoice_app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production

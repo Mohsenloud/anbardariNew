@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { Product, Customer, Invoice, StockMovement, StoreSettings, AppUser } from './types';
 import { StorageService } from './utils/storage';
 import { getCurrentJalaliDate } from './utils/jalali';
+import { isTabPermitted, getDefaultTabForUser, getRoleBadgeConfig } from './utils/permissions';
 import { Header } from './components/Header';
 import { InvoiceBuilder } from './components/InvoiceBuilder';
 import { InvoicesList } from './components/InvoicesList';
@@ -18,7 +19,8 @@ import { SettingsModal } from './components/SettingsModal';
 import { AdminPanel } from './components/AdminPanel';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { UserLoginModal } from './components/UserLoginModal';
-import { CheckCircle2 } from 'lucide-react';
+import { LoginScreen } from './components/LoginScreen';
+import { CheckCircle2, ShieldAlert } from 'lucide-react';
 
 export default function App() {
   // Application Data States
@@ -38,8 +40,8 @@ export default function App() {
   const [loginTargetUser, setLoginTargetUser] = useState<AppUser | null>(null);
   const [toastMessage, setToastMessage] = useState<string>('');
 
-  // Load initial data
-  const loadData = () => {
+  // Load initial data - username & password must be asked on open
+  const loadData = (preserveCurrentUser = false) => {
     setProducts(StorageService.getProducts());
     setCustomers(StorageService.getCustomers());
     setInvoices(StorageService.getInvoices());
@@ -47,13 +49,29 @@ export default function App() {
     setSettings(StorageService.getSettings());
     const loadedUsers = StorageService.getUsers();
     setUsers(loadedUsers);
-    const active = StorageService.getCurrentUser();
-    setCurrentUser(active);
+
+    if (preserveCurrentUser) {
+      setCurrentUser((prev) => {
+        if (!prev) return null;
+        return loadedUsers.find((u) => u.id === prev.id && u.isActive) || null;
+      });
+    }
   };
 
   useEffect(() => {
-    loadData();
+    // Initial app opening: require username and password login
+    loadData(false);
   }, []);
+
+  // Enforce tab access permissions whenever user, activeTab, or settings change
+  useEffect(() => {
+    if (currentUser) {
+      if (!isTabPermitted(activeTab, currentUser, settings)) {
+        const safeLanding = getDefaultTabForUser(currentUser, settings);
+        setActiveTab(safeLanding);
+      }
+    }
+  }, [currentUser, settings, activeTab]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -365,7 +383,20 @@ export default function App() {
     StorageService.setCurrentUser(user);
     setIsLoginModalOpen(false);
     setLoginTargetUser(null);
-    showToast(`ورود موفقیت‌آمیز بود. خوش آمدید «${user.fullName}».`);
+
+    // Intelligently route user to the primary view matching their granted permissions
+    const landingTab = getDefaultTabForUser(user, settings);
+    setActiveTab(landingTab);
+
+    showToast(`ورود موفقیت‌آمیز بود. خوش آمدید «${user.fullName}» (${user.roleTitle || user.role}).`);
+  };
+
+  const handleLogout = () => {
+    StorageService.logout();
+    setCurrentUser(null);
+    setLoginTargetUser(null);
+    setIsLoginModalOpen(false);
+    showToast('شما با موفقیت از حساب کاربری خارج شدید.');
   };
 
   const handleSwitchUser = (user: AppUser) => {
@@ -381,6 +412,25 @@ export default function App() {
 
   // Low stock count for alert badge
   const lowStockCount = products.filter((p) => p.stock <= p.minStockAlert).length;
+
+  // MANDATORY AUTHENTICATION: Prompt for username and password when opening the application
+  if (!currentUser) {
+    return (
+      <div className="relative">
+        {toastMessage && (
+          <div className="no-print fixed bottom-6 right-6 z-50 flex items-center gap-2.5 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-xl border border-slate-700 animate-bounce max-w-[90vw]">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
+        <LoginScreen
+          settings={settings}
+          users={users}
+          onLoginSuccess={handleLoginSuccess}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col selection:bg-emerald-500 selection:text-white">
@@ -402,24 +452,25 @@ export default function App() {
         users={users}
         onSwitchUser={handleSwitchUser}
         onRequestLogin={handleRequestLogin}
+        onLogout={handleLogout}
         onOpenNewInvoice={() => setActiveTab('new-invoice')}
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       {/* Main Body Content View */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-24 sm:pb-12">
-        {activeTab === 'new-invoice' && (
+        {activeTab === 'new-invoice' && isTabPermitted('new-invoice', currentUser, settings) && (
           <InvoiceBuilder
             products={products}
             customers={customers}
             settings={settings}
             onSaveInvoice={handleSaveInvoice}
             onAddNewCustomer={handleAddNewCustomerQuick}
-            onCancel={() => setActiveTab('invoices')}
+            onCancel={() => setActiveTab(getDefaultTabForUser(currentUser, settings))}
           />
         )}
 
-        {activeTab === 'invoices' && (
+        {activeTab === 'invoices' && isTabPermitted('invoices', currentUser, settings) && (
           <InvoicesList
             invoices={invoices}
             settings={settings}
@@ -428,11 +479,15 @@ export default function App() {
             onDeleteInvoice={handleDeleteInvoice}
             onReturnInvoiceToStock={handleReturnInvoiceToStock}
             onUpdatePaymentStatus={handleUpdatePaymentStatus}
-            onNewInvoice={() => setActiveTab('new-invoice')}
+            onNewInvoice={() => {
+              if (currentUser?.permissions.canCreateInvoice) {
+                setActiveTab('new-invoice');
+              }
+            }}
           />
         )}
 
-        {activeTab === 'inventory' && (
+        {activeTab === 'inventory' && isTabPermitted('inventory', currentUser, settings) && (
           <InventoryManager
             products={products}
             movements={movements}
@@ -446,28 +501,38 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'customers' && (
+        {activeTab === 'customers' && isTabPermitted('customers', currentUser, settings) && (
           <CustomersManager
             customers={customers}
             invoices={invoices}
             settings={settings}
+            currentUser={currentUser || undefined}
             onSaveCustomer={handleSaveCustomer}
             onDeleteCustomer={handleDeleteCustomer}
             onSelectCustomerForInvoice={handleSelectCustomerForInvoice}
           />
         )}
 
-        {activeTab === 'reports' && (
+        {activeTab === 'reports' && isTabPermitted('reports', currentUser, settings) && (
           <ReportsDashboard
             products={products}
             invoices={invoices}
             settings={settings}
-            onOpenNewInvoice={() => setActiveTab('new-invoice')}
-            onOpenInventory={() => setActiveTab('inventory')}
+            currentUser={currentUser || undefined}
+            onOpenNewInvoice={() => {
+              if (currentUser?.permissions.canCreateInvoice) {
+                setActiveTab('new-invoice');
+              }
+            }}
+            onOpenInventory={() => {
+              if (currentUser?.permissions.canManageInventory) {
+                setActiveTab('inventory');
+              }
+            }}
           />
         )}
 
-        {activeTab === 'admin' && (
+        {activeTab === 'admin' && isTabPermitted('admin', currentUser, settings) && (
           <AdminPanel
             settings={settings}
             products={products}
@@ -481,9 +546,36 @@ export default function App() {
             onDeleteUser={handleDeleteUser}
             onSwitchUser={handleSwitchUser}
             onSaveSettings={handleSaveSettings}
-            onReloadData={loadData}
-            onNavigateToTab={(tab) => setActiveTab(tab)}
+            onReloadData={() => loadData(true)}
+            onNavigateToTab={(tab) => {
+              if (isTabPermitted(tab, currentUser, settings)) {
+                setActiveTab(tab);
+              }
+            }}
           />
+        )}
+
+        {/* Fallback unauthorized notice if a tab is not permitted for this user */}
+        {!isTabPermitted(activeTab, currentUser, settings) && (
+          <div className="bg-white rounded-2xl p-8 border border-amber-200/90 shadow-sm text-center max-w-lg mx-auto my-12">
+            <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-4">
+              <ShieldAlert className="w-8 h-8" />
+            </div>
+            <h2 className="text-base font-bold text-slate-900 mb-1.5">
+              عدم دسترسی به این بخش از سیستم
+            </h2>
+            <p className="text-xs text-slate-500 leading-relaxed mb-6">
+              سمت شما در سیستم «<b className="text-slate-800">{currentUser.roleTitle || currentUser.role}</b>» است و دسترسی لازم برای این صفحه تعریف نشده است.
+            </p>
+            <button
+              type="button"
+              id="restricted-tab-redirect-btn"
+              onClick={() => setActiveTab(getDefaultTabForUser(currentUser, settings))}
+              className="bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white text-xs font-bold px-5 py-2.5 rounded-xl cursor-pointer shadow-sm transition-all"
+            >
+              انتقال به بخش پیش‌فرض و مجاز
+            </button>
+          </div>
         )}
       </main>
 
@@ -503,7 +595,7 @@ export default function App() {
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
           onSaveSettings={handleSaveSettings}
-          onReloadData={loadData}
+          onReloadData={() => loadData(true)}
         />
       )}
 

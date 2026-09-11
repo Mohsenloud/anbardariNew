@@ -1,5 +1,5 @@
 import React from 'react';
-import { Product, Invoice, StoreSettings } from '../types';
+import { Product, Invoice, StoreSettings, AppUser } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { 
   TrendingUp, 
@@ -16,6 +16,7 @@ interface ReportsDashboardProps {
   products: Product[];
   invoices: Invoice[];
   settings: StoreSettings;
+  currentUser?: AppUser;
   onOpenNewInvoice: () => void;
   onOpenInventory: () => void;
 }
@@ -24,6 +25,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
   products,
   invoices,
   settings,
+  currentUser,
   onOpenNewInvoice,
   onOpenInventory,
 }) => {
@@ -207,12 +209,14 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
               <AlertTriangle className="w-4 h-4 text-rose-500" />
               <h3 className="font-bold text-slate-800 text-sm">کالاهای نیازمند تامین فوری انبار</h3>
             </div>
-            <button
-              onClick={onOpenInventory}
-              className="text-xs font-semibold text-blue-600 hover:underline cursor-pointer"
-            >
-              مدیریت انبار
-            </button>
+            {(!currentUser || currentUser.permissions.canManageInventory) && (
+              <button
+                onClick={onOpenInventory}
+                className="text-xs font-semibold text-blue-600 hover:underline cursor-pointer"
+              >
+                مدیریت انبار
+              </button>
+            )}
           </div>
 
           {lowStockProducts.length === 0 ? (

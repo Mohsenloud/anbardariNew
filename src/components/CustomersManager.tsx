@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Customer, Invoice, StoreSettings } from '../types';
+import { Customer, Invoice, StoreSettings, AppUser } from '../types';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
 import { 
   Users, 
@@ -20,6 +20,7 @@ interface CustomersManagerProps {
   customers: Customer[];
   invoices: Invoice[];
   settings: StoreSettings;
+  currentUser?: AppUser;
   onSaveCustomer: (customer: Customer) => void;
   onDeleteCustomer: (customerId: string) => void;
   onSelectCustomerForInvoice: (customer: Customer) => void;
@@ -29,6 +30,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   customers,
   invoices,
   settings,
+  currentUser,
   onSaveCustomer,
   onDeleteCustomer,
   onSelectCustomerForInvoice,
@@ -167,15 +169,17 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          id={`delete-customer-btn-${cust.id}`}
-                          type="button"
-                          onClick={() => setCustomerToDelete(cust)}
-                          title="حذف مشتری"
-                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {(!currentUser || currentUser.role === 'admin' || currentUser.permissions.canManageCustomers) && (
+                          <button
+                            id={`delete-customer-btn-${cust.id}`}
+                            type="button"
+                            onClick={() => setCustomerToDelete(cust)}
+                            title="حذف مشتری"
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -217,13 +221,15 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => onSelectCustomerForInvoice(cust)}
-                      className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>فاکتور جدید</span>
-                    </button>
+                    {(!currentUser || currentUser.permissions.canCreateInvoice) && (
+                      <button
+                        onClick={() => onSelectCustomerForInvoice(cust)}
+                        className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>فاکتور جدید</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               );

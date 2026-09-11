@@ -1,0 +1,28 @@
+# ==============================================================================
+# نمونه فایل تنظیمات Nginx روی خود سرور اصلی (VPS Host)
+# این فایل را در مسیر زیر قرار دهید:
+# /etc/nginx/sites-available/sepehr.conf
+# سپس آن را به sites-enabled پیوند (symlink) دهید:
+# sudo ln -s /etc/nginx/sites-available/sepehr.conf /etc/nginx/sites-enabled/
+# ==============================================================================
+
+server {
+    listen 80;
+    server_name yourdomain.com www.yourdomain.com;
+
+    # انتقال ترافیک به کانتینر داکر روی پورت 3000
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # حجم مجاز آپلود برای فایل‌های اکسل و تصاویر لوگو
+    client_max_body_size 50M;
+}
