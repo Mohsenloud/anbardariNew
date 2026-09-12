@@ -292,4 +292,20 @@ export interface ActivityLog {
   deviceInfo?: string; // مشخصات مرورگر یا دستگاه
 }
 
+export interface ServerBackupInfo {
+  filename: string;
+  createdAt: string;
+  trigger: 'auto' | 'manual' | 'startup' | 'pre-restore';
+  label: string;
+  sizeBytes: number;
+  checksum: string;
+  stats: {
+    productsCount: number;
+    invoicesCount: number;
+    customersCount: number;
+    purchaseInvoicesCount: number;
+    inboundReceiptsCount: number;
+  };
+}
+
 

@@ -4,7 +4,7 @@ import App from './App.tsx';
 import './index.css';
 
 // Register service worker for PWA support in production
-if (typeof window !== 'undefined' && 'serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {
       // Ignore service worker registration errors gracefully

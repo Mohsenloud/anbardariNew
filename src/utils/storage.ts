@@ -14,7 +14,8 @@ import {
   PurchaseInvoice,
   InboundReceipt,
   ActivityLog,
-  ActivityActionCategory
+  ActivityActionCategory,
+  ServerBackupInfo
 } from '../types';
 import { getCurrentJalaliDate, getCurrentJalaliTime } from './jalali';
 
@@ -643,6 +644,82 @@ export const StorageService = {
       return false;
     } catch {
       return false;
+    }
+  },
+
+  // -------------------------------------------------------------
+  // SERVER AUTOMATED & MANUAL BACKUP METHODS
+  // -------------------------------------------------------------
+  async getServerBackups(): Promise<{
+    success: boolean;
+    total: number;
+    autoBackupIntervalHours: number;
+    backups: ServerBackupInfo[];
+  }> {
+    try {
+      const res = await fetch('/api/backups');
+      if (!res.ok) return { success: false, total: 0, autoBackupIntervalHours: 4, backups: [] };
+      return await res.json();
+    } catch {
+      return { success: false, total: 0, autoBackupIntervalHours: 4, backups: [] };
+    }
+  },
+
+  async createServerBackup(label?: string): Promise<{ success: boolean; message?: string; filename?: string; backups?: ServerBackupInfo[] }> {
+    try {
+      const res = await fetch('/api/backups/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label }),
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در برقراری ارتباط با سرور' };
+    }
+  },
+
+  async restoreServerBackup(filename: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const res = await fetch('/api/backups/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await this.syncFromServer();
+      }
+      return data;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در بازیابی نسخه پشتیبان' };
+    }
+  },
+
+  async deleteServerBackup(filename: string): Promise<{ success: boolean; message?: string; backups?: ServerBackupInfo[] }> {
+    try {
+      const res = await fetch(`/api/backups/${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در حذف نسخه پشتیبان' };
+    }
+  },
+
+  async uploadServerBackup(fileContent: string, restoreNow: boolean, label?: string): Promise<{ success: boolean; message?: string; backups?: ServerBackupInfo[] }> {
+    try {
+      const res = await fetch('/api/backups/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backupContent: fileContent, restoreNow, label }),
+      });
+      const data = await res.json();
+      if (data.success && restoreNow) {
+        await this.syncFromServer();
+      }
+      return data;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در بارگذاری فایل پشتیبان' };
     }
   },
 

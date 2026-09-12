@@ -1,6 +1,8 @@
 import express from 'express';
+import http from 'http';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { createServer as createViteServer } from 'vite';
@@ -15,12 +17,13 @@ app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
 // Hardening: HTTP Security Headers via Helmet
-// Allows client-side PDF blobs, SVG canvas export, and Vite client without breaking preview
+// Allows client-side PDF blobs, SVG canvas export, iframe preview, and Vite client without breaking preview
 app.use(
   helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },
+    frameguard: false,
   })
 );
 
@@ -70,14 +73,23 @@ const dbWriteLimiter = rateLimit({
 // Configure persistent data directory
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'database.json');
+const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
 
-// Ensure data directory exists
+// Ensure data and backup directories exist
 if (!fs.existsSync(DATA_DIR)) {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     console.log(`[Database] Created persistent data directory at: ${DATA_DIR}`);
   } catch (err) {
     console.error(`[Database] Failed to create data directory ${DATA_DIR}:`, err);
+  }
+}
+if (!fs.existsSync(BACKUPS_DIR)) {
+  try {
+    fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+    console.log(`[Database] Created persistent backups directory at: ${BACKUPS_DIR}`);
+  } catch (err) {
+    console.error(`[Database] Failed to create backups directory ${BACKUPS_DIR}:`, err);
   }
 }
 
@@ -293,36 +305,286 @@ const DEFAULT_INITIAL_DATA = {
   activityLogs: [],
 };
 
-// Thread-safe atomic file persistence
+// -------------------------------------------------------------
+// DATABASE HARDENING & AUTOMATED BACKUP ENGINE
+// -------------------------------------------------------------
+
+function computeChecksum(obj: any): string {
+  try {
+    const jsonStr = typeof obj === 'string' ? obj : JSON.stringify(obj);
+    return crypto.createHash('sha256').update(jsonStr).digest('hex');
+  } catch {
+    return '';
+  }
+}
+
+function validateDatabaseSchema(data: any): { valid: boolean; error?: string } {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { valid: false, error: 'قالب اطلاعات ارسالی نامعتبر است. ساختار باید یک شیء JSON استاندارد باشد.' };
+  }
+  const arrayKeys = [
+    'products',
+    'customers',
+    'invoices',
+    'movements',
+    'users',
+    'purchaseInvoices',
+    'inboundReceipts',
+    'activityLogs',
+  ];
+  for (const key of arrayKeys) {
+    if (data[key] !== undefined && !Array.isArray(data[key])) {
+      return { valid: false, error: `بخش ${key} باید به صورت آرایه باشد.` };
+    }
+  }
+  if (data.settings !== undefined && (typeof data.settings !== 'object' || Array.isArray(data.settings))) {
+    return { valid: false, error: 'بخش تنظیمات سیستم نامعتبر است.' };
+  }
+  return { valid: true };
+}
+
+let lastAutoBackupTime = 0;
+
+interface BackupRecord {
+  filename: string;
+  createdAt: string;
+  trigger: 'auto' | 'manual' | 'startup' | 'pre-restore';
+  label: string;
+  sizeBytes: number;
+  checksum: string;
+  stats: {
+    productsCount: number;
+    invoicesCount: number;
+    customersCount: number;
+    purchaseInvoicesCount: number;
+    inboundReceiptsCount: number;
+  };
+}
+
+function pruneOldBackups(maxKeep = 30) {
+  try {
+    if (!fs.existsSync(BACKUPS_DIR)) return;
+    const files = fs
+      .readdirSync(BACKUPS_DIR)
+      .filter((f) => f.endsWith('.json'))
+      .sort((a, b) => b.localeCompare(a));
+
+    if (files.length > maxKeep) {
+      const toDelete = files.slice(maxKeep);
+      for (const f of toDelete) {
+        try {
+          fs.unlinkSync(path.join(BACKUPS_DIR, f));
+          console.log(`[Backup Retention] Pruned old backup: ${f}`);
+        } catch {}
+      }
+    }
+  } catch (err) {
+    console.error('[Backup Retention] Error pruning old backups:', err);
+  }
+}
+
+function createBackup(
+  trigger: 'auto' | 'manual' | 'startup' | 'pre-restore' = 'auto',
+  label: string = 'پشتیبان سیستم'
+): { success: boolean; filename?: string; error?: string } {
+  try {
+    if (!fs.existsSync(BACKUPS_DIR)) {
+      fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+    }
+
+    const currentData = readDatabaseRaw();
+    const timestamp = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const timeStr = `${timestamp.getFullYear()}-${pad(timestamp.getMonth() + 1)}-${pad(timestamp.getDate())}_${pad(timestamp.getHours())}-${pad(timestamp.getMinutes())}-${pad(timestamp.getSeconds())}`;
+    const filename = `backup_${timeStr}_${trigger}.json`;
+    const targetPath = path.join(BACKUPS_DIR, filename);
+
+    const dataChecksum = computeChecksum(currentData);
+    const backupEnvelope = {
+      backupVersion: 1,
+      createdAt: timestamp.toISOString(),
+      trigger,
+      label,
+      checksum: dataChecksum,
+      stats: {
+        productsCount: Array.isArray(currentData.products) ? currentData.products.length : 0,
+        invoicesCount: Array.isArray(currentData.invoices) ? currentData.invoices.length : 0,
+        customersCount: Array.isArray(currentData.customers) ? currentData.customers.length : 0,
+        purchaseInvoicesCount: Array.isArray(currentData.purchaseInvoices) ? currentData.purchaseInvoices.length : 0,
+        inboundReceiptsCount: Array.isArray(currentData.inboundReceipts) ? currentData.inboundReceipts.length : 0,
+      },
+      data: currentData,
+    };
+
+    const tempFile = `${targetPath}.tmp.${Date.now()}`;
+    fs.writeFileSync(tempFile, JSON.stringify(backupEnvelope, null, 2), 'utf-8');
+    fs.renameSync(tempFile, targetPath);
+
+    lastAutoBackupTime = Date.now();
+    pruneOldBackups(30);
+
+    console.log(`[Backup Engine] Successfully created ${trigger} backup: ${filename} (${label})`);
+    return { success: true, filename };
+  } catch (err: any) {
+    console.error('[Backup Engine] Failed to create backup:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+function getBackupsList(): BackupRecord[] {
+  try {
+    if (!fs.existsSync(BACKUPS_DIR)) return [];
+    const files = fs
+      .readdirSync(BACKUPS_DIR)
+      .filter((f) => f.endsWith('.json'))
+      .sort((a, b) => b.localeCompare(a));
+
+    const list: BackupRecord[] = [];
+    for (const f of files) {
+      try {
+        const fullPath = path.join(BACKUPS_DIR, f);
+        const stat = fs.statSync(fullPath);
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        const parsed = JSON.parse(content);
+
+        const isEnvelope = parsed.backupVersion && parsed.data;
+        const trigger = isEnvelope ? parsed.trigger : 'manual';
+        const label = isEnvelope ? parsed.label : 'نسخه پشتیبان سرور';
+        const createdAt = isEnvelope ? parsed.createdAt : stat.mtime.toISOString();
+        const checksum = isEnvelope ? parsed.checksum : computeChecksum(content);
+        const stats =
+          isEnvelope && parsed.stats
+            ? parsed.stats
+            : {
+                productsCount: Array.isArray(parsed.products) ? parsed.products.length : 0,
+                invoicesCount: Array.isArray(parsed.invoices) ? parsed.invoices.length : 0,
+                customersCount: Array.isArray(parsed.customers) ? parsed.customers.length : 0,
+                purchaseInvoicesCount: Array.isArray(parsed.purchaseInvoices) ? parsed.purchaseInvoices.length : 0,
+                inboundReceiptsCount: Array.isArray(parsed.inboundReceipts) ? parsed.inboundReceipts.length : 0,
+              };
+
+        list.push({
+          filename: f,
+          createdAt,
+          trigger,
+          label,
+          sizeBytes: stat.size,
+          checksum,
+          stats,
+        });
+      } catch (err) {
+        console.warn(`[Backup Engine] Skipped invalid backup file ${f}:`, err);
+      }
+    }
+    return list;
+  } catch (err) {
+    console.error('[Backup Engine] Error listing backups:', err);
+    return [];
+  }
+}
+
+function restoreFromLatestBackup(): any | null {
+  try {
+    if (!fs.existsSync(BACKUPS_DIR)) return null;
+    const files = fs
+      .readdirSync(BACKUPS_DIR)
+      .filter((f) => f.endsWith('.json'))
+      .sort((a, b) => b.localeCompare(a));
+
+    for (const file of files) {
+      try {
+        const filePath = path.join(BACKUPS_DIR, file);
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const parsed = JSON.parse(content);
+        const actualData = parsed.data || parsed;
+        if (actualData && Array.isArray(actualData.products)) {
+          console.log(`[Database Auto-Recovery] Restoring healthy snapshot from: ${file}`);
+          writeDatabase(actualData, false);
+          return actualData;
+        }
+      } catch (e) {
+        console.warn(`[Database Auto-Recovery] Candidate ${file} unreadable, trying next:`, e);
+      }
+    }
+  } catch (err) {
+    console.error('[Database Auto-Recovery] Error during backup search:', err);
+  }
+  return null;
+}
+
+// Internal raw read without triggering recovery loops
+function readDatabaseRaw(): any {
+  if (fs.existsSync(DB_FILE)) {
+    try {
+      const raw = fs.readFileSync(DB_FILE, 'utf-8');
+      if (raw && raw.trim().length > 0) {
+        const parsed = JSON.parse(raw);
+        return {
+          ...DEFAULT_INITIAL_DATA,
+          ...parsed,
+        };
+      }
+    } catch {}
+  }
+  return DEFAULT_INITIAL_DATA;
+}
+
+// Thread-safe atomic file persistence with auto-recovery
 function readDatabase() {
   try {
     if (fs.existsSync(DB_FILE)) {
       const raw = fs.readFileSync(DB_FILE, 'utf-8');
-      const parsed = JSON.parse(raw);
-      // Merge with defaults to ensure all required root keys exist
-      return {
-        ...DEFAULT_INITIAL_DATA,
-        ...parsed,
-      };
+      if (raw && raw.trim().length > 0) {
+        const parsed = JSON.parse(raw);
+        return {
+          ...DEFAULT_INITIAL_DATA,
+          ...parsed,
+        };
+      }
     }
   } catch (err) {
-    console.error('[Database] Read error, falling back to default data:', err);
+    console.error('[Database Integrity ALERT] Corrupted database.json detected! Initiating automatic recovery...', err);
+    try {
+      const corruptArchive = path.join(DATA_DIR, `database.corrupt.${Date.now()}.json`);
+      fs.copyFileSync(DB_FILE, corruptArchive);
+      console.log(`[Database Integrity] Corrupted file preserved at: ${corruptArchive}`);
+    } catch {}
+
+    const recovered = restoreFromLatestBackup();
+    if (recovered) {
+      return recovered;
+    }
   }
 
   // Initialize DB if not present
-  writeDatabase(DEFAULT_INITIAL_DATA);
+  writeDatabase(DEFAULT_INITIAL_DATA, false);
   return DEFAULT_INITIAL_DATA;
 }
 
-function writeDatabase(data: any) {
+function writeDatabase(data: any, allowAutoSnapshot = true): boolean {
   try {
+    const currentRev = typeof data.revision === 'number' ? data.revision : 1;
+    const nowIso = new Date().toISOString();
     const payload = {
       ...data,
-      updatedAt: new Date().toISOString(),
+      revision: currentRev + 1,
+      updatedAt: nowIso,
     };
-    const tempFile = `${DB_FILE}.tmp.${Date.now()}`;
-    fs.writeFileSync(tempFile, JSON.stringify(payload, null, 2), 'utf-8');
+
+    // Calculate integrity checksum
+    const rawContent = JSON.stringify(payload, null, 2);
+    payload.checksum = crypto.createHash('sha256').update(rawContent).digest('hex');
+
+    const finalJson = JSON.stringify(payload, null, 2);
+    const tempFile = `${DB_FILE}.tmp.${Date.now()}.${Math.random().toString(36).substring(2, 7)}`;
+    fs.writeFileSync(tempFile, finalJson, 'utf-8');
     fs.renameSync(tempFile, DB_FILE);
+
+    // Auto-snapshot if more than 4 hours elapsed since last auto-backup
+    if (allowAutoSnapshot && (Date.now() - lastAutoBackupTime > 4 * 60 * 60 * 1000 || lastAutoBackupTime === 0)) {
+      createBackup('auto', 'پشتیبان‌گیری خودکار دوره‌ای سیستم');
+    }
+
     return true;
   } catch (err) {
     console.error('[Database] Failed to write database file:', err);
@@ -334,22 +596,33 @@ function writeDatabase(data: any) {
 // REST API ENDPOINTS
 // -------------------------------------------------------------
 
-// 1. Health check & status
+// 1. Health check & status with backup metrics
 app.get('/api/health', (req, res) => {
   const exists = fs.existsSync(DB_FILE);
-  let dbStats = { exists, sizeBytes: 0 };
+  let dbStats = { exists, sizeBytes: 0, revision: 1, checksum: '' };
   if (exists) {
     try {
       const stat = fs.statSync(DB_FILE);
       dbStats.sizeBytes = stat.size;
+      const current = readDatabaseRaw();
+      dbStats.revision = current.revision || 1;
+      dbStats.checksum = current.checksum || '';
     } catch {}
   }
+
+  const backups = getBackupsList();
+
   res.json({
     status: 'ok',
     mode: process.env.NODE_ENV || 'development',
     serverTime: new Date().toISOString(),
     dataDir: DATA_DIR,
     database: dbStats,
+    backups: {
+      total: backups.length,
+      autoBackupIntervalHours: 4,
+      lastBackup: backups[0] || null,
+    },
   });
 });
 
@@ -367,12 +640,15 @@ app.get('/api/db', (req, res) => {
   }
 });
 
-// 3. Save or update database (Hardened with rate-limiting and anti-pollution validation)
+// 3. Save or update database (Hardened with validation, rate-limiting and anti-pollution)
 app.post('/api/db', dbWriteLimiter, (req, res) => {
   try {
     const incomingData = req.body;
-    if (!incomingData || typeof incomingData !== 'object' || Array.isArray(incomingData)) {
-      return res.status(400).json({ success: false, message: 'قالب داده‌های ارسالی نامعتبر است.' });
+    
+    // Schema and structure validation
+    const validation = validateDatabaseSchema(incomingData);
+    if (!validation.valid) {
+      return res.status(400).json({ success: false, message: validation.error });
     }
 
     // Anti-prototype pollution check
@@ -391,13 +667,15 @@ app.post('/api/db', dbWriteLimiter, (req, res) => {
       updatedAt: new Date().toISOString(),
     };
 
-    const success = writeDatabase(updatedDb);
+    const success = writeDatabase(updatedDb, true);
     if (!success) {
       return res.status(500).json({ success: false, message: 'خطا در ذخیره‌سازی داده‌ها در سرور' });
     }
 
     res.json({
       success: true,
+      revision: updatedDb.revision,
+      checksum: updatedDb.checksum,
       updatedAt: updatedDb.updatedAt,
       message: 'داده‌ها با موفقیت در پایگاه‌داده مرکزی سرور ذخیره شدند.',
     });
@@ -406,8 +684,9 @@ app.post('/api/db', dbWriteLimiter, (req, res) => {
   }
 });
 
-// 4. Security status check
+// 4. Security & Backup Engine Status check
 app.get('/api/security/status', (req, res) => {
+  const backups = getBackupsList();
   res.json({
     success: true,
     security: {
@@ -419,12 +698,214 @@ app.get('/api/security/status', (req, res) => {
       },
       prototypePollutionGuard: true,
       bruteForceProtection: 'Active (5 attempts lockout)',
+      databaseHardening: {
+        atomicWrites: true,
+        schemaValidation: true,
+        sha256Checksums: true,
+        autoRecoveryOnCorruption: true,
+      },
+      automatedBackups: {
+        enabled: true,
+        intervalHours: 4,
+        maxRetainedSnapshots: 30,
+        totalBackupsStored: backups.length,
+        latestBackup: backups[0] || null,
+      },
     },
     serverTime: new Date().toISOString(),
   });
 });
 
-// 4. Download central backup JSON
+// 5. Backups API: List all backups
+app.get('/api/backups', (req, res) => {
+  try {
+    const backups = getBackupsList();
+    res.json({
+      success: true,
+      total: backups.length,
+      autoBackupIntervalHours: 4,
+      backups,
+      serverTime: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 6. Backups API: Create manual backup on-demand
+app.post('/api/backups/create', (req, res) => {
+  try {
+    const label = req.body?.label?.trim() || 'پشتیبان دستی کاربر';
+    const result = createBackup('manual', label);
+    if (!result.success) {
+      return res.status(500).json({ success: false, message: result.error });
+    }
+    const backups = getBackupsList();
+    res.json({
+      success: true,
+      message: 'نسخه پشتیبان با موفقیت بر روی سرور ایجاد شد.',
+      filename: result.filename,
+      backups,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 7. Backups API: Restore a specific backup
+app.post('/api/backups/restore', (req, res) => {
+  try {
+    const rawFilename = req.body?.filename;
+    if (!rawFilename || typeof rawFilename !== 'string') {
+      return res.status(400).json({ success: false, message: 'نام فایل پشتیبان نامعتبر است.' });
+    }
+
+    // Prevent directory traversal attacks
+    const safeFilename = path.basename(rawFilename);
+    const backupFilePath = path.join(BACKUPS_DIR, safeFilename);
+
+    if (!fs.existsSync(backupFilePath)) {
+      return res.status(404).json({ success: false, message: 'فایل پشتیبان مورد نظر یافت نشد.' });
+    }
+
+    const content = fs.readFileSync(backupFilePath, 'utf-8');
+    const parsed = JSON.parse(content);
+    const targetData = parsed.data || parsed;
+
+    const validation = validateDatabaseSchema(targetData);
+    if (!validation.valid) {
+      return res.status(400).json({ success: false, message: `محتوای فایل پشتیبان معتبر نیست: ${validation.error}` });
+    }
+
+    // Safety step: Create a pre-restore backup of the current database before overwriting!
+    createBackup('pre-restore', `پشتیبان خودکار اضطراری قبل از بازیابی نسخه ${safeFilename}`);
+
+    // Overwrite database with target backup
+    const ok = writeDatabase(targetData, false);
+    if (!ok) {
+      return res.status(500).json({ success: false, message: 'خطا در اعمال اطلاعات نسخه پشتیبان بر روی پایگاه‌داده.' });
+    }
+
+    console.log(`[Backup Engine] Successfully restored database from backup: ${safeFilename}`);
+    res.json({
+      success: true,
+      message: 'پایگاه‌داده با موفقیت به نسخه انتخاب‌شده بازگردانی شد.',
+      restoredFrom: safeFilename,
+      data: targetData,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 8. Backups API: Download a specific backup file
+app.get('/api/backups/download/:filename', (req, res) => {
+  try {
+    const safeFilename = path.basename(req.params.filename);
+    const backupFilePath = path.join(BACKUPS_DIR, safeFilename);
+
+    if (!fs.existsSync(backupFilePath)) {
+      return res.status(404).json({ success: false, message: 'فایل پشتیبان یافت نشد.' });
+    }
+
+    res.setHeader('Content-disposition', `attachment; filename=${safeFilename}`);
+    res.setHeader('Content-type', 'application/json');
+    const content = fs.readFileSync(backupFilePath, 'utf-8');
+    res.send(content);
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 9. Backups API: Delete a backup file
+app.delete('/api/backups/:filename', (req, res) => {
+  try {
+    const safeFilename = path.basename(req.params.filename);
+    const backupFilePath = path.join(BACKUPS_DIR, safeFilename);
+
+    if (!fs.existsSync(backupFilePath)) {
+      return res.status(404).json({ success: false, message: 'فایل پشتیبان یافت نشد.' });
+    }
+
+    fs.unlinkSync(backupFilePath);
+    console.log(`[Backup Engine] Deleted backup file: ${safeFilename}`);
+    const backups = getBackupsList();
+    res.json({
+      success: true,
+      message: 'فایل پشتیبان با موفقیت حذف شد.',
+      backups,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 10. Backups API: Upload & Import external backup file
+app.post('/api/backups/upload', (req, res) => {
+  try {
+    const { backupContent, restoreNow, label } = req.body;
+    if (!backupContent || typeof backupContent !== 'string') {
+      return res.status(400).json({ success: false, message: 'محتوای فایل پشتیبان ارسال نشده است.' });
+    }
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(backupContent);
+    } catch {
+      return res.status(400).json({ success: false, message: 'قالب فایل پشتیبان JSON معتبر نیست.' });
+    }
+
+    const actualData = parsed.data || parsed;
+    const validation = validateDatabaseSchema(actualData);
+    if (!validation.valid) {
+      return res.status(400).json({ success: false, message: `فایل نامعتبر است: ${validation.error}` });
+    }
+
+    // Save as imported backup file
+    const timestamp = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const timeStr = `${timestamp.getFullYear()}-${pad(timestamp.getMonth() + 1)}-${pad(timestamp.getDate())}_${pad(timestamp.getHours())}-${pad(timestamp.getMinutes())}-${pad(timestamp.getSeconds())}`;
+    const filename = `backup_${timeStr}_manual_imported.json`;
+    const targetPath = path.join(BACKUPS_DIR, filename);
+
+    const backupEnvelope = {
+      backupVersion: 1,
+      createdAt: timestamp.toISOString(),
+      trigger: 'manual',
+      label: label?.trim() || 'فایل پشتیبان بارگذاری‌شده از دستگاه',
+      checksum: computeChecksum(actualData),
+      stats: {
+        productsCount: Array.isArray(actualData.products) ? actualData.products.length : 0,
+        invoicesCount: Array.isArray(actualData.invoices) ? actualData.invoices.length : 0,
+        customersCount: Array.isArray(actualData.customers) ? actualData.customers.length : 0,
+        purchaseInvoicesCount: Array.isArray(actualData.purchaseInvoices) ? actualData.purchaseInvoices.length : 0,
+        inboundReceiptsCount: Array.isArray(actualData.inboundReceipts) ? actualData.inboundReceipts.length : 0,
+      },
+      data: actualData,
+    };
+
+    fs.writeFileSync(targetPath, JSON.stringify(backupEnvelope, null, 2), 'utf-8');
+
+    // If restoreNow was requested
+    if (restoreNow) {
+      createBackup('pre-restore', 'پشتیبان خودکار قبل از اعمال فایل بارگذاری‌شده');
+      writeDatabase(actualData, false);
+    }
+
+    const backups = getBackupsList();
+    res.json({
+      success: true,
+      message: restoreNow ? 'فایل پشتیبان بارگذاری و اطلاعات با موفقیت بازیابی شد.' : 'فایل پشتیبان در سرور ذخیره شد.',
+      filename,
+      restored: !!restoreNow,
+      backups,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 11. Legacy download central backup JSON (for backwards compatibility)
 app.get('/api/backup', (req, res) => {
   try {
     const data = readDatabase();
@@ -441,9 +922,14 @@ app.get('/api/backup', (req, res) => {
 // VITE OR STATIC CLIENT SERVING
 // -------------------------------------------------------------
 async function startServer() {
+  const server = http.createServer(app);
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -455,9 +941,28 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`[Factor Server] Centralized multi-user server running on http://0.0.0.0:${PORT}`);
     console.log(`[Factor Server] Persistent storage mounted at: ${DATA_DIR}`);
+
+    // Initial check: if no backup exists, create startup baseline
+    try {
+      const existingBackups = getBackupsList();
+      if (existingBackups.length === 0) {
+        createBackup('startup', 'نسخه اولیه راه‌اندازی سیستم و دیتابیس');
+      }
+    } catch (e) {
+      console.error('[Backup Engine] Failed initial startup backup:', e);
+    }
+
+    // Schedule automated periodic backup check (every 4 hours)
+    setInterval(() => {
+      try {
+        createBackup('auto', 'پشتیبان‌گیری خودکار دوره‌ای سیستم');
+      } catch (err) {
+        console.error('[Backup Engine] Scheduled auto-backup error:', err);
+      }
+    }, 4 * 60 * 60 * 1000);
   });
 }
 

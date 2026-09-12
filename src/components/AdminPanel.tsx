@@ -5,6 +5,7 @@ import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { exportInvoicesToCsv } from '../utils/csvExport';
 import { UsersManager } from './UsersManager';
 import { ActivityLogsViewer } from './ActivityLogsViewer';
+import { BackupManager } from './BackupManager';
 import {
   ShieldCheck,
   SlidersHorizontal,
@@ -1685,95 +1686,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
           {/* 6. DATA CENTER & BACKUP (مرکز داده و پشتیبان‌گیری) */}
           {activeSection === 'data' && (
-            <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
-              <div>
-                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                  <Database className="w-5 h-5 text-emerald-600" />
-                  مدیریت پایگاه‌داده مرکزی سرور و پشتیبان‌گیری
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  سامانه به صورت متمرکز به دیتابیس سرور متصل است؛ تغییرات ثبت‌شده در هر دستگاه بلافاصله برای سایر کاربران و سیستم‌ها همگام‌سازی می‌شود.
-                </p>
-              </div>
+            <div className="space-y-6">
+              {/* Automated Backup & Database Hardening Manager */}
+              <BackupManager currentUser={currentUser} onDataRestored={onReloadData} />
 
-              {/* Central Server Sync Status Banner */}
-              <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-600"></span>
-                  </span>
-                  <div>
-                    <h4 className="text-xs font-bold text-emerald-950">پایگاه‌داده مرکزی سرور فعال است</h4>
-                    <p className="text-[11px] text-emerald-700 mt-0.5">
-                      اطلاعات در ولوم داکر سرور (<code className="font-mono bg-emerald-100 px-1 py-0.5 rounded text-[10px]">/app/data/database.json</code>) به طور ایمن ذخیره می‌شوند.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  id="force-sync-server-btn"
-                  onClick={async () => {
-                    const ok = await StorageService.syncFromServer();
-                    if (ok) {
-                      onReloadData();
-                      alert('همگام‌سازی با پایگاه‌داده سرور با موفقیت انجام شد.');
-                    } else {
-                      alert('داده‌های محلی در سرور بازنویسی و همگام شد.');
-                      StorageService.pushToServer();
-                    }
-                  }}
-                  className="w-full sm:w-auto px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-all flex items-center justify-center gap-1.5 shrink-0"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>همگام‌سازی فوری با سرور</span>
-                </button>
-              </div>
-
-              {/* Data Export and Import Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Export Card */}
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
-                  <div className="flex items-center gap-2 text-emerald-700">
-                    <Download className="w-5 h-5" />
-                    <h4 className="font-bold text-xs text-slate-800">دانلود نسخه پشتیبان (JSON)</h4>
-                  </div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
-                    یک فایل استاندارد حاوی تمام اطلاعات سیستم (کالاها، فاکتورها، مشتریان و تنظیمات) دانلود می‌شود.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleExportBackup}
-                    className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>دانلود فایل پشتیبان کامل</span>
-                  </button>
-                </div>
-
-                {/* Import Card */}
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
-                  <div className="flex items-center gap-2 text-blue-700">
-                    <Upload className="w-5 h-5" />
-                    <h4 className="font-bold text-xs text-slate-800">بازیابی اطلاعات از فایل پشتیبان</h4>
-                  </div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
-                    فایل JSON پشتیبان قبلی خود را انتخاب کنید تا اطلاعات در این دستگاه بارگذاری شود.
-                  </p>
-                  <label className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer text-center">
-                    <Upload className="w-4 h-4" />
-                    <span>انتخاب فایل پشتیبان</span>
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={handleImportBackup}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-
+              {/* Data Center Operations (CSV Export & Sensitivity Tools) */}
+              <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
                 {/* Accounting CSV Export Card */}
-                <div className="p-4 rounded-xl border border-emerald-300/80 bg-emerald-50/40 space-y-3 sm:col-span-2">
+                <div className="p-4 rounded-xl border border-emerald-300/80 bg-emerald-50/40 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center gap-2 text-emerald-800">
                       <FileSpreadsheet className="w-5 h-5 text-emerald-600 shrink-0" />
@@ -1807,48 +1727,48 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </button>
                   </div>
                 </div>
-              </div>
 
-              {/* Maintenance & Reset Operations */}
-              <div className="pt-4 border-t border-slate-100 space-y-4">
-                <h4 className="font-bold text-xs text-slate-800 flex items-center gap-1.5 text-rose-700">
-                  <AlertTriangle className="w-4 h-4 text-rose-600" />
-                  عملیات حساس و پاکسازی داده‌ها
-                </h4>
+                {/* Maintenance & Reset Operations */}
+                <div className="pt-2 border-t border-slate-100 space-y-4">
+                  <h4 className="font-bold text-xs text-slate-800 flex items-center gap-1.5 text-rose-700">
+                    <AlertTriangle className="w-4 h-4 text-rose-600" />
+                    عملیات حساس و پاکسازی داده‌ها
+                  </h4>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* Clear Invoices Only */}
-                  <button
-                    type="button"
-                    onClick={handleClearInvoices}
-                    className="p-3.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-2 text-center cursor-pointer transition-colors"
-                  >
-                    <Trash2 className="w-5 h-5 text-amber-600" />
-                    <span>پاکسازی فاکتورهای آزمایشی</span>
-                    <span className="text-[10px] text-amber-700 font-normal">کالاها و مشتریان حفظ می‌شوند</span>
-                  </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* Clear Invoices Only */}
+                    <button
+                      type="button"
+                      onClick={handleClearInvoices}
+                      className="p-3.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-2 text-center cursor-pointer transition-colors"
+                    >
+                      <Trash2 className="w-5 h-5 text-amber-600" />
+                      <span>پاکسازی فاکتورهای آزمایشی</span>
+                      <span className="text-[10px] text-amber-700 font-normal">کالاها و مشتریان حفظ می‌شوند</span>
+                    </button>
 
-                  {/* Reset to Demo Defaults */}
-                  <button
-                    type="button"
-                    onClick={handleResetDemoData}
-                    className="p-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-2 text-center cursor-pointer transition-colors"
-                  >
-                    <RotateCcw className="w-5 h-5 text-slate-600" />
-                    <span>بارگذاری داده‌های دمو و نمونه</span>
-                    <span className="text-[10px] text-slate-500 font-normal">بازگردانی نمونه اولیه محصولات</span>
-                  </button>
+                    {/* Reset to Demo Defaults */}
+                    <button
+                      type="button"
+                      onClick={handleResetDemoData}
+                      className="p-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-2 text-center cursor-pointer transition-colors"
+                    >
+                      <RotateCcw className="w-5 h-5 text-slate-600" />
+                      <span>بارگذاری داده‌های دمو و نمونه</span>
+                      <span className="text-[10px] text-slate-500 font-normal">بازگردانی نمونه اولیه محصولات</span>
+                    </button>
 
-                  {/* Factory Reset */}
-                  <button
-                    type="button"
-                    onClick={handleFactoryReset}
-                    className="p-3.5 bg-rose-50 hover:bg-rose-100 text-rose-900 border border-rose-200 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-2 text-center cursor-pointer transition-colors"
-                  >
-                    <AlertTriangle className="w-5 h-5 text-rose-600" />
-                    <span>بازنشانی به تنظیمات کارخانه</span>
-                    <span className="text-[10px] text-rose-700 font-normal">حذف کامل تمامی اطلاعات</span>
-                  </button>
+                    {/* Factory Reset */}
+                    <button
+                      type="button"
+                      onClick={handleFactoryReset}
+                      className="p-3.5 bg-rose-50 hover:bg-rose-100 text-rose-900 border border-rose-200 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-2 text-center cursor-pointer transition-colors"
+                    >
+                      <AlertTriangle className="w-5 h-5 text-rose-600" />
+                      <span>بازنشانی به تنظیمات کارخانه</span>
+                      <span className="text-[10px] text-rose-700 font-normal">حذف کامل تمامی اطلاعات</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
