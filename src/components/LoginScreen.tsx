@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StoreSettings, AppUser } from '../types';
-import { getCurrentJalaliDate, getCurrentJalaliTime } from '../utils/jalali';
+import { getCurrentJalaliDate, getCurrentJalaliTime, toPersianDigits } from '../utils/jalali';
 import {
   Lock,
   User,
@@ -35,6 +35,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(getCurrentJalaliTime());
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockoutSeconds, setLockoutSeconds] = useState(0);
   const currentDate = getCurrentJalaliDate();
 
   // Update clock every 10 seconds
@@ -45,8 +47,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  // Lockout countdown timer
+  useEffect(() => {
+    if (lockoutSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setLockoutSeconds((prev) => {
+        if (prev <= 1) {
+          setFailedAttempts(0);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lockoutSeconds]);
+
   const handleLogin = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (lockoutSeconds > 0) return;
     setErrorMessage('');
 
     const cleanUsername = username.trim().toLowerCase();
@@ -70,7 +88,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       );
 
       if (!foundUser) {
-        setErrorMessage('نام کاربری یا رمز عبور اشتباه است.');
+        const nextAttempts = failedAttempts + 1;
+        setFailedAttempts(nextAttempts);
+        if (nextAttempts >= 5) {
+          setLockoutSeconds(60);
+          setErrorMessage('به دلیل ۵ تلاش ناموفق پیاپی، دسترسی ورود موقتاً به مدت ۶۰ ثانیه مسدود گردید.');
+        } else {
+          setErrorMessage(`نام کاربری یا رمز عبور اشتباه است. (${toPersianDigits(5 - nextAttempts)} تلاش باقی‌مانده)`);
+        }
         setIsLoading(false);
         return;
       }
@@ -83,12 +108,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
       const expectedPass = (foundUser.password || foundUser.pin || '1234').trim();
       if (cleanPassword !== expectedPass) {
-        setErrorMessage('رمز عبور وارد شده نادرست است.');
+        const nextAttempts = failedAttempts + 1;
+        setFailedAttempts(nextAttempts);
+        if (nextAttempts >= 5) {
+          setLockoutSeconds(60);
+          setErrorMessage('به دلیل ۵ تلاش ناموفق پیاپی، دسترسی ورود موقتاً به مدت ۶۰ ثانیه مسدود گردید.');
+        } else {
+          setErrorMessage(`رمز عبور وارد شده نادرست است. (${toPersianDigits(5 - nextAttempts)} تلاش باقی‌مانده)`);
+        }
         setIsLoading(false);
         return;
       }
 
       // Success
+      setFailedAttempts(0);
       setIsLoading(false);
       onLoginSuccess(foundUser);
     }, 250);
@@ -215,11 +248,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <button
                   type="submit"
                   id="login-submit-button"
-                  disabled={isLoading}
-                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white py-3 px-4 rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-50"
+                  disabled={isLoading || lockoutSeconds > 0}
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white py-3 px-4 rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-50 disabled:bg-slate-500 disabled:cursor-not-allowed"
                 >
                   <LogIn className="w-4 h-4" />
-                  <span>{isLoading ? 'در حال بررسی اطلاعات...' : 'ورود به برنامه'}</span>
+                  <span>
+                    {lockoutSeconds > 0
+                      ? `لطفاً ${toPersianDigits(lockoutSeconds)} ثانیه دیگر صبر کنید...`
+                      : isLoading
+                      ? 'در حال بررسی اطلاعات...'
+                      : 'ورود به برنامه'}
+                  </span>
                 </button>
               </div>
             </form>

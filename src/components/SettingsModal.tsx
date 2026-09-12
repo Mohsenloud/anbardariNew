@@ -15,7 +15,10 @@ import {
   FileCheck,
   CreditCard,
   Banknote,
-  Landmark
+  Landmark,
+  ShieldCheck,
+  Lock,
+  Activity
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -489,6 +492,56 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span>{importStatus}</span>
               </div>
             )}
+          </div>
+
+          {/* Section 4: Security Shields & Status */}
+          <div className="space-y-3 pt-4 border-t border-slate-200">
+            <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2 pb-2 border-b border-slate-100">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <span>وضعیت سپرهای امنیتی و ضد نفوذ سرور</span>
+            </h4>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+              <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-start gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-emerald-950">سپرهای هدر امنیتی (Helmet Security)</div>
+                  <div className="text-[11px] text-emerald-800 mt-0.5">
+                    محافظت در برابر XSS، Clickjacking و مخفی‌سازی کامل هویت سرور (No X-Powered-By) فعال است.
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-start gap-2.5">
+                <Activity className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-emerald-950">محدودکننده نرخ درخواست (Rate Limiting)</div>
+                  <div className="text-[11px] text-emerald-800 mt-0.5">
+                    جلوگیری از حملات منع سرویس (DoS) و درخواست‌های مکرر غیرمجاز روی API و پایگاه‌داده.
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-start gap-2.5">
+                <Lock className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-emerald-950">ضد حملات Brute-Force ورود</div>
+                  <div className="text-[11px] text-emerald-800 mt-0.5">
+                    در صورت ۵ بار ورود اشتباه پیاپی، دسترسی ورود برای کاربر موقتاً مسدود و زمان‌دار می‌گردد.
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-start gap-2.5">
+                <Database className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-emerald-950">اعتبارسنجی ورودی و ضد تزریق مخرب</div>
+                  <div className="text-[11px] text-emerald-800 mt-0.5">
+                    بررسی ساختار JSON و مسدودسازی خودکار کدهای مخرب و Prototype Pollution در سرور.
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

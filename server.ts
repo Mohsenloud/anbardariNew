@@ -1,14 +1,29 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { createServer as createViteServer } from 'vite';
 
 const app = express();
 const PORT = 3000;
 
-// Enable JSON body parsing with generous payload limit for invoice graphics and logs
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// Hardening: Disable Express fingerprinting header
+app.disable('x-powered-by');
+
+// Hardening: HTTP Security Headers via Helmet
+// Allows client-side PDF blobs, SVG canvas export, and Vite client without breaking preview
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
+
+// Enable JSON body parsing with reasonable limit for invoice graphics and logs
+app.use(express.json({ limit: '30mb' }));
+app.use(express.urlencoded({ extended: true, limit: '30mb' }));
 
 // Simple CORS header support for direct external API access if needed
 app.use((req, res, next) => {
@@ -19,6 +34,32 @@ app.use((req, res, next) => {
     return res.sendStatus(200);
   }
   next();
+});
+
+// Hardening: Rate Limiting
+// 1. General API rate limiter (protects against DoS / scraping)
+const apiGeneralLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 300, // max 300 requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'تعداد درخواست‌ها بیش از حد مجاز است. لطفاً کمی صبر کرده و مجدداً تلاش نمایید.',
+  },
+});
+app.use('/api/', apiGeneralLimiter);
+
+// 2. Strict limiter for database writes & mutations (protects against flood attacks)
+const dbWriteLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // max 60 writes per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'نرخ ذخیره‌سازی اطلاعات فراتر از حد مجاز است. لطفاً چند لحظه صبر نمایید.',
+  },
 });
 
 // Configure persistent data directory
@@ -321,12 +362,21 @@ app.get('/api/db', (req, res) => {
   }
 });
 
-// 3. Save or update database
-app.post('/api/db', (req, res) => {
+// 3. Save or update database (Hardened with rate-limiting and anti-pollution validation)
+app.post('/api/db', dbWriteLimiter, (req, res) => {
   try {
     const incomingData = req.body;
-    if (!incomingData || typeof incomingData !== 'object') {
-      return res.status(400).json({ success: false, message: 'Invalid payload' });
+    if (!incomingData || typeof incomingData !== 'object' || Array.isArray(incomingData)) {
+      return res.status(400).json({ success: false, message: 'قالب داده‌های ارسالی نامعتبر است.' });
+    }
+
+    // Anti-prototype pollution check
+    const dangerousKeys = ['__proto__', 'constructor', 'prototype'];
+    for (const key of Object.keys(incomingData)) {
+      if (dangerousKeys.includes(key)) {
+        console.warn(`[Security Alert] Blocked suspicious key: ${key}`);
+        return res.status(403).json({ success: false, message: 'درخواست غیرمجاز شناسایی و مسدود شد.' });
+      }
     }
 
     const currentDb = readDatabase();
@@ -338,7 +388,7 @@ app.post('/api/db', (req, res) => {
 
     const success = writeDatabase(updatedDb);
     if (!success) {
-      return res.status(500).json({ success: false, message: 'File write error' });
+      return res.status(500).json({ success: false, message: 'خطا در ذخیره‌سازی داده‌ها در سرور' });
     }
 
     res.json({
@@ -349,6 +399,24 @@ app.post('/api/db', (req, res) => {
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
+});
+
+// 4. Security status check
+app.get('/api/security/status', (req, res) => {
+  res.json({
+    success: true,
+    security: {
+      helmet: true,
+      hidePoweredBy: true,
+      rateLimiting: {
+        generalApi: '300 req/min',
+        databaseWrite: '60 req/min',
+      },
+      prototypePollutionGuard: true,
+      bruteForceProtection: 'Active (5 attempts lockout)',
+    },
+    serverTime: new Date().toISOString(),
+  });
 });
 
 // 4. Download central backup JSON

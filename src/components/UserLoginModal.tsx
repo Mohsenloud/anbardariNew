@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppUser } from '../types';
+import { toPersianDigits } from '../utils/jalali';
 import {
   Lock,
   User,
@@ -35,6 +36,23 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockoutSeconds, setLockoutSeconds] = useState(0);
+
+  // Lockout countdown timer
+  useEffect(() => {
+    if (lockoutSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setLockoutSeconds((prev) => {
+        if (prev <= 1) {
+          setFailedAttempts(0);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lockoutSeconds]);
 
   if (!isOpen) return null;
 
@@ -42,6 +60,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (lockoutSeconds > 0) return;
     setErrorMessage('');
     setIsLoading(true);
 
@@ -53,12 +72,20 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
         const entered = password.trim();
 
         if (entered === targetPass || entered === currentAdminPass) {
+          setFailedAttempts(0);
           onLoginSuccess(targetUser);
           setPassword('');
           setUsername('');
           onClose();
         } else {
-          setErrorMessage('رمز عبور وارد شده نادرست است.');
+          const nextAttempts = failedAttempts + 1;
+          setFailedAttempts(nextAttempts);
+          if (nextAttempts >= 5) {
+            setLockoutSeconds(60);
+            setErrorMessage('به دلیل ۵ تلاش ناموفق پیاپی، ورود به مدت ۶۰ ثانیه قفل گردید.');
+          } else {
+            setErrorMessage(`رمز عبور وارد شده نادرست است. (${toPersianDigits(5 - nextAttempts)} تلاش باقی‌مانده)`);
+          }
         }
       } else {
         // General credential login (Username + Password)
@@ -82,7 +109,14 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
         );
 
         if (!foundUser) {
-          setErrorMessage('نام کاربری یا رمز عبور اشتباه است.');
+          const nextAttempts = failedAttempts + 1;
+          setFailedAttempts(nextAttempts);
+          if (nextAttempts >= 5) {
+            setLockoutSeconds(60);
+            setErrorMessage('به دلیل ۵ تلاش ناموفق پیاپی، ورود به مدت ۶۰ ثانیه قفل گردید.');
+          } else {
+            setErrorMessage(`نام کاربری یا رمز عبور اشتباه است. (${toPersianDigits(5 - nextAttempts)} تلاش باقی‌مانده)`);
+          }
           setIsLoading(false);
           return;
         }
@@ -95,11 +129,19 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
 
         const userPass = (foundUser.password || foundUser.pin || '1234').trim();
         if (cleanPassword !== userPass) {
-          setErrorMessage('نام کاربری یا رمز عبور اشتباه است.');
+          const nextAttempts = failedAttempts + 1;
+          setFailedAttempts(nextAttempts);
+          if (nextAttempts >= 5) {
+            setLockoutSeconds(60);
+            setErrorMessage('به دلیل ۵ تلاش ناموفق پیاپی، ورود به مدت ۶۰ ثانیه قفل گردید.');
+          } else {
+            setErrorMessage(`نام کاربری یا رمز عبور اشتباه است. (${toPersianDigits(5 - nextAttempts)} تلاش باقی‌مانده)`);
+          }
           setIsLoading(false);
           return;
         }
 
+        setFailedAttempts(0);
         onLoginSuccess(foundUser);
         setUsername('');
         setPassword('');
@@ -228,11 +270,17 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
             <button
               type="submit"
               id="login-submit-btn"
-              disabled={isLoading}
-              className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white py-2.5 px-4 rounded-xl text-xs font-bold shadow-md shadow-emerald-200 transition-all cursor-pointer disabled:opacity-50"
+              disabled={isLoading || lockoutSeconds > 0}
+              className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white py-2.5 px-4 rounded-xl text-xs font-bold shadow-md shadow-emerald-200 transition-all cursor-pointer disabled:opacity-50 disabled:bg-slate-500 disabled:cursor-not-allowed"
             >
               <LogIn className="w-4 h-4" />
-              <span>{isLoading ? 'در حال بررسی...' : 'ورود به حساب کاربری'}</span>
+              <span>
+                {lockoutSeconds > 0
+                  ? `لطفاً ${toPersianDigits(lockoutSeconds)} ثانیه دیگر صبر کنید...`
+                  : isLoading
+                  ? 'در حال بررسی...'
+                  : 'ورود به حساب کاربری'}
+              </span>
             </button>
           </div>
 

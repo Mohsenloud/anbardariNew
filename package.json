@@ -16,6 +16,8 @@
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
     "html2canvas": "^1.4.1",
     "html2canvas-pro": "^2.4.2",
     "jspdf": "^4.2.1",
