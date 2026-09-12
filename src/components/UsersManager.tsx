@@ -484,9 +484,20 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                       </div>
                     </div>
 
-                    {/* Active/Inactive Badge */}
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1 ${
+                    {/* Active/Inactive Badge with quick toggle */}
+                    <button
+                      type="button"
+                      disabled={isSelf}
+                      onClick={() => {
+                        if (isSelf) return;
+                        const updated = { ...user, isActive: !user.isActive };
+                        onUpdateUser(updated);
+                        showSuccess(`وضعیت حساب کاربری «${user.fullName}» به ${updated.isActive ? 'فعال' : 'غیرفعال'} تغییر یافت.`);
+                      }}
+                      title={isSelf ? 'امکان غیرفعال‌سازی کاربر جاری وجود ندارد' : 'کلیک کنید تا وضعیت فعال/غیرفعال تغییر یابد'}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1 transition-all ${
+                        isSelf ? 'cursor-default' : 'cursor-pointer hover:opacity-80'
+                      } ${
                         user.isActive
                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                           : 'bg-rose-50 text-rose-700 border border-rose-200'
@@ -503,7 +514,7 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                           <span>غیرفعال</span>
                         </>
                       )}
-                    </span>
+                    </button>
                   </div>
 
                   {/* Role Title & Phone info */}
@@ -622,9 +633,20 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                     <button
                       type="button"
                       id={`delete-user-btn-${user.id}`}
+                      disabled={isSelf || (user.role === 'admin' && adminCount <= 1)}
                       onClick={() => setUserToDelete(user)}
-                      title="حذف کاربر"
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                      title={
+                        isSelf
+                          ? 'حساب کاربری فعال جاری قابل حذف نیست'
+                          : user.role === 'admin' && adminCount <= 1
+                          ? 'حداقل یک کاربر مدیر فعال باید در سامانه باقی بماند'
+                          : 'حذف کاربر'
+                      }
+                      className={`p-1.5 rounded-xl transition-colors ${
+                        isSelf || (user.role === 'admin' && adminCount <= 1)
+                          ? 'text-slate-300 cursor-not-allowed opacity-40'
+                          : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer'
+                      }`}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { Invoice, StoreSettings } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { exportElementToPdf, printElementDirectly, printElementInNewWindow } from '../utils/pdfHelper';
-import { Printer, X, FileText, CheckCircle, Receipt, Building2, Share2, MessageCircle, Copy, Check, FileDown, Loader2, Globe, ArrowRightLeft } from 'lucide-react';
+import { Printer, X, FileText, CheckCircle, Receipt, Building2, Share2, MessageCircle, Copy, Check, FileDown, Loader2, Globe, ArrowRightLeft, Pencil } from 'lucide-react';
 
 interface InvoiceViewModalProps {
   invoice: Invoice | null;
   settings: StoreSettings;
   onClose: () => void;
   onConvertProforma?: (invoice: Invoice) => void;
+  onEditInvoice?: (invoice: Invoice) => void;
 }
 
 export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
@@ -16,6 +17,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   settings,
   onClose,
   onConvertProforma,
+  onEditInvoice,
 }) => {
   const defaultTpl = invoice.type || settings.defaultTemplate || 'standard';
   const [template, setTemplate] = useState<'standard' | 'official' | 'thermal'>(defaultTpl);
@@ -234,6 +236,23 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                 )}
                 <span className="hidden xs:inline">{isExportingPdf ? 'تولید PDF...' : 'PDF'}</span>
               </button>
+
+              {/* Edit Invoice Button */}
+              {onEditInvoice && (
+                <button
+                  type="button"
+                  id="modal-edit-invoice-btn"
+                  onClick={() => {
+                    onClose();
+                    onEditInvoice(invoice);
+                  }}
+                  title={invoice.isProforma ? 'ویرایش پیش‌فاکتور' : 'ویرایش فاکتور فروش'}
+                  className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  <span className="hidden xs:inline">{invoice.isProforma ? 'ویرایش پیش‌فاکتور' : 'ویرایش فاکتور'}</span>
+                </button>
+              )}
 
               {/* Print Button */}
               <button

@@ -69,6 +69,7 @@ export interface Invoice {
   convertedAt?: string; // تاریخ تبدیل به فاکتور اصلی فروش
   convertedFromProforma?: string; // شماره پیش‌فاکتور اولیه قبل از تبدیل به فاکتور رسمی
   createdAt: string;
+  updatedAt?: string; // تاریخ آخرین ویرایش فاکتور
 }
 
 export type StockMovementType = 'sale' | 'purchase' | 'adjustment' | 'return';
@@ -183,4 +184,112 @@ export interface ExitSlipData {
   lastPrintedBy?: string; // نام انباردار یا کاربر آخرین چاپ
   history: ExitSlipPrintRecord[]; // تاریخچه کامل دفعات چاپ با زمان و تاریخ
 }
+
+// ----------------------------------------------------
+// فاکتور خرید (Purchase Invoices) و حواله ورود به انبار (Inbound Warehouse Receipts)
+// ----------------------------------------------------
+
+export interface PurchaseInvoiceItem {
+  id: string;
+  productId: string;
+  productName: string;
+  productCode: string;
+  unit: string;
+  quantity: number; // تعداد خریداری شده طبق فاکتور
+  buyPrice: number; // قیمت خرید واحد (فی)
+  discount: number; // تخفیف ردیف
+  total: number; // (quantity * buyPrice) - discount
+}
+
+export type PurchaseStatus = 'pending_receipt' | 'has_discrepancy' | 'completed' | 'cancelled';
+
+export interface PurchaseInvoice {
+  id: string;
+  invoiceNumber: string; // شماره فاکتور خرید
+  supplierName: string; // نام تامین‌کننده / فروشنده
+  supplierPhone?: string;
+  supplierAddress?: string;
+  supplierEconomicCode?: string;
+  date: string; // تاریخ فاکتور خرید (شمسی)
+  dueDate?: string; // تاریخ سررسید (در صورت خرید نسیه/چکی)
+  items: PurchaseInvoiceItem[];
+  subtotal: number;
+  totalDiscount: number;
+  taxRate: number;
+  taxAmount: number;
+  shippingCost?: number; // هزینه حمل یا باربری
+  finalTotal: number;
+  paymentStatus: PaymentStatus;
+  paymentMethod: PaymentMethod;
+  paidAmount: number;
+  chequeNumber?: string;
+  chequeDueDate?: string;
+  chequeName?: string;
+  transferDescription?: string;
+  notes?: string;
+  status: PurchaseStatus; // وضعیت تحویل و ورود به انبار
+  inboundReceiptId?: string; // شناسه حواله ورود کالا متناظر
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface InboundReceiptItem {
+  id: string;
+  productId: string;
+  productName: string;
+  productCode: string;
+  unit: string;
+  expectedQuantity: number; // تعداد درج شده در فاکتور خرید
+  receivedQuantity: number; // تعداد شمارش شده واقعی تحویل گرفته شده در انبار
+  discrepancy: number; // receivedQuantity - expectedQuantity (منفی: کسری، مثبت: مازاد)
+  discrepancyReason?: string; // علت مغایرت (کسری باربری، شکستگی، عدم تامین و ...)
+  buyPrice: number;
+}
+
+export type InboundReceiptStatus = 'pending_verification' | 'confirmed' | 'has_discrepancy' | 'rejected';
+
+export interface InboundReceipt {
+  id: string;
+  receiptNumber: string; // شماره حواله ورود به انبار مثلاً REC-1001
+  purchaseInvoiceId: string;
+  purchaseInvoiceNumber: string;
+  supplierName: string;
+  date: string; // تاریخ صدور حواله
+  verifiedDate?: string; // تاریخ شمارش و تایید انباردار
+  verifiedBy?: string; // نام انباردار یا کاربر تاییدکننده
+  status: InboundReceiptStatus;
+  items: InboundReceiptItem[];
+  totalExpectedQuantity: number;
+  totalReceivedQuantity: number;
+  totalDiscrepancy: number;
+  notes?: string;
+  warehouseNotes?: string; // یادداشت و گزارش انباردار
+  createdAt: string;
+}
+
+export type ActivityActionCategory = 
+  | 'auth' 
+  | 'sales' 
+  | 'purchase' 
+  | 'warehouse' 
+  | 'customer' 
+  | 'users' 
+  | 'settings' 
+  | 'system';
+
+export interface ActivityLog {
+  id: string;
+  userId: string;
+  userName: string;
+  userRole: UserRole | string;
+  userRoleTitle?: string;
+  category: ActivityActionCategory;
+  actionType: string;
+  actionTitle: string; // عنوان مختصر عملیات
+  details: string; // توضیحات تکمیلی و مشخصات رکورد
+  timestamp: string; // تاریخ و ساعت فارسی
+  dateOnly: string; // تاریخ شمسی جهت فیلتر سریع
+  deviceInfo?: string; // مشخصات مرورگر یا دستگاه
+}
+
 

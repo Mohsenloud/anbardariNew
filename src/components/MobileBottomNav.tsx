@@ -7,7 +7,8 @@ import {
   Users, 
   BarChart3, 
   PlusCircle, 
-  ShieldCheck
+  ShieldCheck,
+  ShoppingCart
 } from 'lucide-react';
 
 interface MobileBottomNavProps {
@@ -16,6 +17,7 @@ interface MobileBottomNavProps {
   setActiveTab: (tab: string) => void;
   lowStockCount: number;
   currentUser?: AppUser;
+  onNewInvoice?: () => void;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -24,6 +26,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   setActiveTab,
   lowStockCount,
   currentUser,
+  onNewInvoice,
 }) => {
   const safeSettings = settings || StorageService.getSettings();
 
@@ -33,6 +36,16 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       label: 'فاکتورها',
       icon: ReceiptText,
       enabled: !currentUser || currentUser.permissions.canViewInvoices,
+    },
+    {
+      id: 'purchases',
+      label: 'خرید',
+      icon: ShoppingCart,
+      enabled:
+        !currentUser ||
+        currentUser.permissions.canCreateInvoice ||
+        currentUser.permissions.canManageInventory ||
+        currentUser.permissions.canViewInvoices,
     },
     {
       id: 'inventory',
@@ -97,7 +110,13 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                 key={item.id}
                 type="button"
                 id="mobile-nav-new-invoice"
-                onClick={() => setActiveTab('new-invoice')}
+                onClick={() => {
+                  if (onNewInvoice) {
+                    onNewInvoice();
+                  } else {
+                    setActiveTab('new-invoice');
+                  }
+                }}
                 className="flex flex-col items-center justify-center -mt-5 min-w-[58px] cursor-pointer group"
               >
                 <div

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StoreSettings, Product, Customer, Invoice, StockMovement, AppUser } from '../types';
 import { StorageService } from '../utils/storage';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { exportInvoicesToCsv } from '../utils/csvExport';
 import { UsersManager } from './UsersManager';
+import { ActivityLogsViewer } from './ActivityLogsViewer';
 import {
   ShieldCheck,
   SlidersHorizontal,
@@ -36,7 +37,10 @@ import {
   Search,
   FileSpreadsheet,
   ExternalLink,
-  Filter
+  Filter,
+  History,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -78,13 +82,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const canAccessFullAdmin = !currentUser || currentUser.permissions.canAccessAdmin;
   const canManageUsers = !currentUser || currentUser.permissions.canManageUsers;
 
-  const [activeSection, setActiveSection] = useState<'overview' | 'invoices' | 'modules' | 'invoice' | 'templates' | 'store' | 'users' | 'data'>(
+  const [activeSection, setActiveSection] = useState<'overview' | 'invoices' | 'logs' | 'modules' | 'invoice' | 'templates' | 'store' | 'users' | 'data'>(
     canAccessFullAdmin ? 'overview' : 'users'
   );
   const [adminInvoiceSearch, setAdminInvoiceSearch] = useState('');
   const [adminInvoiceStatus, setAdminInvoiceStatus] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [importStatus, setImportStatus] = useState<string>('');
+
+  const tabsContainerRef = useRef<HTMLDivElement>(null);
+  const activeTabRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (activeTabRef.current) {
+      activeTabRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'center',
+      });
+    }
+  }, [activeSection]);
+
+  const scrollTabs = (direction: 'prev' | 'next') => {
+    if (tabsContainerRef.current) {
+      // In RTL layout, scrolling towards later items is typically negative delta
+      const delta = direction === 'next' ? -200 : 200;
+      tabsContainerRef.current.scrollBy({
+        left: delta,
+        behavior: 'smooth',
+      });
+    }
+  };
 
   useEffect(() => {
     if (settings) {
@@ -204,6 +232,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       ? [
           { id: 'overview', label: 'داشبورد و وضعیت اجزا', icon: LayoutGrid },
           { id: 'invoices', label: 'لیست فاکتورها و خروجی CSV', icon: FileSpreadsheet },
+          { id: 'logs', label: 'لاگ فعالیت و ردگیری رویدادها', icon: History },
           { id: 'modules', label: 'کنترل ماژول‌های سیستم', icon: SlidersHorizontal },
           { id: 'invoice', label: 'قوانین و رفتار فاکتورساز', icon: ReceiptText },
           { id: 'templates', label: 'قالب‌های چاپ و پرداخت', icon: Printer },
@@ -273,29 +302,72 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* Main Grid: Sidebar Sections Navigation + Section Content View */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Navigation Tabs (Sidebar on Desktop, Horizontal Pill row on Mobile) */}
-        <div className="lg:col-span-3 space-y-1">
-          <div className="bg-white rounded-2xl p-2 border border-slate-200 shadow-xs flex lg:flex-col overflow-x-auto gap-1 scrollbar-none">
-            {sections.map((sec) => {
-              const Icon = sec.icon;
-              const isActive = activeSection === sec.id;
-              return (
-                <button
-                  key={sec.id}
-                  type="button"
-                  id={`admin-nav-${sec.id}`}
-                  onClick={() => setActiveSection(sec.id as any)}
-                  className={`flex items-center gap-2.5 px-3.5 py-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer text-right w-full ${
-                    isActive
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                  <span>{sec.label}</span>
-                </button>
-              );
-            })}
+        {/* Navigation Tabs (Sidebar on Desktop, Smooth Horizontal Scrollable Pills on Mobile) */}
+        <div className="lg:col-span-3 space-y-2">
+          {/* Mobile Scroll Hint & Section Counter */}
+          <div className="flex lg:hidden items-center justify-between px-1 text-xs">
+            <span className="font-bold text-slate-700 flex items-center gap-1.5">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-600" />
+              <span>بخش‌های تنظیمات ({toPersianDigits(sections.length)} بخش)</span>
+            </span>
+            <span className="text-[11px] text-slate-400 font-medium flex items-center gap-1">
+              <span>ورق بزنید</span>
+              <span>←</span>
+            </span>
+          </div>
+
+          <div className="relative flex items-center">
+            {/* Mobile Scroll Right Button (Earlier tabs in RTL) */}
+            <button
+              type="button"
+              id="scroll-tabs-right-btn"
+              onClick={() => scrollTabs('prev')}
+              className="lg:hidden shrink-0 z-10 w-7 h-10 rounded-r-xl bg-white/95 border-y border-r border-slate-200 shadow-xs flex items-center justify-center text-slate-500 hover:text-emerald-700 active:scale-95 transition-all cursor-pointer"
+              title="بخش‌های قبلی"
+              aria-label="بخش‌های قبلی"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+            {/* Scrollable Tabs List */}
+            <div
+              ref={tabsContainerRef}
+              className="bg-white rounded-2xl p-1.5 sm:p-2 border border-slate-200 shadow-xs flex lg:flex-col overflow-x-auto lg:overflow-x-visible gap-1.5 scroll-smooth no-scrollbar w-full touch-pan-x overscroll-x-contain"
+            >
+              {sections.map((sec) => {
+                const Icon = sec.icon;
+                const isActive = activeSection === sec.id;
+                return (
+                  <button
+                    key={sec.id}
+                    ref={isActive ? activeTabRef : undefined}
+                    type="button"
+                    id={`admin-nav-${sec.id}`}
+                    onClick={() => setActiveSection(sec.id as any)}
+                    className={`flex items-center gap-2 px-3.5 py-2.5 sm:py-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer text-right shrink-0 min-w-max lg:w-full ${
+                      isActive
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 bg-slate-50/70 lg:bg-transparent border border-slate-100 lg:border-transparent'
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                    <span>{sec.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Mobile Scroll Left Button (Next tabs in RTL) */}
+            <button
+              type="button"
+              id="scroll-tabs-left-btn"
+              onClick={() => scrollTabs('next')}
+              className="lg:hidden shrink-0 z-10 w-7 h-10 rounded-l-xl bg-white/95 border-y border-l border-slate-200 shadow-xs flex items-center justify-center text-slate-500 hover:text-emerald-700 active:scale-95 transition-all cursor-pointer"
+              title="بخش‌های بعدی"
+              aria-label="بخش‌های بعدی"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
           </div>
 
           {/* Quick System Health Box */}
@@ -322,7 +394,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {activeSection === 'overview' && (
             <div className="space-y-6">
               {/* Component Health Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
                 {/* Invoices Component */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-3">
@@ -449,6 +521,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     className="mt-3 text-xs text-indigo-700 font-bold hover:underline text-right flex items-center gap-1 cursor-pointer"
                   >
                     <span>تعریف و مدیریت کاربران</span>
+                    <span>←</span>
+                  </button>
+                </div>
+
+                {/* Activity Logs Component */}
+                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-slate-100 text-slate-700 rounded-xl">
+                        <History className="w-5 h-5" />
+                      </div>
+                      <span className="text-xs font-bold text-slate-800">لاگ فعالیت سیستم</span>
+                    </div>
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 shadow-xs"></span>
+                  </div>
+                  <div>
+                    <div className="text-xl font-black text-slate-900">
+                      {toPersianDigits(StorageService.getActivityLogs().length)} رویداد
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-1 truncate">
+                      ردگیری آنی کلیه اقدامات کاربران
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    id="admin-overview-logs-btn"
+                    onClick={() => setActiveSection('logs')}
+                    className="mt-3 text-xs text-indigo-700 font-bold hover:underline text-right flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>مشاهده جزئیات لاگ‌ها</span>
                     <span>←</span>
                   </button>
                 </div>
@@ -723,6 +825,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </table>
               </div>
             </div>
+          )}
+
+          {/* ACTIVITY LOGS (لاگ فعالیت و رویدادها) */}
+          {activeSection === 'logs' && (
+            <ActivityLogsViewer currentUser={currentUser} users={users} />
           )}
 
           {/* 2. MODULES CONTROL (کنترل ماژول‌های سیستم) */}

@@ -242,6 +242,9 @@ const DEFAULT_INITIAL_DATA = {
       createdAt: '۱۴۰۳/۰۱/۰۱',
     },
   ],
+  purchaseInvoices: [],
+  inboundReceipts: [],
+  activityLogs: [],
 };
 
 // Thread-safe atomic file persistence

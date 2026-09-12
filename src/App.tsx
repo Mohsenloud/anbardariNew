@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Product, Customer, Invoice, StockMovement, StoreSettings, AppUser } from './types';
+import { Product, Customer, Invoice, StockMovement, StoreSettings, AppUser, PurchaseInvoice, InboundReceipt, InboundReceiptItem, InboundReceiptStatus } from './types';
 import { StorageService } from './utils/storage';
 import { getCurrentJalaliDate } from './utils/jalali';
 import { isTabPermitted, getDefaultTabForUser, getRoleBadgeConfig } from './utils/permissions';
@@ -12,6 +12,7 @@ import { Header } from './components/Header';
 import { InvoiceBuilder } from './components/InvoiceBuilder';
 import { InvoicesList } from './components/InvoicesList';
 import { InventoryManager } from './components/InventoryManager';
+import { PurchaseInvoiceManager } from './components/PurchaseInvoiceManager';
 import { CustomersManager } from './components/CustomersManager';
 import { ReportsDashboard } from './components/ReportsDashboard';
 import { InvoiceViewModal } from './components/InvoiceViewModal';
@@ -20,6 +21,8 @@ import { AdminPanel } from './components/AdminPanel';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { UserLoginModal } from './components/UserLoginModal';
 import { LoginScreen } from './components/LoginScreen';
+import { OfflineIndicator } from './components/OfflineIndicator';
+import { MobileFloatingPWAInstall } from './components/MobileFloatingPWAInstall';
 import { CheckCircle2, ShieldAlert } from 'lucide-react';
 
 export default function App() {
@@ -27,6 +30,8 @@ export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [purchaseInvoices, setPurchaseInvoices] = useState<PurchaseInvoice[]>([]);
+  const [inboundReceipts, setInboundReceipts] = useState<InboundReceipt[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [settings, setSettings] = useState<StoreSettings>(StorageService.getSettings());
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -37,7 +42,9 @@ export default function App() {
     const saved = localStorage.getItem('sepehr_last_tab');
     return saved || 'new-invoice';
   });
+  const [selectedInboundReceiptId, setSelectedInboundReceiptId] = useState<string | null>(null);
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [loginTargetUser, setLoginTargetUser] = useState<AppUser | null>(null);
@@ -48,6 +55,8 @@ export default function App() {
     setProducts(StorageService.getProducts());
     setCustomers(StorageService.getCustomers());
     setInvoices(StorageService.getInvoices());
+    setPurchaseInvoices(StorageService.getPurchaseInvoices());
+    setInboundReceipts(StorageService.getInboundReceipts());
     setMovements(StorageService.getMovements());
     setSettings(StorageService.getSettings());
     const loadedUsers = StorageService.getUsers();
@@ -170,10 +179,166 @@ export default function App() {
       showToast(`فاکتور شماره ${newInvoice.invoiceNumber} با موفقیت ثبت و از انبار کسر شد.`);
     }
 
+    // Log user activity
+    StorageService.logActivity({
+      category: 'sales',
+      actionType: newInvoice.isProforma ? 'create_proforma' : 'create_invoice',
+      actionTitle: newInvoice.isProforma ? 'صدور پیش‌فاکتور' : 'صدور فاکتور فروش',
+      details: `${newInvoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${newInvoice.invoiceNumber} به مبلغ ${newInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency} برای مشتری «${newInvoice.customerName}»`,
+    });
+
     if (shouldPrint) {
       setViewingInvoice(newInvoice);
     }
 
+    setActiveTab('invoices');
+  };
+
+  // 1.0 EDIT INVOICE & PROFORMA (ویرایش فاکتور و پیش‌فاکتور)
+  const handleStartEditInvoice = (invoice: Invoice) => {
+    setEditingInvoice(invoice);
+    setActiveTab('new-invoice');
+  };
+
+  const handleUpdateInvoice = (originalInvoice: Invoice, updatedInvoice: Invoice, shouldPrint: boolean) => {
+    const today = getCurrentJalaliDate();
+
+    // If auto-deduct stock is enabled, adjust inventory stock based on quantity changes
+    if (settings.autoDeductStock) {
+      let currentProducts = [...products];
+      const newMovements: StockMovement[] = [];
+
+      if (!originalInvoice.isProforma && !updatedInvoice.isProforma) {
+        // Both are regular invoices: compute stock differences
+        const allProductIds = Array.from(
+          new Set([
+            ...originalInvoice.items.map((it) => it.productId),
+            ...updatedInvoice.items.map((it) => it.productId),
+          ])
+        ).filter(Boolean);
+
+        allProductIds.forEach((prodId) => {
+          const oldQty = originalInvoice.items
+            .filter((it) => it.productId === prodId)
+            .reduce((s, it) => s + it.quantity, 0);
+          const newQty = updatedInvoice.items
+            .filter((it) => it.productId === prodId)
+            .reduce((s, it) => s + it.quantity, 0);
+          const diff = newQty - oldQty; // positive: customer bought more (deduct); negative: bought less (return)
+
+          if (diff !== 0) {
+            const prodIndex = currentProducts.findIndex((p) => p.id === prodId);
+            if (prodIndex !== -1) {
+              const prod = currentProducts[prodIndex];
+              const newStock = Math.max(0, prod.stock - diff);
+              currentProducts[prodIndex] = {
+                ...prod,
+                stock: newStock,
+                updatedAt: today,
+              };
+
+              newMovements.push({
+                id: `mov-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+                productId: prod.id,
+                productName: prod.name,
+                type: diff > 0 ? 'sale' : 'return',
+                quantity: -diff,
+                remainingStock: newStock,
+                invoiceId: updatedInvoice.id,
+                invoiceNumber: updatedInvoice.invoiceNumber,
+                date: today,
+                note:
+                  diff > 0
+                    ? `کسر بابت ویرایش فاکتور ${updatedInvoice.invoiceNumber} (افزایش ${diff} ${prod.unit})`
+                    : `برگشت به انبار بابت ویرایش فاکتور ${updatedInvoice.invoiceNumber} (کاهش ${Math.abs(diff)} ${prod.unit})`,
+              });
+            }
+          }
+        });
+      } else if (originalInvoice.isProforma && !updatedInvoice.isProforma) {
+        // Changed to official invoice during edit: deduct all items
+        updatedInvoice.items.forEach((item) => {
+          const prodIndex = currentProducts.findIndex((p) => p.id === item.productId);
+          if (prodIndex !== -1) {
+            const prod = currentProducts[prodIndex];
+            const newStock = Math.max(0, prod.stock - item.quantity);
+            currentProducts[prodIndex] = {
+              ...prod,
+              stock: newStock,
+              updatedAt: today,
+            };
+
+            newMovements.push({
+              id: `mov-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+              productId: prod.id,
+              productName: prod.name,
+              type: 'sale',
+              quantity: -item.quantity,
+              remainingStock: newStock,
+              invoiceId: updatedInvoice.id,
+              invoiceNumber: updatedInvoice.invoiceNumber,
+              date: today,
+              note: `کسر بابت تبدیل و ثبت فاکتور رسمی در ویرایش سند (${updatedInvoice.invoiceNumber})`,
+            });
+          }
+        });
+      } else if (!originalInvoice.isProforma && updatedInvoice.isProforma) {
+        // Changed to proforma: restore all old items to stock
+        originalInvoice.items.forEach((item) => {
+          const prodIndex = currentProducts.findIndex((p) => p.id === item.productId);
+          if (prodIndex !== -1) {
+            const prod = currentProducts[prodIndex];
+            const newStock = prod.stock + item.quantity;
+            currentProducts[prodIndex] = {
+              ...prod,
+              stock: newStock,
+              updatedAt: today,
+            };
+
+            newMovements.push({
+              id: `mov-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+              productId: prod.id,
+              productName: prod.name,
+              type: 'return',
+              quantity: item.quantity,
+              remainingStock: newStock,
+              invoiceId: updatedInvoice.id,
+              invoiceNumber: updatedInvoice.invoiceNumber,
+              date: today,
+              note: `برگشت به انبار بابت تبدیل فاکتور به پیش‌فاکتور در ویرایش`,
+            });
+          }
+        });
+      }
+
+      if (newMovements.length > 0) {
+        setProducts(currentProducts);
+        StorageService.saveProducts(currentProducts);
+        const updatedMovements = [...newMovements, ...movements];
+        setMovements(updatedMovements);
+        StorageService.saveMovements(updatedMovements);
+      }
+    }
+
+    const updatedInvoices = invoices.map((inv) => (inv.id === updatedInvoice.id ? updatedInvoice : inv));
+    setInvoices(updatedInvoices);
+    StorageService.saveInvoices(updatedInvoices);
+
+    setEditingInvoice(null);
+
+    // Log user activity
+    StorageService.logActivity({
+      category: 'sales',
+      actionType: updatedInvoice.isProforma ? 'edit_proforma' : 'edit_invoice',
+      actionTitle: updatedInvoice.isProforma ? 'ویرایش پیش‌فاکتور' : 'ویرایش فاکتور فروش',
+      details: `ویرایش ${updatedInvoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${updatedInvoice.invoiceNumber} (مبلغ جدید: ${updatedInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency})`,
+    });
+
+    if (shouldPrint) {
+      setViewingInvoice(updatedInvoice);
+    }
+
+    showToast(`تغییرات ${updatedInvoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${updatedInvoice.invoiceNumber} با موفقیت ثبت شد.`);
     setActiveTab('invoices');
   };
 
@@ -266,6 +431,14 @@ export default function App() {
       setViewingInvoice(convertedInvoice);
     }
 
+    // Log user activity
+    StorageService.logActivity({
+      category: 'sales',
+      actionType: 'convert_proforma',
+      actionTitle: 'تبدیل پیش‌فاکتور به فاکتور قطعی',
+      details: `تبدیل پیش‌فاکتور ${proformaInvoice.invoiceNumber} به فاکتور قطعی ${finalNumber} و کسر از موجودی انبار`,
+    });
+
     showToast(`پیش‌فاکتور ${proformaInvoice.invoiceNumber} با موفقیت به فاکتور رسمی ${finalNumber} تبدیل و اقلام از انبار کسر شد.`);
     return true;
   };
@@ -315,14 +488,30 @@ export default function App() {
     setInvoices(updatedInvoices);
     StorageService.saveInvoices(updatedInvoices);
 
+    StorageService.logActivity({
+      category: 'warehouse',
+      actionType: 'return_stock',
+      actionTitle: 'مرجوع اقلام فاکتور به انبار',
+      details: `ابطال فاکتور شماره ${invoice.invoiceNumber} و بازگرداندن کلیه اقلام به موجودی انبار`,
+    });
+
     showToast(`کالاهای فاکتور ${invoice.invoiceNumber} به انبار بازگردانده شدند.`);
   };
 
   // 3. DELETE INVOICE (بدون بازگردانی کالا)
   const handleDeleteInvoice = (invoiceId: string) => {
+    const inv = invoices.find((i) => i.id === invoiceId);
     const updatedInvoices = invoices.filter((i) => i.id !== invoiceId);
     setInvoices(updatedInvoices);
     StorageService.saveInvoices(updatedInvoices);
+
+    StorageService.logActivity({
+      category: 'sales',
+      actionType: 'delete_invoice',
+      actionTitle: 'حذف فاکتور فروش',
+      details: `حذف فاکتور شماره ${inv?.invoiceNumber || invoiceId} متعلق به «${inv?.customerName || '-'}»`,
+    });
+
     showToast('فاکتور مورد نظر حذف شد.');
   };
 
@@ -344,6 +533,16 @@ export default function App() {
     });
     setInvoices(updated);
     StorageService.saveInvoices(updated);
+
+    const inv = invoices.find((i) => i.id === invoiceId);
+    const statusLabels: Record<string, string> = { paid: 'تسویه کامل', partial: 'پرداخت قسطی/بیعانه', unpaid: 'نسیه/پرداخت‌نشده' };
+    StorageService.logActivity({
+      category: 'sales',
+      actionType: 'update_payment',
+      actionTitle: 'تغییر وضعیت تسویه فاکتور',
+      details: `تغییر وضعیت پرداخت فاکتور ${inv?.invoiceNumber || invoiceId} به «${statusLabels[status] || status}»`,
+    });
+
     showToast('وضعیت تسویه فاکتور بروزرسانی شد.');
   };
 
@@ -378,12 +577,28 @@ export default function App() {
 
     setProducts(updatedProducts);
     StorageService.saveProducts(updatedProducts);
+
+    StorageService.logActivity({
+      category: 'warehouse',
+      actionType: exists ? 'edit_product' : 'create_product',
+      actionTitle: exists ? 'ویرایش مشخصات کالا' : 'تعریف کالای جدید',
+      details: `${exists ? 'ویرایش مشخصات کالا' : 'تعریف کالای جدید'}: «${product.name}» (موجودی: ${product.stock} ${product.unit})`,
+    });
   };
 
   const handleDeleteProduct = (productId: string) => {
+    const prod = products.find((p) => p.id === productId);
     const updated = products.filter((p) => p.id !== productId);
     setProducts(updated);
     StorageService.saveProducts(updated);
+
+    StorageService.logActivity({
+      category: 'warehouse',
+      actionType: 'delete_product',
+      actionTitle: 'حذف کالا از انبار',
+      details: `حذف کالای «${prod?.name || productId}» از انبار کالاها`,
+    });
+
     showToast('کالای مورد نظر از انبار حذف شد.');
   };
 
@@ -428,6 +643,13 @@ export default function App() {
     setMovements(updatedMovements);
     StorageService.saveMovements(updatedMovements);
 
+    StorageService.logActivity({
+      category: 'warehouse',
+      actionType: 'adjust_stock',
+      actionTitle: type === 'purchase' ? 'ورود دستی به انبار' : type === 'return' ? 'مرجوعی به انبار' : 'تعدیل دستی موجودی',
+      details: `تغییر موجودی «${prod.name}» به میزان ${delta > 0 ? `+${delta}` : delta} ${prod.unit} (موجودی جدید: ${newStock})`,
+    });
+
     showToast(`موجودی انبار "${prod.name}" به ${newStock} ${prod.unit} تغییر یافت.`);
   };
 
@@ -442,6 +664,14 @@ export default function App() {
     }
     setCustomers(updated);
     StorageService.saveCustomers(updated);
+
+    StorageService.logActivity({
+      category: 'customer',
+      actionType: exists ? 'edit_customer' : 'create_customer',
+      actionTitle: exists ? 'ویرایش طرف‌حساب' : 'تعریف مشتری جدید',
+      details: `ذخیره اطلاعات مشتری «${customer.name}» (${customer.phone || 'بدون تماس'})`,
+    });
+
     showToast(`اطلاعات مشتری "${customer.name}" ذخیره شد.`);
   };
 
@@ -459,9 +689,18 @@ export default function App() {
   };
 
   const handleDeleteCustomer = (customerId: string) => {
+    const cust = customers.find((c) => c.id === customerId);
     const updated = customers.filter((c) => c.id !== customerId);
     setCustomers(updated);
     StorageService.saveCustomers(updated);
+
+    StorageService.logActivity({
+      category: 'customer',
+      actionType: 'delete_customer',
+      actionTitle: 'حذف طرف‌حساب/مشتری',
+      details: `حذف مشتری «${cust?.name || customerId}» از دفترچه طرف‌حساب‌ها`,
+    });
+
     showToast('مشتری حذف شد.');
   };
 
@@ -469,11 +708,131 @@ export default function App() {
     setActiveTab('new-invoice');
   };
 
+  // 7.5 PURCHASE INVOICES & WAREHOUSE INBOUND RECEIPTS
+  const handleSavePurchaseInvoice = (
+    newPurchaseInvoice: PurchaseInvoice,
+    newInboundReceipt: InboundReceipt,
+    newProductsCreated: Product[]
+  ) => {
+    if (newProductsCreated && newProductsCreated.length > 0) {
+      newProductsCreated.forEach((p) => StorageService.saveProduct(p));
+    }
+
+    StorageService.savePurchaseInvoice(newPurchaseInvoice);
+    StorageService.saveInboundReceipt(newInboundReceipt);
+    loadData(true);
+
+    StorageService.logActivity({
+      category: 'purchase',
+      actionType: 'create_purchase_invoice',
+      actionTitle: 'ثبت فاکتور خرید و صدور حواله ورود',
+      details: `ثبت فاکتور خرید ${newPurchaseInvoice.invoiceNumber} از «${newPurchaseInvoice.supplierName}» به مبلغ ${newPurchaseInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency} و صدور حواله ورود ${newInboundReceipt.receiptNumber}`,
+    });
+
+    showToast(
+      `فاکتور خرید شماره ${newPurchaseInvoice.invoiceNumber} ثبت شد و حواله ورود ${newInboundReceipt.receiptNumber} به انبار ارسال گردید.`
+    );
+  };
+
+  const handleDeletePurchaseInvoice = (invoiceId: string) => {
+    const inv = purchaseInvoices.find((p) => p.id === invoiceId);
+    if (inv?.inboundReceiptId) {
+      StorageService.deleteInboundReceipt(inv.inboundReceiptId);
+    }
+    StorageService.deletePurchaseInvoice(invoiceId);
+    loadData(true);
+
+    StorageService.logActivity({
+      category: 'purchase',
+      actionType: 'delete_purchase_invoice',
+      actionTitle: 'حذف فاکتور خرید',
+      details: `حذف فاکتور خرید شماره ${inv?.invoiceNumber || invoiceId} تامین‌کننده «${inv?.supplierName || '-'}»`,
+    });
+
+    showToast('فاکتور خرید حذف گردید.');
+  };
+
+  const handleConfirmInboundReceipt = (
+    receiptId: string,
+    verifiedItems: InboundReceiptItem[],
+    warehouseNotes: string,
+    verifiedBy: string
+  ) => {
+    const receipt = inboundReceipts.find((r) => r.id === receiptId);
+    if (!receipt) return;
+
+    const hasDiscrepancy = verifiedItems.some((i) => i.discrepancy !== 0);
+    const newStatus: InboundReceiptStatus = hasDiscrepancy ? 'has_discrepancy' : 'confirmed';
+
+    // 1. Update Inbound Receipt
+    const updatedReceipt: InboundReceipt = {
+      ...receipt,
+      items: verifiedItems,
+      totalReceivedQuantity: verifiedItems.reduce((sum, i) => sum + i.receivedQuantity, 0),
+      totalDiscrepancy: verifiedItems.reduce((sum, i) => sum + i.discrepancy, 0),
+      status: newStatus,
+      warehouseNotes,
+      verifiedBy,
+      verifiedDate: getCurrentJalaliDate(),
+    };
+    StorageService.saveInboundReceipt(updatedReceipt);
+
+    // 2. Increase inventory stock for each product by receivedQuantity and record movements
+    verifiedItems.forEach((item) => {
+      if (item.receivedQuantity > 0) {
+        StorageService.adjustStock(
+          item.productId,
+          'purchase',
+          item.receivedQuantity,
+          `ورود به انبار طی حواله ${receipt.receiptNumber} (فاکتور خرید ${receipt.purchaseInvoiceNumber})${
+            item.discrepancy !== 0
+              ? ` [مغایرت: ${item.discrepancy > 0 ? '+' : ''}${item.discrepancy} ${item.discrepancyReason || ''}]`
+              : ''
+          }`,
+          receipt.purchaseInvoiceNumber
+        );
+      }
+    });
+
+    // 3. Update corresponding Purchase Invoice status
+    const purchaseInv = purchaseInvoices.find((p) => p.id === receipt.purchaseInvoiceId);
+    if (purchaseInv) {
+      const updatedPurchaseInv: PurchaseInvoice = {
+        ...purchaseInv,
+        status: hasDiscrepancy ? 'has_discrepancy' : 'completed',
+      };
+      StorageService.savePurchaseInvoice(updatedPurchaseInv);
+    }
+
+    loadData(true);
+
+    StorageService.logActivity({
+      category: 'warehouse',
+      actionType: hasDiscrepancy ? 'verify_inbound_discrepancy' : 'verify_inbound_success',
+      actionTitle: hasDiscrepancy ? 'تایید حواله ورود با مغایرت' : 'تایید حواله ورود به انبار',
+      details: `تایید حواله ورود ${receipt.receiptNumber} مربوط به فاکتور خرید ${receipt.purchaseInvoiceNumber} توسط ${verifiedBy}${hasDiscrepancy ? ' (همراه با ثبت مغایرت)' : ''}`,
+    });
+
+    showToast(
+      hasDiscrepancy
+        ? `حواله ورود ${receipt.receiptNumber} با ثبت مغایرت تایید شد و موجودی انبار به‌روزرسانی گردید.`
+        : `حواله ورود ${receipt.receiptNumber} به طور کامل تایید شد و موجودی انبار افزایش یافت.`
+    );
+  };
+
   // 8. USERS & ACCESS MANAGEMENT
   const handleAddUser = (userData: Omit<AppUser, 'id' | 'createdAt'>) => {
     const newUser = StorageService.addUser(userData);
     const updatedUsers = StorageService.getUsers();
     setUsers(updatedUsers);
+
+    StorageService.logActivity({
+      category: 'users',
+      actionType: 'create_user',
+      actionTitle: 'تعریف کاربر جدید',
+      details: `تعریف حساب کاربری جدید برای «${newUser.fullName}» (${newUser.username}) با نقش ${newUser.roleTitle || newUser.role}`,
+    });
+
     showToast(`کاربر جدید «${newUser.fullName}» با موفقیت ثبت شد.`);
   };
 
@@ -486,6 +845,14 @@ export default function App() {
       setCurrentUser(user);
       StorageService.setCurrentUser(user);
     }
+
+    StorageService.logActivity({
+      category: 'users',
+      actionType: 'edit_user',
+      actionTitle: 'ویرایش اطلاعات کاربر',
+      details: `به‌روزرسانی اطلاعات و دسترسی‌های کاربر «${user.fullName}» (${user.username})`,
+    });
+
     showToast(`اطلاعات کاربر «${user.fullName}» به‌روزرسانی شد.`);
   };
 
@@ -494,12 +861,21 @@ export default function App() {
       showToast('امکان حذف کاربر فعال فعلی وجود ندارد.');
       return { success: false, message: 'امکان حذف کاربر فعال فعلی وجود ندارد.' };
     }
+    const targetUser = users.find((u) => u.id === userId);
     const result = StorageService.deleteUser(userId);
     if (result.success) {
       const updatedUsers = StorageService.getUsers();
       setUsers(updatedUsers);
       const active = StorageService.getCurrentUser();
       setCurrentUser(active);
+
+      StorageService.logActivity({
+        category: 'users',
+        actionType: 'delete_user',
+        actionTitle: 'حذف حساب کاربری',
+        details: `حذف حساب کاربری «${targetUser?.fullName || userId}» (${targetUser?.username || ''})`,
+      });
+
       showToast('کاربر با موفقیت حذف شد.');
     }
     return result;
@@ -520,10 +896,34 @@ export default function App() {
     const landingTab = getDefaultTabForUser(user, settings);
     setActiveTab(landingTab);
 
+    StorageService.logActivity({
+      userId: user.id,
+      userName: user.fullName,
+      userRole: user.role,
+      userRoleTitle: user.roleTitle,
+      category: 'auth',
+      actionType: 'login',
+      actionTitle: 'ورود موفق به سامانه',
+      details: `ورود کاربر «${user.fullName}» با نقش سازمانی ${user.roleTitle || user.role}`,
+    });
+
     showToast(`ورود موفقیت‌آمیز بود. خوش آمدید «${user.fullName}» (${user.roleTitle || user.role}).`);
   };
 
   const handleLogout = () => {
+    if (currentUser) {
+      StorageService.logActivity({
+        userId: currentUser.id,
+        userName: currentUser.fullName,
+        userRole: currentUser.role,
+        userRoleTitle: currentUser.roleTitle,
+        category: 'auth',
+        actionType: 'logout',
+        actionTitle: 'خروج از حساب کاربری',
+        details: `خروج کاربر «${currentUser.fullName}» از سامانه`,
+      });
+    }
+
     StorageService.logout();
     setCurrentUser(null);
     setLoginTargetUser(null);
@@ -539,6 +939,14 @@ export default function App() {
   const handleSaveSettings = (newSettings: StoreSettings) => {
     setSettings(newSettings);
     StorageService.saveSettings(newSettings);
+
+    StorageService.logActivity({
+      category: 'settings',
+      actionType: 'update_settings',
+      actionTitle: 'به‌روزرسانی تنظیمات سامانه',
+      details: `ذخیره پیکربندی، قوانین فاکتور و اطلاعات فروشگاه توسط مدیر`,
+    });
+
     showToast('تنظیمات فروشگاه با موفقیت ذخیره شد.');
   };
 
@@ -585,20 +993,31 @@ export default function App() {
         onSwitchUser={handleSwitchUser}
         onRequestLogin={handleRequestLogin}
         onLogout={handleLogout}
-        onOpenNewInvoice={() => setActiveTab('new-invoice')}
+        onOpenNewInvoice={() => {
+          setEditingInvoice(null);
+          setActiveTab('new-invoice');
+        }}
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       {/* Main Body Content View */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-24 sm:pb-12">
+        <OfflineIndicator />
+
         {activeTab === 'new-invoice' && isTabPermitted('new-invoice', currentUser, settings) && (
           <InvoiceBuilder
+            key={editingInvoice ? `edit-${editingInvoice.id}` : 'new-invoice'}
             products={products}
             customers={customers}
             settings={settings}
+            editingInvoice={editingInvoice}
             onSaveInvoice={handleSaveInvoice}
+            onUpdateInvoice={handleUpdateInvoice}
             onAddNewCustomer={handleAddNewCustomerQuick}
-            onCancel={() => setActiveTab(getDefaultTabForUser(currentUser, settings))}
+            onCancel={() => {
+              setEditingInvoice(null);
+              setActiveTab(getDefaultTabForUser(currentUser, settings));
+            }}
           />
         )}
 
@@ -609,15 +1028,33 @@ export default function App() {
             settings={settings}
             currentUser={currentUser || undefined}
             onViewInvoice={(inv) => setViewingInvoice(inv)}
+            onEditInvoice={handleStartEditInvoice}
             onDeleteInvoice={handleDeleteInvoice}
             onReturnInvoiceToStock={handleReturnInvoiceToStock}
             onUpdatePaymentStatus={handleUpdatePaymentStatus}
             onNewInvoice={() => {
               if (currentUser?.permissions.canCreateInvoice) {
+                setEditingInvoice(null);
                 setActiveTab('new-invoice');
               }
             }}
             onConvertProforma={handleConvertProforma}
+          />
+        )}
+
+        {activeTab === 'purchases' && isTabPermitted('purchases', currentUser, settings) && (
+          <PurchaseInvoiceManager
+            purchaseInvoices={purchaseInvoices}
+            inboundReceipts={inboundReceipts}
+            products={products}
+            settings={settings}
+            currentUser={currentUser || undefined}
+            onSavePurchaseInvoice={handleSavePurchaseInvoice}
+            onDeletePurchaseInvoice={handleDeletePurchaseInvoice}
+            onNavigateToWarehouseReceipt={(receiptId) => {
+              setSelectedInboundReceiptId(receiptId);
+              setActiveTab('inventory');
+            }}
           />
         )}
 
@@ -626,11 +1063,14 @@ export default function App() {
             products={products}
             movements={movements}
             invoices={invoices}
+            inboundReceipts={inboundReceipts}
             settings={settings}
             currentUser={currentUser || undefined}
             onSaveProduct={handleSaveProduct}
             onDeleteProduct={handleDeleteProduct}
             onAdjustStock={handleAdjustStock}
+            onConfirmInboundReceipt={handleConfirmInboundReceipt}
+            selectedInboundReceiptId={selectedInboundReceiptId}
             onUpdateSettings={handleSaveSettings}
           />
         )}
@@ -719,6 +1159,7 @@ export default function App() {
           invoice={viewingInvoice}
           settings={settings}
           onClose={() => setViewingInvoice(null)}
+          onEditInvoice={handleStartEditInvoice}
           onConvertProforma={(inv) => {
             const success = handleConvertProforma(inv);
             if (success !== false) {
@@ -754,6 +1195,9 @@ export default function App() {
         />
       )}
 
+      {/* Mobile Floating PWA Install Widget (Shown only on mobile for 7 seconds) */}
+      <MobileFloatingPWAInstall />
+
       {/* Mobile Bottom Navigation Bar */}
       <MobileBottomNav
         settings={settings}
@@ -761,6 +1205,10 @@ export default function App() {
         setActiveTab={setActiveTab}
         lowStockCount={lowStockCount}
         currentUser={currentUser || undefined}
+        onNewInvoice={() => {
+          setEditingInvoice(null);
+          setActiveTab('new-invoice');
+        }}
       />
     </div>
   );

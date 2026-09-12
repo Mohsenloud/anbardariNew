@@ -21,7 +21,8 @@ import {
   KeyRound,
   Lock,
   LogIn,
-  LogOut
+  LogOut,
+  ShoppingCart
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -108,6 +109,17 @@ export const Header: React.FC<HeaderProps> = ({
       enabled: isTabPermitted('invoices', currentUser, safeSettings),
       onClick: () => {
         setActiveTab('invoices');
+        setIsMenuOpen(false);
+      }
+    },
+    { 
+      id: 'purchases', 
+      label: 'فاکتورهای خرید', 
+      description: 'ثبت فاکتور خرید کالا، تامین‌کنندگان و ورود به انبار',
+      icon: ShoppingCart, 
+      enabled: isTabPermitted('purchases', currentUser, safeSettings),
+      onClick: () => {
+        setActiveTab('purchases');
         setIsMenuOpen(false);
       }
     },

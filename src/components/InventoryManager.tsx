@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Product, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData } from '../types';
+import { Product, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData, InboundReceipt, InboundReceiptItem } from '../types';
 import { toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
 import { ExitSlipModal } from './ExitSlipModal';
+import { InboundReceiptsList } from './InboundReceiptsList';
 import { 
   Plus, 
   Search, 
@@ -29,6 +30,7 @@ interface InventoryManagerProps {
   products: Product[];
   movements: StockMovement[];
   invoices?: Invoice[];
+  inboundReceipts?: InboundReceipt[];
   settings: StoreSettings;
   currentUser?: AppUser;
   onSaveProduct: (product: Product) => void;
@@ -39,6 +41,13 @@ interface InventoryManagerProps {
     quantity: number, 
     note: string
   ) => void;
+  onConfirmInboundReceipt?: (
+    receiptId: string,
+    verifiedItems: InboundReceiptItem[],
+    warehouseNotes: string,
+    verifiedBy: string
+  ) => void;
+  selectedInboundReceiptId?: string | null;
   onUpdateSettings?: (newSettings: StoreSettings) => void;
 }
 
@@ -46,14 +55,20 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   products,
   movements,
   invoices = [],
+  inboundReceipts = [],
   settings,
   currentUser,
   onSaveProduct,
   onDeleteProduct,
   onAdjustStock,
+  onConfirmInboundReceipt,
+  selectedInboundReceiptId,
   onUpdateSettings,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'items' | 'movements' | 'exit-slips'>('items');
+  const [activeSubTab, setActiveSubTab] = useState<'items' | 'inbound-receipts' | 'exit-slips' | 'movements'>(() => {
+    if (selectedInboundReceiptId) return 'inbound-receipts';
+    return 'items';
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'in_stock' | 'low_stock' | 'out_of_stock'>('all');
@@ -181,6 +196,10 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     0
   );
 
+  const pendingInboundCount = inboundReceipts.filter(
+    (r) => r.status === 'pending_verification'
+  ).length;
+
   const handleRecordExitSlipPrint = (invoiceId: string) => {
     const updated = StorageService.recordExitSlipPrint(
       invoiceId,
@@ -234,6 +253,22 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
               }`}
             >
               کالاها و موجودی ({toPersianDigits(products.length)})
+            </button>
+
+            <button
+              id="subtab-inbound-receipts"
+              onClick={() => setActiveSubTab('inbound-receipts')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                activeSubTab === 'inbound-receipts' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <ArrowDownRight className="w-3.5 h-3.5 text-emerald-600" />
+              <span>حواله‌های ورود کالا ({toPersianDigits(inboundReceipts.length)})</span>
+              {pendingInboundCount > 0 && (
+                <span className="bg-emerald-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full font-mono animate-pulse">
+                  {toPersianDigits(pendingInboundCount)}
+                </span>
+              )}
             </button>
 
             <button
@@ -806,6 +841,21 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             </table>
           </div>
         </div>
+      )}
+
+      {/* SUBTAB: INBOUND GOODS RECEIPTS (حواله‌های ورود به انبار) */}
+      {activeSubTab === 'inbound-receipts' && (
+        <InboundReceiptsList
+          inboundReceipts={inboundReceipts}
+          settings={settings}
+          currentUser={currentUser}
+          initialSelectedReceiptId={selectedInboundReceiptId}
+          onConfirmReceipt={(receiptId, verifiedItems, warehouseNotes, verifiedBy) => {
+            if (onConfirmInboundReceipt) {
+              onConfirmInboundReceipt(receiptId, verifiedItems, warehouseNotes, verifiedBy);
+            }
+          }}
+        />
       )}
 
       {/* SUBTAB 3: EXIT SLIPS (برگه‌های خروج از انبار) */}

@@ -24,7 +24,9 @@ import {
   X,
   ChevronDown,
   Check,
-  Barcode
+  Barcode,
+  Pencil,
+  Save
 } from 'lucide-react';
 
 interface InvoiceBuilderProps {
@@ -32,7 +34,9 @@ interface InvoiceBuilderProps {
   customers: Customer[];
   settings: StoreSettings;
   initialIsProforma?: boolean;
+  editingInvoice?: Invoice | null;
   onSaveInvoice: (invoice: Invoice, shouldPrint: boolean) => void;
+  onUpdateInvoice?: (originalInvoice: Invoice, updatedInvoice: Invoice, shouldPrint: boolean) => void;
   onAddNewCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => Customer;
   onCancel?: () => void;
 }
@@ -42,20 +46,35 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   customers,
   settings,
   initialIsProforma = false,
+  editingInvoice,
   onSaveInvoice,
+  onUpdateInvoice,
   onAddNewCustomer,
   onCancel,
 }) => {
-  const [isProforma, setIsProforma] = useState<boolean>(initialIsProforma);
+  const isEditing = !!editingInvoice;
+  const [isProforma, setIsProforma] = useState<boolean>(() => {
+    if (editingInvoice) return !!editingInvoice.isProforma;
+    return initialIsProforma;
+  });
 
   // Generate a random / incremental invoice number (PF- for proforma, INV- for regular)
   const initialInvoiceNum = initialIsProforma
     ? `PF-${Math.floor(1000 + Math.random() * 9000)}`
     : `INV-${Math.floor(1000 + Math.random() * 9000)}`;
 
-  const [invoiceNumber, setInvoiceNumber] = useState<string>(initialInvoiceNum);
-  const [invoiceType, setInvoiceType] = useState<'standard' | 'official' | 'thermal'>(settings.defaultTemplate || 'standard');
-  const [invoiceDate, setInvoiceDate] = useState<string>(getCurrentJalaliDate());
+  const [invoiceNumber, setInvoiceNumber] = useState<string>(() => {
+    if (editingInvoice) return editingInvoice.invoiceNumber;
+    return initialInvoiceNum;
+  });
+  const [invoiceType, setInvoiceType] = useState<'standard' | 'official' | 'thermal'>(() => {
+    if (editingInvoice) return editingInvoice.type || 'standard';
+    return settings.defaultTemplate || 'standard';
+  });
+  const [invoiceDate, setInvoiceDate] = useState<string>(() => {
+    if (editingInvoice) return editingInvoice.date;
+    return getCurrentJalaliDate();
+  });
 
   const handleToggleDocumentMode = (targetProforma: boolean) => {
     setIsProforma(targetProforma);
@@ -73,54 +92,116 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   };
 
   // Customer state
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
-  const [customerName, setCustomerName] = useState<string>('');
-  const [customerPhone, setCustomerPhone] = useState<string>('');
-  const [customerAddress, setCustomerAddress] = useState<string>('');
-  const [customerNationalId, setCustomerNationalId] = useState<string>('');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>(() => {
+    if (editingInvoice && editingInvoice.customerId && editingInvoice.customerId !== 'guest') {
+      return editingInvoice.customerId;
+    }
+    return '';
+  });
+  const [customerName, setCustomerName] = useState<string>(() => {
+    if (editingInvoice) return editingInvoice.customerName || '';
+    return '';
+  });
+  const [customerPhone, setCustomerPhone] = useState<string>(() => {
+    if (editingInvoice) return editingInvoice.customerPhone || '';
+    return '';
+  });
+  const [customerAddress, setCustomerAddress] = useState<string>(() => {
+    if (editingInvoice) return editingInvoice.customerAddress || '';
+    return '';
+  });
+  const [customerNationalId, setCustomerNationalId] = useState<string>(() => {
+    if (editingInvoice) return editingInvoice.customerNationalId || '';
+    return '';
+  });
   const [isAddingNewCustomer, setIsAddingNewCustomer] = useState<boolean>(false);
 
   // Invoice Items
-  const [items, setItems] = useState<InvoiceItem[]>([
-    {
-      id: 'row-1',
-      productId: '',
-      productName: '',
-      productCode: '',
-      unit: 'عدد',
-      quantity: 1,
-      unitPrice: 0,
-      buyPrice: 0,
-      discount: 0,
-      total: 0,
-    },
-  ]);
+  const [items, setItems] = useState<InvoiceItem[]>(() => {
+    if (editingInvoice && editingInvoice.items && editingInvoice.items.length > 0) {
+      return editingInvoice.items.map((it, idx) => ({
+        ...it,
+        id: it.id || `row-${idx + 1}`,
+      }));
+    }
+    return [
+      {
+        id: 'row-1',
+        productId: '',
+        productName: '',
+        productCode: '',
+        unit: 'عدد',
+        quantity: 1,
+        unitPrice: 0,
+        buyPrice: 0,
+        discount: 0,
+        total: 0,
+      },
+    ];
+  });
 
   // Overall calculations & payment
-  const [taxEnabled, setTaxEnabled] = useState<boolean>(settings.taxEnabled);
-  const [taxRate, setTaxRate] = useState<number>(settings.taxPercent || 10);
-  const [extraDiscount, setExtraDiscount] = useState<number>(0);
+  const [taxEnabled, setTaxEnabled] = useState<boolean>(() => {
+    if (editingInvoice) return editingInvoice.taxRate > 0;
+    return settings.taxEnabled;
+  });
+  const [taxRate, setTaxRate] = useState<number>(() => {
+    if (editingInvoice && editingInvoice.taxRate > 0) return editingInvoice.taxRate;
+    return settings.taxPercent || 10;
+  });
+  const [extraDiscount, setExtraDiscount] = useState<number>(() => {
+    if (editingInvoice) {
+      const itemsDisc = editingInvoice.items?.reduce((s, it) => s + (it.discount || 0), 0) || 0;
+      return Math.max(0, (editingInvoice.totalDiscount || 0) - itemsDisc);
+    }
+    return 0;
+  });
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(() => {
+    if (editingInvoice) return editingInvoice.paymentMethod || 'cash';
     if (settings.enableCashPayment !== false) return 'cash';
     if (settings.enableChequePayment) return 'cheque';
     if (settings.enableTransferPayment !== false) return 'transfer';
     return 'cash';
   });
-  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid' | 'partial'>('paid');
-  const [paidAmount, setPaidAmount] = useState<number>(0);
-  const [notes, setNotes] = useState<string>('');
+  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid' | 'partial'>(() => {
+    if (editingInvoice) return editingInvoice.paymentStatus || 'paid';
+    return 'paid';
+  });
+  const [paidAmount, setPaidAmount] = useState<number>(() => {
+    if (editingInvoice) return editingInvoice.paidAmount ?? (editingInvoice.paymentStatus === 'paid' ? editingInvoice.finalTotal : 0);
+    return 0;
+  });
+  const [notes, setNotes] = useState<string>(() => {
+    if (editingInvoice) return editingInvoice.notes || '';
+    return '';
+  });
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   // فیلدهای الزامی و مجاز چک (شماره چک، تاریخ سررسید، نام چک)
-  const [chequeNumber, setChequeNumber] = useState<string>('');
-  const [chequeDueDate, setChequeDueDate] = useState<string>('');
-  const [chequeName, setChequeName] = useState<string>('');
+  const [chequeNumber, setChequeNumber] = useState<string>(() => {
+    if (editingInvoice) return editingInvoice.chequeNumber || '';
+    return '';
+  });
+  const [chequeDueDate, setChequeDueDate] = useState<string>(() => {
+    if (editingInvoice) return editingInvoice.chequeDueDate || '';
+    return '';
+  });
+  const [chequeName, setChequeName] = useState<string>(() => {
+    if (editingInvoice) return editingInvoice.chequeName || '';
+    return '';
+  });
 
   // فیلدهای الزامی و مجاز واریز به حساب (ثبت توضیحات)
-  const [transferDescription, setTransferDescription] = useState<string>('');
+  const [transferDescription, setTransferDescription] = useState<string>(() => {
+    if (editingInvoice) return editingInvoice.transferDescription || '';
+    return '';
+  });
 
   // Customer Search States
-  const [customerSearchQuery, setCustomerSearchQuery] = useState<string>('');
+  const [customerSearchQuery, setCustomerSearchQuery] = useState<string>(() => {
+    if (editingInvoice) return editingInvoice.customerName || '';
+    return '';
+  });
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState<boolean>(false);
 
   // Quick Product Add Bar State (Top of Items Table)
@@ -346,8 +427,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     }
 
     const newInvoice: Invoice = {
-      id: `inv-${Date.now()}`,
-      invoiceNumber: invoiceNumber.trim() || (isProforma ? `PF-${Date.now().toString().slice(-4)}` : `INV-${Date.now().toString().slice(-4)}`),
+      id: editingInvoice ? editingInvoice.id : `inv-${Date.now()}`,
+      invoiceNumber: invoiceNumber.trim() || (editingInvoice ? editingInvoice.invoiceNumber : (isProforma ? `PF-${Date.now().toString().slice(-4)}` : `INV-${Date.now().toString().slice(-4)}`)),
       type: invoiceType,
       isProforma,
       customerId: selectedCustomerId || 'guest',
@@ -372,34 +453,84 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       // ثبت مشخصات واریز به حساب (در صورت واریز به حساب)
       transferDescription: paymentMethod === 'transfer' ? transferDescription.trim() : undefined,
       notes: notes.trim(),
-      createdAt: new Date().toISOString(),
+      createdAt: editingInvoice ? editingInvoice.createdAt : new Date().toISOString(),
+      updatedAt: isEditing ? new Date().toISOString() : undefined,
+      convertedFromProforma: editingInvoice?.convertedFromProforma,
+      convertedAt: editingInvoice?.convertedAt,
     };
 
-    onSaveInvoice(newInvoice, shouldPrint || !!settings.autoPrintAfterSave);
+    if (editingInvoice && onUpdateInvoice) {
+      onUpdateInvoice(editingInvoice, newInvoice, shouldPrint || !!settings.autoPrintAfterSave);
+    } else {
+      onSaveInvoice(newInvoice, shouldPrint || !!settings.autoPrintAfterSave);
+    }
   };
 
   return (
     <div className="max-w-7xl mx-auto pb-12">
+      {/* Banner when in editing mode */}
+      {isEditing && (
+        <div className="mb-4 bg-amber-50 border border-amber-200/90 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900 shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-amber-100/90 text-amber-800 rounded-xl shrink-0">
+              <Pencil className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm sm:text-base">
+                  حالت ویرایش {isProforma ? 'پیش‌فاکتور' : 'فاکتور فروش'} شماره #{toPersianDigits(invoiceNumber)}
+                </span>
+                <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+                  در حال ویرایش
+                </span>
+              </div>
+              <p className="text-xs text-amber-700 mt-0.5">
+                تغییرات مورد نظرتان را در اقلام، مشخصات خریدار یا مبالغ اعمال کرده و سپس روی «ذخیره تغییرات» کلیک کنید.
+              </p>
+            </div>
+          </div>
+          {onCancel && (
+            <button
+              type="button"
+              id="cancel-editing-top-btn"
+              onClick={onCancel}
+              className="px-3.5 py-1.5 bg-white hover:bg-amber-100 active:scale-95 border border-amber-300 text-amber-900 text-xs font-bold rounded-xl transition-all cursor-pointer shrink-0 self-end sm:self-center"
+            >
+              انصراف از ویرایش
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Header Info */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
           <div className="flex items-center gap-2.5">
-            <span className={`p-2 rounded-xl transition-colors ${isProforma ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'}`}>
-              <ShoppingBag className="w-5 h-5" />
+            <span className={`p-2 rounded-xl transition-colors ${isEditing ? 'bg-amber-100 text-amber-700' : isProforma ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'}`}>
+              {isEditing ? <Pencil className="w-5 h-5" /> : <ShoppingBag className="w-5 h-5" />}
             </span>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-bold text-slate-800">
-                  {isProforma ? 'صدور پیش‌فاکتور فروش' : 'صدور فاکتور فروش جدید'}
+                  {isEditing
+                    ? `ویرایش ${isProforma ? 'پیش‌فاکتور فروش' : 'فاکتور فروش'}`
+                    : (isProforma ? 'صدور پیش‌فاکتور فروش' : 'صدور فاکتور فروش جدید')}
                 </h2>
                 {isProforma && (
                   <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full border border-indigo-200">
                     بدون کسر از انبار
                   </span>
                 )}
+                {isEditing && (
+                  <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full border border-amber-200">
+                    سند موجود
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                {isProforma
+                {isEditing
+                  ? 'پس از ویرایش اطلاعات، فاکتور به‌روزرسانی شده و در صورت نیاز تراز انبار تنظیم می‌گردد.'
+                  : isProforma
                   ? 'این سند به عنوان پیش‌فاکتور ثبت می‌شود؛ موجودی انبار کسر نخواهد شد و در هر زمان در لیست فاکتورها قابل تبدیل به فاکتور اصلی است.'
                   : 'با ثبت فاکتور قطعی، اقلام به صورت خودکار از انبار کسر شده و تاریخچه ثبت می‌شود.'}
               </p>
@@ -1573,13 +1704,21 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               id="save-and-print-invoice-btn"
               onClick={() => handleSubmit(true)}
               className={`w-full py-3 px-4 ${
-                isProforma
+                isEditing
+                  ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-200'
+                  : isProforma
                   ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
                   : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
               } active:scale-98 text-white rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer`}
             >
               <Printer className="w-4 h-4" />
-              <span>{isProforma ? 'ثبت پیش‌فاکتور و چاپ فوری' : 'ثبت فاکتور و چاپ فوری'}</span>
+              <span>
+                {isEditing
+                  ? 'ذخیره تغییرات و چاپ فاکتور'
+                  : isProforma
+                  ? 'ثبت پیش‌فاکتور و چاپ فوری'
+                  : 'ثبت فاکتور و چاپ فوری'}
+              </span>
             </button>
 
             <button
@@ -1588,8 +1727,14 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               onClick={() => handleSubmit(false)}
               className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
-              <CheckCircle2 className={`w-4 h-4 ${isProforma ? 'text-indigo-600' : 'text-emerald-600'}`} />
-              <span>{isProforma ? 'فقط ثبت پیش‌فاکتور (بدون کسر از انبار)' : 'فقط ثبت در سیستم و کسر از انبار'}</span>
+              <CheckCircle2 className={`w-4 h-4 ${isEditing ? 'text-amber-600' : isProforma ? 'text-indigo-600' : 'text-emerald-600'}`} />
+              <span>
+                {isEditing
+                  ? `ذخیره تغییرات ${isProforma ? 'پیش‌فاکتور' : 'فاکتور'}`
+                  : isProforma
+                  ? 'فقط ثبت پیش‌فاکتور (بدون کسر از انبار)'
+                  : 'فقط ثبت در سیستم و کسر از انبار'}
+              </span>
             </button>
 
             {onCancel && (
@@ -1600,7 +1745,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 className="w-full py-2 text-slate-500 hover:text-slate-800 text-xs flex items-center justify-center gap-1 transition-colors cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>انصراف و بازگشت</span>
+                <span>{isEditing ? 'انصراف از ویرایش' : 'انصراف و بازگشت'}</span>
               </button>
             )}
           </div>
@@ -1611,9 +1756,9 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       <div className="sm:hidden fixed bottom-[57px] left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-3 py-2 shadow-[0_-3px_12px_rgba(0,0,0,0.06)] flex items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
           <span className="text-[10px] text-slate-500 block leading-tight">
-            {isProforma ? 'مبلغ پیش‌فاکتور:' : 'مبلغ نهایی:'}
+            {isEditing ? 'مبلغ به‌روزشده:' : isProforma ? 'مبلغ پیش‌فاکتور:' : 'مبلغ نهایی:'}
           </span>
-          <span className={`text-xs font-black truncate block ${isProforma ? 'text-indigo-700' : 'text-emerald-700'}`}>
+          <span className={`text-xs font-black truncate block ${isEditing ? 'text-amber-700' : isProforma ? 'text-indigo-700' : 'text-emerald-700'}`}>
             {formatPrice(finalTotal, settings.currency)}
           </span>
         </div>
@@ -1623,17 +1768,21 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             onClick={() => handleSubmit(false)}
             className="px-3 py-2 bg-slate-100 active:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold border border-slate-300 active:scale-95 cursor-pointer"
           >
-            {isProforma ? 'ثبت پیش‌فاکتور' : 'ثبت'}
+            {isEditing ? 'ذخیره' : isProforma ? 'ثبت پیش‌فاکتور' : 'ثبت'}
           </button>
           <button
             type="button"
             onClick={() => handleSubmit(true)}
             className={`px-3.5 py-2 ${
-              isProforma ? 'bg-indigo-600 active:bg-indigo-700' : 'bg-emerald-600 active:bg-emerald-700'
+              isEditing
+                ? 'bg-amber-600 active:bg-amber-700'
+                : isProforma
+                ? 'bg-indigo-600 active:bg-indigo-700'
+                : 'bg-emerald-600 active:bg-emerald-700'
             } text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1 active:scale-95 cursor-pointer`}
           >
             <Printer className="w-3.5 h-3.5" />
-            <span>{isProforma ? 'ثبت و چاپ' : 'ثبت و چاپ'}</span>
+            <span>{isEditing ? 'ذخیره و چاپ' : 'ثبت و چاپ'}</span>
           </button>
         </div>
       </div>

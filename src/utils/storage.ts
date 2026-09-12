@@ -1,4 +1,21 @@
-import { Product, Customer, Invoice, StockMovement, StoreSettings, AppUser, UserRole, UserPermissions, ExitSlipData, ExitSlipPrintRecord, PaymentMethod } from '../types';
+import { 
+  Product, 
+  Customer, 
+  Invoice, 
+  StockMovement, 
+  StockMovementType,
+  StoreSettings, 
+  AppUser, 
+  UserRole, 
+  UserPermissions, 
+  ExitSlipData, 
+  ExitSlipPrintRecord, 
+  PaymentMethod,
+  PurchaseInvoice,
+  InboundReceipt,
+  ActivityLog,
+  ActivityActionCategory
+} from '../types';
 import { getCurrentJalaliDate, getCurrentJalaliTime } from './jalali';
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -13,11 +30,14 @@ const STORAGE_KEYS = {
   PRODUCTS: 'factor_app_products_v1',
   CUSTOMERS: 'factor_app_customers_v1',
   INVOICES: 'factor_app_invoices_v1',
+  PURCHASE_INVOICES: 'factor_app_purchase_invoices_v1',
+  INBOUND_RECEIPTS: 'factor_app_inbound_receipts_v1',
   MOVEMENTS: 'factor_app_movements_v1',
   SETTINGS: 'factor_app_settings_v1',
   USERS: 'factor_app_users_v1',
   CURRENT_USER_ID: 'factor_app_current_user_id_v1',
   EXIT_SLIP_LOGS: 'factor_app_exit_slip_logs_v1',
+  ACTIVITY_LOGS: 'factor_app_activity_logs_v1',
 };
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
@@ -314,6 +334,96 @@ const initialInvoices: Invoice[] = [
   },
 ];
 
+const initialPurchaseInvoices: PurchaseInvoice[] = [
+  {
+    id: 'pur-1',
+    invoiceNumber: 'PUR-1001',
+    supplierName: 'شرکت بازرگانی آوا تجارت پیشرو',
+    supplierPhone: '۰۲۱-۶۶۷۷۸۸۹۹',
+    supplierAddress: 'تهران، خیابان جمهوری، تقاطع حافظ، مجتمع تجاری امجد',
+    date: getCurrentJalaliDate(),
+    items: [
+      {
+        id: 'pur-item-1',
+        productId: 'prod-6',
+        productName: 'فلش مموری سن‌دیسک Ultra Flair 64GB',
+        productCode: '1006',
+        unit: 'عدد',
+        quantity: 15,
+        buyPrice: 310000,
+        discount: 0,
+        total: 4650000,
+      },
+      {
+        id: 'pur-item-2',
+        productId: 'prod-3',
+        productName: 'کیبورد مکانیکی گیمینگ تسکو GK 8128',
+        productCode: '1003',
+        unit: 'عدد',
+        quantity: 5,
+        buyPrice: 1350000,
+        discount: 150000,
+        total: 6600000,
+      },
+    ],
+    subtotal: 11400000,
+    totalDiscount: 150000,
+    taxRate: 0,
+    taxAmount: 0,
+    shippingCost: 80000,
+    finalTotal: 11330000,
+    paymentStatus: 'paid',
+    paymentMethod: 'transfer',
+    paidAmount: 11330000,
+    transferDescription: 'واریز از حساب بانک ملت شماره پیگیری ۷۸۴۵۱۲',
+    notes: 'تحویل باربری مرکزی با هماهنگی انباردار',
+    status: 'pending_receipt',
+    inboundReceiptId: 'rec-1',
+    createdAt: new Date().toISOString(),
+  },
+];
+
+const initialInboundReceipts: InboundReceipt[] = [
+  {
+    id: 'rec-1',
+    receiptNumber: 'REC-1001',
+    purchaseInvoiceId: 'pur-1',
+    purchaseInvoiceNumber: 'PUR-1001',
+    supplierName: 'شرکت بازرگانی آوا تجارت پیشرو',
+    date: getCurrentJalaliDate(),
+    status: 'pending_verification',
+    items: [
+      {
+        id: 'rec-item-1',
+        productId: 'prod-6',
+        productName: 'فلش مموری سن‌دیسک Ultra Flair 64GB',
+        productCode: '1006',
+        unit: 'عدد',
+        expectedQuantity: 15,
+        receivedQuantity: 0,
+        discrepancy: -15,
+        buyPrice: 310000,
+      },
+      {
+        id: 'rec-item-2',
+        productId: 'prod-3',
+        productName: 'کیبورد مکانیکی گیمینگ تسکو GK 8128',
+        productCode: '1003',
+        unit: 'عدد',
+        expectedQuantity: 5,
+        receivedQuantity: 0,
+        discrepancy: -5,
+        buyPrice: 1350000,
+      },
+    ],
+    totalExpectedQuantity: 20,
+    totalReceivedQuantity: 0,
+    totalDiscrepancy: -20,
+    notes: 'حواله ورود صادر شده از فاکتور خرید PUR-1001 — در انتظار شمارش و تایید اقلام توسط انباردار',
+    createdAt: new Date().toISOString(),
+  },
+];
+
 const initialMovements: StockMovement[] = [
   {
     id: 'mov-1',
@@ -406,6 +516,65 @@ const initialSettings: StoreSettings = {
   baleChannel: '',
 };
 
+const initialActivityLogs: ActivityLog[] = [
+  {
+    id: 'log-1',
+    userId: 'user-1',
+    userName: 'حمیدرضا سپهری',
+    userRole: 'admin',
+    userRoleTitle: 'مدیر کل سیستم',
+    category: 'auth',
+    actionType: 'login',
+    actionTitle: 'ورود به سیستم',
+    details: 'ورود موفق به سامانه و احراز هویت مدیر ارشد',
+    timestamp: `${getCurrentJalaliDate()} - ۰۸:۳۰:۱۵`,
+    dateOnly: getCurrentJalaliDate(),
+    deviceInfo: 'مرورگر وب (رایانه)',
+  },
+  {
+    id: 'log-2',
+    userId: 'user-2',
+    userName: 'سارا محمدی',
+    userRole: 'cashier',
+    userRoleTitle: 'صندوق‌دار شیفت صبح',
+    category: 'sales',
+    actionType: 'create_invoice',
+    actionTitle: 'صدور فاکتور فروش',
+    details: 'صدور فاکتور شماره INV-1001 برای مشتری شرکت فناوران داده‌پرداز پایتخت به مبلغ ۲,۴۶۳,۲۰۰ تومان',
+    timestamp: `${getCurrentJalaliDate()} - ۰۹:۱۵:۴۰`,
+    dateOnly: getCurrentJalaliDate(),
+    deviceInfo: 'صندوق فروشگاه (POS)',
+  },
+  {
+    id: 'log-3',
+    userId: 'user-3',
+    userName: 'حسین اکبری',
+    userRole: 'warehouse',
+    userRoleTitle: 'مسئول انبار و موجودی',
+    category: 'warehouse',
+    actionType: 'verify_receipt',
+    actionTitle: 'ثبت مغایرت و تایید حواله ورود',
+    details: 'شمارش و تایید حواله ورود REC-1001 مربوط به فاکتور خرید PUR-1001 با مغایرت ۱۵- عدد فلش مموری',
+    timestamp: `${getCurrentJalaliDate()} - ۱۰:۴۵:۱۲`,
+    dateOnly: getCurrentJalaliDate(),
+    deviceInfo: 'مرورگر همراه (موبایل)',
+  },
+  {
+    id: 'log-4',
+    userId: 'user-1',
+    userName: 'حمیدرضا سپهری',
+    userRole: 'admin',
+    userRoleTitle: 'مدیر کل سیستم',
+    category: 'settings',
+    actionType: 'update_settings',
+    actionTitle: 'به‌روزرسانی پیکربندی فروشگاه',
+    details: 'بروزرسانی مشخصات سربرگ و فعال‌سازی کسر خودکار موجودی انبار هنگام صدور فاکتور',
+    timestamp: `${getCurrentJalaliDate()} - ۱۱:۲۰:۰۰`,
+    dateOnly: getCurrentJalaliDate(),
+    deviceInfo: 'مرورگر وب (رایانه)',
+  },
+];
+
 export const StorageService = {
   _listeners: [] as Array<() => void>,
 
@@ -433,10 +602,13 @@ export const StorageService = {
         products: this.getProducts(),
         customers: this.getCustomers(),
         invoices: this.getInvoices(),
+        purchaseInvoices: this.getPurchaseInvoices(),
+        inboundReceipts: this.getInboundReceipts(),
         movements: this.getMovements(),
         settings: this.getSettings(),
         users: this.getUsers(),
         exitSlipLogs: this.getExitSlipLogs(),
+        activityLogs: this.getActivityLogs(),
       };
       await fetch('/api/db', {
         method: 'POST',
@@ -459,10 +631,13 @@ export const StorageService = {
         if (Array.isArray(d.products)) localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(d.products));
         if (Array.isArray(d.customers)) localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(d.customers));
         if (Array.isArray(d.invoices)) localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(d.invoices));
+        if (Array.isArray(d.purchaseInvoices)) localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(d.purchaseInvoices));
+        if (Array.isArray(d.inboundReceipts)) localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(d.inboundReceipts));
         if (Array.isArray(d.movements)) localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(d.movements));
         if (d.settings && typeof d.settings === 'object') localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(d.settings));
         if (Array.isArray(d.users)) localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(d.users));
         if (d.exitSlipLogs && typeof d.exitSlipLogs === 'object') localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(d.exitSlipLogs));
+        if (Array.isArray(d.activityLogs)) localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(d.activityLogs));
         return true;
       }
       return false;
@@ -523,6 +698,118 @@ export const StorageService = {
   saveInvoices(invoices: Invoice[]) {
     localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoices));
     this.pushToServer({ invoices });
+  },
+
+  getPurchaseInvoices(): PurchaseInvoice[] {
+    const data = localStorage.getItem(STORAGE_KEYS.PURCHASE_INVOICES);
+    if (!data) {
+      localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(initialPurchaseInvoices));
+      return initialPurchaseInvoices;
+    }
+    try {
+      return JSON.parse(data);
+    } catch {
+      return initialPurchaseInvoices;
+    }
+  },
+
+  savePurchaseInvoices(purchaseInvoices: PurchaseInvoice[]) {
+    localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(purchaseInvoices));
+    this.pushToServer({ purchaseInvoices });
+  },
+
+  savePurchaseInvoice(invoice: PurchaseInvoice) {
+    const invoices = this.getPurchaseInvoices();
+    const idx = invoices.findIndex((i) => i.id === invoice.id);
+    if (idx >= 0) {
+      invoices[idx] = invoice;
+    } else {
+      invoices.unshift(invoice);
+    }
+    this.savePurchaseInvoices(invoices);
+  },
+
+  deletePurchaseInvoice(invoiceId: string) {
+    const invoices = this.getPurchaseInvoices().filter((i) => i.id !== invoiceId);
+    this.savePurchaseInvoices(invoices);
+  },
+
+  getInboundReceipts(): InboundReceipt[] {
+    const data = localStorage.getItem(STORAGE_KEYS.INBOUND_RECEIPTS);
+    if (!data) {
+      localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(initialInboundReceipts));
+      return initialInboundReceipts;
+    }
+    try {
+      return JSON.parse(data);
+    } catch {
+      return initialInboundReceipts;
+    }
+  },
+
+  saveInboundReceipts(inboundReceipts: InboundReceipt[]) {
+    localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(inboundReceipts));
+    this.pushToServer({ inboundReceipts });
+  },
+
+  saveInboundReceipt(receipt: InboundReceipt) {
+    const receipts = this.getInboundReceipts();
+    const idx = receipts.findIndex((r) => r.id === receipt.id);
+    if (idx >= 0) {
+      receipts[idx] = receipt;
+    } else {
+      receipts.unshift(receipt);
+    }
+    this.saveInboundReceipts(receipts);
+  },
+
+  deleteInboundReceipt(receiptId: string) {
+    const receipts = this.getInboundReceipts().filter((r) => r.id !== receiptId);
+    this.saveInboundReceipts(receipts);
+  },
+
+  saveProduct(product: Product) {
+    const products = this.getProducts();
+    const idx = products.findIndex((p) => p.id === product.id);
+    if (idx >= 0) {
+      products[idx] = product;
+    } else {
+      products.push(product);
+    }
+    this.saveProducts(products);
+  },
+
+  adjustStock(
+    productId: string,
+    type: StockMovementType,
+    quantity: number,
+    note?: string,
+    referenceInvoice?: string
+  ) {
+    const products = this.getProducts();
+    const prod = products.find((p) => p.id === productId);
+    if (!prod) return;
+
+    const isAdding = type === 'purchase' || type === 'return' || (type === 'adjustment' && quantity > 0);
+    const absQuantity = Math.abs(quantity);
+    const newStock = isAdding ? prod.stock + absQuantity : Math.max(0, prod.stock - absQuantity);
+    prod.stock = newStock;
+    prod.updatedAt = getCurrentJalaliDate();
+    this.saveProducts(products);
+
+    const movements = this.getMovements();
+    const newMovement: StockMovement = {
+      id: `mov-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      productId: prod.id,
+      productName: prod.name,
+      type,
+      quantity: isAdding ? absQuantity : -absQuantity,
+      remainingStock: newStock,
+      date: getCurrentJalaliDate(),
+      note: note || (isAdding ? 'ورود به انبار' : 'خروج از انبار'),
+      invoiceId: referenceInvoice,
+    };
+    this.saveMovements([newMovement, ...movements]);
   },
 
   getMovements(): StockMovement[] {
@@ -599,11 +886,7 @@ export const StorageService = {
           pin: userPin,
         };
       });
-      if (needsSave || !sanitized.some((u) => u.username === 'accountant1')) {
-        if (!sanitized.some((u) => u.username === 'accountant1')) {
-          const accountant = initialUsers.find((u) => u.username === 'accountant1');
-          if (accountant) sanitized.push(accountant);
-        }
+      if (needsSave) {
         this.saveUsers(sanitized);
       }
       return sanitized;
@@ -779,6 +1062,89 @@ export const StorageService = {
     return initialSettings;
   },
 
+  // ACTIVITY LOGS (ثبت وقایع و ردگیری فعالیت کاربران)
+  getActivityLogs(): ActivityLog[] {
+    const data = localStorage.getItem(STORAGE_KEYS.ACTIVITY_LOGS);
+    if (!data) {
+      localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(initialActivityLogs));
+      return initialActivityLogs;
+    }
+    try {
+      return JSON.parse(data);
+    } catch {
+      return initialActivityLogs;
+    }
+  },
+
+  saveActivityLogs(logs: ActivityLog[]) {
+    localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(logs));
+    this.pushToServer({ activityLogs: logs });
+  },
+
+  logActivity(params: {
+    userId?: string;
+    userName?: string;
+    userRole?: string;
+    userRoleTitle?: string;
+    category: ActivityActionCategory;
+    actionType: string;
+    actionTitle: string;
+    details: string;
+    deviceInfo?: string;
+  }): ActivityLog {
+    try {
+      const activeUser = this.getActiveUser();
+      const userId = params.userId || activeUser?.id || 'sys';
+      const userName = params.userName || activeUser?.fullName || 'کاربر سیستم';
+      const userRole = params.userRole || activeUser?.role || 'admin';
+      const userRoleTitle = params.userRoleTitle || activeUser?.roleTitle || ROLE_LABELS[activeUser?.role as UserRole] || 'مدیر';
+
+      const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+      const defaultDevice = isMobile ? 'مرورگر همراه (موبایل)' : 'مرورگر وب (رایانه)';
+
+      const newLog: ActivityLog = {
+        id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        userId,
+        userName,
+        userRole,
+        userRoleTitle,
+        category: params.category,
+        actionType: params.actionType,
+        actionTitle: params.actionTitle,
+        details: params.details,
+        timestamp: `${getCurrentJalaliDate()} - ${getCurrentJalaliTime()}`,
+        dateOnly: getCurrentJalaliDate(),
+        deviceInfo: params.deviceInfo || defaultDevice,
+      };
+
+      const currentLogs = this.getActivityLogs();
+      const updatedLogs = [newLog, ...currentLogs].slice(0, 1000);
+      this.saveActivityLogs(updatedLogs);
+      this.notifyChange();
+      return newLog;
+    } catch (err) {
+      console.error('Failed to record activity log:', err);
+      return {
+        id: `log-${Date.now()}`,
+        userId: 'err',
+        userName: 'سیستم',
+        userRole: 'admin',
+        category: params.category,
+        actionType: params.actionType,
+        actionTitle: params.actionTitle,
+        details: params.details,
+        timestamp: `${getCurrentJalaliDate()} - ${getCurrentJalaliTime()}`,
+        dateOnly: getCurrentJalaliDate(),
+      };
+    }
+  },
+
+  clearActivityLogs() {
+    localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify([]));
+    this.pushToServer({ activityLogs: [] });
+    this.notifyChange();
+  },
+
   getStorageStats() {
     let totalBytes = 0;
     Object.values(STORAGE_KEYS).forEach((key) => {
@@ -796,15 +1162,18 @@ export const StorageService = {
 
   exportAllData(): string {
     const backup = {
-      version: '1.1',
+      version: '1.2',
       exportDate: getCurrentJalaliDate(),
       timestamp: new Date().toISOString(),
       products: this.getProducts(),
       customers: this.getCustomers(),
       invoices: this.getInvoices(),
+      purchaseInvoices: this.getPurchaseInvoices(),
+      inboundReceipts: this.getInboundReceipts(),
       movements: this.getMovements(),
       settings: this.getSettings(),
       users: this.getUsers(),
+      activityLogs: this.getActivityLogs(),
       currentUserId: this.getActiveUser().id,
     };
     return JSON.stringify(backup, null, 2);
@@ -822,6 +1191,12 @@ export const StorageService = {
       if (parsed.invoices && Array.isArray(parsed.invoices)) {
         this.saveInvoices(parsed.invoices);
       }
+      if (parsed.purchaseInvoices && Array.isArray(parsed.purchaseInvoices)) {
+        this.savePurchaseInvoices(parsed.purchaseInvoices);
+      }
+      if (parsed.inboundReceipts && Array.isArray(parsed.inboundReceipts)) {
+        this.saveInboundReceipts(parsed.inboundReceipts);
+      }
       if (parsed.movements && Array.isArray(parsed.movements)) {
         this.saveMovements(parsed.movements);
       }
@@ -830,6 +1205,9 @@ export const StorageService = {
       }
       if (parsed.users && Array.isArray(parsed.users)) {
         this.saveUsers(parsed.users);
+      }
+      if (parsed.activityLogs && Array.isArray(parsed.activityLogs)) {
+        this.saveActivityLogs(parsed.activityLogs);
       }
       return true;
     } catch (e) {
@@ -842,6 +1220,8 @@ export const StorageService = {
     localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(initialProducts));
     localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(initialCustomers));
     localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(initialInvoices));
+    localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(initialPurchaseInvoices));
+    localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(initialInboundReceipts));
     localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(initialMovements));
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(initialSettings));
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(initialUsers));

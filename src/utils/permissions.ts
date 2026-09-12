@@ -18,6 +18,14 @@ export function isTabPermitted(
     case 'invoices':
       return Boolean(user.permissions.canViewInvoices);
 
+    case 'purchases':
+      return Boolean(
+        user.permissions.canCreateInvoice ||
+        user.permissions.canManageInventory ||
+        user.permissions.canAccessAdmin ||
+        user.permissions.canViewInvoices
+      );
+
     case 'inventory':
       return (
         settings?.enableInventory !== false &&
@@ -97,7 +105,7 @@ export function getAllowedTabsForUser(
   settings?: StoreSettings
 ): string[] {
   if (!user) return [];
-  const allTabs = ['new-invoice', 'invoices', 'inventory', 'customers', 'reports', 'admin'];
+  const allTabs = ['new-invoice', 'invoices', 'purchases', 'inventory', 'customers', 'reports', 'admin'];
   return allTabs.filter((tab) => isTabPermitted(tab, user, settings));
 }
 
