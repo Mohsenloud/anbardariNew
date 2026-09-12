@@ -1,8 +1,28 @@
 import React, { useState } from 'react';
 import { Invoice, StoreSettings } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
-import { exportElementToPdf, printElementDirectly, printElementInNewWindow } from '../utils/pdfHelper';
-import { Printer, X, FileText, CheckCircle, Receipt, Building2, Share2, MessageCircle, Copy, Check, FileDown, Loader2, Globe, ArrowRightLeft, Pencil } from 'lucide-react';
+import { exportElementToPdf, printElementDirectly, printElementInNewWindow, generatePdfBlob } from '../utils/pdfHelper';
+import { 
+  Printer, 
+  X, 
+  FileText, 
+  CheckCircle, 
+  Receipt, 
+  Building2, 
+  Share2, 
+  MessageCircle, 
+  Copy, 
+  Check, 
+  FileDown, 
+  Loader2, 
+  Globe, 
+  ArrowRightLeft, 
+  Pencil,
+  Send,
+  ExternalLink,
+  Smartphone,
+  Download
+} from 'lucide-react';
 
 interface InvoiceViewModalProps {
   invoice: Invoice | null;
@@ -19,10 +39,12 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   onConvertProforma,
   onEditInvoice,
 }) => {
-  const defaultTpl = invoice.type || settings.defaultTemplate || 'standard';
+  const defaultTpl = invoice?.type || settings.defaultTemplate || 'standard';
   const [template, setTemplate] = useState<'standard' | 'official' | 'thermal'>(defaultTpl);
   const [copied, setCopied] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [showSocialModal, setShowSocialModal] = useState(false);
+  const [notification, setNotification] = useState<string | null>(null);
 
   if (!invoice) return null;
 
@@ -80,6 +102,113 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
     return lines.join('\n');
   };
 
+  const showToast = (msg: string) => {
+    setNotification(msg);
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleCopyText = async () => {
+    const text = getInvoiceShareText();
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+      showToast('متن کامل فاکتور در حافظه کپی شد.');
+    } catch {
+      showToast('خطا در کپی متن');
+    }
+  };
+
+  // Direct native PDF sharing (uses Android/iOS/Desktop share sheet with actual PDF file)
+  const handleSharePdfDirectly = async () => {
+    setIsExportingPdf(true);
+    try {
+      const filename = invoice.isProforma
+        ? `پیش_فاکتور_${invoice.invoiceNumber}.pdf`
+        : `فاکتور_فروش_${invoice.invoiceNumber}.pdf`;
+      const { success, blob, file, error } = await generatePdfBlob('printable-invoice', filename);
+      if (!success || (!file && !blob)) {
+        showToast(error || 'خطا در تولید فایل PDF');
+        return;
+      }
+      const shareFile = file || new File([blob!], filename, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [shareFile] })) {
+        await navigator.share({
+          files: [shareFile],
+          title: invoice.isProforma ? `پیش‌فاکتور شماره ${toPersianDigits(invoice.invoiceNumber)}` : `فاکتور شماره ${toPersianDigits(invoice.invoiceNumber)}`,
+          text: `فایل PDF ${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} برای ${invoice.customerName}`,
+        });
+        showToast('فایل PDF فاکتور با موفقیت به اشتراک گذاشته شد.');
+      } else {
+        // Fallback: auto download + inform user
+        const url = URL.createObjectURL(shareFile);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('فایل PDF دانلود شد و آماده ارسال در برنامه‌هاست.');
+      }
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        console.error(err);
+        showToast('خطا در اشتراک‌گذاری مستقیم فایل PDF');
+      }
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
+  // Text-only direct messengers sending
+  const handleSendWhatsApp = () => {
+    const text = encodeURIComponent(getInvoiceShareText());
+    const phone = invoice.customerPhone ? invoice.customerPhone.replace(/[^0-9]/g, '') : (settings.whatsappNumber ? settings.whatsappNumber.replace(/[^0-9]/g, '') : '');
+    const intlPhone = phone.startsWith('09') ? `98${phone.slice(1)}` : phone;
+    const url = intlPhone ? `https://api.whatsapp.com/send?phone=${intlPhone}&text=${text}` : `https://api.whatsapp.com/send?text=${text}`;
+    window.open(url, '_blank');
+    showToast('متن فاکتور در واتساپ ارسال شد.');
+  };
+
+  const handleSendTelegram = () => {
+    const text = encodeURIComponent(getInvoiceShareText());
+    const url = `https://t.me/share/url?url=&text=${text}`;
+    window.open(url, '_blank');
+    showToast('متن فاکتور در تلگرام ارسال شد.');
+  };
+
+  const handleSendEitaa = () => {
+    const text = encodeURIComponent(getInvoiceShareText());
+    const url = `https://eitaa.com/share/url?url=&text=${text}`;
+    window.open(url, '_blank');
+    showToast('متن فاکتور در ایتا ارسال شد.');
+  };
+
+  const handleSendBale = () => {
+    const text = encodeURIComponent(getInvoiceShareText());
+    const url = `https://ble.ir/share/compile?text=${text}`;
+    window.open(url, '_blank');
+    showToast('متن فاکتور در بله ارسال شد.');
+  };
+
+  const handleSendRubika = () => {
+    const text = getInvoiceShareText();
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('متن فاکتور کپی شد و سامانه روبیکا باز گردید.');
+      window.open('https://web.rubika.ir', '_blank');
+    }).catch(() => {
+      window.open('https://web.rubika.ir', '_blank');
+    });
+  };
+
+  const handleSendSms = () => {
+    const text = encodeURIComponent(getInvoiceShareText());
+    const phone = invoice.customerPhone ? invoice.customerPhone.replace(/[^0-9]/g, '') : '';
+    const url = `sms:${phone}?body=${text}`;
+    window.open(url, '_self');
+  };
+
   const handleShare = async () => {
     const text = getInvoiceShareText();
     if (navigator.share) {
@@ -92,19 +221,8 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
         // user cancelled or share failed
       }
     } else {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      await handleCopyText();
     }
-  };
-
-  const handleWhatsApp = () => {
-    const text = encodeURIComponent(getInvoiceShareText());
-    const phone = invoice.customerPhone ? invoice.customerPhone.replace(/[^0-9]/g, '') : '';
-    // If iranian phone starts with 09..., convert to 989...
-    const intlPhone = phone.startsWith('09') ? `98${phone.slice(1)}` : phone;
-    const url = intlPhone ? `https://api.whatsapp.com/send?phone=${intlPhone}&text=${text}` : `https://api.whatsapp.com/send?text=${text}`;
-    window.open(url, '_blank');
   };
 
   return (
@@ -198,36 +316,38 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
 
             {/* Action Buttons: Share, WhatsApp, Print */}
             <div className="flex items-center gap-1.5">
-              {/* WhatsApp Quick Share */}
+              {/* Social Media & Messengers Modal Trigger */}
               <button
                 type="button"
-                onClick={handleWhatsApp}
-                title="ارسال فاکتور در واتساپ"
-                className="flex items-center gap-1 bg-[#25D366] hover:bg-[#1EBE5D] text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                id="invoice-header-social-btn"
+                onClick={() => setShowSocialModal(true)}
+                title="ارسال به شبکه‌های اجتماعی و پیام‌رسان‌ها"
+                className="flex items-center gap-1 bg-sky-600 hover:bg-sky-500 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">ارسال و پیام‌رسان‌ها</span>
+              </button>
+
+              {/* WhatsApp Quick Share (Text only) */}
+              <button
+                type="button"
+                id="invoice-header-whatsapp-btn"
+                onClick={handleSendWhatsApp}
+                title="ارسال متنی فاکتور به واتساپ"
+                className="flex items-center gap-1 bg-[#25D366] hover:bg-[#1EBE5D] text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
               >
                 <MessageCircle className="w-3.5 h-3.5" />
                 <span className="hidden xs:inline">واتساپ</span>
               </button>
 
-              {/* Native / Copy Share */}
-              <button
-                type="button"
-                onClick={handleShare}
-                title="اشتراک‌گذاری فاکتور"
-                className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer border border-slate-700"
-              >
-                {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5" />}
-                <span className="hidden xs:inline">{copied ? 'کپی شد' : 'ارسال'}</span>
-              </button>
-
-              {/* PDF Export Button */}
+              {/* PDF Export Button (Remains as PDF file) */}
               <button
                 type="button"
                 id="modal-pdf-btn"
                 onClick={handleExportPdf}
                 disabled={isExportingPdf}
                 title="دانلود نسخه PDF فاکتور"
-                className="flex items-center gap-1 bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                className="flex items-center gap-1 bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
               >
                 {isExportingPdf ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -250,7 +370,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                   className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
                 >
                   <Pencil className="w-3.5 h-3.5" />
-                  <span className="hidden xs:inline">{invoice.isProforma ? 'ویرایش پیش‌فاکتور' : 'ویرایش فاکتور'}</span>
+                  <span className="hidden xs:inline">{invoice.isProforma ? 'ویرایش پیش‌فاکتور' : 'ویرایش'}</span>
                 </button>
               )}
 
@@ -643,6 +763,183 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* SOCIAL MEDIA & MESSENGERS MODAL */}
+      {showSocialModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs font-['Vazirmatn']">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Social Modal Header */}
+            <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Share2 className="w-4 h-4 text-sky-400" />
+                <h3 className="font-bold text-sm">ارسال فاکتور به شبکه‌های اجتماعی و پیام‌رسان‌ها</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSocialModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* PRIMARY: DIRECT PDF SHARE & DOWNLOAD (REMAINS EXACTLY AS PDF) */}
+              <div className="bg-sky-50 border border-sky-200 rounded-xl p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileDown className="w-4 h-4 text-sky-700 shrink-0" />
+                    <span className="text-xs font-bold text-sky-950">
+                      ارسال فاکتور به صورت فایل PDF
+                    </span>
+                  </div>
+                  <span className="text-[10px] bg-sky-100 text-sky-800 font-bold px-2 py-0.5 rounded">
+                    سند رسمی دیجیتال
+                  </span>
+                </div>
+                <p className="text-[11px] text-sky-800 leading-relaxed">
+                  فایل PDF رسمی و کم‌حجم فاکتور تولید شده و از طریق منوی اشتراک‌گذاری سیستم یا پیام‌رسان‌ها به عنوان سند رسمی ارسال می‌گردد:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    id="invoice-share-pdf-direct-btn"
+                    onClick={handleSharePdfDirectly}
+                    disabled={isExportingPdf}
+                    className="flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-700 active:scale-98 disabled:opacity-60 text-white py-2.5 px-3 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    {isExportingPdf ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>در حال آماده‌سازی PDF...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Share2 className="w-4 h-4" />
+                        <span>📲 اشتراک‌گذاری فایل PDF</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    id="invoice-modal-download-pdf-btn"
+                    onClick={handleExportPdf}
+                    disabled={isExportingPdf}
+                    className="flex items-center justify-center gap-2 bg-white hover:bg-slate-100 active:scale-98 disabled:opacity-60 text-slate-700 border border-slate-300 py-2.5 px-3 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                  >
+                    <Download className="w-4 h-4 text-slate-500" />
+                    <span>دانلود مستقیم فایل PDF</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* QUICK MESSENGERS LIST (TEXT ONLY) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700">
+                    ارسال اختصاصی به پیام‌رسان‌ها (بصورت متنی):
+                  </span>
+                  <span className="text-[10px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full font-medium border border-indigo-200">
+                    متن آماده و سریع
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {/* WhatsApp */}
+                  <button
+                    type="button"
+                    onClick={handleSendWhatsApp}
+                    className="flex items-center justify-center gap-1.5 bg-[#25D366] hover:bg-[#1EBE5D] text-white py-2.5 px-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all active:scale-95 shadow-2xs"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>واتساپ (متنی)</span>
+                  </button>
+
+                  {/* Telegram */}
+                  <button
+                    type="button"
+                    onClick={handleSendTelegram}
+                    className="flex items-center justify-center gap-1.5 bg-[#229ED9] hover:bg-[#1C8AC2] text-white py-2.5 px-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all active:scale-95 shadow-2xs"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>تلگرام (متنی)</span>
+                  </button>
+
+                  {/* Eitaa */}
+                  <button
+                    type="button"
+                    onClick={handleSendEitaa}
+                    className="flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white py-2.5 px-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all active:scale-95 shadow-2xs"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>ایتا (متنی)</span>
+                  </button>
+
+                  {/* Bale */}
+                  <button
+                    type="button"
+                    onClick={handleSendBale}
+                    className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all active:scale-95 shadow-2xs"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>بله (متنی)</span>
+                  </button>
+
+                  {/* Rubika */}
+                  <button
+                    type="button"
+                    onClick={handleSendRubika}
+                    className="flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white py-2.5 px-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all active:scale-95 shadow-2xs"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>روبیکا (متنی)</span>
+                  </button>
+
+                  {/* SMS */}
+                  <button
+                    type="button"
+                    onClick={handleSendSms}
+                    className="flex items-center justify-center gap-1.5 bg-slate-700 hover:bg-slate-800 text-white py-2.5 px-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all active:scale-95 shadow-2xs"
+                  >
+                    <Smartphone className="w-4 h-4" />
+                    <span>پیامک (SMS)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* COPY COMPLETE TEXT */}
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-xs text-slate-500">کپی متن خلاصه فاکتور در حافظه:</span>
+                <button
+                  type="button"
+                  onClick={handleCopyText}
+                  className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copied ? 'کپی شد!' : 'کپی متن فاکتور'}</span>
+                </button>
+              </div>
+
+              {notification && (
+                <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl text-center font-bold">
+                  {notification}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-slate-50 border-t border-slate-200 px-5 py-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowSocialModal(false)}
+                className="px-4 py-1.5 text-xs text-slate-600 hover:bg-slate-200 rounded-xl cursor-pointer"
+              >
+                بستن پنجره
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
