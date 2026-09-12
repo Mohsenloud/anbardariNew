@@ -330,19 +330,20 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           ) : (
             filteredInvoices.map((inv, index) => {
               const itemCount = inv.items.reduce((s, i) => s + i.quantity, 0);
+              const cardBg = index % 2 === 1 ? 'bg-slate-50/70' : 'bg-white';
 
               return (
                 <div
                   key={inv.id}
                   id={`mobile-invoice-card-${inv.id}`}
-                  className={`rounded-2xl border-2 shadow-xs transition-all overflow-hidden relative ${
+                  className={`rounded-2xl border-2 shadow-xs transition-all overflow-hidden relative ${cardBg} ${
                     inv.isProforma
-                      ? 'bg-white border-indigo-200 border-r-6 border-r-indigo-600'
+                      ? 'border-indigo-200 border-r-6 border-r-indigo-600'
                       : inv.paymentStatus === 'paid'
-                      ? 'bg-white border-slate-200/90 border-r-6 border-r-emerald-500'
+                      ? 'border-slate-200/90 border-r-6 border-r-emerald-500'
                       : inv.paymentStatus === 'partial'
-                      ? 'bg-white border-slate-200/90 border-r-6 border-r-amber-500'
-                      : 'bg-white border-slate-200/90 border-r-6 border-r-rose-500'
+                      ? 'border-slate-200/90 border-r-6 border-r-amber-500'
+                      : 'border-slate-200/90 border-r-6 border-r-rose-500'
                   }`}
                 >
                   {/* Card Top Strip: Row Number + Type + Status */}
@@ -586,11 +587,11 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredInvoices.map((inv) => {
+                filteredInvoices.map((inv, index) => {
                   const itemCount = inv.items.reduce((s, i) => s + i.quantity, 0);
 
                   return (
-                    <tr key={inv.id} className="hover:bg-slate-50/70 transition-colors">
+                    <tr key={inv.id} className={`${index % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'} hover:bg-slate-100/70 transition-colors`}>
                       <td className="p-3.5">
                         <div className="font-bold text-slate-900 font-mono flex items-center gap-1.5">
                           <span>{toPersianDigits(inv.invoiceNumber)}</span>

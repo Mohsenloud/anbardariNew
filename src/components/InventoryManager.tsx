@@ -228,19 +228,19 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
   return (
     <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 pb-12">
-      {/* MOBILE-FIRST DEDICATED WAREHOUSE NAVIGATION BAR (STICKY ON MOBILE) */}
-      <div className="sm:hidden sticky top-0 z-20 bg-slate-50/95 backdrop-blur-md pb-2.5 pt-1 -mx-3 px-3 border-b border-slate-200/70">
+      {/* MOBILE-FIRST DEDICATED WAREHOUSE NAVIGATION BAR (STICKY BELOW MAIN HEADER) */}
+      <div className="sm:hidden sticky top-16 z-20 bg-slate-100 pb-2 pt-1.5 -mx-3 px-3 border-b border-slate-200/90 shadow-xs">
         {/* 4 Ergonomic Mobile Touch Tabs */}
-        <div className="grid grid-cols-4 gap-1.5 p-1.5 bg-white rounded-2xl border border-slate-200/90 shadow-sm">
+        <div className="grid grid-cols-4 gap-1.5 p-1 bg-white rounded-2xl border border-slate-200 shadow-xs">
           {/* Tab 1: کالاها و موجودی */}
           <button
             type="button"
             id="mobile-tab-items"
             onClick={() => setActiveSubTab('items')}
-            className={`flex flex-col items-center justify-center py-2.5 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
               activeSubTab === 'items'
                 ? 'bg-blue-600 text-white shadow-xs font-bold'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
             }`}
           >
             <div className="relative">
@@ -253,7 +253,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                 </span>
               )}
             </div>
-            <span className="text-[11px] mt-1 whitespace-nowrap">کالاها</span>
+            <span className="text-[11px] mt-0.5 whitespace-nowrap">کالاها</span>
             <span className={`text-[9px] ${activeSubTab === 'items' ? 'text-blue-100' : 'text-slate-400'}`}>
               ({toPersianDigits(products.length)})
             </span>
@@ -264,21 +264,21 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             type="button"
             id="mobile-tab-inbound"
             onClick={() => setActiveSubTab('inbound-receipts')}
-            className={`flex flex-col items-center justify-center py-2.5 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
               activeSubTab === 'inbound-receipts'
                 ? 'bg-emerald-600 text-white shadow-xs font-bold'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
             }`}
           >
             <div className="relative">
               <ArrowDownRight className="w-5 h-5" />
               {pendingInboundCount > 0 && (
-                <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full animate-pulse shadow-xs">
+                <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[9px] font-bold px-1 py-0.2 rounded-full animate-pulse shadow-xs">
                   {toPersianDigits(pendingInboundCount)}
                 </span>
               )}
             </div>
-            <span className="text-[11px] mt-1 whitespace-nowrap">حواله ورود</span>
+            <span className="text-[11px] mt-0.5 whitespace-nowrap">حواله ورود</span>
             <span className={`text-[9px] ${activeSubTab === 'inbound-receipts' ? 'text-emerald-100' : 'text-slate-400'}`}>
               ({toPersianDigits(inboundReceipts.length)})
             </span>
@@ -289,21 +289,21 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             type="button"
             id="mobile-tab-exit-slips"
             onClick={() => setActiveSubTab('exit-slips')}
-            className={`flex flex-col items-center justify-center py-2.5 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
               activeSubTab === 'exit-slips'
                 ? 'bg-indigo-600 text-white shadow-xs font-bold'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
             }`}
           >
             <div className="relative">
               <Truck className="w-5 h-5" />
               {unprintedSlipsCount > 0 && (
-                <span className="absolute -top-1.5 -right-2 bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full shadow-xs">
+                <span className="absolute -top-1.5 -right-2 bg-amber-500 text-white text-[9px] font-bold px-1 py-0.2 rounded-full shadow-xs">
                   {toPersianDigits(unprintedSlipsCount)}
                 </span>
               )}
             </div>
-            <span className="text-[11px] mt-1 whitespace-nowrap">برگه خروج</span>
+            <span className="text-[11px] mt-0.5 whitespace-nowrap">برگه خروج</span>
             <span className={`text-[9px] ${activeSubTab === 'exit-slips' ? 'text-indigo-100' : 'text-slate-400'}`}>
               ({toPersianDigits(invoices.length)})
             </span>
@@ -314,42 +314,42 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             type="button"
             id="mobile-tab-movements"
             onClick={() => setActiveSubTab('movements')}
-            className={`flex flex-col items-center justify-center py-2.5 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
               activeSubTab === 'movements'
                 ? 'bg-slate-800 text-white shadow-xs font-bold'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
             }`}
           >
             <History className="w-5 h-5" />
-            <span className="text-[11px] mt-1 whitespace-nowrap">کاردکس</span>
+            <span className="text-[11px] mt-0.5 whitespace-nowrap">کاردکس</span>
             <span className={`text-[9px] ${activeSubTab === 'movements' ? 'text-slate-300' : 'text-slate-400'}`}>
               گردش
             </span>
           </button>
         </div>
+      </div>
 
-        {/* Quick Action bar on mobile: Active tab title + Add new product button */}
-        <div className="flex items-center justify-between gap-2 mt-2 px-1">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 truncate">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
-            <span className="truncate">
-              {activeSubTab === 'items' && 'کالاها و موجودی انبار'}
-              {activeSubTab === 'inbound-receipts' && 'حواله‌های ورود و رسید انبار'}
-              {activeSubTab === 'exit-slips' && 'برگه‌های خروج و تحویل انبار'}
-              {activeSubTab === 'movements' && 'کاردکس و تاریخچه گردش کالا'}
-            </span>
-          </div>
-
-          <button
-            type="button"
-            id="mobile-quick-add-product-btn"
-            onClick={handleOpenNewProduct}
-            className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>کالای جدید</span>
-          </button>
+      {/* Quick Action & Active Tab Title for Mobile (In Page Flow) */}
+      <div className="sm:hidden flex items-center justify-between gap-2 px-1 -mt-1">
+        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 truncate">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+          <span className="truncate">
+            {activeSubTab === 'items' && 'کالاها و موجودی انبار'}
+            {activeSubTab === 'inbound-receipts' && 'حواله‌های ورود و رسید انبار'}
+            {activeSubTab === 'exit-slips' && 'برگه‌های خروج و تحویل انبار'}
+            {activeSubTab === 'movements' && 'کاردکس و تاریخچه گردش کالا'}
+          </span>
         </div>
+
+        <button
+          type="button"
+          id="mobile-quick-add-product-btn"
+          onClick={handleOpenNewProduct}
+          className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>کالای جدید</span>
+        </button>
       </div>
 
       {/* Top Header Card (Desktop & Tablet) */}
@@ -592,12 +592,12 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                 هیچ کالایی با معیارهای جستجو یافت نشد.
               </div>
             ) : (
-              filteredProducts.map((prod) => {
+              filteredProducts.map((prod, index) => {
                 const isOut = prod.stock === 0;
                 const isLow = prod.stock > 0 && prod.stock <= prod.minStockAlert;
 
                 return (
-                  <div key={prod.id} className="p-4 space-y-3 hover:bg-slate-50/50 transition-colors">
+                  <div key={prod.id} className={`p-4 space-y-3 ${index % 2 === 1 ? 'bg-slate-50/85' : 'bg-white'} hover:bg-slate-100/60 transition-colors`}>
                     {/* Header: Name + Code + Stock badge */}
                     <div className="flex items-start justify-between gap-2">
                       <div>
@@ -708,12 +708,12 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  filteredProducts.map((prod) => {
+                  filteredProducts.map((prod, index) => {
                     const isOut = prod.stock === 0;
                     const isLow = prod.stock > 0 && prod.stock <= prod.minStockAlert;
 
                     return (
-                      <tr key={prod.id} className="hover:bg-slate-50/70 transition-colors">
+                      <tr key={prod.id} className={`${index % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'} hover:bg-slate-100/70 transition-colors`}>
                         <td className="p-3.5 font-mono text-slate-600 font-semibold">
                           {toPersianDigits(prod.code)}
                         </td>
@@ -826,10 +826,10 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                 هیچ تراکنشی در انبار ثبت نشده است.
               </div>
             ) : (
-              movements.map((mov) => {
+              movements.map((mov, index) => {
                 const isPositive = mov.quantity > 0;
                 return (
-                  <div key={mov.id} className="p-3.5 space-y-2 hover:bg-slate-50/50 transition-colors">
+                  <div key={mov.id} className={`p-3.5 space-y-2 ${index % 2 === 1 ? 'bg-slate-50/85' : 'bg-white'} hover:bg-slate-100/60 transition-colors`}>
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-slate-900 text-xs">{mov.productName}</span>
                       <span
@@ -912,10 +912,10 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  movements.map((mov) => {
+                  movements.map((mov, index) => {
                     const isPositive = mov.quantity > 0;
                     return (
-                      <tr key={mov.id} className="hover:bg-slate-50/70 transition-colors">
+                      <tr key={mov.id} className={`${index % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'} hover:bg-slate-100/70 transition-colors`}>
                         <td className="p-3.5 text-slate-600 font-mono">{mov.date}</td>
                         <td className="p-3.5 font-bold text-slate-900">{mov.productName}</td>
                         <td className="p-3.5">
@@ -1062,13 +1062,13 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
               <>
                 {/* Mobile View: Exit Slip Cards */}
                 <div className="block sm:hidden divide-y divide-slate-100">
-                  {filteredExitSlips.map((inv) => {
+                  {filteredExitSlips.map((inv, index) => {
                     const slipLog = exitSlipLogs[inv.id] || { invoiceId: inv.id, printCount: 0, history: [] };
                     const isPrinted = slipLog.printCount > 0;
                     const totalQty = inv.items.reduce((s, it) => s + it.quantity, 0);
 
                     return (
-                      <div key={inv.id} className="p-4 space-y-3 hover:bg-slate-50/60 transition-colors">
+                      <div key={inv.id} className={`p-4 space-y-3 ${index % 2 === 1 ? 'bg-slate-50/85' : 'bg-white'} hover:bg-slate-100/60 transition-colors`}>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <span className="font-['Vazirmatn'] font-bold text-slate-900 text-sm bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200">
@@ -1160,13 +1160,13 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {filteredExitSlips.map((inv) => {
+                      {filteredExitSlips.map((inv, index) => {
                         const slipLog = exitSlipLogs[inv.id] || { invoiceId: inv.id, printCount: 0, history: [] };
                         const isPrinted = slipLog.printCount > 0;
                         const totalQty = inv.items.reduce((s, it) => s + it.quantity, 0);
 
                         return (
-                          <tr key={inv.id} className="hover:bg-slate-50/70 transition-colors">
+                          <tr key={inv.id} className={`${index % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'} hover:bg-slate-100/70 transition-colors`}>
                             <td className="p-3.5">
                               <span className="font-['Vazirmatn'] font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
                                 {toPersianDigits(inv.invoiceNumber)}

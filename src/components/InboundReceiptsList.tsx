@@ -196,7 +196,7 @@ export const InboundReceiptsList: React.FC<InboundReceiptsListProps> = ({
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredReceipts.map((receipt) => {
+          {filteredReceipts.map((receipt, index) => {
             const isPending = receipt.status === 'pending_verification';
             const hasDiscrepancy = receipt.status === 'has_discrepancy';
             const isConfirmed = receipt.status === 'confirmed';
@@ -204,7 +204,9 @@ export const InboundReceiptsList: React.FC<InboundReceiptsListProps> = ({
             return (
               <div
                 key={receipt.id}
-                className={`bg-white rounded-2xl border transition-all p-4 shadow-2xs hover:shadow-xs ${
+                className={`rounded-2xl border transition-all p-4 shadow-2xs hover:shadow-xs ${
+                  index % 2 === 1 ? 'bg-slate-50/85' : 'bg-white'
+                } ${
                   isPending
                     ? 'border-blue-200 hover:border-blue-300'
                     : hasDiscrepancy

@@ -544,7 +544,7 @@ ${selectedLogForDetails.details}`;
                   return (
                     <tr 
                       key={log.id} 
-                      className="hover:bg-slate-50/80 transition-colors group"
+                      className={`${index % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'} hover:bg-slate-100/80 transition-colors group`}
                     >
                       {/* Row Index */}
                       <td className="py-3.5 px-4 text-center font-mono text-xs text-slate-400">

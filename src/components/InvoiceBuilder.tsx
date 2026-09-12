@@ -1055,7 +1055,9 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     className={`p-3.5 rounded-xl border transition-all ${
                       isOverStock
                         ? 'bg-rose-50/40 border-rose-300'
-                        : 'bg-slate-50/70 border-slate-200 hover:border-slate-300'
+                        : index % 2 === 1
+                        ? 'bg-slate-50/85 border-slate-200 hover:border-slate-300'
+                        : 'bg-white border-slate-200 hover:border-slate-300'
                     }`}
                   >
                     <div className="grid grid-cols-12 gap-3 items-end">

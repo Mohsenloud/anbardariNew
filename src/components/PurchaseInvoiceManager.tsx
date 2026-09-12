@@ -286,7 +286,7 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredInvoices.map((inv) => {
+          {filteredInvoices.map((inv, index) => {
             const hasDiscrepancy = inv.status === 'has_discrepancy';
             const isPending = inv.status === 'pending_receipt';
             const isCompleted = inv.status === 'completed';
@@ -294,7 +294,9 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
             return (
               <div
                 key={inv.id}
-                className="bg-white rounded-2xl border border-slate-200 hover:border-slate-300 shadow-2xs hover:shadow-sm p-4 transition-all"
+                className={`rounded-2xl border border-slate-200 hover:border-slate-300 shadow-2xs hover:shadow-sm p-4 transition-all ${
+                  index % 2 === 1 ? 'bg-slate-50/85' : 'bg-white'
+                }`}
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   {/* Left Column: Info & Supplier */}
