@@ -227,9 +227,133 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   });
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 pb-12">
-      {/* Top Header Card */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+    <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 pb-12">
+      {/* MOBILE-FIRST DEDICATED WAREHOUSE NAVIGATION BAR (STICKY ON MOBILE) */}
+      <div className="sm:hidden sticky top-0 z-20 bg-slate-50/95 backdrop-blur-md pb-2.5 pt-1 -mx-3 px-3 border-b border-slate-200/70">
+        {/* 4 Ergonomic Mobile Touch Tabs */}
+        <div className="grid grid-cols-4 gap-1.5 p-1.5 bg-white rounded-2xl border border-slate-200/90 shadow-sm">
+          {/* Tab 1: کالاها و موجودی */}
+          <button
+            type="button"
+            id="mobile-tab-items"
+            onClick={() => setActiveSubTab('items')}
+            className={`flex flex-col items-center justify-center py-2.5 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+              activeSubTab === 'items'
+                ? 'bg-blue-600 text-white shadow-xs font-bold'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium'
+            }`}
+          >
+            <div className="relative">
+              <PackageCheck className="w-5 h-5" />
+              {lowStockCount > 0 && (
+                <span className={`absolute -top-1.5 -right-2 text-[9px] font-bold px-1 py-0.2 rounded-full ${
+                  activeSubTab === 'items' ? 'bg-amber-400 text-amber-950' : 'bg-amber-500 text-white'
+                }`}>
+                  {toPersianDigits(lowStockCount)}
+                </span>
+              )}
+            </div>
+            <span className="text-[11px] mt-1 whitespace-nowrap">کالاها</span>
+            <span className={`text-[9px] ${activeSubTab === 'items' ? 'text-blue-100' : 'text-slate-400'}`}>
+              ({toPersianDigits(products.length)})
+            </span>
+          </button>
+
+          {/* Tab 2: حواله ورود کالا */}
+          <button
+            type="button"
+            id="mobile-tab-inbound"
+            onClick={() => setActiveSubTab('inbound-receipts')}
+            className={`flex flex-col items-center justify-center py-2.5 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+              activeSubTab === 'inbound-receipts'
+                ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium'
+            }`}
+          >
+            <div className="relative">
+              <ArrowDownRight className="w-5 h-5" />
+              {pendingInboundCount > 0 && (
+                <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full animate-pulse shadow-xs">
+                  {toPersianDigits(pendingInboundCount)}
+                </span>
+              )}
+            </div>
+            <span className="text-[11px] mt-1 whitespace-nowrap">حواله ورود</span>
+            <span className={`text-[9px] ${activeSubTab === 'inbound-receipts' ? 'text-emerald-100' : 'text-slate-400'}`}>
+              ({toPersianDigits(inboundReceipts.length)})
+            </span>
+          </button>
+
+          {/* Tab 3: برگه خروج انبار */}
+          <button
+            type="button"
+            id="mobile-tab-exit-slips"
+            onClick={() => setActiveSubTab('exit-slips')}
+            className={`flex flex-col items-center justify-center py-2.5 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+              activeSubTab === 'exit-slips'
+                ? 'bg-indigo-600 text-white shadow-xs font-bold'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium'
+            }`}
+          >
+            <div className="relative">
+              <Truck className="w-5 h-5" />
+              {unprintedSlipsCount > 0 && (
+                <span className="absolute -top-1.5 -right-2 bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full shadow-xs">
+                  {toPersianDigits(unprintedSlipsCount)}
+                </span>
+              )}
+            </div>
+            <span className="text-[11px] mt-1 whitespace-nowrap">برگه خروج</span>
+            <span className={`text-[9px] ${activeSubTab === 'exit-slips' ? 'text-indigo-100' : 'text-slate-400'}`}>
+              ({toPersianDigits(invoices.length)})
+            </span>
+          </button>
+
+          {/* Tab 4: گردش و کاردکس */}
+          <button
+            type="button"
+            id="mobile-tab-movements"
+            onClick={() => setActiveSubTab('movements')}
+            className={`flex flex-col items-center justify-center py-2.5 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+              activeSubTab === 'movements'
+                ? 'bg-slate-800 text-white shadow-xs font-bold'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium'
+            }`}
+          >
+            <History className="w-5 h-5" />
+            <span className="text-[11px] mt-1 whitespace-nowrap">کاردکس</span>
+            <span className={`text-[9px] ${activeSubTab === 'movements' ? 'text-slate-300' : 'text-slate-400'}`}>
+              گردش
+            </span>
+          </button>
+        </div>
+
+        {/* Quick Action bar on mobile: Active tab title + Add new product button */}
+        <div className="flex items-center justify-between gap-2 mt-2 px-1">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 truncate">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+            <span className="truncate">
+              {activeSubTab === 'items' && 'کالاها و موجودی انبار'}
+              {activeSubTab === 'inbound-receipts' && 'حواله‌های ورود و رسید انبار'}
+              {activeSubTab === 'exit-slips' && 'برگه‌های خروج و تحویل انبار'}
+              {activeSubTab === 'movements' && 'کاردکس و تاریخچه گردش کالا'}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            id="mobile-quick-add-product-btn"
+            onClick={handleOpenNewProduct}
+            className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>کالای جدید</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Top Header Card (Desktop & Tablet) */}
+      <div className="hidden sm:flex sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
           <div className="flex items-center gap-2.5">
             <span className="p-2 rounded-xl bg-blue-50 text-blue-700">
@@ -249,7 +373,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
               id="subtab-items"
               onClick={() => setActiveSubTab('items')}
               className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                activeSubTab === 'items' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                activeSubTab === 'items' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               کالاها و موجودی ({toPersianDigits(products.length)})
@@ -275,7 +399,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
               id="subtab-exit-slips"
               onClick={() => setActiveSubTab('exit-slips')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                activeSubTab === 'exit-slips' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                activeSubTab === 'exit-slips' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Truck className="w-3.5 h-3.5 text-blue-600" />
@@ -291,7 +415,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
               id="subtab-movements"
               onClick={() => setActiveSubTab('movements')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                activeSubTab === 'movements' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                activeSubTab === 'movements' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <History className="w-3.5 h-3.5" />
@@ -302,7 +426,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           <button
             id="add-new-product-btn"
             onClick={handleOpenNewProduct}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200 cursor-pointer"
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200 cursor-pointer shrink-0"
           >
             <Plus className="w-4 h-4" />
             <span>کالای جدید</span>
@@ -312,72 +436,72 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
       {/* Summary KPI Cards */}
       {activeSubTab === 'exit-slips' ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-            <span className="text-xs text-slate-500 font-medium">کل برگه‌های خروج صادر شده</span>
-            <div className="text-xl font-black text-slate-800 mt-1">
-              {toPersianDigits(invoices.length)} <span className="text-xs font-normal text-slate-400">حواله</span>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-xs">
+            <span className="text-[11px] sm:text-xs text-slate-500 font-medium">کل برگه‌های خروج صادر شده</span>
+            <div className="text-lg sm:text-xl font-black text-slate-800 mt-1">
+              {toPersianDigits(invoices.length)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">حواله</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-amber-200 bg-amber-50/40 shadow-xs">
-            <span className="text-xs text-amber-800 font-medium">در انتظار پرینت و تحویل</span>
-            <div className="text-xl font-black text-amber-700 mt-1 flex items-center gap-2">
+          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-amber-200 bg-amber-50/40 shadow-xs">
+            <span className="text-[11px] sm:text-xs text-amber-800 font-medium">در انتظار پرینت و تحویل</span>
+            <div className="text-lg sm:text-xl font-black text-amber-700 mt-1 flex items-center gap-1.5 sm:gap-2">
               <span>{toPersianDigits(unprintedSlipsCount)}</span>
               {unprintedSlipsCount > 0 && (
-                <span className="text-[10px] bg-amber-200/80 text-amber-900 font-bold px-1.5 py-0.5 rounded">
+                <span className="text-[9px] sm:text-[10px] bg-amber-200/80 text-amber-900 font-bold px-1.5 py-0.5 rounded">
                   اقدام فوری
                 </span>
               )}
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-emerald-200 bg-emerald-50/30 shadow-xs">
-            <span className="text-xs text-emerald-800 font-medium">حواله‌های چاپ شده</span>
-            <div className="text-xl font-black text-emerald-700 mt-1">
-              {toPersianDigits(printedSlipsCount)} <span className="text-xs font-normal text-slate-400">حواله</span>
+          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-emerald-200 bg-emerald-50/30 shadow-xs">
+            <span className="text-[11px] sm:text-xs text-emerald-800 font-medium">حواله‌های چاپ شده</span>
+            <div className="text-lg sm:text-xl font-black text-emerald-700 mt-1">
+              {toPersianDigits(printedSlipsCount)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">حواله</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-            <span className="text-xs text-slate-500 font-medium">مجموع اقلام فیزیکی تحویلی</span>
-            <div className="text-xl font-black text-blue-700 mt-1">
-              {toPersianDigits(totalDispatchedUnits)} <span className="text-xs font-normal text-slate-400">واحد</span>
+          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-xs">
+            <span className="text-[11px] sm:text-xs text-slate-500 font-medium">مجموع اقلام فیزیکی تحویلی</span>
+            <div className="text-lg sm:text-xl font-black text-blue-700 mt-1">
+              {toPersianDigits(totalDispatchedUnits)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">واحد</span>
             </div>
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-            <span className="text-xs text-slate-500 font-medium">تنوع کالا در سیستم</span>
-            <div className="text-xl font-black text-slate-800 mt-1">
-              {toPersianDigits(totalItemsCount)} <span className="text-xs font-normal text-slate-400">ردیف</span>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-xs">
+            <span className="text-[11px] sm:text-xs text-slate-500 font-medium">تنوع کالا در سیستم</span>
+            <div className="text-lg sm:text-xl font-black text-slate-800 mt-1">
+              {toPersianDigits(totalItemsCount)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">ردیف</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-            <span className="text-xs text-slate-500 font-medium">مجموع موجودی اقلام انبار</span>
-            <div className="text-xl font-black text-blue-700 mt-1">
-              {toPersianDigits(totalStockUnits)} <span className="text-xs font-normal text-slate-400">واحد / عدد</span>
+          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-xs">
+            <span className="text-[11px] sm:text-xs text-slate-500 font-medium">مجموع موجودی اقلام انبار</span>
+            <div className="text-lg sm:text-xl font-black text-blue-700 mt-1">
+              {toPersianDigits(totalStockUnits)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">واحد / عدد</span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-amber-200 bg-amber-50/40 shadow-xs">
-            <span className="text-xs text-amber-800 font-medium">کالاهای رو به اتمام (نقطه سفارش)</span>
-            <div className="text-xl font-black text-amber-700 mt-1 flex items-center gap-2">
+          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-amber-200 bg-amber-50/40 shadow-xs">
+            <span className="text-[11px] sm:text-xs text-amber-800 font-medium">کالاهای رو به اتمام (نقطه سفارش)</span>
+            <div className="text-lg sm:text-xl font-black text-amber-700 mt-1 flex items-center gap-1.5 sm:gap-2">
               <span>{toPersianDigits(lowStockCount)}</span>
               {lowStockCount > 0 && (
-                <span className="text-[11px] font-normal px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                <span className="text-[10px] sm:text-[11px] font-normal px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
                   نیازمند شارژ
                 </span>
               )}
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-rose-200 bg-rose-50/40 shadow-xs">
-            <span className="text-xs text-rose-800 font-medium">کالاهای ناموجود در انبار</span>
-            <div className="text-xl font-black text-rose-700 mt-1">
-              {toPersianDigits(outOfStockCount)} <span className="text-xs font-normal text-slate-400">قلم</span>
+          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-rose-200 bg-rose-50/40 shadow-xs">
+            <span className="text-[11px] sm:text-xs text-rose-800 font-medium">کالاهای ناموجود در انبار</span>
+            <div className="text-lg sm:text-xl font-black text-rose-700 mt-1">
+              {toPersianDigits(outOfStockCount)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">قلم</span>
             </div>
           </div>
         </div>

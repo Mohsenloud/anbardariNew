@@ -8,6 +8,9 @@ import { createServer as createViteServer } from 'vite';
 const app = express();
 const PORT = 3000;
 
+// Tell Express to trust the reverse proxy (nginx / Cloud Run) for accurate client IP resolution
+app.set('trust proxy', 1);
+
 // Hardening: Disable Express fingerprinting header
 app.disable('x-powered-by');
 
@@ -43,6 +46,7 @@ const apiGeneralLimiter = rateLimit({
   max: 300, // max 300 requests per minute per IP
   standardHeaders: true,
   legacyHeaders: false,
+  validate: false,
   message: {
     success: false,
     message: 'تعداد درخواست‌ها بیش از حد مجاز است. لطفاً کمی صبر کرده و مجدداً تلاش نمایید.',
@@ -56,6 +60,7 @@ const dbWriteLimiter = rateLimit({
   max: 60, // max 60 writes per minute per IP
   standardHeaders: true,
   legacyHeaders: false,
+  validate: false,
   message: {
     success: false,
     message: 'نرخ ذخیره‌سازی اطلاعات فراتر از حد مجاز است. لطفاً چند لحظه صبر نمایید.',
