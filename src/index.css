@@ -97,3 +97,12 @@ body, button, input, select, textarea, table, th, td, span, div, p {
   scrollbar-width: none;
 }
 
+/* Zebra striping for lists and tables across desktop and mobile */
+table:not(.no-zebra):not(.print-table) tbody tr:nth-child(even) {
+  background-color: rgba(248, 250, 252, 0.85); /* Slate-50 light gray */
+}
+
+table:not(.no-zebra):not(.print-table) tbody tr:hover {
+  background-color: rgba(241, 245, 249, 0.95); /* Slate-100 */
+}
+

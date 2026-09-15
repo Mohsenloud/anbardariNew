@@ -357,7 +357,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* User Profile / Switcher Dropdown */}
             {currentUser && (
-              <div className="relative" ref={userMenuRef}>
+              <div className="relative flex items-center gap-1.5" ref={userMenuRef}>
                 <button
                   type="button"
                   id="header-user-switcher-btn"
@@ -397,6 +397,20 @@ export const Header: React.FC<HeaderProps> = ({
                     }`}
                   />
                 </button>
+
+                {/* Mobile Direct Logout Button */}
+                {onLogout && (
+                  <button
+                    type="button"
+                    id="header-mobile-direct-logout"
+                    onClick={onLogout}
+                    title="خروج از حساب کاربری"
+                    aria-label="خروج از حساب کاربری"
+                    className="sm:hidden flex items-center justify-center w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition-colors cursor-pointer shrink-0"
+                  >
+                    <LogOut className="w-4 h-4 text-rose-600" />
+                  </button>
+                )}
 
                 {/* User Dropdown Menu */}
                 {isUserMenuOpen && (

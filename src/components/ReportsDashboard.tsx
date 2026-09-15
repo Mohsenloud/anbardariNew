@@ -179,7 +179,9 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
               {topSellingProducts.map((item, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 hover:border-slate-200 transition-colors text-xs"
+                  className={`flex items-center justify-between p-3 rounded-xl ${
+                    idx % 2 === 1 ? 'bg-slate-100/80' : 'bg-slate-50/50'
+                  } border border-slate-200/70 hover:border-slate-300 transition-colors text-xs`}
                 >
                   <div className="flex items-center gap-3">
                     <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[11px]">
@@ -205,14 +207,20 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
         {/* Low Stock Warning & Replenish List */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-rose-500" />
-              <h3 className="font-bold text-slate-800 text-sm">کالاهای نیازمند تامین فوری انبار</h3>
+            <div className="flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-4 h-4" />
+              </span>
+              <div>
+                <h3 className="font-extrabold text-slate-800 text-sm">کالاهای نیازمند تامین فوری انبار</h3>
+                <span className="text-[11px] text-slate-400 font-medium">موجودی به زیر حداقل نقطه سفارش رسیده</span>
+              </div>
             </div>
             {(!currentUser || currentUser.permissions.canManageInventory) && (
               <button
+                type="button"
                 onClick={onOpenInventory}
-                className="text-xs font-semibold text-blue-600 hover:underline cursor-pointer"
+                className="text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
               >
                 مدیریت انبار
               </button>
@@ -225,10 +233,12 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
             </div>
           ) : (
             <div className="space-y-3">
-              {lowStockProducts.map((prod) => (
+              {lowStockProducts.map((prod, idx) => (
                 <div
                   key={prod.id}
-                  className="flex items-center justify-between p-3 rounded-xl bg-amber-50/50 border border-amber-200 text-xs"
+                  className={`flex items-center justify-between p-3 rounded-xl ${
+                    idx % 2 === 1 ? 'bg-amber-100/60' : 'bg-amber-50/40'
+                  } border border-amber-200 text-xs`}
                 >
                   <div>
                     <h4 className="font-bold text-slate-800">{prod.name}</h4>

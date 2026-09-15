@@ -91,30 +91,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [importStatus, setImportStatus] = useState<string>('');
 
-  const tabsContainerRef = useRef<HTMLDivElement>(null);
-  const activeTabRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (activeTabRef.current) {
-      activeTabRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'center',
-      });
-    }
-  }, [activeSection]);
-
-  const scrollTabs = (direction: 'prev' | 'next') => {
-    if (tabsContainerRef.current) {
-      // In RTL layout, scrolling towards later items is typically negative delta
-      const delta = direction === 'next' ? -200 : 200;
-      tabsContainerRef.current.scrollBy({
-        left: delta,
-        behavior: 'smooth',
-      });
-    }
-  };
-
   useEffect(() => {
     if (settings) {
       setFormData({ ...settings });
@@ -261,7 +237,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <h2 className="text-lg sm:text-xl font-black text-slate-900">
                 پنل مدیریت و پیکربندی اجزای سامانه
               </h2>
-              <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full">
+              <span
+                id="admin-access-badge"
+                className="w-[110px] h-[21px] inline-flex items-center justify-center text-center bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full"
+              >
                 دسترسی مدیر
               </span>
             </div>
@@ -305,35 +284,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Navigation Tabs (Sidebar on Desktop, Smooth Horizontal Scrollable Pills on Mobile) */}
         <div className="lg:col-span-3 space-y-2">
-          {/* Mobile Scroll Hint & Section Counter */}
+          {/* Mobile Section Counter */}
           <div className="flex lg:hidden items-center justify-between px-1 text-xs">
             <span className="font-bold text-slate-700 flex items-center gap-1.5">
               <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-600" />
               <span>بخش‌های تنظیمات ({toPersianDigits(sections.length)} بخش)</span>
             </span>
-            <span className="text-[11px] text-slate-400 font-medium flex items-center gap-1">
-              <span>ورق بزنید</span>
-              <span>←</span>
+            <span className="text-[11px] text-slate-500 font-medium">
+              دسترسی سریع
             </span>
           </div>
 
-          <div className="relative flex items-center">
-            {/* Mobile Scroll Right Button (Earlier tabs in RTL) */}
-            <button
-              type="button"
-              id="scroll-tabs-right-btn"
-              onClick={() => scrollTabs('prev')}
-              className="lg:hidden shrink-0 z-10 w-7 h-10 rounded-r-xl bg-white/95 border-y border-r border-slate-200 shadow-xs flex items-center justify-center text-slate-500 hover:text-emerald-700 active:scale-95 transition-all cursor-pointer"
-              title="بخش‌های قبلی"
-              aria-label="بخش‌های قبلی"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-
-            {/* Scrollable Tabs List */}
+          <div className="relative">
+            {/* Non-scrollable Tabs List: Clean adaptive grid on mobile, vertical stack on desktop */}
             <div
-              ref={tabsContainerRef}
-              className="bg-white rounded-2xl p-1.5 sm:p-2 border border-slate-200 shadow-xs flex lg:flex-col overflow-x-auto lg:overflow-x-visible gap-1.5 scroll-smooth no-scrollbar w-full touch-pan-x overscroll-x-contain"
+              className="bg-white rounded-2xl p-2 border border-slate-200 shadow-xs grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 gap-1.5 w-full"
             >
               {sections.map((sec) => {
                 const Icon = sec.icon;
@@ -341,34 +306,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 return (
                   <button
                     key={sec.id}
-                    ref={isActive ? activeTabRef : undefined}
                     type="button"
                     id={`admin-nav-${sec.id}`}
                     onClick={() => setActiveSection(sec.id as any)}
-                    className={`flex items-center gap-2 px-3.5 py-2.5 sm:py-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer text-right shrink-0 min-w-max lg:w-full ${
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-right w-full ${
                       isActive
                         ? 'bg-emerald-600 text-white shadow-xs'
                         : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 bg-slate-50/70 lg:bg-transparent border border-slate-100 lg:border-transparent'
                     }`}
                   >
                     <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                    <span>{sec.label}</span>
+                    <span className="truncate">{sec.label}</span>
                   </button>
                 );
               })}
             </div>
-
-            {/* Mobile Scroll Left Button (Next tabs in RTL) */}
-            <button
-              type="button"
-              id="scroll-tabs-left-btn"
-              onClick={() => scrollTabs('next')}
-              className="lg:hidden shrink-0 z-10 w-7 h-10 rounded-l-xl bg-white/95 border-y border-l border-slate-200 shadow-xs flex items-center justify-center text-slate-500 hover:text-emerald-700 active:scale-95 transition-all cursor-pointer"
-              title="بخش‌های بعدی"
-              aria-label="بخش‌های بعدی"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
           </div>
 
           {/* Quick System Health Box */}
@@ -767,7 +719,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </tr>
                     ) : (
                       filteredAdminInvoices.map((inv, idx) => (
-                        <tr key={inv.id} className="hover:bg-slate-50/70 transition-colors">
+                        <tr
+                          key={inv.id}
+                          className={`${
+                            idx % 2 === 1 ? 'bg-slate-50/85' : 'bg-white'
+                          } hover:bg-slate-100/80 transition-colors`}
+                        >
                           <td className="p-3 text-center text-slate-400 font-mono">{toPersianDigits(idx + 1)}</td>
                           <td className="p-3 font-mono font-bold text-slate-900">#{toPersianDigits(inv.invoiceNumber)}</td>
                           <td className="p-3 text-slate-500 font-mono text-[11px]">

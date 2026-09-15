@@ -1082,12 +1082,8 @@ export default function App() {
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
-      {/* Main Body Content View */}
-      <main className={`flex-1 max-w-7xl w-full mx-auto pb-24 sm:pb-12 ${
-        activeTab === 'new-invoice' || activeTab === 'dashboard'
-          ? 'px-0 sm:px-6 lg:px-8 pt-0 sm:pt-6'
-          : 'px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6'
-      }`}>
+      {/* Main Body Content View - Consistent Layout & Padding Across All Tabs */}
+      <main className="flex-1 max-w-7xl w-full mx-auto pb-24 sm:pb-12 px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6">
         <OfflineIndicator />
 
         {activeTab === 'dashboard' && isTabPermitted('dashboard', currentUser, settings) && (
@@ -1113,6 +1109,8 @@ export default function App() {
             onViewInvoice={(inv) => setViewingInvoice(inv)}
             onOpenSettings={() => setIsSettingsOpen(true)}
             onUpdateSettings={handleSaveSettings}
+            onLogout={handleLogout}
+            onRequestLogin={handleRequestLogin}
           />
         )}
 
@@ -1323,6 +1321,7 @@ export default function App() {
           setEditingInvoice(null);
           setActiveTab('new-invoice');
         }}
+        onLogout={handleLogout}
       />
     </div>
   );

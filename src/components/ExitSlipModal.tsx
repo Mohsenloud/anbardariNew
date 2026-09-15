@@ -553,7 +553,12 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {invoice.items.map((item, index) => (
-                    <tr key={item.id || index} className="hover:bg-slate-50/50">
+                    <tr
+                      key={item.id || index}
+                      className={`${
+                        index % 2 === 1 ? 'bg-slate-50/85' : 'bg-white'
+                      } hover:bg-slate-100/70 transition-colors`}
+                    >
                       <td className="p-2.5 text-center font-['Vazirmatn'] border-l border-slate-200 text-slate-500">
                         {toPersianDigits(index + 1)}
                       </td>

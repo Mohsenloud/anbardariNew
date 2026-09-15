@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   Settings,
+  LogOut,
   X
 } from 'lucide-react';
 
@@ -24,6 +25,7 @@ interface MobileBottomNavProps {
   lowStockCount: number;
   currentUser?: AppUser;
   onNewInvoice?: () => void;
+  onLogout?: () => void;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -33,6 +35,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   lowStockCount,
   currentUser,
   onNewInvoice,
+  onLogout,
 }) => {
   const safeSettings = settings || StorageService.getSettings();
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -193,6 +196,22 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                 </div>
                 <span className="text-xs font-bold">تنظیمات</span>
               </button>
+
+              {/* خروج از حساب کاربری (موبایل) */}
+              {onLogout && (
+                <button
+                  type="button"
+                  id="btn-mobile-drawer-logout"
+                  onClick={() => {
+                    setShowMoreMenu(false);
+                    onLogout();
+                  }}
+                  className="col-span-3 flex items-center justify-center gap-2 p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 transition-colors cursor-pointer font-bold text-xs shadow-xs"
+                >
+                  <LogOut className="w-4 h-4 text-rose-600" />
+                  <span>خروج از حساب کاربری و قفل برنامه</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

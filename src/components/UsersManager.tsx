@@ -452,7 +452,9 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
               <div
                 key={cardKey}
                 id={`user-card-${user.id || userIndex}`}
-                className={`bg-white rounded-2xl border transition-all p-5 flex flex-col justify-between relative shadow-xs ${
+                className={`${
+                  userIndex % 2 === 1 ? 'bg-slate-50/90' : 'bg-white'
+                } rounded-2xl border transition-all p-5 flex flex-col justify-between relative shadow-xs ${
                   isSelf
                     ? 'border-emerald-500/80 ring-2 ring-emerald-500/10'
                     : 'border-slate-200 hover:border-slate-300'

@@ -16,6 +16,7 @@ import {
   Trash2, 
   History, 
   PackageCheck,
+  Boxes,
   Filter,
   CheckCircle2,
   X,
@@ -462,10 +463,10 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       </div>
 
       {/* Top Header Card (Desktop & Tablet) */}
-      <div className="hidden sm:flex sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div>
+      <div className="hidden sm:flex flex-col xl:flex-row xl:items-center justify-between gap-4 xl:gap-6 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-blue-50 text-blue-700">
+            <span className="p-2 rounded-xl bg-blue-50 text-blue-700 shrink-0">
               <PackageCheck className="w-5 h-5" />
             </span>
             <h2 className="text-xl font-bold text-slate-800">مدیریت انبار و موجودی کالاها</h2>
@@ -475,59 +476,104 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {/* Sub Tab Switcher */}
-          <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-semibold overflow-x-auto">
+          <div className="flex flex-wrap items-center bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/90 gap-1.5 shadow-2xs">
+            {/* Tab 1: کالاها و موجودی */}
             <button
               id="subtab-items"
               onClick={() => setActiveSubTab('items')}
-              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                activeSubTab === 'items' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
+                activeSubTab === 'items'
+                  ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 font-extrabold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-semibold'
               }`}
             >
-              کالاها و موجودی ({toPersianDigits(products.length)})
+              <Boxes className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'items' ? 'text-blue-600' : 'text-slate-400'}`} />
+              <span>کالاها و موجودی</span>
+              <span
+                className={`text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors ${
+                  activeSubTab === 'items'
+                    ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-500/20'
+                    : 'bg-slate-200/80 text-slate-600'
+                }`}
+              >
+                {toPersianDigits(products.length)}
+              </span>
+              {lowStockCount > 0 && (
+                <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-2xs">
+                  {toPersianDigits(lowStockCount)} کسری
+                </span>
+              )}
             </button>
 
+            {/* Tab 2: حواله‌های ورود کالا */}
             <button
               id="subtab-inbound-receipts"
               onClick={() => setActiveSubTab('inbound-receipts')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                activeSubTab === 'inbound-receipts' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
+                activeSubTab === 'inbound-receipts'
+                  ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 font-extrabold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-semibold'
               }`}
             >
-              <ArrowDownRight className="w-3.5 h-3.5 text-emerald-600" />
-              <span>حواله‌های ورود کالا ({toPersianDigits(inboundReceipts.length)})</span>
+              <ArrowDownRight className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'inbound-receipts' ? 'text-emerald-600' : 'text-slate-400'}`} />
+              <span>حواله‌های ورود کالا</span>
+              <span
+                className={`text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors ${
+                  activeSubTab === 'inbound-receipts'
+                    ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-500/20'
+                    : 'bg-slate-200/80 text-slate-600'
+                }`}
+              >
+                {toPersianDigits(inboundReceipts.length)}
+              </span>
               {pendingInboundCount > 0 && (
-                <span className="bg-emerald-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full font-mono animate-pulse">
-                  {toPersianDigits(pendingInboundCount)}
+                <span className="bg-rose-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full animate-pulse shadow-xs">
+                  {toPersianDigits(pendingInboundCount)} منتظر تایید
                 </span>
               )}
             </button>
 
+            {/* Tab 3: برگه‌های خروج انبار */}
             <button
               id="subtab-exit-slips"
               onClick={() => setActiveSubTab('exit-slips')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                activeSubTab === 'exit-slips' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
+                activeSubTab === 'exit-slips'
+                  ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 font-extrabold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-semibold'
               }`}
             >
-              <Truck className="w-3.5 h-3.5 text-blue-600" />
-              <span>برگه‌های خروج انبار ({toPersianDigits(invoices.length)})</span>
+              <Truck className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'exit-slips' ? 'text-indigo-600' : 'text-slate-400'}`} />
+              <span>برگه‌های خروج انبار</span>
+              <span
+                className={`text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors ${
+                  activeSubTab === 'exit-slips'
+                    ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-500/20'
+                    : 'bg-slate-200/80 text-slate-600'
+                }`}
+              >
+                {toPersianDigits(invoices.length)}
+              </span>
               {unprintedSlipsCount > 0 && (
-                <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full font-mono">
-                  {toPersianDigits(unprintedSlipsCount)}
+                <span className="bg-amber-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-xs">
+                  {toPersianDigits(unprintedSlipsCount)} جدید
                 </span>
               )}
             </button>
 
+            {/* Tab 4: گردش و کاردکس */}
             <button
               id="subtab-movements"
               onClick={() => setActiveSubTab('movements')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                activeSubTab === 'movements' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
+                activeSubTab === 'movements'
+                  ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 font-extrabold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-semibold'
               }`}
             >
-              <History className="w-3.5 h-3.5" />
+              <History className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'movements' ? 'text-purple-600' : 'text-slate-400'}`} />
               <span>گردش و کاردکس</span>
             </button>
           </div>

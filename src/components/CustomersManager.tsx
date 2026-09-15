@@ -173,7 +173,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
               هیچ مشتری با این مشخصات یافت نشد.
             </div>
           ) : (
-            filteredCustomers.map((cust) => {
+            filteredCustomers.map((cust, index) => {
               // Invoices for this customer
               const customerInvoices = invoices.filter((i) => i.customerId === cust.id || i.customerName === cust.name);
               const totalSpent = customerInvoices.reduce((sum, i) => sum + i.finalTotal, 0);
@@ -181,7 +181,9 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
               return (
                 <div
                   key={cust.id}
-                  className="bg-slate-50/70 border border-slate-200 rounded-2xl p-4 hover:border-slate-300 hover:shadow-sm transition-all flex flex-col justify-between space-y-3"
+                  className={`${
+                    index % 2 === 1 ? 'bg-slate-100/75' : 'bg-white'
+                  } border border-slate-200 rounded-2xl p-4 hover:border-slate-300 hover:shadow-xs transition-all flex flex-col justify-between space-y-3`}
                 >
                   <div>
                     <div className="flex items-start justify-between">

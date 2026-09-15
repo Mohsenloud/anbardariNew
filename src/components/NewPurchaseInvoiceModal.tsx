@@ -484,7 +484,12 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {items.map((item, index) => (
-                      <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                      <tr
+                        key={item.id}
+                        className={`${
+                          index % 2 === 1 ? 'bg-slate-50/85' : 'bg-white'
+                        } hover:bg-slate-100/80 transition-colors`}
+                      >
                         <td className="p-2.5 text-center font-mono text-slate-500">
                           {toPersianDigits(index + 1)}
                         </td>

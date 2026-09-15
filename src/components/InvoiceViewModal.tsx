@@ -521,7 +521,12 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                     </thead>
                     <tbody>
                       {invoice.items.map((item, idx) => (
-                        <tr key={item.id || idx} className="border-b border-slate-200">
+                        <tr
+                          key={item.id || idx}
+                          className={`border-b border-slate-200 ${
+                            idx % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'
+                          }`}
+                        >
                           <td className="p-2 border-l border-slate-200 text-center">{toPersianDigits(idx + 1)}</td>
                           <td className="p-2 border-l border-slate-200 text-slate-600">{toPersianDigits(item.productCode || '---')}</td>
                           <td className="p-2 border-l border-slate-200 font-medium text-slate-900">{item.productName}</td>
