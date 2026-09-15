@@ -12,6 +12,9 @@ export function isTabPermitted(
   if (!user) return false;
 
   switch (tab) {
+    case 'dashboard':
+      return true; // Dashboard is universally accessible for all authenticated users to see overview and quick actions
+
     case 'new-invoice':
       return Boolean(user.permissions.canCreateInvoice);
 
@@ -62,7 +65,7 @@ export function getDefaultTabForUser(
   user?: AppUser | null,
   settings?: StoreSettings
 ): string {
-  if (!user) return 'invoices';
+  if (!user) return 'dashboard';
 
   // Role-specific targeted landing tabs
   if (
@@ -72,19 +75,8 @@ export function getDefaultTabForUser(
     return 'inventory';
   }
 
-  if (
-    user.role === 'accountant' &&
-    isTabPermitted('reports', user, settings)
-  ) {
-    return 'reports';
-  }
-
-  if (
-    user.role === 'cashier' &&
-    isTabPermitted('new-invoice', user, settings)
-  ) {
-    return 'new-invoice';
-  }
+  // General dashboard provides immediate overview and 1-tap quick actions
+  if (isTabPermitted('dashboard', user, settings)) return 'dashboard';
 
   // Ordered priority evaluation
   if (isTabPermitted('new-invoice', user, settings)) return 'new-invoice';
@@ -94,7 +86,7 @@ export function getDefaultTabForUser(
   if (isTabPermitted('customers', user, settings)) return 'customers';
   if (isTabPermitted('admin', user, settings)) return 'admin';
 
-  return 'invoices';
+  return 'dashboard';
 }
 
 /**
@@ -105,7 +97,7 @@ export function getAllowedTabsForUser(
   settings?: StoreSettings
 ): string[] {
   if (!user) return [];
-  const allTabs = ['new-invoice', 'invoices', 'purchases', 'inventory', 'customers', 'reports', 'admin'];
+  const allTabs = ['dashboard', 'new-invoice', 'invoices', 'purchases', 'inventory', 'customers', 'reports', 'admin'];
   return allTabs.filter((tab) => isTabPermitted(tab, user, settings));
 }
 

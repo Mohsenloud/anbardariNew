@@ -1,15 +1,30 @@
+export interface ProductVariant {
+  id: string;
+  name: string; // نام یا ویژگی تنوع (مانند: طوسی، قرمز، سایز، بسته‌بندی، مدل و...)
+  code?: string; // کد یا بارکد اختصاصی این تنوع
+  sku?: string;
+  buyPrice?: number; // قیمت خرید اختصاصی تنوع (در صورت تفاوت با کالای پایه)
+  sellPrice?: number; // قیمت فروش اختصاصی تنوع (در صورت تفاوت با کالای پایه)
+  stock: number; // موجودی این تنوع در انبار
+  minStockAlert?: number; // حداقل موجودی برای هشدار
+}
+
 export interface Product {
   id: string;
   code: string; // کد کالا یا بارکد
   name: string; // نام کالا
   category: string; // دسته‌بندی
-  unit: string; // واحد سنجش (عدد، بسته، کیلوگرم، متر، و...)
-  buyPrice: number; // قیمت خرید (به تومان)
-  sellPrice: number; // قیمت فروش (به تومان)
-  stock: number; // موجودی فعلی در انبار
+  unit: string; // واحد سنجش (عدد، بسته، کیلوگرم، متر، کیسه و...)
+  buyPrice: number; // قیمت خرید (به تومان یا ریال)
+  sellPrice: number; // قیمت فروش (به تومان یا ریال)
+  stock: number; // موجودی فعلی در انبار (مجموع تنوع‌ها در صورت داشتن تنوع)
   minStockAlert: number; // حداقل موجودی برای هشدار
   description?: string;
   updatedAt: string;
+  barcode?: string;
+  // پشتیبانی از تنوع کالا (رنگ، سایز، مدل و...)
+  hasVariants?: boolean;
+  variants?: ProductVariant[];
 }
 
 export interface Customer {
@@ -33,6 +48,9 @@ export interface InvoiceItem {
   buyPrice: number; // قیمت خرید در لحظه فروش برای محاسبه سود
   discount: number; // مبلغ تخفیف برای این ردیف
   total: number; // (quantity * unitPrice) - discount
+  // پشتیبانی از تنوع کالا در فاکتور
+  variantId?: string;
+  variantName?: string; // مثلاً: طوسی یا قرمز
 }
 
 export type PaymentStatus = 'paid' | 'unpaid' | 'partial';
@@ -78,6 +96,8 @@ export interface StockMovement {
   id: string;
   productId: string;
   productName: string;
+  variantId?: string;
+  variantName?: string;
   type: StockMovementType;
   quantity: number; // مثبت برای ورود، منفی برای خروج
   remainingStock: number;
@@ -85,6 +105,12 @@ export interface StockMovement {
   invoiceNumber?: string;
   date: string;
   note: string;
+}
+
+export interface WarehouseInfo {
+  id: string;
+  name: string;
+  isDefault?: boolean;
 }
 
 export interface StoreSettings {
@@ -141,6 +167,8 @@ export interface StoreSettings {
   whatsappNumber?: string; // شماره یا لینک واتساپ اختصاصی
   eitaaChannel?: string; // شناسه یا کانال ایتا
   baleChannel?: string; // شناسه یا کانال بله
+  warehouses?: WarehouseInfo[]; // مشخصات انبارها
+  defaultWarehouseId?: string; // شناسه انبار پیش‌فرض
 }
 
 export type UserRole = 'admin' | 'cashier' | 'warehouse' | 'accountant' | 'custom';

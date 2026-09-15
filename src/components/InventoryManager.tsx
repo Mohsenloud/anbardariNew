@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Product, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData, InboundReceipt, InboundReceiptItem } from '../types';
-import { toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
+import { Product, ProductVariant, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData, InboundReceipt, InboundReceiptItem } from '../types';
+import { toPersianDigits, getCurrentJalaliDate, formatPrice } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
+import { exportProductsToExcel } from '../utils/excelHelper';
+import { ExcelImportModal } from './ExcelImportModal';
 import { ExitSlipModal } from './ExitSlipModal';
 import { InboundReceiptsList } from './InboundReceiptsList';
 import { 
@@ -23,7 +25,12 @@ import {
   Truck,
   AlertCircle,
   Eye,
-  Check
+  Check,
+  Layers,
+  FileSpreadsheet,
+  Download,
+  Upload,
+  Sparkles
 } from 'lucide-react';
 
 interface InventoryManagerProps {
@@ -39,8 +46,10 @@ interface InventoryManagerProps {
     productId: string, 
     type: 'purchase' | 'adjustment' | 'return', 
     quantity: number, 
-    note: string
+    note: string,
+    variantId?: string
   ) => void;
+  onImportProducts?: (products: Product[], mode: 'merge' | 'replace') => void;
   onConfirmInboundReceipt?: (
     receiptId: string,
     verifiedItems: InboundReceiptItem[],
@@ -61,6 +70,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   onSaveProduct,
   onDeleteProduct,
   onAdjustStock,
+  onImportProducts,
   onConfirmInboundReceipt,
   selectedInboundReceiptId,
   onUpdateSettings,
@@ -84,10 +94,14 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   
+  // Excel Import Modal State
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
   // Stock Adjustment Modal
   const [adjustingProduct, setAdjustingProduct] = useState<Product | null>(null);
   const [adjustType, setAdjustType] = useState<'purchase' | 'adjustment'>('purchase');
   const [adjustQuantity, setAdjustQuantity] = useState<number>(1);
+  const [selectedVariantId, setSelectedVariantId] = useState<string>('');
   const [adjustNote, setAdjustNote] = useState<string>('');
 
   // Delete Confirmation Modal
@@ -101,6 +115,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     const matchesSearch = 
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.variants && p.variants.some((v) => v.name.toLowerCase().includes(searchQuery.toLowerCase()) || (v.code && v.code.toLowerCase().includes(searchQuery.toLowerCase())))) ||
       (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
@@ -131,20 +146,111 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       minStockAlert: 5,
       description: '',
       updatedAt: getCurrentJalaliDate(),
+      hasVariants: false,
+      variants: [],
     });
     setIsProductModalOpen(true);
   };
 
   // Open Edit Modal
   const handleOpenEditProduct = (prod: Product) => {
-    setEditingProduct({ ...prod });
+    setEditingProduct({
+      ...prod,
+      hasVariants: !!prod.hasVariants,
+      variants: prod.variants ? [...prod.variants] : [],
+    });
     setIsProductModalOpen(true);
+  };
+
+  // Variant helper functions for Product Modal
+  const handleToggleHasVariants = (enabled: boolean) => {
+    if (!editingProduct) return;
+    if (enabled && (!editingProduct.variants || editingProduct.variants.length === 0)) {
+      const defaultVariant: ProductVariant = {
+        id: `var-${Date.now()}-1`,
+        name: 'طوسی',
+        code: `${editingProduct.code || '1000'}-GR`,
+        stock: editingProduct.stock || 0,
+        buyPrice: editingProduct.buyPrice || 0,
+        sellPrice: editingProduct.sellPrice || 0,
+      };
+      setEditingProduct({
+        ...editingProduct,
+        hasVariants: true,
+        variants: [defaultVariant],
+      });
+    } else {
+      setEditingProduct({
+        ...editingProduct,
+        hasVariants: enabled,
+      });
+    }
+  };
+
+  const handleAddQuickVariant = (variantName: string) => {
+    if (!editingProduct) return;
+    const currentVariants = editingProduct.variants || [];
+    if (currentVariants.some((v) => v.name.trim().toLowerCase() === variantName.trim().toLowerCase())) {
+      return;
+    }
+    const newVariant: ProductVariant = {
+      id: `var-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+      name: variantName,
+      code: `${editingProduct.code || '1000'}-${variantName}`,
+      stock: 0,
+      buyPrice: editingProduct.buyPrice || 0,
+      sellPrice: editingProduct.sellPrice || 0,
+    };
+    const nextList = [...currentVariants, newVariant];
+    const totalStock = nextList.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+    setEditingProduct({
+      ...editingProduct,
+      hasVariants: true,
+      variants: nextList,
+      stock: totalStock,
+    });
+  };
+
+  const handleUpdateVariantField = (varId: string, field: keyof ProductVariant, value: any) => {
+    if (!editingProduct || !editingProduct.variants) return;
+    const nextVariants = editingProduct.variants.map((v) => {
+      if (v.id === varId) {
+        return { ...v, [field]: value };
+      }
+      return v;
+    });
+    const totalStock = nextVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+    setEditingProduct({
+      ...editingProduct,
+      variants: nextVariants,
+      stock: totalStock,
+    });
+  };
+
+  const handleRemoveVariant = (varId: string) => {
+    if (!editingProduct || !editingProduct.variants) return;
+    const nextVariants = editingProduct.variants.filter((v) => v.id !== varId);
+    const totalStock = nextVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+    setEditingProduct({
+      ...editingProduct,
+      variants: nextVariants,
+      hasVariants: nextVariants.length > 0,
+      stock: totalStock,
+    });
   };
 
   // Save Product Form
   const handleSaveProductForm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct || !editingProduct.name.trim()) return;
+
+    const hasVars = !!editingProduct.hasVariants && (editingProduct.variants?.length || 0) > 0;
+    const cleanVariants = hasVars 
+      ? (editingProduct.variants || []).filter((v) => v.name && v.name.trim().length > 0)
+      : [];
+    const totalStock = hasVars && cleanVariants.length > 0
+      ? cleanVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
+      : Math.max(0, Number(editingProduct.stock) || 0);
 
     const saved: Product = {
       ...editingProduct,
@@ -153,9 +259,11 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       code: editingProduct.code.trim() || `P-${Date.now().toString().slice(-4)}`,
       buyPrice: Math.max(0, Number(editingProduct.buyPrice) || 0),
       sellPrice: Math.max(0, Number(editingProduct.sellPrice) || 0),
-      stock: Math.max(0, Number(editingProduct.stock) || 0),
+      stock: totalStock,
       minStockAlert: Math.max(0, Number(editingProduct.minStockAlert) || 0),
       updatedAt: getCurrentJalaliDate(),
+      hasVariants: hasVars,
+      variants: cleanVariants,
     };
 
     onSaveProduct(saved);
@@ -168,6 +276,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     setAdjustingProduct(prod);
     setAdjustType(type);
     setAdjustQuantity(1);
+    setSelectedVariantId(prod.hasVariants && prod.variants && prod.variants.length > 0 ? prod.variants[0].id : '');
     setAdjustNote(type === 'purchase' ? 'ورود کالای جدید به انبار (خرید)' : 'تعدیل و انبارگردانی');
   };
 
@@ -176,7 +285,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     e.preventDefault();
     if (!adjustingProduct || adjustQuantity <= 0) return;
 
-    onAdjustStock(adjustingProduct.id, adjustType, adjustQuantity, adjustNote);
+    onAdjustStock(adjustingProduct.id, adjustType, adjustQuantity, adjustNote, selectedVariantId || undefined);
     setAdjustingProduct(null);
   };
 
@@ -423,14 +532,41 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             </button>
           </div>
 
-          <button
-            id="add-new-product-btn"
-            onClick={handleOpenNewProduct}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200 cursor-pointer shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>کالای جدید</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Excel Export */}
+            <button
+              type="button"
+              id="export-inventory-excel-btn"
+              onClick={() => exportProductsToExcel(products)}
+              title="خروجی فایل اکسل از همه کالاها و تنوع‌ها"
+              className="flex items-center gap-1.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 border border-slate-300 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-500" />
+              <span className="hidden sm:inline">خروجی اکسل</span>
+            </button>
+
+            {/* Excel Import */}
+            <button
+              type="button"
+              id="import-inventory-excel-btn"
+              onClick={() => setIsImportModalOpen(true)}
+              title="ورود کالاها و تنوع‌ها از فایل اکسل"
+              className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-800 border border-emerald-300 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>ورود از اکسل</span>
+            </button>
+
+            {/* New Product */}
+            <button
+              id="add-new-product-btn"
+              onClick={handleOpenNewProduct}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>کالای جدید</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -626,6 +762,27 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                       </span>
                     </div>
 
+                    {/* Variant Breakdown (Mobile) */}
+                    {prod.hasVariants && prod.variants && prod.variants.length > 0 && (
+                      <div className="bg-purple-50/70 border border-purple-200/80 rounded-xl p-2.5 space-y-1.5">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-purple-900">
+                          <Layers className="w-3.5 h-3.5 text-purple-600" />
+                          <span>تنوع‌های رنگ و مدل ({toPersianDigits(prod.variants.length)} قلم):</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {prod.variants.map((v) => (
+                            <span
+                              key={v.id}
+                              className="inline-flex items-center gap-1 bg-white text-purple-950 border border-purple-200 px-2 py-0.5 rounded-lg text-[10px] font-medium shadow-2xs"
+                            >
+                              <span>{v.name}:</span>
+                              <strong className="text-purple-700 font-bold font-mono">{toPersianDigits(v.stock)} {prod.unit}</strong>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Stock Details & Specifications (No Prices) */}
                     <div className="flex items-center justify-between bg-slate-50/80 p-2.5 rounded-xl text-xs border border-slate-100">
                       <div className="text-slate-600 text-[11px] flex items-center gap-1">
@@ -723,6 +880,23 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                             <span className="bg-slate-100 px-2 py-0.5 rounded-md">{prod.category}</span>
                             <span>واحد: {prod.unit}</span>
                           </div>
+                          {prod.hasVariants && prod.variants && prod.variants.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                              <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-md border border-purple-200">
+                                <Layers className="w-3 h-3 text-purple-600" />
+                                <span>{toPersianDigits(prod.variants.length)} تنوع:</span>
+                              </span>
+                              {prod.variants.map((v) => (
+                                <span
+                                  key={v.id}
+                                  className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-medium px-1.5 py-0.5 rounded"
+                                >
+                                  <span>{v.name}:</span>
+                                  <strong className="text-purple-900 font-bold font-mono">{toPersianDigits(v.stock)}</strong>
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </td>
 
                         {/* Stock Badge */}
@@ -1362,7 +1536,147 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                   </div>
                 ) : null}
 
-                {!editingProduct.id && (
+                {/* VARIANT MANAGEMENT SECTION */}
+                <div className="col-span-2 bg-gradient-to-br from-purple-50/70 to-slate-50 border border-purple-200/80 rounded-2xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                        <Layers className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-slate-800">تنوع کالا (رنگ، مدل، سایز یا مشخصه فنی)</div>
+                        <div className="text-[10px] text-slate-500">
+                          مانند پودر سخت کننده خشک پاش در رنگ‌های طوسی، قرمز، سبز یا سایر تنوع‌ها
+                        </div>
+                      </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        id="product-has-variants-toggle"
+                        checked={!!editingProduct.hasVariants}
+                        onChange={(e) => handleToggleHasVariants(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                    </label>
+                  </div>
+
+                  {editingProduct.hasVariants && (
+                    <div className="space-y-2.5 pt-2 border-t border-purple-100">
+                      {/* Quick color shortcuts */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] text-purple-700 font-bold flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-purple-500" />
+                          <span>افزودن سریع رنگ:</span>
+                        </span>
+                        {['طوسی', 'قرمز', 'سبز', 'زرد', 'آبی', 'مشکی', 'سفید', 'نچرال'].map((color) => {
+                          const exists = (editingProduct.variants || []).some((v) => v.name.trim() === color);
+                          return (
+                            <button
+                              key={color}
+                              type="button"
+                              disabled={exists}
+                              onClick={() => handleAddQuickVariant(color)}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                                exists
+                                  ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                                  : 'bg-white text-purple-900 border border-purple-200 hover:bg-purple-100 hover:border-purple-300 cursor-pointer shadow-2xs'
+                              }`}
+                            >
+                              + {color}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Variants table */}
+                      <div className="bg-white rounded-xl border border-purple-200/90 overflow-hidden shadow-2xs">
+                        <table className="w-full text-right text-[11px]">
+                          <thead className="bg-purple-50/80 text-purple-900 border-b border-purple-100 font-bold">
+                            <tr>
+                              <th className="p-2">نام تنوع / رنگ *</th>
+                              <th className="p-2">کد اختصاصی</th>
+                              <th className="p-2 text-center w-24">موجودی انبار</th>
+                              {currentUser?.role === 'admin' && <th className="p-2 text-center w-28">قیمت فروش</th>}
+                              <th className="p-2 text-center w-8">حذف</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-purple-50">
+                            {(editingProduct.variants || []).map((v) => (
+                              <tr key={v.id} className="hover:bg-purple-50/30">
+                                <td className="p-1.5">
+                                  <input
+                                    type="text"
+                                    required
+                                    placeholder="مثلاً: طوسی"
+                                    value={v.name}
+                                    onChange={(e) => handleUpdateVariantField(v.id, 'name', e.target.value)}
+                                    className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-purple-500 font-bold text-slate-800"
+                                  />
+                                </td>
+                                <td className="p-1.5">
+                                  <input
+                                    type="text"
+                                    placeholder={`${editingProduct.code || '1000'}-${v.name}`}
+                                    value={v.code || ''}
+                                    onChange={(e) => handleUpdateVariantField(v.id, 'code', e.target.value)}
+                                    className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono outline-none focus:border-purple-500"
+                                  />
+                                </td>
+                                <td className="p-1.5">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={v.stock}
+                                    onChange={(e) => handleUpdateVariantField(v.id, 'stock', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                                    className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-center font-bold font-mono outline-none focus:border-purple-500"
+                                  />
+                                </td>
+                                {currentUser?.role === 'admin' && (
+                                  <td className="p-1.5">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={v.sellPrice || editingProduct.sellPrice || 0}
+                                      onChange={(e) => handleUpdateVariantField(v.id, 'sellPrice', Math.max(0, parseFloat(e.target.value) || 0))}
+                                      className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-center font-mono outline-none focus:border-purple-500"
+                                    />
+                                  </td>
+                                )}
+                                <td className="p-1.5 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveVariant(v.id)}
+                                    className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+
+                        <div className="p-2 bg-purple-50/50 border-t border-purple-100 flex items-center justify-between">
+                          <button
+                            type="button"
+                            onClick={() => handleAddQuickVariant(`تنوع ${(editingProduct.variants?.length || 0) + 1}`)}
+                            className="text-[11px] font-bold text-purple-700 hover:text-purple-900 flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>افزودن تنوع دلخواه</span>
+                          </button>
+                          <span className="text-[10px] text-purple-800 font-medium">
+                            مجموع موجودی تنوع‌ها: <strong className="font-bold text-purple-950 font-mono">{toPersianDigits(editingProduct.stock)} {editingProduct.unit}</strong>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {!editingProduct.hasVariants && !editingProduct.id && (
                   <div className="col-span-2">
                     <label className="block text-xs font-medium text-slate-700 mb-1">موجودی اولیه در انبار</label>
                     <input
@@ -1432,9 +1746,37 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1">
                 <div className="font-bold text-slate-800">{adjustingProduct.name}</div>
                 <div className="text-slate-500">
-                  موجودی فعلی: <strong className="text-slate-800">{toPersianDigits(adjustingProduct.stock)} {adjustingProduct.unit}</strong>
+                  موجودی کل فعلی: <strong className="text-slate-800">{toPersianDigits(adjustingProduct.stock)} {adjustingProduct.unit}</strong>
                 </div>
               </div>
+
+              {adjustingProduct.hasVariants && adjustingProduct.variants && adjustingProduct.variants.length > 0 && (
+                <div>
+                  <label className="block text-xs font-bold text-purple-900 mb-1.5 flex items-center gap-1">
+                    <Layers className="w-3.5 h-3.5 text-purple-600" />
+                    <span>انتخاب رنگ / تنوع جهت عملیات انبار:</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1">
+                    {adjustingProduct.variants.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => setSelectedVariantId(v.id)}
+                        className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
+                          selectedVariantId === v.id
+                            ? 'bg-purple-50 border-purple-500 text-purple-950 font-bold ring-2 ring-purple-500/20 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="text-xs font-bold">{v.name}</div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">
+                          موجودی فعلی: <strong className="font-mono text-purple-700">{toPersianDigits(v.stock)}</strong> {adjustingProduct.unit}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1.5">عملیات انبار:</label>
@@ -1665,6 +2007,32 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           </div>
         );
       })()}
+
+      {/* EXCEL IMPORT MODAL */}
+      {isImportModalOpen && (
+        <ExcelImportModal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          mode="products"
+          existingProducts={products}
+          onImportProducts={(imported, importMode) => {
+            if (onImportProducts) {
+              onImportProducts(imported, importMode);
+            } else {
+              let updated: Product[];
+              if (importMode === 'replace') {
+                updated = imported;
+              } else {
+                const map = new Map<string, Product>(products.map((p) => [p.code, p]));
+                imported.forEach((p) => map.set(p.code, p));
+                updated = Array.from(map.values()) as Product[];
+              }
+              StorageService.saveProducts(updated);
+            }
+            setIsImportModalOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 };

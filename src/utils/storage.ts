@@ -163,6 +163,49 @@ const initialUsers: AppUser[] = [
 
 const initialProducts: Product[] = [
   {
+    id: 'prod-hardener-1',
+    code: '1000',
+    name: 'پودر سخت کننده خشک پاش صنعتی',
+    category: 'مصالح بتن و کفسازی',
+    unit: 'کیسه ۲۵ کیلویی',
+    buyPrice: 2800000,
+    sellPrice: 3500000,
+    stock: 155,
+    minStockAlert: 20,
+    description: 'پودر سخت کننده ضدسایش پایه سیمانی و سیلیسی ویژه کفسازی بتنی',
+    updatedAt: getCurrentJalaliDate(),
+    hasVariants: true,
+    variants: [
+      {
+        id: 'var-hardener-grey',
+        name: 'طوسی',
+        code: '1000-GR',
+        buyPrice: 2800000,
+        sellPrice: 3500000,
+        stock: 80,
+        minStockAlert: 15,
+      },
+      {
+        id: 'var-hardener-red',
+        name: 'قرمز',
+        code: '1000-RD',
+        buyPrice: 2950000,
+        sellPrice: 3750000,
+        stock: 45,
+        minStockAlert: 10,
+      },
+      {
+        id: 'var-hardener-green',
+        name: 'سبز',
+        code: '1000-GN',
+        buyPrice: 3200000,
+        sellPrice: 4100000,
+        stock: 30,
+        minStockAlert: 10,
+      },
+    ],
+  },
+  {
     id: 'prod-1',
     code: '1001',
     name: 'لپ‌تاپ ایسوس Vivobook 15 (Core i5/16GB/512SSD)',
@@ -515,6 +558,12 @@ const initialSettings: StoreSettings = {
   whatsappNumber: '',
   eitaaChannel: '',
   baleChannel: '',
+  warehouses: [
+    { id: 'wh-1', name: 'انبار مرکزی', isDefault: true },
+    { id: 'wh-2', name: 'انبار شعبه ۱', isDefault: false },
+    { id: 'wh-3', name: 'انبار ضایعات و رزرو', isDefault: false },
+  ],
+  defaultWarehouseId: 'wh-1',
 };
 
 const initialActivityLogs: ActivityLog[] = [
@@ -730,7 +779,14 @@ export const StorageService = {
       return initialProducts;
     }
     try {
-      return JSON.parse(data);
+      const parsed: Product[] = JSON.parse(data);
+      // Ensure the hardener variant example product is present so user has an immediate live example
+      if (!parsed.some((p) => p.hasVariants || p.id === 'prod-hardener-1')) {
+        const merged = [initialProducts[0], ...parsed];
+        localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(merged));
+        return merged;
+      }
+      return parsed;
     } catch {
       return initialProducts;
     }
@@ -909,13 +965,23 @@ export const StorageService = {
 
   getSettings(): StoreSettings {
     const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+    const defaultWhs = [
+      { id: 'wh-1', name: 'انبار مرکزی', isDefault: true },
+      { id: 'wh-2', name: 'انبار شعبه ۱', isDefault: false },
+      { id: 'wh-3', name: 'انبار ضایعات و رزرو', isDefault: false },
+    ];
     if (!data) {
       localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(initialSettings));
       return initialSettings;
     }
     try {
       const parsed = JSON.parse(data);
-      return { ...initialSettings, ...parsed };
+      const merged = { ...initialSettings, ...parsed };
+      if (!merged.warehouses || merged.warehouses.length === 0) {
+        merged.warehouses = defaultWhs;
+        merged.defaultWarehouseId = 'wh-1';
+      }
+      return merged;
     } catch {
       return initialSettings;
     }

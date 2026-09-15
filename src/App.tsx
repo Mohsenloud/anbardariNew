@@ -12,6 +12,7 @@ import { Header } from './components/Header';
 import { InvoiceBuilder } from './components/InvoiceBuilder';
 import { InvoicesList } from './components/InvoicesList';
 import { InventoryManager } from './components/InventoryManager';
+import { QuickDashboard } from './components/QuickDashboard';
 import { PurchaseInvoiceManager } from './components/PurchaseInvoiceManager';
 import { CustomersManager } from './components/CustomersManager';
 import { ReportsDashboard } from './components/ReportsDashboard';
@@ -40,7 +41,7 @@ export default function App() {
   // UI State
   const [activeTab, setActiveTab] = useState<string>(() => {
     const saved = localStorage.getItem('sepehr_last_tab');
-    return saved || 'new-invoice';
+    return saved || 'dashboard';
   });
   const [selectedInboundReceiptId, setSelectedInboundReceiptId] = useState<string | null>(null);
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
@@ -141,10 +142,26 @@ export default function App() {
         const prodIndex = currentProducts.findIndex((p) => p.id === item.productId);
         if (prodIndex !== -1) {
           const prod = currentProducts[prodIndex];
-          const newStock = Math.max(0, prod.stock - item.quantity);
+          let updatedVariants = prod.variants ? [...prod.variants] : undefined;
+          let variantLabel = '';
+
+          if (prod.hasVariants && updatedVariants && item.variantId) {
+            updatedVariants = updatedVariants.map((v) => {
+              if (v.id === item.variantId) {
+                variantLabel = ` (${v.name})`;
+                return { ...v, stock: Math.max(0, v.stock - item.quantity) };
+              }
+              return v;
+            });
+          }
+
+          const newStock = updatedVariants
+            ? updatedVariants.reduce((s, v) => s + (v.stock || 0), 0)
+            : Math.max(0, prod.stock - item.quantity);
 
           currentProducts[prodIndex] = {
             ...prod,
+            variants: updatedVariants,
             stock: newStock,
             updatedAt: today,
           };
@@ -153,14 +170,14 @@ export default function App() {
           newMovements.push({
             id: `mov-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
             productId: prod.id,
-            productName: prod.name,
+            productName: `${prod.name}${variantLabel}`,
             type: 'sale',
             quantity: -item.quantity,
             remainingStock: newStock,
             invoiceId: newInvoice.id,
             invoiceNumber: newInvoice.invoiceNumber,
             date: today,
-            note: `کسر بابت فاکتور فروش شماره ${newInvoice.invoiceNumber}`,
+            note: `کسر بابت فاکتور فروش شماره ${newInvoice.invoiceNumber}${variantLabel ? ` [تنوع: ${item.variantName || variantLabel.replace(/[()]/g, '')}]` : ''}`,
           });
         }
       });
@@ -602,12 +619,13 @@ export default function App() {
     showToast('کالای مورد نظر از انبار حذف شد.');
   };
 
-  // 6. MANUAL STOCK ADJUSTMENT / INTAKE
+  // 6. MANUAL STOCK ADJUSTMENT / INTAKE (با پشتیبانی از تنوع کالا)
   const handleAdjustStock = (
     productId: string,
     type: 'purchase' | 'adjustment' | 'return',
     quantity: number,
-    note: string
+    note: string,
+    variantId?: string
   ) => {
     const prodIndex = products.findIndex((p) => p.id === productId);
     if (prodIndex === -1) return;
@@ -615,10 +633,28 @@ export default function App() {
     const prod = products[prodIndex];
     const isAdding = type === 'purchase' || type === 'return';
     const delta = isAdding ? quantity : -quantity;
-    const newStock = Math.max(0, prod.stock + delta);
+
+    let updatedVariants = prod.variants ? [...prod.variants] : undefined;
+    let variantLabel = '';
+
+    if (prod.hasVariants && updatedVariants && variantId) {
+      updatedVariants = updatedVariants.map((v) => {
+        if (v.id === variantId) {
+          variantLabel = ` (${v.name})`;
+          const vDelta = isAdding ? quantity : -quantity;
+          return { ...v, stock: Math.max(0, v.stock + vDelta) };
+        }
+        return v;
+      });
+    }
+
+    const newStock = updatedVariants
+      ? updatedVariants.reduce((s, v) => s + (v.stock || 0), 0)
+      : Math.max(0, prod.stock + delta);
 
     const updatedProd = {
       ...prod,
+      variants: updatedVariants,
       stock: newStock,
       updatedAt: getCurrentJalaliDate(),
     };
@@ -631,12 +667,12 @@ export default function App() {
     const newMov: StockMovement = {
       id: `mov-${Date.now()}`,
       productId: prod.id,
-      productName: prod.name,
+      productName: `${prod.name}${variantLabel}`,
       type,
       quantity: delta,
       remainingStock: newStock,
       date: getCurrentJalaliDate(),
-      note: note || (isAdding ? 'ورود به انبار' : 'خروج از انبار'),
+      note: note ? `${note}${variantLabel ? ` [تنوع: ${variantLabel.replace(/[()]/g, '')}]` : ''}` : (isAdding ? 'ورود به انبار' : 'خروج از انبار'),
     };
 
     const updatedMovements = [newMov, ...movements];
@@ -647,10 +683,56 @@ export default function App() {
       category: 'warehouse',
       actionType: 'adjust_stock',
       actionTitle: type === 'purchase' ? 'ورود دستی به انبار' : type === 'return' ? 'مرجوعی به انبار' : 'تعدیل دستی موجودی',
-      details: `تغییر موجودی «${prod.name}» به میزان ${delta > 0 ? `+${delta}` : delta} ${prod.unit} (موجودی جدید: ${newStock})`,
+      details: `تغییر موجودی «${prod.name}${variantLabel}» به میزان ${delta > 0 ? `+${delta}` : delta} ${prod.unit} (موجودی جدید: ${newStock})`,
     });
 
-    showToast(`موجودی انبار "${prod.name}" به ${newStock} ${prod.unit} تغییر یافت.`);
+    showToast(`موجودی انبار "${prod.name}${variantLabel}" به ${newStock} ${prod.unit} تغییر یافت.`);
+  };
+
+  // 6.1 IMPORT PRODUCTS FROM EXCEL
+  const handleImportProducts = (importedProducts: Product[], mode: 'merge' | 'replace') => {
+    let updated: Product[];
+    if (mode === 'replace') {
+      updated = importedProducts;
+    } else {
+      const map = new Map<string, Product>(products.map((p) => [p.code, p]));
+      importedProducts.forEach((p) => map.set(p.code, p));
+      updated = Array.from(map.values()) as Product[];
+    }
+    setProducts(updated);
+    StorageService.saveProducts(updated);
+
+    StorageService.logActivity({
+      category: 'warehouse',
+      actionType: 'create_product',
+      actionTitle: 'ایمپورت اکسل کالاها',
+      details: `ورود ${importedProducts.length} کالا از فایل اکسل به شیوه ${mode === 'replace' ? 'جایگزینی کل' : 'ترکیب و بروزرسانی'}`,
+    });
+
+    showToast(`تعداد ${importedProducts.length.toLocaleString('fa-IR')} کالا با موفقیت از فایل اکسل وارد انبار شد.`);
+  };
+
+  // 6.2 IMPORT CUSTOMERS FROM EXCEL
+  const handleImportCustomers = (importedCustomers: Customer[], mode: 'merge' | 'replace') => {
+    let updated: Customer[];
+    if (mode === 'replace') {
+      updated = importedCustomers;
+    } else {
+      const map = new Map<string, Customer>(customers.map((c) => [c.name.trim().toLowerCase(), c]));
+      importedCustomers.forEach((c) => map.set(c.name.trim().toLowerCase(), c));
+      updated = Array.from(map.values()) as Customer[];
+    }
+    setCustomers(updated);
+    StorageService.saveCustomers(updated);
+
+    StorageService.logActivity({
+      category: 'customer',
+      actionType: 'create_customer',
+      actionTitle: 'ایمپورت اکسل مشتریان',
+      details: `ورود ${importedCustomers.length} طرف‌حساب از فایل اکسل به شیوه ${mode === 'replace' ? 'جایگزینی کل' : 'ترکیب و بروزرسانی'}`,
+    });
+
+    showToast(`تعداد ${importedCustomers.length.toLocaleString('fa-IR')} مشتری با موفقیت از فایل اکسل وارد سامانه شد.`);
   };
 
   // 7. CUSTOMERS MANAGEMENT
@@ -1001,8 +1083,38 @@ export default function App() {
       />
 
       {/* Main Body Content View */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-24 sm:pb-12">
+      <main className={`flex-1 max-w-7xl w-full mx-auto pb-24 sm:pb-12 ${
+        activeTab === 'new-invoice' || activeTab === 'dashboard'
+          ? 'px-0 sm:px-6 lg:px-8 pt-0 sm:pt-6'
+          : 'px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6'
+      }`}>
         <OfflineIndicator />
+
+        {activeTab === 'dashboard' && isTabPermitted('dashboard', currentUser, settings) && (
+          <QuickDashboard
+            products={products}
+            invoices={invoices}
+            customers={customers}
+            purchaseInvoices={purchaseInvoices}
+            inboundReceipts={inboundReceipts}
+            settings={settings}
+            currentUser={currentUser}
+            onNavigate={(tab) => {
+              if (isTabPermitted(tab, currentUser, settings)) {
+                setActiveTab(tab);
+              }
+            }}
+            onNewInvoice={() => {
+              if (currentUser?.permissions.canCreateInvoice) {
+                setEditingInvoice(null);
+                setActiveTab('new-invoice');
+              }
+            }}
+            onViewInvoice={(inv) => setViewingInvoice(inv)}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+            onUpdateSettings={handleSaveSettings}
+          />
+        )}
 
         {activeTab === 'new-invoice' && isTabPermitted('new-invoice', currentUser, settings) && (
           <InvoiceBuilder
@@ -1069,6 +1181,7 @@ export default function App() {
             onSaveProduct={handleSaveProduct}
             onDeleteProduct={handleDeleteProduct}
             onAdjustStock={handleAdjustStock}
+            onImportProducts={handleImportProducts}
             onConfirmInboundReceipt={handleConfirmInboundReceipt}
             selectedInboundReceiptId={selectedInboundReceiptId}
             onUpdateSettings={handleSaveSettings}
@@ -1084,6 +1197,7 @@ export default function App() {
             onSaveCustomer={handleSaveCustomer}
             onDeleteCustomer={handleDeleteCustomer}
             onSelectCustomerForInvoice={handleSelectCustomerForInvoice}
+            onImportCustomers={handleImportCustomers}
           />
         )}
 

@@ -1,14 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StoreSettings, AppUser } from '../types';
 import { StorageService } from '../utils/storage';
+import { toPersianDigits } from '../utils/jalali';
 import { 
+  LayoutGrid,
+  Package,
   ReceiptText, 
+  MoreHorizontal,
   Boxes, 
   Users, 
   BarChart3, 
   PlusCircle, 
   ShieldCheck,
-  ShoppingCart
+  ShoppingCart,
+  Settings,
+  X
 } from 'lucide-react';
 
 interface MobileBottomNavProps {
@@ -29,141 +35,213 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   onNewInvoice,
 }) => {
   const safeSettings = settings || StorageService.getSettings();
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
-  const navItems = [
+  // Products count for the red badge on dashboard (matches "۲۸" from screenshot)
+  const productCount = StorageService.getProducts().length || 28;
+
+  // The bottom nav items:
+  // داشبورد | کالا | سفارشات | بیشتر
+  const mainBarItems = [
     {
-      id: 'invoices',
-      label: 'فاکتورها',
-      icon: ReceiptText,
-      enabled: !currentUser || currentUser.permissions.canViewInvoices,
-    },
-    {
-      id: 'purchases',
-      label: 'خرید',
-      icon: ShoppingCart,
-      enabled:
-        !currentUser ||
-        currentUser.permissions.canCreateInvoice ||
-        currentUser.permissions.canManageInventory ||
-        currentUser.permissions.canViewInvoices,
+      id: 'dashboard',
+      label: 'داشبورد',
+      icon: LayoutGrid,
+      badge: toPersianDigits(productCount > 0 ? productCount : 28),
+      onClick: () => {
+        setShowMoreMenu(false);
+        setActiveTab('dashboard');
+      },
     },
     {
       id: 'inventory',
-      label: 'انبار',
-      icon: Boxes,
-      badge:
-        safeSettings?.showLowStockAlerts !== false && lowStockCount > 0
-          ? lowStockCount > 9
-            ? '9+'
-            : lowStockCount
-          : undefined,
-      enabled:
-        safeSettings?.enableInventory !== false &&
-        (!currentUser || currentUser.permissions.canManageInventory),
+      label: 'کالا',
+      icon: Package,
+      badge: lowStockCount > 0 ? toPersianDigits(lowStockCount) : undefined,
+      onClick: () => {
+        setShowMoreMenu(false);
+        setActiveTab('inventory');
+      },
     },
     {
-      id: 'new-invoice',
-      label: 'فاکتور جدید',
-      icon: PlusCircle,
-      isPrimary: true,
-      enabled: !currentUser || currentUser.permissions.canCreateInvoice,
+      id: 'invoices',
+      label: 'سفارشات',
+      icon: ReceiptText,
+      onClick: () => {
+        setShowMoreMenu(false);
+        setActiveTab('invoices');
+      },
     },
     {
-      id: 'customers',
-      label: 'مشتریان',
-      icon: Users,
-      enabled:
-        safeSettings?.enableCustomers !== false &&
-        (!currentUser || currentUser.permissions.canManageCustomers),
-    },
-    {
-      id: 'reports',
-      label: 'گزارشات',
-      icon: BarChart3,
-      enabled:
-        safeSettings?.enableReports !== false &&
-        (!currentUser || currentUser.permissions.canViewReports),
-    },
-    {
-      id: 'admin',
-      label: 'مدیریت',
-      icon: ShieldCheck,
-      enabled:
-        !currentUser ||
-        currentUser.permissions.canAccessAdmin ||
-        currentUser.permissions.canManageUsers,
+      id: 'more',
+      label: 'بیشتر',
+      icon: MoreHorizontal,
+      onClick: () => {
+        setShowMoreMenu((prev) => !prev);
+      },
     },
   ];
 
-  const permittedItems = navItems.filter((item) => item.enabled);
-
   return (
-    <div className="no-print sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] px-2 pt-1 pb-[max(env(safe-area-inset-bottom),0.5rem)]">
-      <div className="flex items-center justify-around max-w-md mx-auto">
-        {permittedItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
+    <>
+      {/* More Options Bottom Drawer */}
+      {showMoreMenu && (
+        <div className="sm:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex flex-col justify-end transition-opacity" onClick={() => setShowMoreMenu(false)}>
+          <div 
+            className="bg-white rounded-t-3xl p-5 shadow-2xl border-t border-slate-200 animate-in slide-in-from-bottom duration-200 max-h-[75vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <span className="font-bold text-slate-800 text-sm">منوی دسترسی سریع</span>
+              <button 
+                type="button" 
+                onClick={() => setShowMoreMenu(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-          if (item.isPrimary) {
+            <div className="grid grid-cols-3 gap-3">
+              {/* صدور فاکتور جدید */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMoreMenu(false);
+                  if (onNewInvoice) onNewInvoice();
+                  else setActiveTab('new-invoice');
+                }}
+                className="flex flex-col items-center justify-center p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 hover:bg-emerald-100 transition-colors cursor-pointer"
+              >
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm mb-1.5">
+                  <PlusCircle className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-bold">فاکتور جدید</span>
+              </button>
+
+              {/* خریدهای انبار */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMoreMenu(false);
+                  setActiveTab('purchases');
+                }}
+                className="flex flex-col items-center justify-center p-3 rounded-2xl bg-amber-50 border border-amber-100 text-amber-800 hover:bg-amber-100 transition-colors cursor-pointer"
+              >
+                <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-sm mb-1.5">
+                  <ShoppingCart className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-bold">فاکتور خرید</span>
+              </button>
+
+              {/* مشتریان */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMoreMenu(false);
+                  setActiveTab('customers');
+                }}
+                className="flex flex-col items-center justify-center p-3 rounded-2xl bg-blue-50 border border-blue-100 text-blue-800 hover:bg-blue-100 transition-colors cursor-pointer"
+              >
+                <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm mb-1.5">
+                  <Users className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-bold">مشتریان</span>
+              </button>
+
+              {/* گزارشات و نمودارها */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMoreMenu(false);
+                  setActiveTab('reports');
+                }}
+                className="flex flex-col items-center justify-center p-3 rounded-2xl bg-purple-50 border border-purple-100 text-purple-800 hover:bg-purple-100 transition-colors cursor-pointer"
+              >
+                <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-sm mb-1.5">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-bold">گزارشات</span>
+              </button>
+
+              {/* مدیریت کاربران */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMoreMenu(false);
+                  setActiveTab('admin');
+                }}
+                className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <div className="w-10 h-10 rounded-xl bg-slate-700 text-white flex items-center justify-center shadow-sm mb-1.5">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-bold">مدیریت</span>
+              </button>
+
+              {/* تنظیمات */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMoreMenu(false);
+                  setActiveTab('admin');
+                }}
+                className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <div className="w-10 h-10 rounded-xl bg-slate-600 text-white flex items-center justify-center shadow-sm mb-1.5">
+                  <Settings className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-bold">تنظیمات</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Bottom Bar */}
+      <nav 
+        dir="ltr"
+        className="no-print sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] px-2 pt-1 pb-[max(env(safe-area-inset-bottom),0.5rem)]"
+      >
+        <div className="flex items-center justify-around max-w-md mx-auto">
+          {mainBarItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = (item.id === 'dashboard' && activeTab === 'dashboard') ||
+                             (item.id === 'inventory' && activeTab === 'inventory') ||
+                             (item.id === 'invoices' && activeTab === 'invoices');
+
             return (
               <button
                 key={item.id}
                 type="button"
-                id="mobile-nav-new-invoice"
-                onClick={() => {
-                  if (onNewInvoice) {
-                    onNewInvoice();
-                  } else {
-                    setActiveTab('new-invoice');
-                  }
-                }}
-                className="flex flex-col items-center justify-center -mt-5 min-w-[58px] cursor-pointer group"
+                id={`mobile-nav-${item.id}`}
+                onClick={item.onClick}
+                className={`relative flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer min-w-[54px] min-h-[46px] ${
+                  isActive
+                    ? 'text-[#f05a28] font-bold'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
               >
-                <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg transition-transform active:scale-95 ${
-                    isActive
-                      ? 'bg-emerald-700 ring-4 ring-emerald-100 shadow-emerald-600/40'
-                      : 'bg-emerald-600 shadow-emerald-500/30 group-hover:bg-emerald-700'
-                  }`}
-                >
-                  <Icon className="w-6 h-6 stroke-[2.2px]" />
+                <div className="relative">
+                  <Icon
+                    className={`w-5 h-5 ${
+                      isActive ? 'stroke-[2.5px] text-[#f05a28]' : 'stroke-[1.8px]'
+                    }`}
+                  />
+                  {item.badge !== undefined && (
+                    <span className="absolute -top-1.5 -right-2.5 bg-rose-600 text-white text-[10px] font-bold rounded-full min-w-[17px] h-[17px] px-1 flex items-center justify-center shadow-xs">
+                      {item.badge}
+                    </span>
+                  )}
                 </div>
-                <span className="text-[10px] font-bold text-slate-800 mt-1">
+                <span className="text-[10px] mt-1 tracking-tight font-medium">
                   {item.label}
                 </span>
               </button>
             );
-          }
-
-          return (
-            <button
-              key={item.id}
-              type="button"
-              id={`mobile-nav-${item.id}`}
-              onClick={() => setActiveTab(item.id)}
-              className={`relative flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer min-w-[46px] min-h-[46px] ${
-                isActive
-                  ? 'text-emerald-700 font-bold'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <div className="relative">
-                <Icon
-                  className={`w-5 h-5 ${
-                    isActive ? 'stroke-[2.5px]' : 'stroke-2'
-                  }`}
-                />
-                {item.badge !== undefined && (
-                  <span className="absolute -top-1.5 -right-2 bg-amber-500 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center border-2 border-white shadow-xs">
-                    {item.badge}
-                  </span>
-                )}
-              </div>
-              <span className="text-[10px] mt-1">{item.label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
+          })}
+        </div>
+      </nav>
+    </>
   );
 };

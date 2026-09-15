@@ -4,6 +4,7 @@ import { StorageService, ROLE_LABELS } from '../utils/storage';
 import { getCurrentJalaliDate, getCurrentJalaliTime } from '../utils/jalali';
 import { isTabPermitted, getRoleBadgeConfig } from '../utils/permissions';
 import { 
+  LayoutDashboard,
   ReceiptText, 
   Boxes, 
   Users, 
@@ -90,6 +91,17 @@ export const Header: React.FC<HeaderProps> = ({
 
   const allNavItems = [
     { 
+      id: 'dashboard', 
+      label: 'داشبورد', 
+      description: 'پیشخوان جامع، دسترسی سریع، آمار روز و وضعیت انبار',
+      icon: LayoutDashboard, 
+      enabled: isTabPermitted('dashboard', currentUser, safeSettings),
+      onClick: () => {
+        setActiveTab('dashboard');
+        setIsMenuOpen(false);
+      }
+    },
+    { 
       id: 'new-invoice', 
       label: 'صدور فاکتور جدید', 
       description: 'ثبت سریع فاکتور فروشگاهی، رسمی یا حرارتی',
@@ -175,7 +187,7 @@ export const Header: React.FC<HeaderProps> = ({
   const ActiveIcon = currentActiveItem?.icon || Menu;
 
   return (
-    <header className="no-print bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+    <header className={`no-print bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs ${(activeTab === 'dashboard' || activeTab === 'new-invoice') ? 'hidden sm:block' : ''}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-3">
           {/* Logo & Store Info */}

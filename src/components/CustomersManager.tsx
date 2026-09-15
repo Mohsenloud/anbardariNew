@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { Customer, Invoice, StoreSettings, AppUser } from '../types';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
+import { StorageService } from '../utils/storage';
+import { exportCustomersToExcel } from '../utils/excelHelper';
+import { ExcelImportModal } from './ExcelImportModal';
 import { 
   Users, 
   Search, 
@@ -13,7 +16,9 @@ import {
   Plus,
   X,
   CheckCircle2,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Download,
+  Upload
 } from 'lucide-react';
 
 interface CustomersManagerProps {
@@ -24,6 +29,7 @@ interface CustomersManagerProps {
   onSaveCustomer: (customer: Customer) => void;
   onDeleteCustomer: (customerId: string) => void;
   onSelectCustomerForInvoice: (customer: Customer) => void;
+  onImportCustomers?: (customers: Customer[], mode: 'merge' | 'replace') => void;
 }
 
 export const CustomersManager: React.FC<CustomersManagerProps> = ({
@@ -34,10 +40,12 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   onSaveCustomer,
   onDeleteCustomer,
   onSelectCustomerForInvoice,
+  onImportCustomers,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
 
   // Filter customers
@@ -104,14 +112,38 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
           </p>
         </div>
 
-        <button
-          id="add-customer-btn"
-          onClick={handleOpenNew}
-          className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200 cursor-pointer self-start sm:self-auto"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>مشتری جدید</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+          <button
+            type="button"
+            id="export-customers-excel-btn"
+            onClick={() => exportCustomersToExcel(customers)}
+            title="خروجی فایل اکسل مشتریان"
+            className="flex items-center gap-1.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 border border-slate-300 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-500" />
+            <span className="hidden sm:inline">خروجی اکسل</span>
+          </button>
+
+          <button
+            type="button"
+            id="import-customers-excel-btn"
+            onClick={() => setIsImportModalOpen(true)}
+            title="ورود مشتریان از فایل اکسل"
+            className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-800 border border-emerald-300 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            <span>ورود از اکسل</span>
+          </button>
+
+          <button
+            id="add-customer-btn"
+            onClick={handleOpenNew}
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200 cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>مشتری جدید</span>
+          </button>
+        </div>
       </div>
 
       {/* Customer List Card */}
@@ -381,6 +413,32 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* EXCEL IMPORT MODAL */}
+      {isImportModalOpen && (
+        <ExcelImportModal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          mode="customers"
+          existingCustomers={customers}
+          onImportCustomers={(imported, importMode) => {
+            if (onImportCustomers) {
+              onImportCustomers(imported, importMode);
+            } else {
+              let updated: Customer[];
+              if (importMode === 'replace') {
+                updated = imported;
+              } else {
+                const map = new Map<string, Customer>(customers.map((c) => [c.name.trim().toLowerCase(), c]));
+                imported.forEach((c) => map.set(c.name.trim().toLowerCase(), c));
+                updated = Array.from(map.values()) as Customer[];
+              }
+              StorageService.saveCustomers(updated);
+            }
+            setIsImportModalOpen(false);
+          }}
+        />
       )}
     </div>
   );

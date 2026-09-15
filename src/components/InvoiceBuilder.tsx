@@ -1,32 +1,39 @@
-import React, { useState } from 'react';
-import { Product, Customer, Invoice, InvoiceItem, StoreSettings, PaymentMethod } from '../types';
-import { getCurrentJalaliDate, addDaysToJalali, formatPrice, toPersianDigits } from '../utils/jalali';
+import React, { useState, useMemo } from 'react';
+import { Product, ProductVariant, Customer, Invoice, InvoiceItem, StoreSettings, PaymentMethod } from '../types';
+import { getCurrentJalaliDate, formatPrice, toPersianDigits } from '../utils/jalali';
 import { 
   Plus, 
+  Minus, 
   Trash2, 
-  CheckCircle2, 
-  Printer, 
+  Search, 
+  X, 
+  Check, 
+  ChevronLeft, 
+  ChevronDown, 
+  Package, 
+  Boxes, 
+  Shapes, 
+  ScanLine, 
+  Camera, 
+  User, 
   UserPlus, 
-  AlertCircle, 
-  ShoppingBag,
-  RotateCcw,
-  Sparkles,
-  Banknote,
-  FileCheck,
-  Landmark,
-  CreditCard,
-  BookOpen,
-  Calendar,
-  Hash,
-  User,
-  HelpCircle,
-  Search,
-  X,
-  ChevronDown,
-  Check,
-  Barcode,
-  Pencil,
-  Save
+  Contact, 
+  FileText, 
+  SlidersHorizontal, 
+  ArrowUpDown, 
+  CheckCircle2, 
+  AlertTriangle, 
+  CreditCard, 
+  Banknote, 
+  Landmark, 
+  Calendar, 
+  Hash, 
+  Sparkles, 
+  Pencil, 
+  Printer,
+  Percent,
+  Layers,
+  GraduationCap
 } from 'lucide-react';
 
 interface InvoiceBuilderProps {
@@ -53,45 +60,36 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   onCancel,
 }) => {
   const isEditing = !!editingInvoice;
+
+  // Document mode (Regular invoice vs Proforma)
   const [isProforma, setIsProforma] = useState<boolean>(() => {
     if (editingInvoice) return !!editingInvoice.isProforma;
     return initialIsProforma;
   });
 
-  // Generate a random / incremental invoice number (PF- for proforma, INV- for regular)
-  const initialInvoiceNum = initialIsProforma
-    ? `PF-${Math.floor(1000 + Math.random() * 9000)}`
-    : `INV-${Math.floor(1000 + Math.random() * 9000)}`;
+  // Invoice Number & Date & Type
+  const initialInvoiceNum = useMemo(() => {
+    return initialIsProforma
+      ? `PF-${Math.floor(1000 + Math.random() * 9000)}`
+      : `INV-${Math.floor(1000 + Math.random() * 9000)}`;
+  }, [initialIsProforma]);
 
   const [invoiceNumber, setInvoiceNumber] = useState<string>(() => {
     if (editingInvoice) return editingInvoice.invoiceNumber;
     return initialInvoiceNum;
   });
+
   const [invoiceType, setInvoiceType] = useState<'standard' | 'official' | 'thermal'>(() => {
     if (editingInvoice) return editingInvoice.type || 'standard';
     return settings.defaultTemplate || 'standard';
   });
+
   const [invoiceDate, setInvoiceDate] = useState<string>(() => {
     if (editingInvoice) return editingInvoice.date;
     return getCurrentJalaliDate();
   });
 
-  const handleToggleDocumentMode = (targetProforma: boolean) => {
-    setIsProforma(targetProforma);
-    if (targetProforma) {
-      if (invoiceNumber.startsWith('INV-')) {
-        setInvoiceNumber(invoiceNumber.replace('INV-', 'PF-'));
-      } else if (!invoiceNumber.startsWith('PF-')) {
-        setInvoiceNumber(`PF-${invoiceNumber}`);
-      }
-    } else {
-      if (invoiceNumber.startsWith('PF-')) {
-        setInvoiceNumber(invoiceNumber.replace('PF-', 'INV-'));
-      }
-    }
-  };
-
-  // Customer state
+  // Customer State
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(() => {
     if (editingInvoice && editingInvoice.customerId && editingInvoice.customerId !== 'guest') {
       return editingInvoice.customerId;
@@ -99,8 +97,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     return '';
   });
   const [customerName, setCustomerName] = useState<string>(() => {
-    if (editingInvoice) return editingInvoice.customerName || '';
-    return '';
+    if (editingInvoice) return editingInvoice.customerName || 'متفرقه';
+    return 'متفرقه';
   });
   const [customerPhone, setCustomerPhone] = useState<string>(() => {
     if (editingInvoice) return editingInvoice.customerPhone || '';
@@ -114,9 +112,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     if (editingInvoice) return editingInvoice.customerNationalId || '';
     return '';
   });
-  const [isAddingNewCustomer, setIsAddingNewCustomer] = useState<boolean>(false);
 
-  // Invoice Items
+  // Items State
   const [items, setItems] = useState<InvoiceItem[]>(() => {
     if (editingInvoice && editingInvoice.items && editingInvoice.items.length > 0) {
       return editingInvoice.items.map((it, idx) => ({
@@ -124,23 +121,17 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
         id: it.id || `row-${idx + 1}`,
       }));
     }
-    return [
-      {
-        id: 'row-1',
-        productId: '',
-        productName: '',
-        productCode: '',
-        unit: 'عدد',
-        quantity: 1,
-        unitPrice: 0,
-        buyPrice: 0,
-        discount: 0,
-        total: 0,
-      },
-    ];
+    return [];
   });
 
-  // Overall calculations & payment
+  // Sort order state
+  const [sortOrder, setSortOrder] = useState<'default' | 'price-asc' | 'price-desc' | 'name'>('default');
+
+  // Search filter query inside invoice
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+  const [filterQuery, setFilterQuery] = useState<string>('');
+
+  // Tax & Discount & Payments
   const [taxEnabled, setTaxEnabled] = useState<boolean>(() => {
     if (editingInvoice) return editingInvoice.taxRate > 0;
     return settings.taxEnabled;
@@ -177,267 +168,326 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   });
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // فیلدهای الزامی و مجاز چک (شماره چک، تاریخ سررسید، نام چک)
-  const [chequeNumber, setChequeNumber] = useState<string>(() => {
-    if (editingInvoice) return editingInvoice.chequeNumber || '';
-    return '';
-  });
-  const [chequeDueDate, setChequeDueDate] = useState<string>(() => {
-    if (editingInvoice) return editingInvoice.chequeDueDate || '';
-    return '';
-  });
-  const [chequeName, setChequeName] = useState<string>(() => {
-    if (editingInvoice) return editingInvoice.chequeName || '';
-    return '';
-  });
+  // Cheque Fields
+  const [chequeNumber, setChequeNumber] = useState<string>(() => editingInvoice?.chequeNumber || '');
+  const [chequeDueDate, setChequeDueDate] = useState<string>(() => editingInvoice?.chequeDueDate || '');
+  const [chequeName, setChequeName] = useState<string>(() => editingInvoice?.chequeName || '');
 
-  // فیلدهای الزامی و مجاز واریز به حساب (ثبت توضیحات)
-  const [transferDescription, setTransferDescription] = useState<string>(() => {
-    if (editingInvoice) return editingInvoice.transferDescription || '';
-    return '';
-  });
+  // Transfer Fields
+  const [transferDescription, setTransferDescription] = useState<string>(() => editingInvoice?.transferDescription || '');
 
-  // Customer Search States
-  const [customerSearchQuery, setCustomerSearchQuery] = useState<string>(() => {
-    if (editingInvoice) return editingInvoice.customerName || '';
-    return '';
-  });
-  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState<boolean>(false);
+  // Modals state
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState<boolean>(false);
+  const [isNewCustomerFormOpen, setIsNewCustomerFormOpen] = useState<boolean>(false);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState<string>('');
 
-  // Quick Product Add Bar State (Top of Items Table)
-  const [quickProductSearch, setQuickProductSearch] = useState<string>('');
-  const [isQuickProductDropdownOpen, setIsQuickProductDropdownOpen] = useState<boolean>(false);
+  const [isProductCatalogOpen, setIsProductCatalogOpen] = useState<boolean>(false);
+  const [productCatalogSearch, setProductCatalogSearch] = useState<string>('');
+  const [catalogCategory, setCatalogCategory] = useState<string>('all');
+  const [variantPickerProduct, setVariantPickerProduct] = useState<Product | null>(null);
 
-  // Row Search Open State (Row index -> boolean)
-  const [rowSearchOpen, setRowSearchOpen] = useState<Record<number, boolean>>({});
-  const [rowSearchQuery, setRowSearchQuery] = useState<Record<number, string>>({});
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState<boolean>(false);
+  const [serviceName, setServiceName] = useState<string>('');
+  const [servicePrice, setServicePrice] = useState<number>(0);
+  const [serviceQuantity, setServiceQuantity] = useState<number>(1);
+  const [serviceUnit, setServiceUnit] = useState<string>('موردی');
 
-  // Handle Customer Selection
-  const handleCustomerSelect = (id: string) => {
-    setSelectedCustomerId(id);
-    setIsCustomerDropdownOpen(false);
-    if (!id) {
-      setCustomerName('');
+  const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState<boolean>(false);
+  const [barcodeInput, setBarcodeInput] = useState<string>('');
+  const [cameraActive, setCameraActive] = useState<boolean>(false);
+
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState<boolean>(false);
+
+  // Quick Customer Creation Inputs
+  const [newCustName, setNewCustName] = useState('');
+  const [newCustPhone, setNewCustPhone] = useState('');
+  const [newCustAddress, setNewCustAddress] = useState('');
+  const [newCustNationalId, setNewCustNationalId] = useState('');
+
+  // Calculations
+  const subtotal = useMemo(() => {
+    return items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+  }, [items]);
+
+  const rowDiscounts = useMemo(() => {
+    return items.reduce((sum, item) => sum + (item.discount || 0), 0);
+  }, [items]);
+
+  const totalDiscount = useMemo(() => {
+    return rowDiscounts + extraDiscount;
+  }, [rowDiscounts, extraDiscount]);
+
+  const taxableAmount = useMemo(() => {
+    return Math.max(0, subtotal - totalDiscount);
+  }, [subtotal, totalDiscount]);
+
+  const taxAmount = useMemo(() => {
+    return taxEnabled ? Math.round((taxableAmount * taxRate) / 100) : 0;
+  }, [taxEnabled, taxableAmount, taxRate]);
+
+  const finalTotal = useMemo(() => {
+    return taxableAmount + taxAmount;
+  }, [taxableAmount, taxAmount]);
+
+  // Product Catalog Categories
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach((p) => {
+      if (p.category) set.add(p.category);
+    });
+    return Array.from(set);
+  }, [products]);
+
+  // Filtered Products for Catalog
+  const filteredProducts = useMemo(() => {
+    let list = products;
+    if (catalogCategory !== 'all') {
+      list = list.filter((p) => p.category === catalogCategory);
+    }
+    if (productCatalogSearch.trim()) {
+      const q = productCatalogSearch.trim().toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.code.toLowerCase().includes(q) ||
+          (p.barcode && p.barcode.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [products, catalogCategory, productCatalogSearch]);
+
+  // Filtered & Sorted Invoice Items
+  const displayedItems = useMemo(() => {
+    let list = [...items];
+    if (filterQuery.trim()) {
+      const q = filterQuery.trim().toLowerCase();
+      list = list.filter((it) => it.productName.toLowerCase().includes(q) || it.productCode?.toLowerCase().includes(q));
+    }
+    if (sortOrder === 'price-asc') {
+      list.sort((a, b) => a.unitPrice - b.unitPrice);
+    } else if (sortOrder === 'price-desc') {
+      list.sort((a, b) => b.unitPrice - a.unitPrice);
+    } else if (sortOrder === 'name') {
+      list.sort((a, b) => a.productName.localeCompare(b.productName, 'fa'));
+    }
+    return list;
+  }, [items, filterQuery, sortOrder]);
+
+  // Add a product from catalog (with variant support)
+  const handleAddProduct = (prod: Product, variant?: ProductVariant) => {
+    // If product has variants and no specific variant is passed, open variant picker
+    if (prod.hasVariants && prod.variants && prod.variants.length > 0 && !variant) {
+      setVariantPickerProduct(prod);
+      return;
+    }
+
+    const targetVariantId = variant?.id;
+    const existingIndex = items.findIndex(
+      (it) => it.productId === prod.id && it.variantId === targetVariantId
+    );
+
+    if (existingIndex !== -1) {
+      // Increment quantity
+      setItems((prev) => {
+        const next = [...prev];
+        const item = { ...next[existingIndex] };
+        item.quantity += 1;
+        item.total = Math.max(0, item.quantity * item.unitPrice - (item.discount || 0));
+        next[existingIndex] = item;
+        return next;
+      });
+    } else {
+      // Add new row
+      const unitPrice = variant?.sellPrice && variant.sellPrice > 0 ? variant.sellPrice : prod.sellPrice;
+      const newItem: InvoiceItem = {
+        id: `row-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+        productId: prod.id,
+        productName: variant ? `${prod.name} (${variant.name})` : prod.name,
+        productCode: variant?.code || prod.code,
+        unit: prod.unit || 'عدد',
+        quantity: 1,
+        unitPrice: unitPrice,
+        buyPrice: prod.buyPrice,
+        discount: 0,
+        total: unitPrice,
+        variantId: variant?.id,
+        variantName: variant?.name,
+      };
+      setItems((prev) => [newItem, ...prev]);
+    }
+
+    if (variantPickerProduct) {
+      setVariantPickerProduct(null);
+    }
+  };
+
+  // Add custom non-inventory / service item
+  const handleAddServiceItem = () => {
+    if (!serviceName.trim()) {
+      setErrorMessage('لطفاً عنوان خدمات یا آیتم را وارد نمایید.');
+      return;
+    }
+    const safeQty = Math.max(1, serviceQuantity || 1);
+    const safePrice = Math.max(0, servicePrice || 0);
+    const newItem: InvoiceItem = {
+      id: `service-${Date.now()}`,
+      productId: '', // empty productId indicates non-inventory service item
+      productName: serviceName.trim(),
+      productCode: 'SRV',
+      unit: serviceUnit || 'موردی',
+      quantity: safeQty,
+      unitPrice: safePrice,
+      buyPrice: 0,
+      discount: 0,
+      total: safeQty * safePrice,
+    };
+    setItems((prev) => [newItem, ...prev]);
+    setServiceName('');
+    setServicePrice(0);
+    setServiceQuantity(1);
+    setIsServiceModalOpen(false);
+  };
+
+  // Barcode scan handler
+  const handleScanBarcode = (barcode: string) => {
+    const q = barcode.trim().toLowerCase();
+    if (!q) return;
+    const found = products.find(
+      (p) =>
+        p.code.toLowerCase() === q ||
+        (p.barcode && p.barcode.toLowerCase() === q) ||
+        p.name.toLowerCase().includes(q)
+    );
+    if (found) {
+      handleAddProduct(found);
+      setBarcodeInput('');
+      setIsBarcodeModalOpen(false);
+      setCameraActive(false);
+    } else {
+      setErrorMessage(`کالایی با بارکد "${barcode}" یافت نشد.`);
+      setTimeout(() => setErrorMessage(''), 3500);
+    }
+  };
+
+  // Adjust item quantity
+  const handleAdjustQuantity = (itemId: string, delta: number) => {
+    setItems((prev) => {
+      return prev
+        .map((it) => {
+          if (it.id === itemId) {
+            const newQty = it.quantity + delta;
+            if (newQty <= 0) return null; // remove
+            return {
+              ...it,
+              quantity: newQty,
+              total: Math.max(0, newQty * it.unitPrice - (it.discount || 0)),
+            };
+          }
+          return it;
+        })
+        .filter(Boolean) as InvoiceItem[];
+    });
+  };
+
+  // Remove single item
+  const handleRemoveItem = (itemId: string) => {
+    setItems((prev) => prev.filter((it) => it.id !== itemId));
+  };
+
+  // Select customer
+  const handleSelectCustomer = (cust: Customer | null) => {
+    if (!cust) {
+      setSelectedCustomerId('');
+      setCustomerName('متفرقه');
       setCustomerPhone('');
       setCustomerAddress('');
       setCustomerNationalId('');
-      setCustomerSearchQuery('');
-      return;
-    }
-    const found = customers.find((c) => c.id === id);
-    if (found) {
-      setCustomerName(found.name);
-      setCustomerPhone(found.phone || '');
-      setCustomerAddress(found.address || '');
-      setCustomerNationalId(found.nationalId || '');
-      setCustomerSearchQuery(found.name);
-    }
-  };
-
-  // Quick Add Product from search bar
-  const handleQuickAddProduct = (prod: Product) => {
-    // If there is an existing empty row (no product selected), fill it
-    const emptyRowIndex = items.findIndex((it) => !it.productId && !it.productName);
-    if (emptyRowIndex !== -1) {
-      handleProductSelect(emptyRowIndex, prod.id);
     } else {
-      // Check if already in items list
-      const existingIdx = items.findIndex((it) => it.productId === prod.id);
-      if (existingIdx !== -1) {
-        handleItemChange(existingIdx, 'quantity', items[existingIdx].quantity + 1);
-      } else {
-        const newItem: InvoiceItem = {
-          id: `row-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
-          productId: prod.id,
-          productName: prod.name,
-          productCode: prod.code,
-          unit: prod.unit,
-          quantity: 1,
-          unitPrice: prod.sellPrice,
-          buyPrice: prod.buyPrice,
-          discount: 0,
-          total: prod.sellPrice,
-        };
-        setItems((prev) => [...prev, newItem]);
-      }
+      setSelectedCustomerId(cust.id);
+      setCustomerName(cust.name);
+      setCustomerPhone(cust.phone || '');
+      setCustomerAddress(cust.address || '');
+      setCustomerNationalId(cust.nationalId || '');
     }
-    setQuickProductSearch('');
-    setIsQuickProductDropdownOpen(false);
+    setIsCustomerModalOpen(false);
   };
 
-  // Quick Save New Customer
-  const handleSaveQuickCustomer = () => {
-    if (!customerName.trim()) {
-      setErrorMessage('لطفاً نام مشتری را وارد کنید');
+  // Create new customer
+  const handleCreateCustomer = () => {
+    if (!newCustName.trim()) {
+      setErrorMessage('لطفاً نام مشتری را وارد نمایید.');
       return;
     }
-    const newCust = onAddNewCustomer({
-      name: customerName.trim(),
-      phone: customerPhone.trim(),
-      address: customerAddress.trim(),
-      nationalId: customerNationalId.trim(),
+    const created = onAddNewCustomer({
+      name: newCustName.trim(),
+      phone: newCustPhone.trim(),
+      address: newCustAddress.trim(),
+      nationalId: newCustNationalId.trim(),
     });
-    setSelectedCustomerId(newCust.id);
-    setIsAddingNewCustomer(false);
+    handleSelectCustomer(created);
+    setNewCustName('');
+    setNewCustPhone('');
+    setNewCustAddress('');
+    setNewCustNationalId('');
+    setIsNewCustomerFormOpen(false);
   };
 
-  // Handle Item row updates
-  const handleProductSelect = (rowIndex: number, prodId: string) => {
-    const selectedProd = products.find((p) => p.id === prodId);
-    if (!selectedProd) return;
-
-    setItems((prev) => {
-      const updated = [...prev];
-      const quantity = updated[rowIndex].quantity || 1;
-      const unitPrice = selectedProd.sellPrice;
-      const discount = updated[rowIndex].discount || 0;
-      const total = Math.max(0, quantity * unitPrice - discount);
-
-      updated[rowIndex] = {
-        ...updated[rowIndex],
-        productId: selectedProd.id,
-        productName: selectedProd.name,
-        productCode: selectedProd.code,
-        unit: selectedProd.unit,
-        unitPrice,
-        buyPrice: selectedProd.buyPrice,
-        quantity,
-        discount,
-        total,
-      };
-      return updated;
-    });
-  };
-
-  const handleItemChange = (
-    index: number,
-    field: 'quantity' | 'unitPrice' | 'discount',
-    val: number
-  ) => {
-    setItems((prev) => {
-      const updated = [...prev];
-      const item = { ...updated[index] };
-      const safeVal = Math.max(0, isNaN(val) ? 0 : val);
-
-      if (field === 'quantity') item.quantity = safeVal;
-      if (field === 'unitPrice') item.unitPrice = safeVal;
-      if (field === 'discount') item.discount = safeVal;
-
-      item.total = Math.max(0, item.quantity * item.unitPrice - item.discount);
-      updated[index] = item;
-      return updated;
-    });
-  };
-
-  const handleAddItemRow = () => {
-    setItems((prev) => [
-      ...prev,
-      {
-        id: `row-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
-        productId: '',
-        productName: '',
-        productCode: '',
-        unit: 'عدد',
-        quantity: 1,
-        unitPrice: 0,
-        buyPrice: 0,
-        discount: 0,
-        total: 0,
-      },
-    ]);
-  };
-
-  const handleRemoveItemRow = (index: number) => {
-    if (items.length === 1) {
-      // Clear instead of removing last row
-      setItems([
-        {
-          id: `row-${Date.now()}`,
-          productId: '',
-          productName: '',
-          productCode: '',
-          unit: 'عدد',
-          quantity: 1,
-          unitPrice: 0,
-          buyPrice: 0,
-          discount: 0,
-          total: 0,
-        },
-      ]);
+  // Continue to checkout or validate
+  const handleProceedToCheckout = () => {
+    if (items.length === 0) {
+      setErrorMessage('لطفاً ابتدا حداقل یک کالا یا آیتم به فاکتور اضافه کنید.');
+      setTimeout(() => setErrorMessage(''), 3000);
       return;
     }
-    setItems((prev) => prev.filter((_, i) => i !== index));
+    setIsCheckoutModalOpen(true);
   };
 
-  // Calculations
-  const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
-  const rowDiscounts = items.reduce((sum, item) => sum + item.discount, 0);
-  const totalDiscount = rowDiscounts + extraDiscount;
-  const taxableAmount = Math.max(0, subtotal - totalDiscount);
-  const taxAmount = taxEnabled ? Math.round((taxableAmount * taxRate) / 100) : 0;
-  const finalTotal = taxableAmount + taxAmount;
-
-  // Auto set paidAmount if paid
-  const handlePaymentStatusChange = (status: 'paid' | 'unpaid' | 'partial') => {
-    setPaymentStatus(status);
-    if (status === 'paid') {
-      setPaidAmount(finalTotal);
-    } else if (status === 'unpaid') {
-      setPaidAmount(0);
-    }
-  };
-
-  // Submit invoice
-  const handleSubmit = (shouldPrint: boolean) => {
+  // Final Submit
+  const handleFinalSubmit = (shouldPrint: boolean) => {
     setErrorMessage('');
 
-    // Validation
-    if (!customerName.trim()) {
-      setErrorMessage('لطفاً نام خریدار یا مشتری را مشخص کنید.');
+    if (items.length === 0) {
+      setErrorMessage('حداقل یک قلم کالا در فاکتور الزامی است.');
       return;
     }
 
-    const validItems = items.filter((it) => it.productId && it.quantity > 0);
-    if (validItems.length === 0) {
-      setErrorMessage('حداقل یک قلم کالا با تعداد مشخص در فاکتور الزامی است.');
-      return;
-    }
-
-    // Check stock warning
+    // Stock check
     const stockIssues: string[] = [];
-    validItems.forEach((item) => {
-      const prod = products.find((p) => p.id === item.productId);
-      if (prod && item.quantity > prod.stock) {
-        stockIssues.push(`موجودی کالا "${prod.name}" (${prod.stock} ${prod.unit}) کمتر از تعداد سفارش (${item.quantity}) است.`);
+    items.forEach((item) => {
+      if (item.productId) {
+        const prod = products.find((p) => p.id === item.productId);
+        if (prod && item.quantity > prod.stock) {
+          stockIssues.push(`موجودی کالا "${prod.name}" (${prod.stock} ${prod.unit}) کمتر از تعداد فاکتور (${item.quantity}) است.`);
+        }
       }
     });
 
-    // Only enforce stock check if auto-deduct is enabled and NOT a proforma (since proforma never deducts stock)
     if (stockIssues.length > 0 && settings.autoDeductStock && !isProforma) {
       if (settings.allowNegativeStock === false) {
         setErrorMessage(
-          `خطای کنترل موجودی انبار: اجازه ثبت کالای ناموجود در پنل مدیریت غیرفعال است.\n${stockIssues.join('\n')}`
+          `خطای کنترل موجودی انبار: اجازه ثبت کالای ناموجود در پنل غیرفعال است.\n${stockIssues.join('\n')}`
         );
         return;
       }
       const confirmContinue = window.confirm(
-        `هشدار موجودی:\n${stockIssues.join('\n')}\n\nآیا با وجود کمبود موجودی، فاکتور ثبت و موجودی منفی شود؟`
+        `هشدار کسری موجودی:\n${stockIssues.join('\n')}\n\nآیا با وجود کسری موجودی، فاکتور ثبت گردد؟`
       );
       if (!confirmContinue) return;
     }
 
     const newInvoice: Invoice = {
       id: editingInvoice ? editingInvoice.id : `inv-${Date.now()}`,
-      invoiceNumber: invoiceNumber.trim() || (editingInvoice ? editingInvoice.invoiceNumber : (isProforma ? `PF-${Date.now().toString().slice(-4)}` : `INV-${Date.now().toString().slice(-4)}`)),
+      invoiceNumber: invoiceNumber.trim() || (isProforma ? `PF-${Date.now().toString().slice(-4)}` : `INV-${Date.now().toString().slice(-4)}`),
       type: invoiceType,
       isProforma,
       customerId: selectedCustomerId || 'guest',
-      customerName: customerName.trim(),
+      customerName: customerName.trim() || 'متفرقه',
       customerPhone: customerPhone.trim(),
       customerAddress: customerAddress.trim(),
       customerNationalId: customerNationalId.trim(),
       date: invoiceDate,
-      items: validItems,
+      items,
       subtotal,
       totalDiscount,
       taxRate: taxEnabled ? taxRate : 0,
@@ -446,11 +496,9 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       paymentStatus,
       paymentMethod,
       paidAmount: paymentStatus === 'paid' ? finalTotal : paidAmount,
-      // ثبت مشخصات چک (در صورت دریافت چکی)
       chequeNumber: paymentMethod === 'cheque' ? chequeNumber.trim() : undefined,
       chequeDueDate: paymentMethod === 'cheque' ? chequeDueDate.trim() : undefined,
       chequeName: paymentMethod === 'cheque' ? chequeName.trim() : undefined,
-      // ثبت مشخصات واریز به حساب (در صورت واریز به حساب)
       transferDescription: paymentMethod === 'transfer' ? transferDescription.trim() : undefined,
       notes: notes.trim(),
       createdAt: editingInvoice ? editingInvoice.createdAt : new Date().toISOString(),
@@ -458,6 +506,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       convertedFromProforma: editingInvoice?.convertedFromProforma,
       convertedAt: editingInvoice?.convertedAt,
     };
+
+    setIsCheckoutModalOpen(false);
 
     if (editingInvoice && onUpdateInvoice) {
       onUpdateInvoice(editingInvoice, newInvoice, shouldPrint || !!settings.autoPrintAfterSave);
@@ -467,1327 +517,1409 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   };
 
   return (
-    <div className="max-w-7xl mx-auto pb-12">
-      {/* Banner when in editing mode */}
-      {isEditing && (
-        <div className="mb-4 bg-amber-50 border border-amber-200/90 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900 shadow-xs animate-in fade-in">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-amber-100/90 text-amber-800 rounded-xl shrink-0">
-              <Pencil className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-sm sm:text-base">
-                  حالت ویرایش {isProforma ? 'پیش‌فاکتور' : 'فاکتور فروش'} شماره #{toPersianDigits(invoiceNumber)}
-                </span>
-                <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-bold">
-                  در حال ویرایش
-                </span>
-              </div>
-              <p className="text-xs text-amber-700 mt-0.5">
-                تغییرات مورد نظرتان را در اقلام، مشخصات خریدار یا مبالغ اعمال کرده و سپس روی «ذخیره تغییرات» کلیک کنید.
-              </p>
-            </div>
-          </div>
-          {onCancel && (
+    <div className="max-w-md sm:max-w-xl mx-auto flex flex-col min-h-[calc(100vh-5rem)] bg-white sm:rounded-3xl sm:border sm:border-slate-200/90 sm:shadow-lg overflow-hidden select-none">
+      {/* ================= 1. TOP HEADER (فروش کالا) ================= */}
+      <div className="flex items-center justify-between px-3.5 py-3 border-b border-slate-100 bg-white sticky top-0 z-20">
+        {/* Right side (RTL start): < ادامه (Green button) */}
+        <button
+          type="button"
+          id="btn-invoice-continue-top"
+          onClick={handleProceedToCheckout}
+          className="flex items-center gap-1 text-emerald-500 hover:text-emerald-600 active:scale-95 text-sm sm:text-base font-extrabold transition-all cursor-pointer"
+        >
+          <ChevronLeft className="w-5 h-5 stroke-[2.8]" />
+          <span>ادامه</span>
+        </button>
+
+        {/* Center: Title (فروش کالا) */}
+        <div className="flex items-center gap-2">
+          <h1 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+            {isEditing ? 'ویرایش فاکتور' : isProforma ? 'پیش‌فاکتور فروش' : 'فروش کالا'}
+          </h1>
+          {isProforma && (
+            <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-1.5 py-0.5 rounded-md border border-indigo-200">
+              پیش‌نویس
+            </span>
+          )}
+        </div>
+
+        {/* Left side: 3 Action icons (Yellow Box, Search, Sort) */}
+        <div className="flex items-center gap-1 sm:gap-2">
+          {/* 1. Sort Button */}
+          <button
+            type="button"
+            id="btn-sort-items"
+            onClick={() => {
+              const next = sortOrder === 'default' ? 'price-desc' : sortOrder === 'price-desc' ? 'name' : 'default';
+              setSortOrder(next);
+            }}
+            title="مرتب‌سازی اقلام فاکتور"
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-600 hover:bg-slate-100 active:scale-95 transition-all"
+          >
+            <ArrowUpDown className="w-4 h-4 stroke-[2.2]" />
+          </button>
+
+          {/* 2. Search Button */}
+          <button
+            type="button"
+            id="btn-toggle-search-items"
+            onClick={() => setIsSearchOpen(!isSearchOpen)}
+            title="جستجوی اقلام فاکتور"
+            className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
+              isSearchOpen ? 'bg-sky-100 text-sky-600' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Search className="w-4 h-4 stroke-[2.2]" />
+          </button>
+
+          {/* 3. Amber/Yellow Rounded Square Button with Cap / Options */}
+          <button
+            type="button"
+            id="btn-invoice-settings-options"
+            onClick={() => setIsSettingsModalOpen(true)}
+            title="تنظیمات، شماره و نوع فاکتور"
+            className="w-8 h-8 rounded-xl bg-amber-400 hover:bg-amber-500 active:scale-95 text-slate-950 flex items-center justify-center shadow-xs transition-all"
+          >
+            <GraduationCap className="w-4 h-4 stroke-[2.4]" />
+          </button>
+        </div>
+      </div>
+
+      {/* Quick In-Invoice Search Input (Collapsible) */}
+      {isSearchOpen && (
+        <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+          <Search className="w-4 h-4 text-slate-400 shrink-0" />
+          <input
+            type="text"
+            value={filterQuery}
+            onChange={(e) => setFilterQuery(e.target.value)}
+            placeholder="جستجوی سریع بین اقلام اضافه شده به فاکتور..."
+            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            autoFocus
+          />
+          {filterQuery && (
             <button
               type="button"
-              id="cancel-editing-top-btn"
-              onClick={onCancel}
-              className="px-3.5 py-1.5 bg-white hover:bg-amber-100 active:scale-95 border border-amber-300 text-amber-900 text-xs font-bold rounded-xl transition-all cursor-pointer shrink-0 self-end sm:self-center"
+              onClick={() => setFilterQuery('')}
+              className="text-slate-400 hover:text-slate-600"
             >
-              انصراف از ویرایش
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
       )}
 
-      {/* Header Info */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <span className={`p-2 rounded-xl transition-colors ${isEditing ? 'bg-amber-100 text-amber-700' : isProforma ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'}`}>
-              {isEditing ? <Pencil className="w-5 h-5" /> : <ShoppingBag className="w-5 h-5" />}
+      {/* ================= 2. SUB-BAR (مشتری: متفرقه + MENU ICON) ================= */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-white">
+        {/* Right: Contact Card Icon + "مشتری: متفرقه" (Clickable) */}
+        <div
+          id="btn-customer-selector"
+          onClick={() => setIsCustomerModalOpen(true)}
+          className="flex items-center gap-2 cursor-pointer group select-none"
+        >
+          {/* Black Square Contact Card Icon with user silhouette */}
+          <div className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center shrink-0 group-hover:bg-emerald-600 transition-colors">
+            <Contact className="w-4 h-4 stroke-[2]" />
+          </div>
+
+          <div className="flex items-baseline gap-1">
+            <span className="text-sm font-black text-slate-900 group-hover:text-emerald-700 transition-colors">
+              مشتری:
             </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-bold text-slate-800">
-                  {isEditing
-                    ? `ویرایش ${isProforma ? 'پیش‌فاکتور فروش' : 'فاکتور فروش'}`
-                    : (isProforma ? 'صدور پیش‌فاکتور فروش' : 'صدور فاکتور فروش جدید')}
-                </h2>
-                {isProforma && (
-                  <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full border border-indigo-200">
-                    بدون کسر از انبار
-                  </span>
-                )}
-                {isEditing && (
-                  <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full border border-amber-200">
-                    سند موجود
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {isEditing
-                  ? 'پس از ویرایش اطلاعات، فاکتور به‌روزرسانی شده و در صورت نیاز تراز انبار تنظیم می‌گردد.'
-                  : isProforma
-                  ? 'این سند به عنوان پیش‌فاکتور ثبت می‌شود؛ موجودی انبار کسر نخواهد شد و در هر زمان در لیست فاکتورها قابل تبدیل به فاکتور اصلی است.'
-                  : 'با ثبت فاکتور قطعی، اقلام به صورت خودکار از انبار کسر شده و تاریخچه ثبت می‌شود.'}
-              </p>
-            </div>
+            <span className="text-sm font-extrabold text-slate-800 group-hover:text-emerald-600 transition-colors">
+              {customerName || 'متفرقه'}
+            </span>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Document Mode Switcher: فاکتور قطعی / پیش‌فاکتور */}
-          <div className="flex bg-slate-100 p-1 rounded-xl text-xs border border-slate-200">
-            <button
-              type="button"
-              id="mode-invoice-btn"
-              onClick={() => handleToggleDocumentMode(false)}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                !isProforma
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              فاکتور فروش
-            </button>
-            <button
-              type="button"
-              id="mode-proforma-btn"
-              onClick={() => handleToggleDocumentMode(true)}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                isProforma
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <span>پیش‌فاکتور</span>
-              <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${isProforma ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-200 text-slate-600'}`}>
-                غیرقطعی
-              </span>
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs">
-            <span className="text-slate-500 font-medium">{isProforma ? 'شماره پیش‌فاکتور:' : 'شماره فاکتور:'}</span>
-            <input
-              type="text"
-              id="invoice-number-input"
-              value={invoiceNumber}
-              onChange={(e) => setInvoiceNumber(e.target.value)}
-              className="font-bold text-slate-800 bg-white border border-slate-200 rounded-lg px-2 py-1 w-28 text-center text-xs focus:ring-1 focus:ring-emerald-500 outline-none"
-            />
-          </div>
-
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs">
-            <span className="text-slate-500 font-medium">تاریخ صدور:</span>
-            <input
-              type="text"
-              id="invoice-date-input"
-              value={invoiceDate}
-              onChange={(e) => setInvoiceDate(e.target.value)}
-              className="font-medium text-slate-800 bg-white border border-slate-200 rounded-lg px-2 py-1 w-24 text-center text-xs focus:ring-1 focus:ring-emerald-500 outline-none"
-            />
-          </div>
-        </div>
+        {/* Left: Menu / Options Icon (3 horizontal bars with bullets) */}
+        <button
+          type="button"
+          id="btn-sub-menu-options"
+          onClick={() => setIsSettingsModalOpen(true)}
+          className="w-8 h-8 rounded-lg text-sky-500 hover:bg-sky-50 flex items-center justify-center transition-colors"
+          title="جزئیات فاکتور و تاریخ"
+        >
+          <SlidersHorizontal className="w-5 h-5 stroke-[2.2]" />
+        </button>
       </div>
 
-      {isProforma && (
-        <div className="mb-5 p-3.5 rounded-xl bg-indigo-50/90 border border-indigo-200 text-indigo-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
-            <span>
-              <strong>حالت صدور پیش‌فاکتور:</strong> موجودی کالاهای انتخابی از انبار کسر نخواهد شد. هر زمان مشتری خرید خود را قطعی نمود، از بخش «لیست فاکتورها» می‌توانید با یک کلیک آن را به فاکتور اصلی فروش تبدیل کنید تا اقلام کسر و اسناد ثبت شوند.
-            </span>
-          </div>
+      {/* Error banner */}
+      {errorMessage && (
+        <div className="mx-3 my-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 animate-in fade-in">
+          <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+          <span>{errorMessage}</span>
           <button
             type="button"
-            onClick={() => handleToggleDocumentMode(false)}
-            className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 hover:underline shrink-0 cursor-pointer self-start sm:self-auto"
+            onClick={() => setErrorMessage('')}
+            className="mr-auto text-rose-400 hover:text-rose-600"
           >
-            تغییر به فاکتور فروش
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
-      {errorMessage && (
-        <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-center gap-2">
-          <AlertCircle className="w-5 h-5 text-rose-500 shrink-0" />
-          <span>{errorMessage}</span>
-        </div>
-      )}
-
-      {/* Grid: Customer Info & Items */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column (Items Table + Details - 2 Cols) */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Customer Selection Card */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <span>مشخصات خریدار / مشتری</span>
-              </h3>
-              <button
-                type="button"
-                id="toggle-new-customer-btn"
-                onClick={() => setIsAddingNewCustomer(!isAddingNewCustomer)}
-                className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 transition-colors cursor-pointer"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                {isAddingNewCustomer ? 'انتخاب از لیست مشتریان' : 'تعریف مشتری جدید'}
-              </button>
+      {/* ================= 3. CENTER / ITEMS LIST AREA ================= */}
+      <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col justify-start">
+        {displayedItems.length === 0 ? (
+          /* EXACT EMPTY STATE MATCHING SCREENSHOT */
+          <div className="flex-1 flex flex-col items-center justify-center text-center py-20 px-4">
+            <div className="text-slate-500 font-bold text-sm sm:text-base leading-relaxed space-y-2 max-w-xs">
+              <p className="flex items-center justify-center gap-1.5 flex-wrap">
+                <span>برای افزودن کالا دکمه</span>
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-blue-500 text-white shadow-xs">
+                  <Package className="w-4 h-4 stroke-[2.2]" />
+                </span>
+                <span>را بزنید</span>
+              </p>
+              <p className="flex items-center justify-center gap-1.5 flex-wrap">
+                <span>و از</span>
+                <span className="inline-flex items-center gap-0.5 text-blue-500 font-black tracking-tight text-xs bg-blue-50 px-1.5 py-0.5 rounded-md border border-blue-200">
+                  <span>▲</span>
+                  <span>■</span>
+                  <span>●</span>
+                </span>
+                <span>برای افزودن آیتم بدون کالا استفاده کنید.</span>
+              </p>
             </div>
+          </div>
+        ) : (
+          /* ITEMS CARDS LIST */
+          <div className="space-y-2.5">
+            {displayedItems.map((item, idx) => {
+              const isService = !item.productId;
+              return (
+                <div
+                  key={item.id || idx}
+                  className="bg-white rounded-2xl border border-slate-200/90 p-3 shadow-xs hover:border-slate-300 transition-all space-y-2"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">
+                          {item.productName}
+                        </span>
+                        {isService ? (
+                          <span className="text-[10px] bg-amber-50 text-amber-700 font-bold px-1.5 py-0.5 rounded-md border border-amber-200">
+                            خدماتی / بدون کالا
+                          </span>
+                        ) : item.productCode ? (
+                          <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-1.5 py-0.5 rounded-md">
+                            کد: {toPersianDigits(item.productCode)}
+                          </span>
+                        ) : null}
+                        {item.variantName && (
+                          <span className="text-[10px] bg-purple-100 text-purple-800 font-bold px-1.5 py-0.5 rounded-md border border-purple-200 flex items-center gap-1">
+                            <Layers className="w-3 h-3 text-purple-600" />
+                            <span>تنوع: {item.variantName}</span>
+                          </span>
+                        )}
+                      </div>
 
-            {!isAddingNewCustomer ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Searchable Customer Selection */}
-                <div className="relative">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-medium text-slate-600">
-                      انتخاب یا جستجوی مشتری:
-                    </label>
-                    {selectedCustomerId && (
-                      <button
-                        type="button"
-                        onClick={() => handleCustomerSelect('')}
-                        className="text-[11px] text-rose-600 hover:text-rose-700 font-medium flex items-center gap-1 cursor-pointer"
-                      >
-                        <X className="w-3 h-3" />
-                        حذف انتخاب / مشتری گذری
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="relative">
-                    <div className="relative flex items-center">
-                      <Search className="w-4 h-4 text-slate-400 absolute right-3 pointer-events-none" />
-                      <input
-                        type="text"
-                        id="customer-search-input"
-                        placeholder="نام، شماره تماس یا کد مشتری را جستجو کنید..."
-                        value={customerSearchQuery}
-                        onFocus={() => setIsCustomerDropdownOpen(true)}
-                        onChange={(e) => {
-                          setCustomerSearchQuery(e.target.value);
-                          setIsCustomerDropdownOpen(true);
-                        }}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-9 pl-8 py-2.5 text-xs sm:text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setIsCustomerDropdownOpen(!isCustomerDropdownOpen)}
-                        className="absolute left-2.5 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
-                        title="مشاهده لیست کامل"
-                      >
-                        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isCustomerDropdownOpen ? 'rotate-180' : ''}`} />
-                      </button>
+                      <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2">
+                        <span>قیمت واحد:</span>
+                        <span className="font-bold text-slate-700">{formatPrice(item.unitPrice)}</span>
+                        {item.unit && <span className="text-slate-400">({item.unit})</span>}
+                      </div>
                     </div>
 
-                    {/* Floating Customers Dropdown */}
-                    {isCustomerDropdownOpen && (
-                      <>
-                        <div 
-                          className="fixed inset-0 z-20" 
-                          onClick={() => setIsCustomerDropdownOpen(false)} 
-                        />
-                        <div className="absolute top-full right-0 left-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 z-30 max-h-64 overflow-y-auto py-1">
-                          {/* Option: Walk-in / Guest */}
-                          <div
-                            onClick={() => handleCustomerSelect('')}
-                            className={`px-3 py-2 text-xs flex items-center justify-between cursor-pointer hover:bg-slate-50 border-b border-slate-100 ${
-                              !selectedCustomerId ? 'bg-emerald-50/70 text-emerald-800 font-bold' : 'text-slate-600'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <User className="w-3.5 h-3.5 text-slate-400" />
-                              <span>مشتری گذری / بدون پرونده (فروش نقدی متفرقه)</span>
-                            </div>
-                            {!selectedCustomerId && <Check className="w-3.5 h-3.5 text-emerald-600" />}
-                          </div>
-
-                          {/* Filtered customers list */}
-                          {customers
-                            .filter((c) => {
-                              if (!customerSearchQuery.trim()) return true;
-                              const q = customerSearchQuery.trim().toLowerCase();
-                              return (
-                                c.name.toLowerCase().includes(q) ||
-                                (c.phone && c.phone.includes(q)) ||
-                                (c.nationalId && c.nationalId.includes(q)) ||
-                                (c.address && c.address.toLowerCase().includes(q))
-                              );
-                            })
-                            .map((c) => {
-                              const isSelected = selectedCustomerId === c.id;
-                              return (
-                                <div
-                                  key={c.id}
-                                  onClick={() => handleCustomerSelect(c.id)}
-                                  className={`px-3 py-2 text-xs cursor-pointer hover:bg-slate-50 border-b border-slate-50 last:border-b-0 flex items-center justify-between transition-colors ${
-                                    isSelected ? 'bg-emerald-50 text-emerald-900 font-bold' : 'text-slate-800'
-                                  }`}
-                                >
-                                  <div>
-                                    <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-                                      <span>{c.name}</span>
-                                      {c.phone && (
-                                        <span className="text-[11px] font-normal text-slate-500 dir-ltr">
-                                          ({toPersianDigits(c.phone)})
-                                        </span>
-                                      )}
-                                    </div>
-                                    {c.address && (
-                                      <div className="text-[10px] text-slate-400 truncate max-w-xs mt-0.5">
-                                        {c.address}
-                                      </div>
-                                    )}
-                                  </div>
-                                  {isSelected && <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
-                                </div>
-                              );
-                            })}
-
-                          {customers.filter((c) => {
-                            if (!customerSearchQuery.trim()) return true;
-                            const q = customerSearchQuery.trim().toLowerCase();
-                            return (
-                              c.name.toLowerCase().includes(q) ||
-                              (c.phone && c.phone.includes(q)) ||
-                              (c.nationalId && c.nationalId.includes(q)) ||
-                              (c.address && c.address.toLowerCase().includes(q))
-                            );
-                          }).length === 0 && (
-                            <div className="px-4 py-3 text-center text-xs text-slate-500">
-                              مشتری با مشخصات «{customerSearchQuery}» یافت نشد.
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                    نام کامل مشتری یا شرکت:
-                  </label>
-                  <input
-                    type="text"
-                    id="customer-name-input"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="مثال: مهندس احمدی یا شرکت پارس"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                    شماره تماس / همراه:
-                  </label>
-                  <input
-                    type="text"
-                    id="customer-phone-input"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    placeholder="مثال: ۰۹۱۲۳۴۵۶۷۸۹"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                    کد ملی / شناسه اقتصادی (اختیاری):
-                  </label>
-                  <input
-                    type="text"
-                    id="customer-nid-input"
-                    value={customerNationalId}
-                    onChange={(e) => setCustomerNationalId(e.target.value)}
-                    placeholder="برای فاکتور رسمی"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                    آدرس خریدار:
-                  </label>
-                  <input
-                    type="text"
-                    id="customer-address-input"
-                    value={customerAddress}
-                    onChange={(e) => setCustomerAddress(e.target.value)}
-                    placeholder="تهران، خیابان آزادی، پلاک ۱۰"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-200/70 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">نام مشتری *</label>
-                    <input
-                      type="text"
-                      id="new-customer-name-field"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="نام شخص یا شرکت"
-                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">شماره تماس</label>
-                    <input
-                      type="text"
-                      id="new-customer-phone-field"
-                      value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
-                      placeholder="۰۹۱۲..."
-                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">کد ملی / اقتصادی</label>
-                    <input
-                      type="text"
-                      id="new-customer-nid-field"
-                      value={customerNationalId}
-                      onChange={(e) => setCustomerNationalId(e.target.value)}
-                      placeholder="شناسه ملی"
-                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">آدرس کامل</label>
-                    <input
-                      type="text"
-                      id="new-customer-addr-field"
-                      value={customerAddress}
-                      onChange={(e) => setCustomerAddress(e.target.value)}
-                      placeholder="نشانی پستی"
-                      className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsAddingNewCustomer(false)}
-                    className="px-3 py-1.5 text-xs text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 cursor-pointer"
-                  >
-                    انصراف
-                  </button>
-                  <button
-                    type="button"
-                    id="save-new-customer-btn"
-                    onClick={handleSaveQuickCustomer}
-                    className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 cursor-pointer flex items-center gap-1.5"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    ثبت و ذخیره در دفتر مشتریان
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Items Table Card */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-              <div>
-                <h3 className="font-bold text-slate-800 text-sm">اقلام و کالاهای فاکتور</h3>
-                <p className="text-xs text-slate-500">کالاهای مورد نظر را انتخاب و تعداد و تخفیف را وارد کنید</p>
-              </div>
-              <button
-                type="button"
-                id="add-item-row-btn"
-                onClick={handleAddItemRow}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-colors cursor-pointer"
-              >
-                <Plus className="w-4 h-4 text-emerald-600" />
-                افزودن سطر جدید
-              </button>
-            </div>
-
-            {/* Quick Product Search & Rapid Add Bar */}
-            <div className="relative mb-5 bg-emerald-50/50 border border-emerald-200/80 rounded-2xl p-3.5 sm:p-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="p-1 rounded-lg bg-emerald-600 text-white">
-                    <Barcode className="w-3.5 h-3.5" />
-                  </span>
-                  <label htmlFor="quick-product-search-bar" className="text-xs font-bold text-emerald-950">
-                    جستجو و افزودن سریع کالا به فاکتور (نام، کد یا بارکد):
-                  </label>
-                </div>
-                <span className="text-[11px] text-emerald-700">
-                  با تایپ یا اسکن بارکد، کالا بلافاصله به اقلام فاکتور اضافه می‌گردد
-                </span>
-              </div>
-
-              <div className="relative">
-                <div className="relative flex items-center">
-                  <Search className="w-4 h-4 text-emerald-600 absolute right-3 pointer-events-none" />
-                  <input
-                    type="text"
-                    id="quick-product-search-bar"
-                    value={quickProductSearch}
-                    onFocus={() => setIsQuickProductDropdownOpen(true)}
-                    onChange={(e) => {
-                      setQuickProductSearch(e.target.value);
-                      setIsQuickProductDropdownOpen(true);
-                    }}
-                    placeholder="نام کالا، کد انبار، بارکد یا دسته‌بندی را جستجو کنید..."
-                    className="w-full bg-white border border-emerald-300 rounded-xl pr-9 pl-9 py-2.5 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all shadow-2xs"
-                  />
-                  {quickProductSearch && (
+                    {/* Delete Item Button */}
                     <button
                       type="button"
-                      onClick={() => {
-                        setQuickProductSearch('');
-                        setIsQuickProductDropdownOpen(false);
-                      }}
-                      className="absolute left-3 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                      onClick={() => handleRemoveItem(item.id)}
+                      className="text-slate-300 hover:text-rose-500 p-1.5 rounded-lg hover:bg-rose-50 transition-colors"
+                      title="حذف ردیف"
                     >
-                      <X className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
-                  )}
-                </div>
+                  </div>
 
-                {/* Quick Results Dropdown */}
-                {isQuickProductDropdownOpen && quickProductSearch.trim() && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-30"
-                      onClick={() => setIsQuickProductDropdownOpen(false)}
-                    />
-                    <div className="absolute top-full right-0 left-0 mt-1.5 bg-white rounded-xl shadow-2xl border border-slate-200 z-40 max-h-72 overflow-y-auto divide-y divide-slate-100">
-                      {products
-                        .filter((p) => {
-                          const q = quickProductSearch.trim().toLowerCase();
-                          return (
-                            p.name.toLowerCase().includes(q) ||
-                            (p.code && p.code.toLowerCase().includes(q)) ||
-                            (p.barcode && p.barcode.toLowerCase().includes(q)) ||
-                            (p.category && p.category.toLowerCase().includes(q))
-                          );
-                        })
-                        .map((prod) => (
-                          <div
-                            key={prod.id}
-                            onClick={() => handleQuickAddProduct(prod)}
-                            className="p-3 hover:bg-emerald-50/70 cursor-pointer flex items-center justify-between gap-3 transition-colors"
-                          >
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-xs text-slate-800 truncate">
-                                  {prod.name}
-                                </span>
-                                {prod.category && (
-                                  <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                                    {prod.category}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
-                                <span>کد: {toPersianDigits(prod.code)}</span>
-                                {prod.barcode && <span>بارکد: {toPersianDigits(prod.barcode)}</span>}
-                                <span
-                                  className={`px-1.5 py-0.5 rounded font-bold ${
-                                    prod.stock === 0
-                                      ? 'bg-rose-100 text-rose-700'
-                                      : prod.stock <= prod.minStockAlert
-                                      ? 'bg-amber-100 text-amber-700'
-                                      : 'bg-emerald-100 text-emerald-800'
-                                  }`}
-                                >
-                                  موجودی: {toPersianDigits(prod.stock)} {prod.unit}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="text-left shrink-0">
-                              <div className="text-xs font-black text-emerald-700">
-                                {formatPrice(prod.sellPrice, settings.currency)}
-                              </div>
-                              <span className="mt-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
-                                <Plus className="w-3 h-3" />
-                                افزودن
-                              </span>
-                            </div>
-                          </div>
-                        ))}
+                  {/* Quantity & Row Total Bar */}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                    {/* Quantity Selector: [-] [qty] [+] */}
+                    <div className="flex items-center gap-1.5 bg-slate-100/90 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => handleAdjustQuantity(item.id, -1)}
+                        className="w-7 h-7 rounded-lg bg-white shadow-xs text-slate-700 hover:bg-rose-50 hover:text-rose-600 active:scale-95 flex items-center justify-center transition-all cursor-pointer"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
 
-                      {products.filter((p) => {
-                        const q = quickProductSearch.trim().toLowerCase();
-                        return (
-                          p.name.toLowerCase().includes(q) ||
-                          (p.code && p.code.toLowerCase().includes(q)) ||
-                          (p.barcode && p.barcode.toLowerCase().includes(q)) ||
-                          (p.category && p.category.toLowerCase().includes(q))
-                        );
-                      }).length === 0 && (
-                        <div className="p-4 text-center text-xs text-slate-500">
-                          کالایی با عبارت «{quickProductSearch}» در انبار یافت نشد.
-                        </div>
-                      )}
+                      <span className="w-8 text-center text-xs font-black text-slate-900">
+                        {toPersianDigits(item.quantity)}
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAdjustQuantity(item.id, 1)}
+                        className="w-7 h-7 rounded-lg bg-white shadow-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 active:scale-95 flex items-center justify-center transition-all cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                  </>
-                )}
+
+                    {/* Row Total */}
+                    <div className="flex flex-col items-end">
+                      <span className="text-[10px] text-slate-400 font-bold">مجموع ردیف</span>
+                      <span className="text-xs sm:text-sm font-black text-emerald-600">
+                        {formatPrice(item.total)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ================= 4. BOTTOM DOCK (3 ACTION BUTTONS) ================= */}
+      <div className="p-3 bg-white border-t border-slate-100 space-y-2.5">
+        <div className="grid grid-cols-3 gap-2">
+          {/* Button 1 (Right in RTL): انتخاب کالا */}
+          <button
+            type="button"
+            id="btn-dock-select-product"
+            onClick={() => setIsProductCatalogOpen(true)}
+            className="bg-slate-100/80 hover:bg-slate-200/80 active:scale-97 border border-slate-200 rounded-2xl py-2.5 px-2 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+          >
+            <span className="text-xs sm:text-sm font-extrabold text-slate-800">
+              انتخاب کالا
+            </span>
+            <div className="w-6 h-6 rounded-lg bg-slate-900 text-white flex items-center justify-center shrink-0">
+              <Package className="w-3.5 h-3.5 stroke-[2.2]" />
+            </div>
+          </button>
+
+          {/* Button 2 (Center in RTL): آیتم خدماتی */}
+          <button
+            type="button"
+            id="btn-dock-service-item"
+            onClick={() => setIsServiceModalOpen(true)}
+            className="bg-slate-100/80 hover:bg-slate-200/80 active:scale-97 border border-slate-200 rounded-2xl py-2.5 px-2 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+          >
+            <span className="text-xs sm:text-sm font-extrabold text-slate-800">
+              آیتم خدماتی
+            </span>
+            <div className="flex items-center gap-0.5 text-slate-900 font-black text-[11px] shrink-0">
+              <span>▲</span>
+              <span>■</span>
+              <span>●</span>
+            </div>
+          </button>
+
+          {/* Button 3 (Left in RTL): بارکد اسکنر */}
+          <button
+            type="button"
+            id="btn-dock-barcode-scanner"
+            onClick={() => setIsBarcodeModalOpen(true)}
+            className="bg-slate-100/80 hover:bg-slate-200/80 active:scale-97 border border-slate-200 rounded-2xl py-2.5 px-2 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+          >
+            <span className="text-xs sm:text-sm font-extrabold text-slate-800">
+              بارکد اسکنر
+            </span>
+            <div className="w-6 h-6 rounded-lg bg-slate-200 text-slate-800 flex items-center justify-center shrink-0">
+              <ScanLine className="w-3.5 h-3.5 stroke-[2.4]" />
+            </div>
+          </button>
+        </div>
+
+        {/* ================= 5. FULL-WIDTH BLUE TOTAL BANNER BUTTON ================= */}
+        <button
+          type="button"
+          id="btn-invoice-total-footer"
+          onClick={handleProceedToCheckout}
+          className="w-full bg-[#1877f2] hover:bg-blue-600 active:scale-99 text-white rounded-2xl py-3 px-4 shadow-md shadow-blue-500/25 flex items-center justify-between transition-all cursor-pointer"
+        >
+          {/* Right side in RTL: < جمع کل پس از کسر تخفیف ها */}
+          <div className="flex items-center gap-1.5">
+            <ChevronLeft className="w-5 h-5 stroke-[2.8]" />
+            <span className="text-xs sm:text-sm font-black tracking-tight">
+              جمع کل پس از کسر تخفیف ها
+            </span>
+          </div>
+
+          {/* Left side: ۰ ریال (or Total Price) */}
+          <div className="text-sm sm:text-base font-black tracking-wide" dir="ltr">
+            {formatPrice(finalTotal)}
+          </div>
+        </button>
+      </div>
+
+      {/* ========================================================================= */}
+      {/*                               MODALS                                      */}
+      {/* ========================================================================= */}
+
+      {/* MODAL 1: PRODUCT CATALOG SELECTION (انتخاب کالا) */}
+      {isProductCatalogOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center">
+                  <Package className="w-5 h-5 stroke-[2.2]" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">انتخاب کالا از انبار</h3>
+                  <span className="text-[11px] text-slate-400 font-medium">روی کالای مورد نظر کلیک کنید تا به فاکتور افزوده شود</span>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsProductCatalogOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            {/* Items List */}
-            <div className="space-y-3">
-              {items.map((item, index) => {
-                const selectedProd = products.find((p) => p.id === item.productId);
-                const isOverStock = selectedProd && item.quantity > selectedProd.stock;
-                const isLowStock = selectedProd && selectedProd.stock <= selectedProd.minStockAlert;
-                const isSearchingRow = rowSearchOpen[index] || !item.productId;
-                const currentRowQuery = rowSearchQuery[index] || '';
+            {/* Search input */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <input
+                type="text"
+                value={productCatalogSearch}
+                onChange={(e) => setProductCatalogSearch(e.target.value)}
+                placeholder="جستجو بر اساس نام کالا، کد یا بارکد..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-9 pl-3 py-2 text-xs sm:text-sm font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+            </div>
 
-                return (
-                  <div
-                    key={item.id}
-                    className={`p-3.5 rounded-xl border transition-all ${
-                      isOverStock
-                        ? 'bg-rose-50/40 border-rose-300'
-                        : index % 2 === 1
-                        ? 'bg-slate-50/85 border-slate-200 hover:border-slate-300'
-                        : 'bg-white border-slate-200 hover:border-slate-300'
+            {/* Category filter pills */}
+            {categories.length > 0 && (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setCatalogCategory('all')}
+                  className={`px-3 py-1 rounded-full font-bold whitespace-nowrap transition-colors ${
+                    catalogCategory === 'all'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  همه ({toPersianDigits(products.length)})
+                </button>
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setCatalogCategory(cat)}
+                    className={`px-3 py-1 rounded-full font-bold whitespace-nowrap transition-colors ${
+                      catalogCategory === cat
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
-                    <div className="grid grid-cols-12 gap-3 items-end">
-                      {/* Searchable Product Selector */}
-                      <div className="col-span-12 lg:col-span-5 relative">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label className="text-xs font-semibold text-slate-700">
-                            ردیف {index + 1}: انتخاب و جستجوی کالا
-                          </label>
-                          {selectedProd && (
-                            <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                                selectedProd.stock === 0
-                                  ? 'bg-rose-100 text-rose-700'
-                                  : isLowStock
-                                  ? 'bg-amber-100 text-amber-800'
-                                  : 'bg-emerald-100 text-emerald-800'
-                              }`}
-                            >
-                              موجودی: {toPersianDigits(selectedProd.stock)} {selectedProd.unit}
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Product List */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+              {filteredProducts.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 text-xs">
+                  کالایی منطبق با جستجوی شما یافت نشد.
+                </div>
+              ) : (
+                filteredProducts.map((p) => {
+                  const inInvoice = items.find((it) => it.productId === p.id);
+                  const isOutOfStock = p.stock <= 0;
+
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => handleAddProduct(p)}
+                      className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                        inInvoice
+                          ? 'border-emerald-500 bg-emerald-50/40'
+                          : 'border-slate-200 hover:border-slate-300 bg-white'
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">
+                            {p.name}
+                          </span>
+                          <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md font-mono">
+                            {toPersianDigits(p.code)}
+                          </span>
+                          {p.hasVariants && p.variants && p.variants.length > 0 && (
+                            <span className="text-[10px] bg-purple-100 text-purple-800 border border-purple-200 font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1">
+                              <Layers className="w-3 h-3 text-purple-600" />
+                              <span>{toPersianDigits(p.variants.length)} تنوع رنگ/مدل</span>
                             </span>
                           )}
                         </div>
-
-                        {/* If product is selected and search is closed, show selected badge with Change button */}
-                        {selectedProd && !rowSearchOpen[index] ? (
-                          <div className="flex items-center justify-between bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs">
-                            <div className="truncate pl-2">
-                              <span className="font-bold text-slate-900 block truncate">
-                                {selectedProd.name}
-                              </span>
-                              <span className="text-[10px] text-slate-500">
-                                کد: {toPersianDigits(selectedProd.code)} {selectedProd.barcode ? `| بارکد: ${toPersianDigits(selectedProd.barcode)}` : ''}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setRowSearchOpen((prev) => ({ ...prev, [index]: true }));
-                                setRowSearchQuery((prev) => ({ ...prev, [index]: '' }));
-                              }}
-                              className="text-[11px] text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-lg font-bold flex items-center gap-1 shrink-0 cursor-pointer transition-colors"
+                        <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-3">
+                          <span>
+                            موجودی:{' '}
+                            <strong
+                              className={isOutOfStock ? 'text-rose-500' : 'text-slate-800'}
                             >
-                              <Search className="w-3 h-3" />
-                              تغییر کالا
-                            </button>
-                          </div>
-                        ) : (
-                          /* Search Input Combobox for Row */
-                          <div className="relative">
-                            <div className="relative flex items-center">
-                              <Search className="w-4 h-4 text-slate-400 absolute right-3 pointer-events-none" />
-                              <input
-                                type="text"
-                                id={`product-search-input-row-${index}`}
-                                placeholder="جستجوی نام یا کد کالا..."
-                                value={currentRowQuery}
-                                onFocus={() => setRowSearchOpen((prev) => ({ ...prev, [index]: true }))}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setRowSearchQuery((prev) => ({ ...prev, [index]: val }));
-                                  setRowSearchOpen((prev) => ({ ...prev, [index]: true }));
-                                }}
-                                className="w-full bg-white border border-slate-300 rounded-xl pr-9 pl-8 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-medium"
-                              />
-                              {selectedProd && (
-                                <button
-                                  type="button"
-                                  onClick={() => setRowSearchOpen((prev) => ({ ...prev, [index]: false }))}
-                                  className="absolute left-2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
-                                  title="انصراف از تغییر"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-
-                            {/* Dropdown list for this row */}
-                            {rowSearchOpen[index] && (
-                              <>
-                                <div
-                                  className="fixed inset-0 z-20"
-                                  onClick={() => setRowSearchOpen((prev) => ({ ...prev, [index]: false }))}
-                                />
-                                <div className="absolute top-full right-0 left-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 z-30 max-h-56 overflow-y-auto divide-y divide-slate-100">
-                                  {products
-                                    .filter((p) => {
-                                      if (!currentRowQuery.trim()) return true;
-                                      const q = currentRowQuery.trim().toLowerCase();
-                                      return (
-                                        p.name.toLowerCase().includes(q) ||
-                                        (p.code && p.code.toLowerCase().includes(q)) ||
-                                        (p.barcode && p.barcode.toLowerCase().includes(q)) ||
-                                        (p.category && p.category.toLowerCase().includes(q))
-                                      );
-                                    })
-                                    .map((p) => {
-                                      const isCur = item.productId === p.id;
-                                      return (
-                                        <div
-                                          key={p.id}
-                                          onClick={() => {
-                                            handleProductSelect(index, p.id);
-                                            setRowSearchOpen((prev) => ({ ...prev, [index]: false }));
-                                            setRowSearchQuery((prev) => ({ ...prev, [index]: '' }));
-                                          }}
-                                          className={`p-2.5 text-xs hover:bg-emerald-50/60 cursor-pointer flex items-center justify-between gap-2 transition-colors ${
-                                            isCur ? 'bg-emerald-50 text-emerald-900 font-bold' : ''
-                                          }`}
-                                        >
-                                          <div className="truncate">
-                                            <div className="font-semibold text-slate-800 truncate">
-                                              {p.name}
-                                            </div>
-                                            <div className="text-[10px] text-slate-500 mt-0.5">
-                                              کد: {toPersianDigits(p.code)} | موجودی: {toPersianDigits(p.stock)} {p.unit}
-                                            </div>
-                                          </div>
-                                          <div className="text-left shrink-0">
-                                            <div className="font-bold text-emerald-700 text-xs">
-                                              {formatPrice(p.sellPrice, '', false)}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-
-                                  {products.filter((p) => {
-                                    if (!currentRowQuery.trim()) return true;
-                                    const q = currentRowQuery.trim().toLowerCase();
-                                    return (
-                                      p.name.toLowerCase().includes(q) ||
-                                      (p.code && p.code.toLowerCase().includes(q)) ||
-                                      (p.barcode && p.barcode.toLowerCase().includes(q))
-                                    );
-                                  }).length === 0 && (
-                                    <div className="p-3 text-center text-xs text-slate-500">
-                                      کالایی یافت نشد.
-                                    </div>
-                                  )}
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Quantity with touch-friendly Stepper */}
-                      <div className="col-span-12 sm:col-span-4 lg:col-span-2">
-                        <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                          تعداد ({item.unit || 'واحد'})
-                        </label>
-                        <div className="flex items-center">
-                          <button
-                            type="button"
-                            onClick={() => handleItemChange(index, 'quantity', Math.max(1, item.quantity - 1))}
-                            className="w-10 h-9 bg-slate-100 active:bg-slate-200 text-slate-700 rounded-r-xl flex items-center justify-center font-bold text-base border border-l-0 border-slate-300 cursor-pointer select-none"
-                            title="کاهش تعداد"
-                          >
-                            -
-                          </button>
-                          <input
-                            type="number"
-                            id={`quantity-input-row-${index}`}
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) => handleItemChange(index, 'quantity', parseInt(e.target.value, 10) || 1)}
-                            className={`w-full h-9 bg-white border text-center font-black text-xs outline-none ${
-                              isOverStock
-                                ? 'border-rose-400 text-rose-700'
-                                : 'border-slate-300 text-slate-800 focus:border-emerald-500'
-                            }`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleItemChange(index, 'quantity', item.quantity + 1)}
-                            className="w-10 h-9 bg-slate-100 active:bg-slate-200 text-slate-700 rounded-l-xl flex items-center justify-center font-bold text-base border border-r-0 border-slate-300 cursor-pointer select-none"
-                            title="افزایش تعداد"
-                          >
-                            +
-                          </button>
+                              {toPersianDigits(p.stock)} {p.unit}
+                            </strong>
+                          </span>
+                          <span>|</span>
+                          <span className="font-black text-emerald-700">
+                            {formatPrice(p.sellPrice)}
+                          </span>
                         </div>
                       </div>
 
-                      {/* Unit Price */}
-                      <div className="col-span-6 sm:col-span-4 lg:col-span-2">
-                        <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                          قیمت واحد ({settings.currency})
-                        </label>
-                        <input
-                          type="number"
-                          id={`unitprice-input-row-${index}`}
-                          value={item.unitPrice}
-                          onChange={(e) => handleItemChange(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                          className="w-full h-9 bg-white border border-slate-300 rounded-xl px-2.5 text-xs text-center font-semibold text-slate-800 outline-none focus:border-emerald-500"
-                        />
+                      {/* Add badge or counter */}
+                      <div className="shrink-0">
+                        {p.hasVariants && p.variants && p.variants.length > 0 ? (
+                          <div className="flex items-center gap-1 bg-purple-50 text-purple-700 border border-purple-200 text-[11px] font-bold px-2.5 py-1.5 rounded-xl shadow-2xs hover:bg-purple-100 transition-colors">
+                            <Layers className="w-3.5 h-3.5 text-purple-600" />
+                            <span>انتخاب رنگ/مدل</span>
+                            <ChevronLeft className="w-3 h-3 text-purple-500" />
+                          </div>
+                        ) : inInvoice ? (
+                          <div className="flex items-center gap-1 bg-emerald-600 text-white text-xs font-black px-2.5 py-1 rounded-xl shadow-xs">
+                            <Check className="w-3.5 h-3.5" />
+                            <span>{toPersianDigits(inInvoice.quantity)}</span>
+                          </div>
+                        ) : (
+                          <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors">
+                            <Plus className="w-4 h-4 stroke-[2.5]" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Bottom Modal Close */}
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">
+                اقلام انتخابی: {toPersianDigits(items.length)} ردیف
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsProductCatalogOpen(false)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl transition-colors shadow-xs"
+              >
+                تایید و بازگشت به فاکتور
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: VARIANT SELECTION MODAL (انتخاب تنوع و رنگ کالا) */}
+      {variantPickerProduct && (
+        <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl w-full max-w-md p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm sm:text-base leading-tight">
+                    {variantPickerProduct.name}
+                  </h3>
+                  <span className="text-[11px] text-purple-700 font-medium">
+                    انتخاب رنگ و مدل جهت درج در فاکتور
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVariantPickerProduct(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-500">
+              این کالا دارای تنوع‌های مختلف است. رنگ یا مدل مورد نظرتان را برای افزودن به فاکتور انتخاب نمایید:
+            </div>
+
+            {/* List of variants */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-0.5">
+              {(variantPickerProduct.variants || []).map((v) => {
+                const inInvoice = items.find(
+                  (it) => it.productId === variantPickerProduct.id && it.variantId === v.id
+                );
+                const isOutOfStock = v.stock <= 0;
+                const price = (v.sellPrice && v.sellPrice > 0) ? v.sellPrice : variantPickerProduct.sellPrice;
+
+                return (
+                  <div
+                    key={v.id}
+                    onClick={() => handleAddProduct(variantPickerProduct, v)}
+                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                      inInvoice
+                        ? 'border-purple-500 bg-purple-50/50 shadow-xs'
+                        : 'border-slate-200 hover:border-purple-300 hover:bg-purple-50/20 bg-white'
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-slate-900 text-sm">
+                          {v.name}
+                        </span>
+                        {v.code && (
+                          <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md font-mono">
+                            {v.code}
+                          </span>
+                        )}
                       </div>
 
-                      {/* Discount */}
-                      <div className="col-span-4 sm:col-span-3 lg:col-span-2">
-                        <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                          تخفیف ({settings.currency})
-                        </label>
-                        <input
-                          type="number"
-                          id={`discount-input-row-${index}`}
-                          value={item.discount}
-                          onChange={(e) => handleItemChange(index, 'discount', parseFloat(e.target.value) || 0)}
-                          className="w-full h-9 bg-white border border-slate-300 rounded-xl px-2 text-xs text-center text-slate-800 outline-none focus:border-emerald-500"
-                        />
-                      </div>
-
-                      {/* Delete Action */}
-                      <div className="col-span-2 sm:col-span-1 flex justify-center pb-0.5">
-                        <button
-                          type="button"
-                          id={`remove-row-btn-${index}`}
-                          onClick={() => handleRemoveItemRow(index)}
-                          title="حذف این ردیف"
-                          className="h-9 w-9 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 active:bg-rose-100 rounded-xl border border-slate-200 hover:border-rose-200 transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-3">
+                        <span>
+                          موجودی انبار:{' '}
+                          <strong className={isOutOfStock ? 'text-rose-600 font-bold' : 'text-slate-800 font-mono'}>
+                            {toPersianDigits(v.stock)} {variantPickerProduct.unit}
+                          </strong>
+                        </span>
+                        <span>|</span>
+                        <span className="font-extrabold text-emerald-700">
+                          {formatPrice(price)}
+                        </span>
                       </div>
                     </div>
 
-                    {/* Row Total preview */}
-                    <div className="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs">
-                      <span className="text-slate-500">
-                        {item.productName ? item.productName : 'نامشخص'}
-                        {isOverStock && (
-                          <span className="text-rose-600 mr-2 font-medium">
-                            (توجه: تعداد انتخابی بیشتر از موجودی انبار است!)
-                          </span>
-                        )}
-                      </span>
-                      <span className="font-bold text-slate-800">
-                        مبلغ ردیف: {formatPrice(item.total, settings.currency)}
-                      </span>
+                    <div className="shrink-0">
+                      {inInvoice ? (
+                        <div className="flex items-center gap-1 bg-purple-600 text-white text-xs font-black px-2.5 py-1 rounded-xl shadow-xs">
+                          <Check className="w-3.5 h-3.5" />
+                          <span>{toPersianDigits(inInvoice.quantity)}</span>
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center hover:bg-purple-600 hover:text-white transition-colors">
+                          <Plus className="w-4 h-4 stroke-[2.5]" />
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            {/* Notes Section */}
-            <div className="mt-5">
-              <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                توضیحات و شرایط اختصاصی این فاکتور (چاپ در ذیل فاکتور):
-              </label>
-              <textarea
-                id="invoice-notes-input"
-                rows={2}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="توضیحات مربوط به نحوه تحویل، مهلت تست، گارانتی یا هماهنگی..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-              />
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs text-slate-500">
+                موجودی کل کالا: <strong className="text-slate-800 font-mono">{toPersianDigits(variantPickerProduct.stock)} {variantPickerProduct.unit}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setVariantPickerProduct(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                بستن
+              </button>
             </div>
           </div>
         </div>
+      )}
 
-        {/* Right Column: Invoice Totals, Payment & Final Actions (1 Col) */}
-        <div className="space-y-6">
-          {/* Summary & Calculations Card */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-            <h3 className="font-bold text-slate-800 text-sm mb-4 pb-3 border-b border-slate-100 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-emerald-600" />
-              <span>محاسبه مالی و مبالغ فاکتور</span>
-            </h3>
-
-            <div className="space-y-3 text-xs">
-              <div className="flex justify-between items-center text-slate-600">
-                <span>جمع اقلام (بدون تخفیف):</span>
-                <span className="font-semibold text-slate-800">{formatPrice(subtotal, settings.currency)}</span>
+      {/* MODAL 2: SERVICE / CUSTOM ITEM (آیتم خدماتی بدون کالا) */}
+      {isServiceModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3">
+          <div className="bg-white rounded-3xl w-full max-w-md p-5 shadow-2xl space-y-4 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-0.5 text-blue-600 font-black text-sm bg-blue-50 p-2 rounded-xl border border-blue-200">
+                  <span>▲</span>
+                  <span>■</span>
+                  <span>●</span>
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">افزودن آیتم خدماتی / بدون کالا</h3>
+                  <span className="text-[11px] text-slate-400 font-medium">خدمات، حمل و نقل، یا اقلام سفارشی بدون کسر از موجودی</span>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsServiceModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-              <div className="flex justify-between items-center text-slate-600">
-                <span>مجموع تخفیف اقلام:</span>
-                <span className="font-semibold text-rose-600">-{formatPrice(rowDiscounts, settings.currency)}</span>
-              </div>
-
-              {/* Extra overall discount */}
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-slate-600">تخفیف کلی پای فاکتور:</span>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  شرح خدمات یا نام آیتم:
+                </label>
                 <input
-                  type="number"
-                  id="extra-discount-input"
-                  min="0"
-                  value={extraDiscount}
-                  onChange={(e) => setExtraDiscount(parseFloat(e.target.value) || 0)}
-                  className="w-28 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-center font-medium outline-none focus:ring-1 focus:ring-emerald-500"
+                  type="text"
+                  value={serviceName}
+                  onChange={(e) => setServiceName(e.target.value)}
+                  placeholder="مثلاً: هزینه حمل و ارسال، نصب و راه‌اندازی، بسته بندی..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoFocus
                 />
               </div>
 
-              {/* VAT Tax Toggle */}
-              <div className="pt-2 border-t border-slate-100 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      id="vat-tax-checkbox"
-                      checked={taxEnabled}
-                      onChange={(e) => setTaxEnabled(e.target.checked)}
-                      className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                    />
-                    <span className="text-slate-700 font-medium">محاسبه مالیات بر ارزش افزوده</span>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    قیمت واحد:
                   </label>
-                  {taxEnabled && (
-                    <div className="flex items-center gap-1 text-[11px] text-slate-500">
-                      <span>نرخ:</span>
-                      <input
-                        type="number"
-                        id="vat-tax-rate-input"
-                        value={taxRate}
-                        onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
-                        className="w-12 bg-slate-50 border border-slate-200 rounded-md px-1 py-0.5 text-center text-xs"
-                      />
-                      <span>٪</span>
-                    </div>
-                  )}
+                  <input
+                    type="number"
+                    value={servicePrice || ''}
+                    onChange={(e) => setServicePrice(parseFloat(e.target.value) || 0)}
+                    placeholder="مبلغ به ریال"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 text-left"
+                  />
                 </div>
 
-                {taxEnabled && (
-                  <div className="flex justify-between items-center text-slate-600 pr-5">
-                    <span>مبلغ ارزش افزوده ({toPersianDigits(taxRate)}٪):</span>
-                    <span className="font-semibold text-slate-800">{formatPrice(taxAmount, settings.currency)}</span>
-                  </div>
-                )}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    واحد:
+                  </label>
+                  <input
+                    type="text"
+                    value={serviceUnit}
+                    onChange={(e) => setServiceUnit(e.target.value)}
+                    placeholder="موردی، ساعت، سرویس..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
 
-              {/* Final Amount Total */}
-              <div className="mt-4 pt-4 border-t-2 border-slate-200 bg-emerald-50/60 -mx-5 px-5 py-3 rounded-b-xl flex flex-col gap-1">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-extrabold text-slate-900">مبلغ نهایی فاکتور:</span>
-                  <span className="text-base font-black text-emerald-700">
-                    {formatPrice(finalTotal, settings.currency)}
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-500">
-                  شامل تخفیفات و مالیات نهایی
-                </p>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  تعداد / مقدار:
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={serviceQuantity}
+                  onChange={(e) => setServiceQuantity(parseInt(e.target.value, 10) || 1)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                />
               </div>
             </div>
+
+            <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleAddServiceItem}
+                className="flex-1 bg-[#1877f2] hover:bg-blue-600 text-white font-extrabold text-xs py-2.5 rounded-xl transition-colors shadow-xs"
+              >
+                افزودن به فاکتور
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsServiceModalOpen(false)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors"
+              >
+                انصراف
+              </button>
+            </div>
           </div>
+        </div>
+      )}
 
-          {/* Payment Status & Details */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
-            <h3 className="font-bold text-slate-800 text-sm pb-2 border-b border-slate-100">
-              نحوه تسویه و وضعیت پرداخت
-            </h3>
+      {/* MODAL 3: BARCODE SCANNER (بارکد اسکنر) */}
+      {isBarcodeModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3">
+          <div className="bg-white rounded-3xl w-full max-w-md p-5 shadow-2xl space-y-4 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center">
+                  <ScanLine className="w-5 h-5 stroke-[2.2]" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">بارکد اسکنر کالا</h3>
+                  <span className="text-[11px] text-slate-400 font-medium">اسکن سریع کالا و درج خودکار در فاکتور</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBarcodeModalOpen(false);
+                  setCameraActive(false);
+                }}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
+            {/* Camera scanner simulator */}
+            <div className="relative rounded-2xl bg-slate-950 text-white h-44 flex flex-col items-center justify-center overflow-hidden border border-slate-800">
+              {cameraActive ? (
+                <div className="relative w-full h-full flex flex-col items-center justify-center">
+                  <div className="absolute inset-x-8 top-1/2 h-0.5 bg-rose-500 shadow-lg shadow-rose-500 animate-pulse" />
+                  <span className="text-xs text-slate-400 font-medium">بارکد را در برابر کادر قرمز نگه دارید...</span>
+                </div>
+              ) : (
+                <div className="text-center space-y-2 p-4">
+                  <Camera className="w-10 h-10 text-slate-400 mx-auto stroke-[1.5]" />
+                  <p className="text-xs text-slate-300">
+                    برای اسکن زنده با دوربین دکمه زیر را لمس کرده یا بارکد را وارد نمایید.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setCameraActive(true)}
+                    className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-xs transition-colors"
+                  >
+                    فعال‌سازی دوربین
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Input Barcode */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700">
+                ورود دستی بارکد یا کد کالا:
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={barcodeInput}
+                  onChange={(e) => setBarcodeInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleScanBarcode(barcodeInput);
+                    }
+                  }}
+                  placeholder="مثلاً 1001 یا اسکن با بارکدخوان فیزیکی..."
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => handleScanBarcode(barcodeInput)}
+                  className="bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition-colors"
+                >
+                  افزودن
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Demo suggestions */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <span className="text-[11px] text-slate-400 font-bold">تست سریع:</span>
+              {products.slice(0, 3).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => handleScanBarcode(p.code)}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-1 rounded-lg transition-colors"
+                >
+                  کد {p.code} ({p.name.slice(0, 12)}...)
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: CUSTOMER SELECTOR (انتخاب مشتری) */}
+      {isCustomerModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3">
+          <div className="bg-white rounded-3xl w-full max-w-md p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center">
+                  <Contact className="w-5 h-5 stroke-[2]" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">انتخاب طرف حساب / خریدار</h3>
+                  <span className="text-[11px] text-slate-400 font-medium">مشتری مورد نظر را انتخاب یا جدید تعریف کنید</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCustomerModalOpen(false);
+                  setIsNewCustomerFormOpen(false);
+                }}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {!isNewCustomerFormOpen ? (
+              <>
+                {/* Search Customer Input */}
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+                  <input
+                    type="text"
+                    value={customerSearchQuery}
+                    onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                    placeholder="جستجوی نام یا شماره تماس مشتری..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-9 pl-3 py-2 text-xs sm:text-sm font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Option: Walk-in (متفرقه) */}
+                <div
+                  onClick={() => handleSelectCustomer(null)}
+                  className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                    !selectedCustomerId
+                      ? 'border-emerald-500 bg-emerald-50/50'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs">
+                      م
+                    </div>
+                    <div>
+                      <span className="font-extrabold text-slate-900 text-xs sm:text-sm block">
+                        مشتری متفرقه / گذری
+                      </span>
+                      <span className="text-[11px] text-slate-400">فروش بدون نیاز به ثبت حساب مشتری</span>
+                    </div>
+                  </div>
+                  {!selectedCustomerId && <Check className="w-4 h-4 text-emerald-600" />}
+                </div>
+
+                {/* Customer List */}
+                <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                  {customers
+                    .filter(
+                      (c) =>
+                        !customerSearchQuery.trim() ||
+                        c.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+                        (c.phone && c.phone.includes(customerSearchQuery))
+                    )
+                    .map((cust) => {
+                      const isSelected = selectedCustomerId === cust.id;
+                      return (
+                        <div
+                          key={cust.id}
+                          onClick={() => handleSelectCustomer(cust)}
+                          className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                            isSelected
+                              ? 'border-emerald-500 bg-emerald-50/50'
+                              : 'border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                              {cust.name.slice(0, 1)}
+                            </div>
+                            <div>
+                              <span className="font-extrabold text-slate-900 text-xs sm:text-sm block">
+                                {cust.name}
+                              </span>
+                              {cust.phone && (
+                                <span className="text-[11px] text-slate-400" dir="ltr">
+                                  {cust.phone}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-emerald-600" />}
+                        </div>
+                      );
+                    })}
+                </div>
+
+                {/* Bottom: Add New Customer Button */}
+                <div className="pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsNewCustomerFormOpen(true)}
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-xs"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>تعریف و ثبت مشتری جدید</span>
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* New Customer Form */
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    نام و نام خانوادگی خریدار: *
+                  </label>
+                  <input
+                    type="text"
+                    value={newCustName}
+                    onChange={(e) => setNewCustName(e.target.value)}
+                    placeholder="مثلاً: علی رضایی"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    شماره تماس / موبایل:
+                  </label>
+                  <input
+                    type="tel"
+                    value={newCustPhone}
+                    onChange={(e) => setNewCustPhone(e.target.value)}
+                    placeholder="۰۹۱۲۳۴۵۶۷۸۹"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none text-left"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    آدرس خریدار:
+                  </label>
+                  <input
+                    type="text"
+                    value={newCustAddress}
+                    onChange={(e) => setNewCustAddress(e.target.value)}
+                    placeholder="نشانی کامل جهت درج در پیش‌فاکتور یا فاکتور..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    کد ملی / شناسه ملی:
+                  </label>
+                  <input
+                    type="text"
+                    value={newCustNationalId}
+                    onChange={(e) => setNewCustNationalId(e.target.value)}
+                    placeholder="۱۰ رقمی"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none text-left"
+                  />
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCreateCustomer}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs py-2.5 rounded-xl transition-colors shadow-xs"
+                  >
+                    ذخیره و انتخاب مشتری
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsNewCustomerFormOpen(false)}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors"
+                  >
+                    بازگشت
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: SETTINGS & DETAILS (تنظیمات فاکتور و سربرگ) */}
+      {isSettingsModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3">
+          <div className="bg-white rounded-3xl w-full max-w-md p-5 shadow-2xl space-y-4 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+                  <GraduationCap className="w-5 h-5 stroke-[2.2]" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">مشخصات سند و نوع فاکتور</h3>
+                  <span className="text-[11px] text-slate-400 font-medium">شماره فاکتور، تاریخ، قالب و پیش‌فاکتور</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSettingsModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {/* Proforma Switcher */}
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-extrabold text-slate-900 block">حالت پیش‌فاکتور</span>
+                  <span className="text-[10px] text-slate-500">عدم کسر از موجودی انبار تا تایید مشتری</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsProforma(!isProforma)}
+                  className={`px-3 py-1.5 rounded-xl font-extrabold text-xs transition-colors ${
+                    isProforma
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                  }`}
+                >
+                  {isProforma ? 'فعال (پیش‌فاکتور)' : 'فاکتور قطعی فروش'}
+                </button>
+              </div>
+
+              {/* Number and Date */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    شماره فاکتور:
+                  </label>
+                  <input
+                    type="text"
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 text-center focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    تاریخ صدور:
+                  </label>
+                  <input
+                    type="text"
+                    value={invoiceDate}
+                    onChange={(e) => setInvoiceDate(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 text-center focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Template Choice */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  قالب چاپ فاکتور:
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceType('standard')}
+                    className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors ${
+                      invoiceType === 'standard'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                        : 'border-slate-200 bg-white text-slate-600'
+                    }`}
+                  >
+                    استاندارد
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceType('official')}
+                    className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors ${
+                      invoiceType === 'official'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                        : 'border-slate-200 bg-white text-slate-600'
+                    }`}
+                  >
+                    رسمی دارایی
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceType('thermal')}
+                    className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors ${
+                      invoiceType === 'thermal'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                        : 'border-slate-200 bg-white text-slate-600'
+                    }`}
+                  >
+                    حرارتی فیش
+                  </button>
+                </div>
+              </div>
+
+              {/* Tax Toggle */}
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-extrabold text-slate-900 block">مالیات بر ارزش افزوده</span>
+                  <span className="text-[10px] text-slate-500">نرخ: {toPersianDigits(taxRate)}٪</span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={taxEnabled}
+                    onChange={(e) => setTaxEnabled(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsSettingsModalOpen(false)}
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs py-2.5 rounded-xl transition-colors"
+              >
+                تایید و بستن
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: CHECKOUT / SETTLEMENT & PRINT (تسویه و ثبت نهایی) */}
+      {isCheckoutModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
+                  <FileText className="w-5 h-5 stroke-[2.2]" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">تسویه حساب و ثبت فاکتور</h3>
+                  <span className="text-[11px] text-slate-400 font-medium">روش تسویه و ثبت نهایی سند</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCheckoutModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Financial Summary Card */}
+            <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200 space-y-2 text-xs">
+              <div className="flex items-center justify-between text-slate-600">
+                <span>جمع اقلام ({toPersianDigits(items.length)} قلم):</span>
+                <span className="font-bold">{formatPrice(subtotal)}</span>
+              </div>
+
+              {totalDiscount > 0 && (
+                <div className="flex items-center justify-between text-rose-600 font-bold">
+                  <span>تخفیف کل:</span>
+                  <span>- {formatPrice(totalDiscount)}</span>
+                </div>
+              )}
+
+              {taxEnabled && (
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>مالیات بر ارزش افزوده ({toPersianDigits(taxRate)}٪):</span>
+                  <span className="font-bold">+ {formatPrice(taxAmount)}</span>
+                </div>
+              )}
+
+              <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-sm font-black text-slate-900">
+                <span>مبلغ قابل پرداخت نهایی:</span>
+                <span className="text-emerald-700 text-base">{formatPrice(finalTotal)}</span>
+              </div>
+            </div>
+
+            {/* Extra Discount Input */}
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1.5">وضعیت پرداخت:</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                تخفیف کلی مازاد روی فاکتور:
+              </label>
+              <input
+                type="number"
+                value={extraDiscount || ''}
+                onChange={(e) => setExtraDiscount(parseFloat(e.target.value) || 0)}
+                placeholder="مبلغ تخفیف مازاد به ریال"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 text-left focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Payment Method Selector */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                روش پرداخت / تسویه:
+              </label>
+              <div className="grid grid-cols-4 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('cash')}
+                  className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors flex flex-col items-center gap-1 ${
+                    paymentMethod === 'cash'
+                      ? 'border-blue-500 bg-blue-50 text-blue-800'
+                      : 'border-slate-200 bg-white text-slate-600'
+                  }`}
+                >
+                  <Banknote className="w-4 h-4" />
+                  <span>نقدی</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('transfer')}
+                  className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors flex flex-col items-center gap-1 ${
+                    paymentMethod === 'transfer'
+                      ? 'border-blue-500 bg-blue-50 text-blue-800'
+                      : 'border-slate-200 bg-white text-slate-600'
+                  }`}
+                >
+                  <CreditCard className="w-4 h-4" />
+                  <span>کارتخوان</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('cheque')}
+                  className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors flex flex-col items-center gap-1 ${
+                    paymentMethod === 'cheque'
+                      ? 'border-blue-500 bg-blue-50 text-blue-800'
+                      : 'border-slate-200 bg-white text-slate-600'
+                  }`}
+                >
+                  <Landmark className="w-4 h-4" />
+                  <span>چک صیادی</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('transfer')}
+                  className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors flex flex-col items-center gap-1 ${
+                    paymentMethod === 'transfer'
+                      ? 'border-blue-500 bg-blue-50 text-blue-800'
+                      : 'border-slate-200 bg-white text-slate-600'
+                  }`}
+                >
+                  <CreditCard className="w-4 h-4" />
+                  <span>کارت به کارت</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Payment Status (Paid / Unpaid / Partial) */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                وضعیت پرداخت:
+              </label>
               <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
-                  id="status-paid-btn"
-                  onClick={() => handlePaymentStatusChange('paid')}
-                  className={`py-2 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                  onClick={() => {
+                    setPaymentStatus('paid');
+                    setPaidAmount(finalTotal);
+                  }}
+                  className={`py-2 text-center rounded-xl text-xs font-bold border transition-colors ${
                     paymentStatus === 'paid'
-                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                      : 'border-slate-200 bg-white text-slate-600'
                   }`}
                 >
                   تسویه کامل
                 </button>
+
                 <button
                   type="button"
-                  id="status-partial-btn"
-                  onClick={() => handlePaymentStatusChange('partial')}
-                  className={`py-2 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                  onClick={() => {
+                    setPaymentStatus('partial');
+                    setPaidAmount(Math.round(finalTotal / 2));
+                  }}
+                  className={`py-2 text-center rounded-xl text-xs font-bold border transition-colors ${
                     paymentStatus === 'partial'
-                      ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      ? 'border-amber-500 bg-amber-50 text-amber-800'
+                      : 'border-slate-200 bg-white text-slate-600'
                   }`}
                 >
-                  بیعانه / قسطی
+                  بیعانه / بخشی
                 </button>
+
                 <button
                   type="button"
-                  id="status-unpaid-btn"
-                  onClick={() => handlePaymentStatusChange('unpaid')}
-                  className={`py-2 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                  onClick={() => {
+                    setPaymentStatus('unpaid');
+                    setPaidAmount(0);
+                  }}
+                  className={`py-2 text-center rounded-xl text-xs font-bold border transition-colors ${
                     paymentStatus === 'unpaid'
-                      ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      ? 'border-rose-500 bg-rose-50 text-rose-800'
+                      : 'border-slate-200 bg-white text-slate-600'
                   }`}
                 >
-                  نسیه (تسویه نشده)
+                  نسیه / مانده حساب
                 </button>
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-2">روش دریافت وجه:</label>
-              
-              {/* Payment Method Quick Selector Buttons */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
-                {/* 1. چک */}
-                {settings.enableChequePayment !== false && (
-                  <button
-                    type="button"
-                    id="payment-method-cheque-btn"
-                    onClick={() => setPaymentMethod('cheque')}
-                    className={`flex items-center justify-center gap-1.5 p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                      paymentMethod === 'cheque'
-                        ? 'bg-sky-600 text-white border-sky-600 shadow-xs ring-2 ring-sky-300'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-sky-50 hover:border-sky-300'
-                    }`}
-                  >
-                    <FileCheck className="w-3.5 h-3.5" />
-                    <span>چک بانکی</span>
-                  </button>
-                )}
-
-                {/* 2. نقدی */}
-                {settings.enableCashPayment !== false && (
-                  <button
-                    type="button"
-                    id="payment-method-cash-btn"
-                    onClick={() => setPaymentMethod('cash')}
-                    className={`flex items-center justify-center gap-1.5 p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                      paymentMethod === 'cash'
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs ring-2 ring-emerald-300'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300'
-                    }`}
-                  >
-                    <Banknote className="w-3.5 h-3.5" />
-                    <span>نقدی</span>
-                  </button>
-                )}
-
-                {/* 3. واریز به حساب */}
-                {settings.enableTransferPayment !== false && (
-                  <button
-                    type="button"
-                    id="payment-method-transfer-btn"
-                    onClick={() => setPaymentMethod('transfer')}
-                    className={`flex items-center justify-center gap-1.5 p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                      paymentMethod === 'transfer'
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs ring-2 ring-indigo-300'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-indigo-50 hover:border-indigo-300'
-                    }`}
-                  >
-                    <Landmark className="w-3.5 h-3.5" />
-                    <span>واریز به حساب</span>
-                  </button>
-                )}
-
-                {/* 4. دستگاه کارتخوان POS */}
-                {settings.enablePosPayment && (
-                  <button
-                    type="button"
-                    id="payment-method-pos-btn"
-                    onClick={() => setPaymentMethod('pos')}
-                    className={`flex items-center justify-center gap-1.5 p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                      paymentMethod === 'pos'
-                        ? 'bg-teal-600 text-white border-teal-600 shadow-xs ring-2 ring-teal-300'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-teal-50 hover:border-teal-300'
-                    }`}
-                  >
-                    <CreditCard className="w-3.5 h-3.5" />
-                    <span>کارتخوان (POS)</span>
-                  </button>
-                )}
-
-                {/* 5. حساب دفتری / نسیه */}
-                {settings.enableCreditPayment && (
-                  <button
-                    type="button"
-                    id="payment-method-credit-btn"
-                    onClick={() => setPaymentMethod('credit')}
-                    className={`flex items-center justify-center gap-1.5 p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                      paymentMethod === 'credit'
-                        ? 'bg-amber-600 text-white border-amber-600 shadow-xs ring-2 ring-amber-300'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300'
-                    }`}
-                  >
-                    <BookOpen className="w-3.5 h-3.5" />
-                    <span>حساب دفتری</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Amount input alongside method */}
-              <div className="mb-3">
-                <label className="block text-xs font-medium text-slate-600 mb-1">مبلغ دریافتی:</label>
+            {/* If Partial: Paid Amount input */}
+            {paymentStatus === 'partial' && (
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  مبلغ پرداخت شده نقدی / علی‌الحساب:
+                </label>
                 <input
                   type="number"
-                  id="paid-amount-input"
-                  value={paymentStatus === 'paid' ? finalTotal : paidAmount}
-                  disabled={paymentStatus === 'paid'}
+                  value={paidAmount || ''}
                   onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-50 disabled:bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-2 text-xs text-slate-800 font-bold outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 text-left focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
               </div>
+            )}
 
-              {/* DYNAMIC SUB-PANELS BASED ON PAYMENT METHOD */}
-              {/* 1. چک: شماره چک، تاریخ سررسید و نام چک */}
-              {paymentMethod === 'cheque' && (
-                <div className="bg-sky-50/70 border border-sky-200 rounded-xl p-3.5 space-y-3 transition-all animate-fadeIn">
-                  <div className="flex items-center justify-between pb-2 border-b border-sky-200/70">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-sky-900">
-                      <FileCheck className="w-4 h-4 text-sky-600" />
-                      <span>مشخصات چک دریافتی</span>
-                    </div>
-                    <span className="text-[10px] text-sky-700 bg-sky-100 px-2 py-0.5 rounded-md font-semibold">
-                      ثبت در فاکتور و کاردکس
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    {/* فیلد ۱: شماره چک */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                        <Hash className="w-3 h-3 text-sky-600" />
-                        <span>شماره چک *</span>
-                      </label>
-                      <input
-                        type="text"
-                        id="invoice-cheque-number-input"
-                        value={chequeNumber}
-                        onChange={(e) => setChequeNumber(e.target.value)}
-                        placeholder="شماره صیادی یا سریال چک"
-                        className="w-full bg-white border border-sky-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-medium"
-                      />
-                    </div>
-
-                    {/* فیلد ۲: تاریخ سررسید چک */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                        <Calendar className="w-3 h-3 text-sky-600" />
-                        <span>تاریخ چک *</span>
-                      </label>
-                      <input
-                        type="text"
-                        id="invoice-cheque-duedate-input"
-                        value={chequeDueDate}
-                        onChange={(e) => setChequeDueDate(e.target.value)}
-                        placeholder="مثال: ۱۴۰۳/۰۹/۲۰"
-                        className="w-full bg-white border border-sky-300 rounded-lg px-2 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 text-center font-bold"
-                      />
-                      {/* میانبرهای تاریخ سریع */}
-                      <div className="flex items-center justify-between gap-1 mt-1 text-[10px]">
-                        <button
-                          type="button"
-                          onClick={() => setChequeDueDate(getCurrentJalaliDate())}
-                          className="text-sky-700 hover:bg-sky-200/60 px-1 py-0.5 rounded cursor-pointer transition-colors"
-                        >
-                          امروز
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setChequeDueDate(addDaysToJalali(30))}
-                          className="text-sky-700 hover:bg-sky-200/60 px-1 py-0.5 rounded cursor-pointer transition-colors"
-                        >
-                          +۳۰ روز
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setChequeDueDate(addDaysToJalali(60))}
-                          className="text-sky-700 hover:bg-sky-200/60 px-1 py-0.5 rounded cursor-pointer transition-colors"
-                        >
-                          +۶۰ روز
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setChequeDueDate(addDaysToJalali(90))}
-                          className="text-sky-700 hover:bg-sky-200/60 px-1 py-0.5 rounded cursor-pointer transition-colors"
-                        >
-                          +۹۰ روز
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* فیلد ۳: نام چک */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                        <User className="w-3 h-3 text-sky-600" />
-                        <span>نام چک (صاحب حساب/بانک) *</span>
-                      </label>
-                      <input
-                        type="text"
-                        id="invoice-cheque-name-input"
-                        value={chequeName}
-                        onChange={(e) => setChequeName(e.target.value)}
-                        placeholder="بانک ملت - به نام علی احمدی"
-                        className="w-full bg-white border border-sky-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-medium"
-                      />
-                    </div>
-                  </div>
+            {/* If Cheque: Cheque Details */}
+            {paymentMethod === 'cheque' && (
+              <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2">
+                <span className="text-xs font-extrabold text-amber-900 block">مشخصات چک صیادی:</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={chequeNumber}
+                    onChange={(e) => setChequeNumber(e.target.value)}
+                    placeholder="شماره صیادی ۱۶ رقمی"
+                    className="w-full bg-white border border-amber-300 rounded-xl px-2.5 py-1.5 text-xs text-slate-800"
+                  />
+                  <input
+                    type="text"
+                    value={chequeDueDate}
+                    onChange={(e) => setChequeDueDate(e.target.value)}
+                    placeholder="تاریخ سررسید (۱۴۰۳/۰۵/۰۱)"
+                    className="w-full bg-white border border-amber-300 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 text-center"
+                  />
                 </div>
-              )}
-
-              {/* 2. واریز به حساب: ثبت توضیحات */}
-              {paymentMethod === 'transfer' && (
-                <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5 space-y-2 transition-all animate-fadeIn">
-                  <div className="flex items-center justify-between pb-1.5 border-b border-indigo-200/70">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900">
-                      <Landmark className="w-4 h-4 text-indigo-600" />
-                      <span>مشخصات واریز به حساب / کارت به کارت</span>
-                    </div>
-                    <span className="text-[10px] text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-md font-semibold">
-                      حواله / پایا / ساتنا
-                    </span>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      ثبت توضیحات واریز به حساب (شماره پیگیری، ارجاع، نام بانک، شماره فیش و ...):
-                    </label>
-                    <textarea
-                      id="invoice-transfer-description-input"
-                      rows={2}
-                      value={transferDescription}
-                      onChange={(e) => setTransferDescription(e.target.value)}
-                      placeholder="مثال: واریز به شماره حساب سامان - شماره پیگیری: ۹۸۷۶۵۴۳۲۱ - واریز کننده: آقای علوی"
-                      className="w-full bg-white border border-indigo-300 rounded-lg p-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* 3. نقدی */}
-              {paymentMethod === 'cash' && (
-                <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3 flex items-center gap-2 text-xs text-emerald-800">
-                  <Banknote className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>دریافت وجه به صورت <strong>نقد</strong> در صندوق فروشگاه ثبت می‌شود.</span>
-                </div>
-              )}
-            </div>
-
-            {paymentStatus === 'partial' && (
-              <div className="p-2.5 rounded-xl bg-amber-50 text-amber-800 text-xs border border-amber-200 flex justify-between">
-                <span>مانده بدهی مشتری:</span>
-                <span className="font-bold">{formatPrice(Math.max(0, finalTotal - paidAmount), settings.currency)}</span>
+                <input
+                  type="text"
+                  value={chequeName}
+                  onChange={(e) => setChequeName(e.target.value)}
+                  placeholder="نام صاحب حساب / بانک صادرکننده"
+                  className="w-full bg-white border border-amber-300 rounded-xl px-2.5 py-1.5 text-xs text-slate-800"
+                />
               </div>
             )}
-          </div>
 
-          {/* Action Buttons */}
-          <div className="space-y-3 pt-2">
-            <button
-              type="button"
-              id="save-and-print-invoice-btn"
-              onClick={() => handleSubmit(true)}
-              className={`w-full py-3 px-4 ${
-                isEditing
-                  ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-200'
-                  : isProforma
-                  ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
-                  : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
-              } active:scale-98 text-white rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer`}
-            >
-              <Printer className="w-4 h-4" />
-              <span>
-                {isEditing
-                  ? 'ذخیره تغییرات و چاپ فاکتور'
-                  : isProforma
-                  ? 'ثبت پیش‌فاکتور و چاپ فوری'
-                  : 'ثبت فاکتور و چاپ فوری'}
-              </span>
-            </button>
+            {/* Notes */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                توضیحات و یادداشت فاکتور:
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                placeholder="توضیحات تکمیلی جهت درج در پایین برگه فاکتور..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+            </div>
 
-            <button
-              type="button"
-              id="save-invoice-only-btn"
-              onClick={() => handleSubmit(false)}
-              className="w-full py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
-            >
-              <CheckCircle2 className={`w-4 h-4 ${isEditing ? 'text-amber-600' : isProforma ? 'text-indigo-600' : 'text-emerald-600'}`} />
-              <span>
-                {isEditing
-                  ? `ذخیره تغییرات ${isProforma ? 'پیش‌فاکتور' : 'فاکتور'}`
-                  : isProforma
-                  ? 'فقط ثبت پیش‌فاکتور (بدون کسر از انبار)'
-                  : 'فقط ثبت در سیستم و کسر از انبار'}
-              </span>
-            </button>
-
-            {onCancel && (
+            {/* Actions: Save & Print vs Save */}
+            <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row gap-2">
               <button
                 type="button"
-                id="cancel-invoice-builder-btn"
-                onClick={onCancel}
-                className="w-full py-2 text-slate-500 hover:text-slate-800 text-xs flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                id="btn-save-and-print"
+                onClick={() => handleFinalSubmit(true)}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm py-3 rounded-2xl transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>{isEditing ? 'انصراف از ویرایش' : 'انصراف و بازگشت'}</span>
+                <Printer className="w-4 h-4" />
+                <span>ثبت و چاپ فوری فاکتور</span>
               </button>
-            )}
+
+              <button
+                type="button"
+                id="btn-save-final"
+                onClick={() => handleFinalSubmit(false)}
+                className="flex-1 bg-[#1877f2] hover:bg-blue-600 text-white font-extrabold text-xs sm:text-sm py-3 rounded-2xl transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>ثبت نهایی فاکتور</span>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* Sticky Mobile Summary & Checkout Bar (Shown only on small screens) */}
-      <div className="sm:hidden fixed bottom-[57px] left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200/90 px-3 py-2 shadow-[0_-3px_12px_rgba(0,0,0,0.06)] flex items-center justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <span className="text-[10px] text-slate-500 block leading-tight">
-            {isEditing ? 'مبلغ به‌روزشده:' : isProforma ? 'مبلغ پیش‌فاکتور:' : 'مبلغ نهایی:'}
-          </span>
-          <span className={`text-xs font-black truncate block ${isEditing ? 'text-amber-700' : isProforma ? 'text-indigo-700' : 'text-emerald-700'}`}>
-            {formatPrice(finalTotal, settings.currency)}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button
-            type="button"
-            onClick={() => handleSubmit(false)}
-            className="px-3 py-2 bg-slate-100 active:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold border border-slate-300 active:scale-95 cursor-pointer"
-          >
-            {isEditing ? 'ذخیره' : isProforma ? 'ثبت پیش‌فاکتور' : 'ثبت'}
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSubmit(true)}
-            className={`px-3.5 py-2 ${
-              isEditing
-                ? 'bg-amber-600 active:bg-amber-700'
-                : isProforma
-                ? 'bg-indigo-600 active:bg-indigo-700'
-                : 'bg-emerald-600 active:bg-emerald-700'
-            } text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1 active:scale-95 cursor-pointer`}
-          >
-            <Printer className="w-3.5 h-3.5" />
-            <span>{isEditing ? 'ذخیره و چاپ' : 'ثبت و چاپ'}</span>
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
