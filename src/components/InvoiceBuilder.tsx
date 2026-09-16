@@ -2003,34 +2003,34 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
           onClick={(e) => {
             if (e.target === e.currentTarget) setIsProductCatalogOpen(false);
           }}
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150"
         >
           <div
             id="product-catalog-modal"
-            className="bg-white rounded-3xl w-full max-w-lg lg:max-w-4xl xl:max-w-5xl shadow-2xl border border-slate-200/80 max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+            className="bg-white rounded-3xl w-full max-w-lg md:max-w-2xl lg:max-w-4xl xl:max-w-5xl shadow-2xl border border-slate-200/80 max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-50/80 border-b border-slate-200/80 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-xs">
-                  <Package className="w-5 h-5 stroke-[2.2]" />
+            <div className="flex items-center justify-between px-3.5 py-3 sm:px-5 sm:py-3.5 bg-slate-50/90 border-b border-slate-200/80 shrink-0">
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-xs shrink-0">
+                  <Package className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-black text-slate-900 text-sm sm:text-base">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-black text-slate-900 text-sm sm:text-base leading-tight truncate">
                       انتخاب کالا از انبار
                     </h3>
-                    <span className="hidden sm:inline-flex items-center text-[11px] font-bold text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-full font-mono">
-                      {toPersianDigits(products.length)} کالا در سیستم
+                    <span className="inline-flex items-center text-[10px] sm:text-[11px] font-bold text-slate-600 bg-slate-200/70 px-2 py-0.5 rounded-full font-mono shrink-0">
+                      {toPersianDigits(products.length)} کالا
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    جستجو، بررسی موجودی و قیمت و افزودن مستقیم کالاها به ردیف‌های فاکتور
+                  <p className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
+                    بررسی و افزودن مستقیم کالاها به فاکتور
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 {items.length > 0 && (
                   <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -2040,7 +2040,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsProductCatalogOpen(false)}
-                  className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center cursor-pointer transition-colors"
+                  className="w-8 h-8 rounded-full bg-slate-200/80 hover:bg-slate-300 text-slate-600 hover:text-slate-900 flex items-center justify-center cursor-pointer transition-colors"
                   title="بستن پنجره"
                 >
                   <X className="w-4 h-4" />
@@ -2049,17 +2049,17 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             </div>
 
             {/* Search & Filter Toolbar */}
-            <div className="p-4 bg-white border-b border-slate-100 space-y-3 shrink-0">
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            <div className="p-3 sm:p-4 bg-white border-b border-slate-100 space-y-2.5 sm:space-y-3 shrink-0">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2.5">
                 {/* Search input with clear button */}
-                <div className="relative flex-1 group">
+                <div className="relative flex-1 group min-w-0">
                   <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 transition-colors group-focus-within:text-emerald-600" />
                   <input
                     type="text"
                     value={productCatalogSearch}
                     onChange={(e) => setProductCatalogSearch(e.target.value)}
-                    placeholder="جستجو بر اساس نام کالا، کد، بارکد یا دسته‌بندی..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl pr-10 pl-9 py-2.5 text-xs sm:text-sm font-medium placeholder:text-slate-400 focus:bg-white focus:border-emerald-500 focus:ring-3 focus:ring-emerald-500/10 focus:outline-none transition-all"
+                    placeholder="جستجو بر اساس نام، کد، بارکد یا دسته‌بندی..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl pr-10 pl-9 py-2 sm:py-2.5 text-xs sm:text-sm font-medium placeholder:text-slate-400 focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 focus:outline-none transition-all"
                   />
                   {productCatalogSearch && (
                     <button
@@ -2077,7 +2077,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <button
                   type="button"
                   onClick={() => setCatalogOnlyInStock(!catalogOnlyInStock)}
-                  className={`flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-2xl border text-xs font-bold transition-all cursor-pointer whitespace-nowrap select-none ${
+                  className={`flex items-center justify-center gap-2 px-3 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl border text-xs font-bold transition-all cursor-pointer whitespace-nowrap select-none shrink-0 ${
                     catalogOnlyInStock
                       ? 'bg-emerald-50 border-emerald-500 text-emerald-800 shadow-2xs'
                       : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -2097,7 +2097,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   <button
                     type="button"
                     onClick={() => setCatalogCategory('all')}
-                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                    className={`px-2.5 sm:px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                       catalogCategory === 'all'
                         ? 'bg-slate-900 text-white shadow-2xs'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -2121,7 +2121,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                         key={cat}
                         type="button"
                         onClick={() => setCatalogCategory(cat)}
-                        className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                        className={`px-2.5 sm:px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                           isActive
                             ? 'bg-slate-900 text-white shadow-2xs'
                             : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -2143,9 +2143,9 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             </div>
 
             {/* Product Cards Grid Area */}
-            <div className="flex-1 overflow-y-auto p-4 bg-slate-50/60">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4 bg-slate-50/60">
               {filteredProducts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                <div className="flex flex-col items-center justify-center py-14 px-4 text-center">
                   <div className="w-14 h-14 rounded-3xl bg-slate-100 border border-slate-200 text-slate-400 flex items-center justify-center mb-3 shadow-xs">
                     <Package className="w-7 h-7 stroke-[1.5]" />
                   </div>
@@ -2168,7 +2168,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
                   {filteredProducts.map((p) => {
                     const invoiceItemsForProduct = items.filter((it) => it.productId === p.id);
                     const totalQtyInInvoice = invoiceItemsForProduct.reduce((sum, it) => sum + it.quantity, 0);
@@ -2178,13 +2178,13 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                       <div
                         key={p.id}
                         id={`catalog-product-${p.id}`}
-                        className={`rounded-2xl border transition-all p-3 sm:px-4 sm:py-3 flex items-center justify-between gap-3 select-none ${
+                        className={`rounded-2xl border transition-all p-3 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 select-none ${
                           inInvoice
                             ? 'border-emerald-500 bg-emerald-50/50 shadow-2xs ring-1 ring-emerald-500/20'
                             : 'border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/70 shadow-2xs'
                         }`}
                       >
-                        {/* ONLY Product Name */}
+                        {/* ONLY Product Name (Takes full row on mobile, full width on desktop) */}
                         <div
                           onClick={() => {
                             if (p.hasVariants && p.variants && p.variants.length > 0) {
@@ -2193,7 +2193,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                               handleAddProduct(p);
                             }
                           }}
-                          className="flex-1 min-w-0 flex items-center gap-2.5 cursor-pointer group"
+                          className="flex items-center gap-2.5 cursor-pointer min-w-0 flex-1 group"
                           title="کلیک برای افزودن به فاکتور"
                         >
                           <div
@@ -2205,13 +2205,22 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                           >
                             <Package className="w-4 h-4" />
                           </div>
-                          <span className="font-extrabold text-slate-900 text-xs sm:text-sm leading-snug group-hover:text-emerald-700 transition-colors truncate">
-                            {p.name}
-                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-extrabold text-slate-900 text-xs sm:text-sm leading-snug group-hover:text-emerald-700 transition-colors break-words">
+                                {p.name}
+                              </span>
+                              {p.category && (
+                                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md shrink-0">
+                                  {p.category}
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
                         {/* Action Buttons: Details, Edit, Add/Stepper */}
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                           {/* Button to show details in separate window */}
                           <button
                             type="button"
@@ -2219,10 +2228,10 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                               e.stopPropagation();
                               setViewingCatalogProduct(p);
                             }}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200/80 transition-all cursor-pointer shadow-2xs active:scale-[0.98]"
+                            className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200/80 transition-all cursor-pointer shadow-2xs active:scale-[0.98] whitespace-nowrap"
                             title="نمایش جزئیات کامل در پنجره جداگانه"
                           >
-                            <Eye className="w-3.5 h-3.5 text-sky-600" />
+                            <Eye className="w-3.5 h-3.5 text-sky-600 shrink-0" />
                             <span className="text-[11px] font-black">جزئیات</span>
                           </button>
 
@@ -2233,10 +2242,10 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                               e.stopPropagation();
                               handleOpenEditProduct(p);
                             }}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 transition-all cursor-pointer shadow-2xs active:scale-[0.98]"
+                            className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 transition-all cursor-pointer shadow-2xs active:scale-[0.98] whitespace-nowrap"
                             title="ویرایش مشخصات کالا در همینجا"
                           >
-                            <Pencil className="w-3.5 h-3.5 text-amber-600" />
+                            <Pencil className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                             <span className="text-[11px] font-black">ویرایش</span>
                           </button>
 
@@ -2248,10 +2257,10 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                                 e.stopPropagation();
                                 setVariantPickerProduct(p);
                               }}
-                              className="flex items-center gap-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-bold px-2.5 py-1.5 rounded-xl transition-all shadow-2xs cursor-pointer active:scale-[0.98]"
+                              className="flex items-center justify-center gap-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl transition-all shadow-2xs cursor-pointer active:scale-[0.98] whitespace-nowrap"
                               title="انتخاب رنگ یا تنوع"
                             >
-                              <Layers className="w-3.5 h-3.5 text-purple-600" />
+                              <Layers className="w-3.5 h-3.5 text-purple-600 shrink-0" />
                               <span className="text-[11px] font-black">تنوع</span>
                               {totalQtyInInvoice > 0 && (
                                 <span className="bg-purple-600 text-white text-[10px] px-1.5 py-0.2 rounded-md font-black">
@@ -2260,19 +2269,19 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                               )}
                             </button>
                           ) : inInvoice ? (
-                            <div className="flex items-center gap-0.5 bg-white border border-emerald-300 rounded-xl p-0.5 shadow-2xs">
+                            <div className="flex items-center gap-0.5 bg-white border border-emerald-300 rounded-xl p-0.5 shadow-2xs shrink-0">
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleDecrementProduct(p);
                                 }}
-                                className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-700 flex items-center justify-center text-xs transition-colors cursor-pointer"
+                                className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-700 flex items-center justify-center text-xs transition-colors cursor-pointer"
                                 title="کاهش تعداد"
                               >
-                                <Minus className="w-3 h-3" />
+                                <Minus className="w-3.5 h-3.5" />
                               </button>
-                              <span className="px-1.5 text-xs font-black text-emerald-700 min-w-[20px] text-center font-mono">
+                              <span className="px-2 text-xs font-black text-emerald-700 min-w-[22px] text-center font-mono">
                                 {toPersianDigits(totalQtyInInvoice)}
                               </span>
                               <button
@@ -2281,10 +2290,10 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                                   e.stopPropagation();
                                   handleAddProduct(p);
                                 }}
-                                className="w-6 h-6 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center text-xs transition-colors cursor-pointer"
+                                className="w-7 h-7 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center text-xs transition-colors cursor-pointer"
                                 title="افزایش تعداد"
                               >
-                                <Plus className="w-3 h-3 stroke-[2.5]" />
+                                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                               </button>
                             </div>
                           ) : (
@@ -2294,10 +2303,10 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                                 e.stopPropagation();
                                 handleAddProduct(p);
                               }}
-                              className="flex items-center gap-1 bg-slate-900 hover:bg-emerald-600 text-white text-xs font-bold px-2.5 py-1.5 rounded-xl transition-all shadow-2xs cursor-pointer active:scale-[0.98]"
+                              className="flex items-center justify-center gap-1 bg-slate-900 hover:bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-all shadow-2xs cursor-pointer active:scale-[0.98] whitespace-nowrap"
                               title="افزودن به فاکتور"
                             >
-                              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                              <Plus className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
                               <span className="text-[11px] font-black">افزودن</span>
                             </button>
                           )}
@@ -2310,32 +2319,42 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             </div>
 
             {/* Modal Bottom Action Bar / Footer */}
-            <div className="px-5 py-3.5 bg-white border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-              <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  <span className="text-xs font-bold text-slate-700">
-                    اقلام انتخابی: <strong className="font-black text-emerald-700">{toPersianDigits(items.length)} ردیف</strong> ({toPersianDigits(items.reduce((s, it) => s + it.quantity, 0))} قلم کالا)
+            <div className="px-3.5 py-3 sm:px-5 sm:py-3.5 bg-white border-t border-slate-200/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 shrink-0">
+              {/* Summary info */}
+              <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3 bg-slate-50 sm:bg-transparent p-2.5 sm:p-0 rounded-2xl border sm:border-0 border-slate-100">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                  <span>اقلام انتخابی:</span>
+                  <strong className="font-black text-emerald-700 font-mono">
+                    {toPersianDigits(items.length)} ردیف
+                  </strong>
+                  <span className="text-slate-400 text-[11px]">
+                    ({toPersianDigits(items.reduce((s, it) => s + it.quantity, 0))} قلم)
                   </span>
                 </div>
-                <div className="hidden sm:block text-slate-300">|</div>
-                <div className="text-xs font-bold text-slate-600">
-                  مبلغ کل فاکتور: <strong className="font-black text-slate-900">{formatPrice(finalTotal)}</strong> تومان
+                <div className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <span className="text-slate-300 hidden sm:inline">|</span>
+                  <span className="text-slate-500 font-medium">مبلغ کل:</span>
+                  <strong className="font-black text-slate-900 font-mono">
+                    {formatPrice(finalTotal)}
+                  </strong>
+                  <span className="text-[11px] font-semibold text-slate-600">{settings.currency}</span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setIsProductCatalogOpen(false)}
-                  className="flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                  className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer text-center"
                 >
                   بستن
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsProductCatalogOpen(false)}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-xs px-5 py-2 rounded-xl transition-all shadow-xs cursor-pointer"
+                  className="flex-2 sm:flex-initial flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all shadow-xs cursor-pointer"
                 >
                   <Check className="w-4 h-4 stroke-[2.5]" />
                   <span>تایید و بازگشت به فاکتور</span>
@@ -2353,23 +2372,23 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
           onClick={(e) => {
             if (e.target === e.currentTarget) setViewingCatalogProduct(null);
           }}
-          className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 animate-in fade-in duration-150"
         >
           <div
             id="product-details-modal"
-            className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200/80 max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+            className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200/80 max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-50/90 border-b border-slate-200/80 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shadow-2xs">
-                  <Eye className="w-5 h-5" />
+            <div className="flex items-center justify-between px-3.5 py-3 sm:px-5 sm:py-3.5 bg-slate-50/90 border-b border-slate-200/80 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-sky-100 text-sky-700 flex items-center justify-center shadow-2xs shrink-0">
+                  <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
-                <div>
-                  <h3 className="font-black text-slate-900 text-sm sm:text-base">
+                <div className="min-w-0">
+                  <h3 className="font-black text-slate-900 text-sm sm:text-base leading-tight truncate">
                     جزئیات و مشخصات کالا
                   </h3>
-                  <span className="text-[11px] text-slate-400 font-medium">
+                  <span className="text-[11px] text-slate-400 font-medium truncate block">
                     اطلاعات انبار، قیمت‌گذاری و بارکد
                   </span>
                 </div>
@@ -2377,7 +2396,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               <button
                 type="button"
                 onClick={() => setViewingCatalogProduct(null)}
-                className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer transition-colors"
+                className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer transition-colors shrink-0"
                 title="بستن"
               >
                 <X className="w-4 h-4" />
@@ -2385,18 +2404,18 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             </div>
 
             {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-3 sm:space-y-4">
               {/* Product Title Card */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-start justify-between gap-3">
-                <div className="space-y-1.5 flex-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 sm:gap-3">
+                <div className="space-y-1 flex-1 min-w-0">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                     نام محصول
                   </span>
-                  <h4 className="text-base sm:text-lg font-black text-slate-900 leading-snug">
+                  <h4 className="text-sm sm:text-base font-black text-slate-900 leading-snug break-words">
                     {viewingCatalogProduct.name}
                   </h4>
                 </div>
-                <div className="shrink-0 flex flex-col items-end gap-1">
+                <div className="shrink-0 flex items-center sm:flex-col sm:items-end gap-1.5 flex-wrap">
                   {viewingCatalogProduct.category && (
                     <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold shadow-2xs">
                       {viewingCatalogProduct.category}
@@ -2404,17 +2423,17 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   )}
                   {viewingCatalogProduct.stock <= 0 ? (
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-lg">
-                      <AlertTriangle className="w-3 h-3" />
+                      <AlertTriangle className="w-3 h-3 shrink-0" />
                       ناموجود
                     </span>
                   ) : viewingCatalogProduct.stock <= (viewingCatalogProduct.minStockAlert || 5) ? (
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg">
-                      <AlertTriangle className="w-3 h-3" />
+                      <AlertTriangle className="w-3 h-3 shrink-0" />
                       موجودی رو به اتمام
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
-                      <CheckCircle2 className="w-3 h-3" />
+                      <CheckCircle2 className="w-3 h-3 shrink-0" />
                       موجود در انبار
                     </span>
                   )}
@@ -2422,58 +2441,58 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               </div>
 
               {/* Specs Grid */}
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
                 {/* Sell Price */}
                 <div className="p-3 rounded-2xl bg-emerald-50/50 border border-emerald-200/70 space-y-1">
                   <span className="text-[11px] font-bold text-emerald-800 flex items-center gap-1">
-                    <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                    <CreditCard className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     قیمت فروش:
                   </span>
-                  <div className="text-sm sm:text-base font-black text-emerald-700">
-                    {formatPrice(viewingCatalogProduct.sellPrice)} <span className="text-xs font-medium text-emerald-800/70">تومان</span>
+                  <div className="text-xs sm:text-base font-black text-emerald-700 font-mono">
+                    {formatPrice(viewingCatalogProduct.sellPrice)} <span className="text-[11px] font-bold text-emerald-800/80">{settings.currency}</span>
                   </div>
                 </div>
 
                 {/* Buy Price */}
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
                   <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
-                    <Banknote className="w-3.5 h-3.5 text-slate-400" />
+                    <Banknote className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     قیمت خرید:
                   </span>
-                  <div className="text-sm sm:text-base font-black text-slate-800">
-                    {viewingCatalogProduct.buyPrice ? formatPrice(viewingCatalogProduct.buyPrice) : '۰'} <span className="text-xs font-medium text-slate-500">تومان</span>
+                  <div className="text-xs sm:text-base font-black text-slate-800 font-mono">
+                    {viewingCatalogProduct.buyPrice ? formatPrice(viewingCatalogProduct.buyPrice) : '۰'} <span className="text-[11px] font-medium text-slate-500">{settings.currency}</span>
                   </div>
                 </div>
 
                 {/* Stock */}
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
                   <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
-                    <Boxes className="w-3.5 h-3.5 text-slate-400" />
+                    <Boxes className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     موجودی فعلی انبار:
                   </span>
-                  <div className="text-sm sm:text-base font-black text-slate-900">
-                    {toPersianDigits(viewingCatalogProduct.stock)} <span className="text-xs font-medium text-slate-500">{viewingCatalogProduct.unit || 'عدد'}</span>
+                  <div className="text-xs sm:text-base font-black text-slate-900 font-mono">
+                    {toPersianDigits(viewingCatalogProduct.stock)} <span className="text-[11px] font-medium text-slate-500">{viewingCatalogProduct.unit || 'عدد'}</span>
                   </div>
                 </div>
 
                 {/* Min Stock Alert */}
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
                   <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
-                    <AlertTriangle className="w-3.5 h-3.5 text-slate-400" />
+                    <AlertTriangle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     حداقل هشدار موجودی:
                   </span>
-                  <div className="text-sm sm:text-base font-black text-slate-800">
-                    {toPersianDigits(viewingCatalogProduct.minStockAlert || 0)} <span className="text-xs font-medium text-slate-500">{viewingCatalogProduct.unit || 'عدد'}</span>
+                  <div className="text-xs sm:text-base font-black text-slate-800 font-mono">
+                    {toPersianDigits(viewingCatalogProduct.minStockAlert || 0)} <span className="text-[11px] font-medium text-slate-500">{viewingCatalogProduct.unit || 'عدد'}</span>
                   </div>
                 </div>
 
                 {/* Code */}
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
                   <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
-                    <Hash className="w-3.5 h-3.5 text-slate-400" />
+                    <Hash className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     کد کالا:
                   </span>
-                  <div className="text-xs sm:text-sm font-black font-mono text-slate-800">
+                  <div className="text-xs sm:text-sm font-black font-mono text-slate-800 truncate">
                     {toPersianDigits(viewingCatalogProduct.code)}
                   </div>
                 </div>
@@ -2481,7 +2500,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 {/* Barcode */}
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
                   <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
-                    <Barcode className="w-3.5 h-3.5 text-slate-400" />
+                    <Barcode className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     بارکد کالا:
                   </span>
                   <div className="text-xs sm:text-sm font-black font-mono text-slate-800 truncate">
@@ -2493,8 +2512,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               {/* Description if available */}
               {viewingCatalogProduct.description && (
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
-                  <span className="text-[11px] font-bold text-slate-500">توضیحات و مشخصات تکمیلی:</span>
-                  <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
+                  <span className="text-[11px] font-bold text-slate-500 block">توضیحات و مشخصات تکمیلی:</span>
+                  <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap break-words">
                     {viewingCatalogProduct.description}
                   </p>
                 </div>
@@ -2502,10 +2521,10 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
               {/* Variants List if available */}
               {viewingCatalogProduct.hasVariants && viewingCatalogProduct.variants && viewingCatalogProduct.variants.length > 0 && (
-                <div className="p-3.5 rounded-2xl bg-purple-50/50 border border-purple-200/80 space-y-2">
+                <div className="p-3 sm:p-3.5 rounded-2xl bg-purple-50/50 border border-purple-200/80 space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold text-purple-900">
                     <span className="flex items-center gap-1.5">
-                      <Layers className="w-4 h-4 text-purple-600" />
+                      <Layers className="w-4 h-4 text-purple-600 shrink-0" />
                       تنوع‌های رنگ و مدل تعریف‌شده ({toPersianDigits(viewingCatalogProduct.variants.length)} مورد):
                     </span>
                   </div>
@@ -2513,15 +2532,15 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     {viewingCatalogProduct.variants.map((v) => (
                       <div
                         key={v.id}
-                        className="bg-white p-2.5 rounded-xl border border-purple-100 flex items-center justify-between text-xs"
+                        className="bg-white p-2.5 rounded-xl border border-purple-100 flex items-center justify-between text-xs gap-2"
                       >
-                        <span className="font-bold text-slate-800">{v.name}</span>
-                        <div className="flex items-center gap-3">
+                        <span className="font-bold text-slate-800 truncate">{v.name}</span>
+                        <div className="flex items-center gap-2.5 shrink-0">
                           <span className="text-[11px] text-slate-500">
-                            موجودی: <strong className="text-slate-800">{toPersianDigits(v.stock)}</strong>
+                            موجودی: <strong className="text-slate-800 font-mono">{toPersianDigits(v.stock)}</strong>
                           </span>
-                          <span className="text-[11px] font-black text-emerald-700">
-                            {formatPrice(v.sellPrice || viewingCatalogProduct.sellPrice)} تومان
+                          <span className="text-[11px] font-black text-emerald-700 font-mono">
+                            {formatPrice(v.sellPrice || viewingCatalogProduct.sellPrice)} {settings.currency}
                           </span>
                         </div>
                       </div>
@@ -2532,7 +2551,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             </div>
 
             {/* Footer */}
-            <div className="px-5 py-3.5 bg-slate-50/80 border-t border-slate-200/80 flex items-center justify-between gap-2 shrink-0">
+            <div className="px-3.5 py-3 sm:px-5 sm:py-3.5 bg-slate-50/80 border-t border-slate-200/80 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shrink-0">
               <button
                 type="button"
                 onClick={() => {
@@ -2540,9 +2559,9 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   setViewingCatalogProduct(null);
                   handleOpenEditProduct(p);
                 }}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-all cursor-pointer shadow-2xs"
+                className="flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-all cursor-pointer shadow-2xs active:scale-[0.98]"
               >
-                <Pencil className="w-3.5 h-3.5 text-amber-600" />
+                <Pencil className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                 <span>ویرایش این کالا</span>
               </button>
 
@@ -2550,7 +2569,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <button
                   type="button"
                   onClick={() => setViewingCatalogProduct(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+                  className="flex-1 sm:flex-none px-4 py-2.5 sm:py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors cursor-pointer text-center"
                 >
                   بستن
                 </button>
@@ -2564,7 +2583,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     }
                     setViewingCatalogProduct(null);
                   }}
-                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-xs cursor-pointer"
+                  className="flex-2 sm:flex-none flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 sm:py-2 rounded-xl transition-all shadow-xs cursor-pointer active:scale-[0.98]"
                 >
                   <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                   <span>افزودن به فاکتور</span>
@@ -2582,23 +2601,23 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
           onClick={(e) => {
             if (e.target === e.currentTarget) setEditingCatalogProduct(null);
           }}
-          className="fixed inset-0 z-70 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-70 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 animate-in fade-in duration-150"
         >
           <div
             id="product-edit-modal"
-            className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200/80 max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+            className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200/80 max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-900 text-white shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+            <div className="flex items-center justify-between px-4 py-3 sm:px-5 sm:py-3.5 bg-slate-900 text-white shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0">
                   <Pencil className="w-4 h-4 stroke-[2.5]" />
                 </div>
-                <div>
-                  <h3 className="font-black text-sm sm:text-base">
+                <div className="min-w-0">
+                  <h3 className="font-black text-sm sm:text-base leading-tight truncate">
                     ویرایش مشخصات کالا
                   </h3>
-                  <span className="text-[11px] text-slate-300 font-medium">
+                  <span className="text-[11px] text-slate-300 font-medium truncate block">
                     بروزرسانی مستقیم نام، قیمت و موجودی انبار
                   </span>
                 </div>
@@ -2606,7 +2625,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               <button
                 type="button"
                 onClick={() => setEditingCatalogProduct(null)}
-                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors shrink-0"
                 title="بستن"
               >
                 <X className="w-4 h-4" />
@@ -2615,7 +2634,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
             {/* Form */}
             <form onSubmit={handleSaveProductEdit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-3 sm:space-y-4">
                 {/* Product Name (الزامی) */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -2627,11 +2646,11 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     value={editProductForm.name}
                     onChange={(e) => setEditProductForm({ ...editProductForm, name: e.target.value })}
                     placeholder="نام کامل کالا..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 sm:py-2.5 text-xs sm:text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
                   {/* Code */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -2699,11 +2718,11 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 </div>
 
                 {/* Pricing Box */}
-                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
+                <div className="p-3 sm:p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2.5 sm:space-y-3">
                   <span className="text-[11px] font-black text-slate-700 block">
                     قیمت‌گذاری مالی ({settings.currency}):
                   </span>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
                     <div>
                       <label className="block text-[11px] font-bold text-slate-600 mb-1">
                         قیمت فروش ({settings.currency}) *
@@ -2732,7 +2751,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 </div>
 
                 {/* Stock Box */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
                       موجودی انبار ({editProductForm.unit})
@@ -2775,17 +2794,17 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               </div>
 
               {/* Footer */}
-              <div className="px-5 py-3.5 bg-slate-50/80 border-t border-slate-200/80 flex items-center justify-end gap-2 shrink-0">
+              <div className="px-3.5 py-3 sm:px-5 sm:py-3.5 bg-slate-50/80 border-t border-slate-200/80 flex items-center justify-end gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setEditingCatalogProduct(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+                  className="flex-1 sm:flex-none px-4 py-2.5 sm:py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors cursor-pointer text-center"
                 >
                   انصراف
                 </button>
                 <button
                   type="submit"
-                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-5 py-2 rounded-xl transition-all shadow-xs cursor-pointer active:scale-[0.98]"
+                  className="flex-2 sm:flex-none flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-5 py-2.5 sm:py-2 rounded-xl transition-all shadow-xs cursor-pointer active:scale-[0.98]"
                 >
                   <Check className="w-4 h-4 stroke-[2.5]" />
                   <span>ذخیره تغییرات کالا</span>
@@ -2798,18 +2817,18 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
       {/* MODAL: VARIANT SELECTION MODAL (انتخاب تنوع و رنگ کالا) */}
       {variantPickerProduct && (
-        <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl w-full max-w-md p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col animate-in zoom-in-95">
+        <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl w-full max-w-md p-4 sm:p-5 shadow-2xl space-y-3.5 sm:space-y-4 max-h-[88vh] sm:max-h-[85vh] flex flex-col animate-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
-                  <Layers className="w-5 h-5" />
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                  <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-sm sm:text-base leading-tight">
+                <div className="min-w-0">
+                  <h3 className="font-black text-slate-900 text-sm sm:text-base leading-tight truncate">
                     {variantPickerProduct.name}
                   </h3>
-                  <span className="text-[11px] text-purple-700 font-medium">
+                  <span className="text-[11px] text-purple-700 font-medium truncate block">
                     انتخاب رنگ و مدل جهت درج در فاکتور
                   </span>
                 </div>
@@ -2817,7 +2836,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               <button
                 type="button"
                 onClick={() => setVariantPickerProduct(null)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors"
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors shrink-0"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2840,15 +2859,15 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   <div
                     key={v.id}
                     onClick={() => handleAddProduct(variantPickerProduct, v)}
-                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                    className={`p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
                       inInvoice
                         ? 'border-purple-500 bg-purple-50/50 shadow-xs'
                         : 'border-slate-200 hover:border-purple-300 hover:bg-purple-50/20 bg-white'
                     }`}
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-slate-900 text-sm">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-black text-slate-900 text-xs sm:text-sm">
                           {v.name}
                         </span>
                         {v.code && (
@@ -2858,16 +2877,16 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                         )}
                       </div>
 
-                      <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-3">
+                      <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
                         <span>
-                          موجودی انبار:{' '}
+                          موجودی:{' '}
                           <strong className={isOutOfStock ? 'text-rose-600 font-bold' : 'text-slate-800 font-mono'}>
                             {toPersianDigits(v.stock)} {variantPickerProduct.unit}
                           </strong>
                         </span>
-                        <span>|</span>
-                        <span className="font-extrabold text-emerald-700">
-                          {formatPrice(price)}
+                        <span className="text-slate-300">|</span>
+                        <span className="font-extrabold text-emerald-700 font-mono">
+                          {formatPrice(price)} {settings.currency}
                         </span>
                       </div>
                     </div>
@@ -2889,8 +2908,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               })}
             </div>
 
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-xs text-slate-500">
+            <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+              <span className="text-[11px] sm:text-xs text-slate-500">
                 موجودی کل کالا: <strong className="text-slate-800 font-mono">{toPersianDigits(variantPickerProduct.stock)} {variantPickerProduct.unit}</strong>
               </span>
               <button
