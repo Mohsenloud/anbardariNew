@@ -31,7 +31,8 @@ import {
   FileSpreadsheet,
   Download,
   Upload,
-  Sparkles
+  Sparkles,
+  SlidersHorizontal
 } from 'lucide-react';
 
 interface InventoryManagerProps {
@@ -94,6 +95,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   // Modal states
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isVariantModalOpen, setIsVariantModalOpen] = useState(false);
   
   // Excel Import Modal State
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -180,11 +182,15 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
         hasVariants: true,
         variants: [defaultVariant],
       });
+      setIsVariantModalOpen(true);
     } else {
       setEditingProduct({
         ...editingProduct,
         hasVariants: enabled,
       });
+      if (enabled) {
+        setIsVariantModalOpen(true);
+      }
     }
   };
 
@@ -1466,9 +1472,10 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
       {/* MODAL: ADD / EDIT PRODUCT */}
       {isProductModalOpen && editingProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden">
-            <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden">
+            {/* Sticky Header */}
+            <div className="shrink-0 bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
               <h3 className="font-bold text-sm">
                 {editingProduct.id ? 'ویرایش مشخصات کالا' : 'تعریف کالای جدید در انبار'}
               </h3>
@@ -1481,279 +1488,216 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveProductForm} className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-slate-700 mb-1">نام کالا *</label>
-                  <input
-                    type="text"
-                    required
-                    id="product-modal-name"
-                    value={editingProduct.name}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
-                    placeholder="مثال: لپ‌تاپ ایسوس مدل Vivobook"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">کد کالا / بارکد</label>
-                  <input
-                    type="text"
-                    id="product-modal-code"
-                    value={editingProduct.code}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, code: e.target.value })}
-                    placeholder="1001"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">دسته‌بندی</label>
-                  <input
-                    type="text"
-                    id="product-modal-category"
-                    value={editingProduct.category}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
-                    placeholder="لوازم جانبی، دیجیتال، ..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">واحد سنجش</label>
-                  <select
-                    id="product-modal-unit"
-                    value={editingProduct.unit}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, unit: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer"
-                  >
-                    <option value="عدد">عدد</option>
-                    <option value="دستگاه">دستگاه</option>
-                    <option value="بسته">بسته</option>
-                    <option value="کیلوگرم">کیلوگرم</option>
-                    <option value="متر">متر</option>
-                    <option value="کارتن">کارتن</option>
-                    <option value="جفت">جفت</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">حداقل موجودی (نقطه سفارش)</label>
-                  <input
-                    type="number"
-                    id="product-modal-minstock"
-                    min="0"
-                    value={editingProduct.minStockAlert}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, minStockAlert: parseInt(e.target.value, 10) || 0 })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                  />
-                </div>
-
-                {/* Price configuration - restricted to admin */}
-                {currentUser?.role === 'admin' ? (
-                  <div className="col-span-2 grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                    <div className="col-span-2 flex items-center justify-between text-[11px] font-bold text-slate-700">
-                      <span>نرخ‌گذاری مالی کالا (دسترسی مدیر جهت صدور فاکتور):</span>
-                      <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">مدیریت مالی</span>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-1">قیمت خرید ({settings.currency})</label>
-                      <input
-                        type="number"
-                        id="product-modal-buyprice"
-                        min="0"
-                        value={editingProduct.buyPrice}
-                        onChange={(e) => setEditingProduct({ ...editingProduct, buyPrice: parseFloat(e.target.value) || 0 })}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-1">قیمت فروش ({settings.currency})</label>
-                      <input
-                        type="number"
-                        id="product-modal-sellprice"
-                        min="0"
-                        value={editingProduct.sellPrice}
-                        onChange={(e) => setEditingProduct({ ...editingProduct, sellPrice: parseFloat(e.target.value) || 0 })}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                      />
-                    </div>
-                  </div>
-                ) : null}
-
-                {/* VARIANT MANAGEMENT SECTION */}
-                <div className="col-span-2 bg-gradient-to-br from-purple-50/70 to-slate-50 border border-purple-200/80 rounded-2xl p-3.5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
-                        <Layers className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-slate-800">تنوع کالا (رنگ، مدل، سایز یا مشخصه فنی)</div>
-                        <div className="text-[10px] text-slate-500">
-                          مانند پودر سخت کننده خشک پاش در رنگ‌های طوسی، قرمز، سبز یا سایر تنوع‌ها
-                        </div>
-                      </div>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        id="product-has-variants-toggle"
-                        checked={!!editingProduct.hasVariants}
-                        onChange={(e) => handleToggleHasVariants(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
-                    </label>
-                  </div>
-
-                  {editingProduct.hasVariants && (
-                    <div className="space-y-2.5 pt-2 border-t border-purple-100">
-                      {/* Quick color shortcuts */}
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-[10px] text-purple-700 font-bold flex items-center gap-1">
-                          <Sparkles className="w-3 h-3 text-purple-500" />
-                          <span>افزودن سریع رنگ:</span>
-                        </span>
-                        {['طوسی', 'قرمز', 'سبز', 'زرد', 'آبی', 'مشکی', 'سفید', 'نچرال'].map((color) => {
-                          const exists = (editingProduct.variants || []).some((v) => v.name.trim() === color);
-                          return (
-                            <button
-                              key={color}
-                              type="button"
-                              disabled={exists}
-                              onClick={() => handleAddQuickVariant(color)}
-                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
-                                exists
-                                  ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
-                                  : 'bg-white text-purple-900 border border-purple-200 hover:bg-purple-100 hover:border-purple-300 cursor-pointer shadow-2xs'
-                              }`}
-                            >
-                              + {color}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* Variants table */}
-                      <div className="bg-white rounded-xl border border-purple-200/90 overflow-hidden shadow-2xs">
-                        <table className="w-full text-right text-[11px]">
-                          <thead className="bg-purple-50/80 text-purple-900 border-b border-purple-100 font-bold">
-                            <tr>
-                              <th className="p-2">نام تنوع / رنگ *</th>
-                              <th className="p-2">کد اختصاصی</th>
-                              <th className="p-2 text-center w-24">موجودی انبار</th>
-                              {currentUser?.role === 'admin' && <th className="p-2 text-center w-28">قیمت فروش</th>}
-                              <th className="p-2 text-center w-8">حذف</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-purple-50">
-                            {(editingProduct.variants || []).map((v) => (
-                              <tr key={v.id} className="hover:bg-purple-50/30">
-                                <td className="p-1.5">
-                                  <input
-                                    type="text"
-                                    required
-                                    placeholder="مثلاً: طوسی"
-                                    value={v.name}
-                                    onChange={(e) => handleUpdateVariantField(v.id, 'name', e.target.value)}
-                                    className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-purple-500 font-bold text-slate-800"
-                                  />
-                                </td>
-                                <td className="p-1.5">
-                                  <input
-                                    type="text"
-                                    placeholder={`${editingProduct.code || '1000'}-${v.name}`}
-                                    value={v.code || ''}
-                                    onChange={(e) => handleUpdateVariantField(v.id, 'code', e.target.value)}
-                                    className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono outline-none focus:border-purple-500"
-                                  />
-                                </td>
-                                <td className="p-1.5">
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    value={v.stock}
-                                    onChange={(e) => handleUpdateVariantField(v.id, 'stock', Math.max(0, parseInt(e.target.value, 10) || 0))}
-                                    className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-center font-bold font-mono outline-none focus:border-purple-500"
-                                  />
-                                </td>
-                                {currentUser?.role === 'admin' && (
-                                  <td className="p-1.5">
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      value={v.sellPrice || editingProduct.sellPrice || 0}
-                                      onChange={(e) => handleUpdateVariantField(v.id, 'sellPrice', Math.max(0, parseFloat(e.target.value) || 0))}
-                                      className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-center font-mono outline-none focus:border-purple-500"
-                                    />
-                                  </td>
-                                )}
-                                <td className="p-1.5 text-center">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveVariant(v.id)}
-                                    className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-
-                        <div className="p-2 bg-purple-50/50 border-t border-purple-100 flex items-center justify-between">
-                          <button
-                            type="button"
-                            onClick={() => handleAddQuickVariant(`تنوع ${(editingProduct.variants?.length || 0) + 1}`)}
-                            className="text-[11px] font-bold text-purple-700 hover:text-purple-900 flex items-center gap-1 cursor-pointer"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>افزودن تنوع دلخواه</span>
-                          </button>
-                          <span className="text-[10px] text-purple-800 font-medium">
-                            مجموع موجودی تنوع‌ها: <strong className="font-bold text-purple-950 font-mono">{toPersianDigits(editingProduct.stock)} {editingProduct.unit}</strong>
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {!editingProduct.hasVariants && !editingProduct.id && (
+            {/* Form with scrollable body and sticky action buttons */}
+            <form onSubmit={handleSaveProductForm} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
-                    <label className="block text-xs font-medium text-slate-700 mb-1">موجودی اولیه در انبار</label>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">نام کالا *</label>
                     <input
-                      type="number"
-                      id="product-modal-initialstock"
-                      min="0"
-                      value={editingProduct.stock}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, stock: parseInt(e.target.value, 10) || 0 })}
+                      type="text"
+                      required
+                      id="product-modal-name"
+                      value={editingProduct.name}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                      placeholder="مثال: لپ‌تاپ ایسوس مدل Vivobook"
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                     />
                   </div>
-                )}
 
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-slate-700 mb-1">توضیحات و مشخصات فنی</label>
-                  <textarea
-                    rows={2}
-                    id="product-modal-desc"
-                    value={editingProduct.description || ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
-                    placeholder="رنگ، مدل، دوره گارانتی و..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                  />
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">کد کالا / بارکد</label>
+                    <input
+                      type="text"
+                      id="product-modal-code"
+                      value={editingProduct.code}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, code: e.target.value })}
+                      placeholder="1001"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">دسته‌بندی</label>
+                    <input
+                      type="text"
+                      id="product-modal-category"
+                      value={editingProduct.category}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
+                      placeholder="لوازم جانبی، دیجیتال، ..."
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">واحد سنجش</label>
+                    <select
+                      id="product-modal-unit"
+                      value={editingProduct.unit}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, unit: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer"
+                    >
+                      <option value="عدد">عدد</option>
+                      <option value="دستگاه">دستگاه</option>
+                      <option value="بسته">بسته</option>
+                      <option value="کیلوگرم">کیلوگرم</option>
+                      <option value="متر">متر</option>
+                      <option value="کارتن">کارتن</option>
+                      <option value="جفت">جفت</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">حداقل موجودی (نقطه سفارش)</label>
+                    <input
+                      type="number"
+                      id="product-modal-minstock"
+                      min="0"
+                      value={editingProduct.minStockAlert}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, minStockAlert: parseInt(e.target.value, 10) || 0 })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {/* Price configuration - restricted to admin */}
+                  {currentUser?.role === 'admin' ? (
+                    <div className="col-span-2 grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                      <div className="col-span-2 flex items-center justify-between text-[11px] font-bold text-slate-700">
+                        <span>نرخ‌گذاری مالی کالا (دسترسی مدیر جهت صدور فاکتور):</span>
+                        <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">مدیریت مالی</span>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1">قیمت خرید ({settings.currency})</label>
+                        <input
+                          type="number"
+                          id="product-modal-buyprice"
+                          min="0"
+                          value={editingProduct.buyPrice}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, buyPrice: parseFloat(e.target.value) || 0 })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1">قیمت فروش ({settings.currency})</label>
+                        <input
+                          type="number"
+                          id="product-modal-sellprice"
+                          min="0"
+                          value={editingProduct.sellPrice}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, sellPrice: parseFloat(e.target.value) || 0 })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* VARIANT MANAGEMENT SECTION */}
+                  <div className="col-span-2 bg-gradient-to-br from-purple-50/80 to-slate-50 border border-purple-200/90 rounded-2xl p-3.5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                          <Layers className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-slate-800">تنوع کالا (رنگ، مدل، سایز یا مشخصه فنی)</div>
+                          <div className="text-[10px] text-slate-500">
+                            مانند پودر سخت کننده خشک پاش در رنگ‌های طوسی، قرمز، سبز یا سایر تنوع‌ها
+                          </div>
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          id="product-has-variants-toggle"
+                          checked={!!editingProduct.hasVariants}
+                          onChange={(e) => handleToggleHasVariants(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                      </label>
+                    </div>
+
+                    {editingProduct.hasVariants && (
+                      <div className="pt-2.5 border-t border-purple-100 space-y-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-2.5 rounded-xl border border-purple-200 shadow-2xs">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse"></span>
+                            <span className="font-bold text-purple-900">
+                              {toPersianDigits((editingProduct.variants || []).length)} تنوع تعریف شده
+                            </span>
+                            <span className="text-[11px] text-slate-500">
+                              (مجموع: <strong className="font-mono font-bold text-purple-950">{toPersianDigits(editingProduct.stock)} {editingProduct.unit}</strong>)
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setIsVariantModalOpen(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 active:scale-95 rounded-xl transition-all shadow-xs cursor-pointer"
+                          >
+                            <SlidersHorizontal className="w-3.5 h-3.5" />
+                            <span>مدیریت تنوع‌ها در پنجره جدید</span>
+                          </button>
+                        </div>
+
+                        {/* Summary pills of variants */}
+                        {(editingProduct.variants || []).length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1">
+                            {editingProduct.variants?.map((v) => (
+                              <span
+                                key={v.id}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white text-purple-900 border border-purple-200 shadow-2xs"
+                              >
+                                <span>{v.name}</span>
+                                <span className="text-[10px] text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded font-mono">
+                                  {toPersianDigits(v.stock)} {editingProduct.unit}
+                                </span>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                            هنوز تنوعی ثبت نشده است. لطفاً روی دکمه «مدیریت تنوع‌ها در پنجره جدید» کلیک کنید.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {!editingProduct.hasVariants && !editingProduct.id && (
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-slate-700 mb-1">موجودی اولیه در انبار</label>
+                      <input
+                        type="number"
+                        id="product-modal-initialstock"
+                        min="0"
+                        value={editingProduct.stock}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, stock: parseInt(e.target.value, 10) || 0 })}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                    </div>
+                  )}
+
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-700 mb-1">توضیحات و مشخصات فنی</label>
+                    <textarea
+                      rows={2}
+                      id="product-modal-desc"
+                      value={editingProduct.description || ''}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
+                      placeholder="رنگ، مدل، دوره گارانتی و..."
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              {/* Sticky Action Footer */}
+              <div className="shrink-0 bg-slate-50 border-t border-slate-200 px-5 py-3 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsProductModalOpen(false)}
-                  className="px-4 py-2 text-xs text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 cursor-pointer"
+                  className="px-4 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 cursor-pointer"
                 >
                   انصراف
                 </button>
@@ -1767,6 +1711,272 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-MODAL: MANAGE PRODUCT VARIANTS (پنجره اختصاصی مدیریت تنوع‌های کالا) */}
+      {isVariantModalOpen && editingProduct && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="shrink-0 bg-gradient-to-r from-purple-900 to-indigo-900 text-white px-4 sm:px-6 py-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-purple-800/80 text-purple-200 flex items-center justify-center shrink-0 border border-purple-700">
+                  <Layers className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm">مدیریت تنوع کالا (رنگ، مدل، سایز)</h3>
+                  <div className="text-[11px] text-purple-200 flex items-center gap-1">
+                    <span>کالا:</span>
+                    <span className="font-bold text-white">{editingProduct.name || 'بدون نام'}</span>
+                    <span className="text-purple-300">({toPersianDigits((editingProduct.variants || []).length)} تنوع)</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsVariantModalOpen(false)}
+                className="text-purple-300 hover:text-white p-1 rounded-lg hover:bg-purple-800/50 transition-colors cursor-pointer"
+                title="بستن و بازگشت به فرم کالا"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content (Scrollable) */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+              {/* Quick color additions */}
+              <div className="bg-purple-50/70 p-3 rounded-2xl border border-purple-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-purple-900 font-bold flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                    <span>افزودن سریع رنگ‌های پرکاربرد:</span>
+                  </span>
+                  <span className="text-[10px] text-purple-700 font-medium">با یک کلیک اضافه کنید</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {['طوسی', 'قرمز', 'سبز', 'زرد', 'آبی', 'مشکی', 'سفید', 'نچرال'].map((color) => {
+                    const exists = (editingProduct.variants || []).some((v) => v.name.trim() === color);
+                    return (
+                      <button
+                        key={color}
+                        type="button"
+                        disabled={exists}
+                        onClick={() => handleAddQuickVariant(color)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          exists
+                            ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                            : 'bg-white text-purple-900 border border-purple-200 hover:bg-purple-100 hover:border-purple-300 cursor-pointer shadow-2xs active:scale-95'
+                        }`}
+                      >
+                        + {color}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom Variant Form */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  id="custom-variant-name-input"
+                  placeholder="نام تنوع دلخواه (مثلاً: مدل Pro، سایز XL، رنگ خاکی)..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const val = (e.target as HTMLInputElement).value.trim();
+                      if (val) {
+                        handleAddQuickVariant(val);
+                        (e.target as HTMLInputElement).value = '';
+                      }
+                    }
+                  }}
+                  className="flex-1 bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const inp = document.getElementById('custom-variant-name-input') as HTMLInputElement;
+                    if (inp && inp.value.trim()) {
+                      handleAddQuickVariant(inp.value.trim());
+                      inp.value = '';
+                    }
+                  }}
+                  className="px-3.5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 cursor-pointer shadow-xs active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>افزودن</span>
+                </button>
+              </div>
+
+              {/* Variants List: Desktop Table + Mobile Cards */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-700 px-1">
+                  <span>لیست تنوع‌های تعریف شده ({toPersianDigits((editingProduct.variants || []).length)} قلم):</span>
+                  <span className="text-[11px] text-purple-800 font-medium">
+                    مجموع موجودی: <strong className="font-mono text-purple-950 font-bold">{toPersianDigits(editingProduct.stock)} {editingProduct.unit}</strong>
+                  </span>
+                </div>
+
+                {(editingProduct.variants || []).length === 0 ? (
+                  <div className="p-8 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs">
+                    هنوز تنوعی اضافه نشده است. از رنگ‌های سریع یا کادر بالا برای ایجاد تنوع استفاده کنید.
+                  </div>
+                ) : (
+                  <>
+                    {/* Desktop Table */}
+                    <div className="hidden sm:block bg-white rounded-2xl border border-purple-200/90 overflow-hidden shadow-2xs">
+                      <table className="w-full text-right text-xs">
+                        <thead className="bg-purple-50 text-purple-900 border-b border-purple-100 font-bold">
+                          <tr>
+                            <th className="p-3">نام تنوع / رنگ *</th>
+                            <th className="p-3">کد اختصاصی</th>
+                            <th className="p-3 text-center w-28">موجودی انبار</th>
+                            {currentUser?.role === 'admin' && <th className="p-3 text-center w-32">قیمت فروش</th>}
+                            <th className="p-3 text-center w-10">حذف</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-purple-50">
+                          {(editingProduct.variants || []).map((v) => (
+                            <tr key={v.id} className="hover:bg-purple-50/30 transition-colors">
+                              <td className="p-2">
+                                <input
+                                  type="text"
+                                  required
+                                  placeholder="مثلاً: طوسی"
+                                  value={v.name}
+                                  onChange={(e) => handleUpdateVariantField(v.id, 'name', e.target.value)}
+                                  className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs outline-none focus:border-purple-500 font-bold text-slate-800"
+                                />
+                              </td>
+                              <td className="p-2">
+                                <input
+                                  type="text"
+                                  placeholder={`${editingProduct.code || '1000'}-${v.name}`}
+                                  value={v.code || ''}
+                                  onChange={(e) => handleUpdateVariantField(v.id, 'code', e.target.value)}
+                                  className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none focus:border-purple-500 text-left"
+                                />
+                              </td>
+                              <td className="p-2">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={v.stock}
+                                  onChange={(e) => handleUpdateVariantField(v.id, 'stock', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                                  className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-center font-bold font-mono outline-none focus:border-purple-500"
+                                />
+                              </td>
+                              {currentUser?.role === 'admin' && (
+                                <td className="p-2">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={v.sellPrice || editingProduct.sellPrice || 0}
+                                    onChange={(e) => handleUpdateVariantField(v.id, 'sellPrice', Math.max(0, parseFloat(e.target.value) || 0))}
+                                    className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-center font-mono outline-none focus:border-purple-500"
+                                  />
+                                </td>
+                              )}
+                              <td className="p-2 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveVariant(v.id)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                                  title="حذف تنوع"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Mobile Cards (no horizontal overflow) */}
+                    <div className="sm:hidden space-y-2.5">
+                      {(editingProduct.variants || []).map((v, idx) => (
+                        <div key={v.id} className="bg-white p-3 rounded-2xl border border-purple-200 shadow-2xs space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-purple-900">
+                              تنوع {toPersianDigits(idx + 1)}:
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveVariant(v.id)}
+                              className="text-rose-500 hover:text-rose-700 p-1 rounded-lg"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-1">نام تنوع / رنگ *</label>
+                            <input
+                              type="text"
+                              value={v.name}
+                              onChange={(e) => handleUpdateVariantField(v.id, 'name', e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-medium text-slate-500 mb-1">موجودی ({editingProduct.unit})</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={v.stock}
+                                onChange={(e) => handleUpdateVariantField(v.id, 'stock', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-mono font-bold text-center"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-medium text-slate-500 mb-1">کد اختصاصی</label>
+                              <input
+                                type="text"
+                                value={v.code || ''}
+                                onChange={(e) => handleUpdateVariantField(v.id, 'code', e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-mono text-left"
+                              />
+                            </div>
+                          </div>
+                          {currentUser?.role === 'admin' && (
+                            <div>
+                              <label className="block text-[10px] font-medium text-slate-500 mb-1">قیمت فروش ({settings.currency})</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={v.sellPrice || editingProduct.sellPrice || 0}
+                                onChange={(e) => handleUpdateVariantField(v.id, 'sellPrice', Math.max(0, parseFloat(e.target.value) || 0))}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono text-center"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="shrink-0 bg-slate-50 border-t border-slate-200 px-4 sm:px-6 py-3 flex items-center justify-between">
+              <div className="text-xs text-slate-600">
+                <span>تعداد تنوع‌ها: </span>
+                <strong className="text-purple-900 font-bold font-mono">{toPersianDigits((editingProduct.variants || []).length)}</strong>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsVariantModalOpen(false)}
+                className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-purple-700 hover:bg-purple-800 rounded-xl shadow-xs cursor-pointer active:scale-95"
+              >
+                <Check className="w-4 h-4" />
+                <span>تایید و بازگشت به فرم کالا</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

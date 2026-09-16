@@ -1083,7 +1083,11 @@ export default function App() {
       />
 
       {/* Main Body Content View - Consistent Layout & Padding Across All Tabs */}
-      <main className="flex-1 max-w-7xl w-full mx-auto pb-24 sm:pb-12 px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6">
+      <main className={`flex-1 max-w-7xl w-full mx-auto ${
+        activeTab === 'new-invoice'
+          ? 'pb-16 sm:pb-12 px-2 sm:px-6 lg:px-8 pt-2 sm:pt-6 flex flex-col'
+          : 'pb-24 sm:pb-12 px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6'
+      }`}>
         <OfflineIndicator />
 
         {activeTab === 'dashboard' && isTabPermitted('dashboard', currentUser, settings) && (

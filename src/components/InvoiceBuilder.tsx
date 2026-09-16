@@ -630,13 +630,16 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   });
 
   return (
-    <div className="w-full max-w-7xl mx-auto select-none">
+    <div className="w-full max-w-7xl mx-auto select-none h-full flex flex-col">
       {/* ========================================================================= */}
       {/*                       1. MOBILE VIEW (Screens < lg)                       */}
       {/* ========================================================================= */}
-      <div className="lg:hidden max-w-md sm:max-w-xl mx-auto flex flex-col bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+      <div
+        id="invoice-builder-mobile-card"
+        className="lg:hidden max-w-md sm:max-w-xl mx-auto w-full flex flex-col bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden h-[calc(100vh-5rem)] h-[calc(100dvh-5rem)] min-h-[500px]"
+      >
       {/* ================= 1. TOP HEADER (فروش کالا) ================= */}
-      <div className="flex items-center justify-between px-3.5 py-3 border-b border-slate-100 bg-white sticky top-0 z-20">
+      <div className="flex items-center justify-between px-3.5 py-3 border-b border-slate-100 bg-white sticky top-0 z-20 shrink-0">
         {/* Right side (RTL start): < ادامه (Green button) */}
         <button
           type="button"
@@ -653,28 +656,37 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
           <h1 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
             {isEditing ? 'ویرایش فاکتور' : isProforma ? 'پیش‌فاکتور فروش' : 'فروش کالا'}
           </h1>
-          {isProforma && (
-            <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-1.5 py-0.5 rounded-md border border-indigo-200">
-              پیش‌نویس
-            </span>
-          )}
         </div>
 
-        {/* Left side: 3 Action icons (Yellow Box, Search, Sort) */}
-        <div className="flex items-center gap-1 sm:gap-2">
-          {/* 1. Sort Button */}
-          <button
-            type="button"
-            id="btn-sort-items"
-            onClick={() => {
-              const next = sortOrder === 'default' ? 'price-desc' : sortOrder === 'price-desc' ? 'name' : 'default';
-              setSortOrder(next);
-            }}
-            title="مرتب‌سازی اقلام فاکتور"
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-600 hover:bg-slate-100 active:scale-95 transition-all"
-          >
-            <ArrowUpDown className="w-4 h-4 stroke-[2.2]" />
-          </button>
+        {/* Left side: Action items (Invoice/Proforma selector, Search, Settings) */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* 1. Invoice vs Proforma Quick Toggle */}
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/80 text-[11px] font-bold">
+            <button
+              type="button"
+              id="btn-mobile-type-invoice"
+              onClick={() => setIsProforma(false)}
+              className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
+                !isProforma
+                  ? 'bg-white text-emerald-700 shadow-xs font-black'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              فاکتور
+            </button>
+            <button
+              type="button"
+              id="btn-mobile-type-proforma"
+              onClick={() => setIsProforma(true)}
+              className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
+                isProforma
+                  ? 'bg-indigo-600 text-white shadow-xs font-black'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              پیش‌فاکتور
+            </button>
+          </div>
 
           {/* 2. Search Button */}
           <button
@@ -727,7 +739,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       )}
 
       {/* ================= 2. SUB-BAR (مشتری: متفرقه + MENU ICON) ================= */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-white">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-white shrink-0">
         {/* Right: Contact Card Icon + "مشتری: متفرقه" (Clickable) */}
         <div
           id="btn-customer-selector"
@@ -763,7 +775,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
       {/* Error banner */}
       {errorMessage && (
-        <div className="mx-3 my-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 animate-in fade-in">
+        <div className="mx-3 my-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 animate-in fade-in shrink-0">
           <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
           <span>{errorMessage}</span>
           <button
@@ -777,7 +789,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       )}
 
       {/* ================= 3. CENTER / ITEMS LIST AREA ================= */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col justify-start">
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 flex flex-col justify-start">
         {displayedItems.length === 0 ? (
           /* EXACT EMPTY STATE MATCHING SCREENSHOT */
           <div className="flex-1 flex flex-col items-center justify-center text-center py-20 px-4">
@@ -894,7 +906,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       </div>
 
       {/* ================= 4. BOTTOM DOCK (3 ACTION BUTTONS) ================= */}
-      <div className="p-3 bg-white border-t border-slate-100 space-y-2.5">
+      <div className="p-3 bg-white border-t border-slate-100 space-y-2.5 shrink-0">
         <div className="grid grid-cols-3 gap-2">
           {/* Button 1 (Right in RTL): انتخاب کالا */}
           <button
@@ -972,20 +984,20 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       {/* ========================================================================= */}
       <div className="hidden lg:flex flex-col min-h-[calc(100vh-5rem)] bg-white rounded-3xl border border-slate-200/90 shadow-xl overflow-hidden">
         {/* DESKTOP HEADER */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white sticky top-0 z-20">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4 px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 bg-white sticky top-0 z-20">
+          <div className="flex items-center gap-3 min-w-0">
             {onCancel && (
               <button
                 type="button"
                 onClick={onCancel}
                 title="بازگشت به داشبورد"
-                className="w-9 h-9 rounded-xl border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition-colors cursor-pointer"
+                className="w-9 h-9 rounded-xl border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition-colors cursor-pointer shrink-0"
               >
                 <ArrowRight className="w-5 h-5" />
               </button>
             )}
             <div>
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
                 <h1 className="text-xl font-black text-slate-900 tracking-tight">
                   {isEditing ? 'ویرایش فاکتور فروش' : isProforma ? 'پیش‌فاکتور فروش' : 'صدور فاکتور فروش'}
                 </h1>
@@ -995,7 +1007,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-medium">
+              <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-medium flex-wrap">
                 <span>شماره: <b className="text-slate-800 font-bold">{invoiceNumber}</b></span>
                 <span>•</span>
                 <span>تاریخ: <b className="text-slate-800 font-bold">{invoiceDate}</b></span>
@@ -1005,20 +1017,36 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
-            {/* Sort items */}
-            <button
-              type="button"
-              onClick={() => {
-                const next = sortOrder === 'default' ? 'price-desc' : sortOrder === 'price-desc' ? 'name' : 'default';
-                setSortOrder(next);
-              }}
-              title="مرتب‌سازی اقلام"
-              className="px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <ArrowUpDown className="w-4 h-4 text-slate-500" />
-              <span>مرتب‌سازی</span>
-            </button>
+          <div className="flex items-center flex-wrap gap-2.5 w-full lg:w-auto justify-between lg:justify-end">
+            {/* Invoice vs Proforma Toggle */}
+            <div className="flex items-center p-0.5 bg-slate-100 rounded-xl border border-slate-200/80 text-xs font-bold shrink-0">
+              <button
+                type="button"
+                id="btn-desktop-type-invoice"
+                onClick={() => setIsProforma(false)}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  !isProforma
+                    ? 'bg-white text-emerald-700 shadow-xs font-black'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>فاکتور فروش</span>
+              </button>
+              <button
+                type="button"
+                id="btn-desktop-type-proforma"
+                onClick={() => setIsProforma(true)}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  isProforma
+                    ? 'bg-indigo-600 text-white shadow-xs font-black'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>پیش‌فاکتور</span>
+              </button>
+            </div>
 
             {/* Document Settings */}
             <button
