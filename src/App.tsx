@@ -1128,6 +1128,7 @@ export default function App() {
             onSaveInvoice={handleSaveInvoice}
             onUpdateInvoice={handleUpdateInvoice}
             onAddNewCustomer={handleAddNewCustomerQuick}
+            onSaveProduct={handleSaveProduct}
             onCancel={() => {
               setEditingInvoice(null);
               setActiveTab(getDefaultTabForUser(currentUser, settings));

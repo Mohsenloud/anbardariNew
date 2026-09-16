@@ -161,7 +161,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
       {/* Two Column Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Selling Products */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div id="reports-top-selling-card" className="p-4 sm:p-6 bg-white rounded-2xl shadow-sm border border-slate-100">
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <Award className="w-4 h-4 text-amber-500" />

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Product, ProductVariant, Customer, Invoice, InvoiceItem, StoreSettings, PaymentMethod } from '../types';
-import { getCurrentJalaliDate, formatPrice, toPersianDigits } from '../utils/jalali';
+import { getCurrentJalaliDate, formatPrice, toPersianDigits, toEnglishDigits } from '../utils/jalali';
 import { 
   Plus, 
   Minus, 
@@ -36,8 +36,12 @@ import {
   GraduationCap,
   RotateCcw,
   ShoppingBag,
-  ArrowRight
+  ArrowRight,
+  Eye,
+  Info,
+  Barcode
 } from 'lucide-react';
+import { StorageService } from '../utils/storage';
 
 interface InvoiceBuilderProps {
   products: Product[];
@@ -48,6 +52,7 @@ interface InvoiceBuilderProps {
   onSaveInvoice: (invoice: Invoice, shouldPrint: boolean) => void;
   onUpdateInvoice?: (originalInvoice: Invoice, updatedInvoice: Invoice, shouldPrint: boolean) => void;
   onAddNewCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => Customer;
+  onSaveProduct?: (product: Product) => void;
   onCancel?: () => void;
 }
 
@@ -60,6 +65,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   onSaveInvoice,
   onUpdateInvoice,
   onAddNewCustomer,
+  onSaveProduct,
   onCancel,
 }) => {
   const isEditing = !!editingInvoice;
@@ -187,7 +193,33 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   const [isProductCatalogOpen, setIsProductCatalogOpen] = useState<boolean>(false);
   const [productCatalogSearch, setProductCatalogSearch] = useState<string>('');
   const [catalogCategory, setCatalogCategory] = useState<string>('all');
+  const [catalogOnlyInStock, setCatalogOnlyInStock] = useState<boolean>(false);
   const [variantPickerProduct, setVariantPickerProduct] = useState<Product | null>(null);
+  const [viewingCatalogProduct, setViewingCatalogProduct] = useState<Product | null>(null);
+  const [editingCatalogProduct, setEditingCatalogProduct] = useState<Product | null>(null);
+  const [editProductForm, setEditProductForm] = useState<{
+    name: string;
+    code: string;
+    barcode: string;
+    category: string;
+    unit: string;
+    stock: number;
+    minStockAlert: number;
+    buyPrice: number;
+    sellPrice: number;
+    description: string;
+  }>({
+    name: '',
+    code: '',
+    barcode: '',
+    category: '',
+    unit: 'عدد',
+    stock: 0,
+    minStockAlert: 5,
+    buyPrice: 0,
+    sellPrice: 0,
+    description: '',
+  });
 
   const [isServiceModalOpen, setIsServiceModalOpen] = useState<boolean>(false);
   const [serviceName, setServiceName] = useState<string>('');
@@ -248,17 +280,21 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     if (catalogCategory !== 'all') {
       list = list.filter((p) => p.category === catalogCategory);
     }
+    if (catalogOnlyInStock) {
+      list = list.filter((p) => p.stock > 0);
+    }
     if (productCatalogSearch.trim()) {
       const q = productCatalogSearch.trim().toLowerCase();
       list = list.filter(
         (p) =>
           p.name.toLowerCase().includes(q) ||
           p.code.toLowerCase().includes(q) ||
-          (p.barcode && p.barcode.toLowerCase().includes(q))
+          (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+          (p.category && p.category.toLowerCase().includes(q))
       );
     }
     return list;
-  }, [products, catalogCategory, productCatalogSearch]);
+  }, [products, catalogCategory, catalogOnlyInStock, productCatalogSearch]);
 
   // Filtered & Sorted Invoice Items
   const displayedItems = useMemo(() => {
@@ -323,6 +359,91 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     if (variantPickerProduct) {
       setVariantPickerProduct(null);
     }
+  };
+
+  // Decrement or remove product from invoice directly in catalog modal
+  const handleDecrementProduct = (prod: Product) => {
+    const existingIndex = items.findIndex((it) => it.productId === prod.id);
+    if (existingIndex !== -1) {
+      setItems((prev) => {
+        const next = [...prev];
+        const item = { ...next[existingIndex] };
+        if (item.quantity > 1) {
+          item.quantity -= 1;
+          item.total = Math.max(0, item.quantity * item.unitPrice - (item.discount || 0));
+          next[existingIndex] = item;
+        } else {
+          next.splice(existingIndex, 1);
+        }
+        return next;
+      });
+    }
+  };
+
+  // Open Quick Edit for a product from the catalog
+  const handleOpenEditProduct = (prod: Product) => {
+    setEditingCatalogProduct(prod);
+    setEditProductForm({
+      name: prod.name || '',
+      code: prod.code || '',
+      barcode: prod.barcode || '',
+      category: prod.category || '',
+      unit: prod.unit || 'عدد',
+      stock: prod.stock ?? 0,
+      minStockAlert: prod.minStockAlert ?? 5,
+      buyPrice: prod.buyPrice ?? 0,
+      sellPrice: prod.sellPrice ?? 0,
+      description: prod.description || '',
+    });
+  };
+
+  // Save product edit directly from catalog modal
+  const handleSaveProductEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCatalogProduct || !editProductForm.name.trim()) return;
+
+    const updatedProduct: Product = {
+      ...editingCatalogProduct,
+      name: editProductForm.name.trim(),
+      code: editProductForm.code.trim() || editingCatalogProduct.code,
+      barcode: editProductForm.barcode.trim() || undefined,
+      category: editProductForm.category.trim() || 'عمومی',
+      unit: editProductForm.unit.trim() || 'عدد',
+      stock: Math.max(0, Number(editProductForm.stock) || 0),
+      minStockAlert: Math.max(0, Number(editProductForm.minStockAlert) || 0),
+      buyPrice: Math.max(0, Number(editProductForm.buyPrice) || 0),
+      sellPrice: Math.max(0, Number(editProductForm.sellPrice) || 0),
+      description: editProductForm.description.trim() || undefined,
+      updatedAt: getCurrentJalaliDate(),
+    };
+
+    if (onSaveProduct) {
+      onSaveProduct(updatedProduct);
+    } else {
+      StorageService.saveProduct(updatedProduct);
+    }
+
+    // Update current invoice items if this product was already in items
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.productId === updatedProduct.id) {
+          return {
+            ...it,
+            description: updatedProduct.name,
+            unitPrice: updatedProduct.sellPrice,
+            total: Math.max(0, it.quantity * updatedProduct.sellPrice - (it.discount || 0)),
+          };
+        }
+        return it;
+      })
+    );
+
+    // If details modal was open for this product, update it
+    if (viewingCatalogProduct?.id === updatedProduct.id) {
+      setViewingCatalogProduct(updatedProduct);
+    }
+
+    setEditingCatalogProduct(null);
   };
 
   // Add custom non-inventory / service item
@@ -438,6 +559,14 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
   // Continue to checkout or validate
   const handleProceedToCheckout = () => {
+    // Normalize any zero quantities to 1
+    setItems((prev) =>
+      prev.map((it) =>
+        it.quantity < 1
+          ? { ...it, quantity: 1, total: Math.max(0, 1 * it.unitPrice - (it.discount || 0)) }
+          : it
+      )
+    );
     if (items.length === 0) {
       setErrorMessage('لطفاً ابتدا حداقل یک کالا یا آیتم به فاکتور اضافه کنید.');
       setTimeout(() => setErrorMessage(''), 3000);
@@ -549,7 +678,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       return prev
         .map((it) => {
           if (it.id === itemId) {
-            const safeQty = Math.max(1, newQty);
+            const safeQty = Math.max(0, newQty);
             return {
               ...it,
               quantity: safeQty,
@@ -867,24 +996,49 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
                   {/* Quantity & Row Total Bar */}
                   <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                    {/* Quantity Selector: [-] [qty] [+] */}
-                    <div className="flex items-center gap-1.5 bg-slate-100/90 p-1 rounded-xl">
+                    {/* Quantity Selector: [-] [editable input] [+] */}
+                    <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/60 shadow-2xs">
                       <button
                         type="button"
                         onClick={() => handleAdjustQuantity(item.id, -1)}
-                        className="w-7 h-7 rounded-lg bg-white shadow-xs text-slate-700 hover:bg-rose-50 hover:text-rose-600 active:scale-95 flex items-center justify-center transition-all cursor-pointer"
+                        className="w-7 h-7 rounded-lg bg-white shadow-xs text-slate-700 hover:bg-rose-50 hover:text-rose-600 active:scale-95 flex items-center justify-center transition-all cursor-pointer shrink-0"
+                        title="کاهش تعداد"
                       >
                         <Minus className="w-3.5 h-3.5" />
                       </button>
 
-                      <span className="w-8 text-center text-xs font-black text-slate-900">
-                        {toPersianDigits(item.quantity)}
-                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={item.quantity === 0 ? '' : toPersianDigits(item.quantity)}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => {
+                          const clean = toEnglishDigits(e.target.value).replace(/\D/g, '');
+                          if (clean === '') {
+                            handleSetQuantity(item.id, 0);
+                          } else {
+                            const val = parseInt(clean, 10);
+                            handleSetQuantity(item.id, val);
+                          }
+                        }}
+                        onBlur={(e) => {
+                          const clean = toEnglishDigits(e.target.value).replace(/\D/g, '');
+                          const val = parseInt(clean, 10);
+                          if (!val || val < 1) {
+                            handleSetQuantity(item.id, 1);
+                          }
+                        }}
+                        className="w-12 h-7 text-center text-xs font-black text-slate-900 bg-white/80 hover:bg-white focus:bg-white rounded-md border border-transparent focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none transition-all"
+                        title="جهت تغییر دستی تعداد، روی عدد کلیک کنید"
+                        placeholder="۱"
+                      />
 
                       <button
                         type="button"
                         onClick={() => handleAdjustQuantity(item.id, 1)}
-                        className="w-7 h-7 rounded-lg bg-white shadow-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 active:scale-95 flex items-center justify-center transition-all cursor-pointer"
+                        className="w-7 h-7 rounded-lg bg-white shadow-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 active:scale-95 flex items-center justify-center transition-all cursor-pointer shrink-0"
+                        title="افزایش تعداد"
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
@@ -1333,11 +1487,29 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                                   </button>
 
                                   <input
-                                    type="number"
-                                    min="1"
-                                    value={item.quantity}
-                                    onChange={(e) => handleSetQuantity(item.id, parseInt(e.target.value) || 1)}
-                                    className="w-12 bg-transparent text-center font-extrabold text-xs text-slate-900 focus:outline-none"
+                                    type="text"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    value={item.quantity === 0 ? '' : toPersianDigits(item.quantity)}
+                                    onFocus={(e) => e.target.select()}
+                                    onChange={(e) => {
+                                      const clean = toEnglishDigits(e.target.value).replace(/\D/g, '');
+                                      if (clean === '') {
+                                        handleSetQuantity(item.id, 0);
+                                      } else {
+                                        const val = parseInt(clean, 10);
+                                        handleSetQuantity(item.id, val);
+                                      }
+                                    }}
+                                    onBlur={(e) => {
+                                      const clean = toEnglishDigits(e.target.value).replace(/\D/g, '');
+                                      const val = parseInt(clean, 10);
+                                      if (!val || val < 1) {
+                                        handleSetQuantity(item.id, 1);
+                                      }
+                                    }}
+                                    className="w-12 h-6 bg-white/80 hover:bg-white focus:bg-white rounded border border-transparent focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-center font-extrabold text-xs text-slate-900 focus:outline-none transition-all"
+                                    title="جهت تغییر دستی تعداد، روی عدد کلیک کنید"
                                   />
 
                                   <button
@@ -1613,9 +1785,9 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => setPaymentMethod('transfer')}
+                      onClick={() => setPaymentMethod('pos')}
                       className={`py-2 text-center rounded-xl text-xs font-bold border transition-colors flex flex-col items-center gap-1 cursor-pointer ${
-                        paymentMethod === 'transfer'
+                        paymentMethod === 'pos'
                           ? 'border-blue-500 bg-blue-50 text-blue-800'
                           : 'border-slate-200 bg-white text-slate-600'
                       }`}
@@ -1646,7 +1818,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                           : 'border-slate-200 bg-white text-slate-600'
                       }`}
                     >
-                      <CreditCard className="w-3.5 h-3.5" />
+                      <ArrowUpDown className="w-3.5 h-3.5" />
                       <span>حواله</span>
                     </button>
                   </div>
@@ -1826,162 +1998,800 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
       {/* MODAL 1: PRODUCT CATALOG SELECTION (انتخاب کالا) */}
       {isProductCatalogOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3">
-          <div className="bg-white rounded-3xl w-full max-w-lg lg:max-w-4xl p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col animate-in zoom-in-95">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center">
+        <div
+          id="product-catalog-modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsProductCatalogOpen(false);
+          }}
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 animate-in fade-in duration-150"
+        >
+          <div
+            id="product-catalog-modal"
+            className="bg-white rounded-3xl w-full max-w-lg lg:max-w-4xl xl:max-w-5xl shadow-2xl border border-slate-200/80 max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-50/80 border-b border-slate-200/80 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-xs">
                   <Package className="w-5 h-5 stroke-[2.2]" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-base">انتخاب کالا از انبار</h3>
-                  <span className="text-[11px] text-slate-400 font-medium">روی کالای مورد نظر کلیک کنید تا به فاکتور افزوده شود</span>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-slate-900 text-sm sm:text-base">
+                      انتخاب کالا از انبار
+                    </h3>
+                    <span className="hidden sm:inline-flex items-center text-[11px] font-bold text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-full font-mono">
+                      {toPersianDigits(products.length)} کالا در سیستم
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    جستجو، بررسی موجودی و قیمت و افزودن مستقیم کالاها به ردیف‌های فاکتور
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {items.length > 0 && (
+                  <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>{toPersianDigits(items.length)} ردیف انتخاب‌شده</span>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsProductCatalogOpen(false)}
+                  className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center cursor-pointer transition-colors"
+                  title="بستن پنجره"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Search & Filter Toolbar */}
+            <div className="p-4 bg-white border-b border-slate-100 space-y-3 shrink-0">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                {/* Search input with clear button */}
+                <div className="relative flex-1 group">
+                  <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 transition-colors group-focus-within:text-emerald-600" />
+                  <input
+                    type="text"
+                    value={productCatalogSearch}
+                    onChange={(e) => setProductCatalogSearch(e.target.value)}
+                    placeholder="جستجو بر اساس نام کالا، کد، بارکد یا دسته‌بندی..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl pr-10 pl-9 py-2.5 text-xs sm:text-sm font-medium placeholder:text-slate-400 focus:bg-white focus:border-emerald-500 focus:ring-3 focus:ring-emerald-500/10 focus:outline-none transition-all"
+                  />
+                  {productCatalogSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setProductCatalogSearch('')}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-600 flex items-center justify-center text-xs transition-colors cursor-pointer"
+                      title="پاک کردن متن جستجو"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Stock filter toggle */}
+                <button
+                  type="button"
+                  onClick={() => setCatalogOnlyInStock(!catalogOnlyInStock)}
+                  className={`flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-2xl border text-xs font-bold transition-all cursor-pointer whitespace-nowrap select-none ${
+                    catalogOnlyInStock
+                      ? 'bg-emerald-50 border-emerald-500 text-emerald-800 shadow-2xs'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  <Boxes className={`w-4 h-4 ${catalogOnlyInStock ? 'text-emerald-600' : 'text-slate-500'}`} />
+                  <span>فقط کالاهای موجود</span>
+                  {catalogOnlyInStock && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  )}
+                </button>
+              </div>
+
+              {/* Category filter pills */}
+              {categories.length > 0 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+                  <button
+                    type="button"
+                    onClick={() => setCatalogCategory('all')}
+                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                      catalogCategory === 'all'
+                        ? 'bg-slate-900 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <span>همه دسته‌ها</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono ${
+                        catalogCategory === 'all' ? 'bg-slate-800 text-slate-200' : 'bg-white text-slate-500'
+                      }`}
+                    >
+                      {toPersianDigits(products.length)}
+                    </span>
+                  </button>
+
+                  {categories.map((cat) => {
+                    const count = products.filter((p) => p.category === cat).length;
+                    const isActive = catalogCategory === cat;
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setCatalogCategory(cat)}
+                        className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                          isActive
+                            ? 'bg-slate-900 text-white shadow-2xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        <span>{cat}</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono ${
+                            isActive ? 'bg-slate-800 text-slate-200' : 'bg-white text-slate-500'
+                          }`}
+                        >
+                          {toPersianDigits(count)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Product Cards Grid Area */}
+            <div className="flex-1 overflow-y-auto p-4 bg-slate-50/60">
+              {filteredProducts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                  <div className="w-14 h-14 rounded-3xl bg-slate-100 border border-slate-200 text-slate-400 flex items-center justify-center mb-3 shadow-xs">
+                    <Package className="w-7 h-7 stroke-[1.5]" />
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-800 mb-1">کالایی با مشخصات مورد نظر یافت نشد</h4>
+                  <p className="text-xs text-slate-400 max-w-sm mb-4 leading-relaxed">
+                    می‌توانید با جستجوی عبارتی دیگر یا حذف فیلتر دسته‌بندی و موجودی، کالای مورد نظرتان را بیابید.
+                  </p>
+                  {(productCatalogSearch || catalogCategory !== 'all' || catalogOnlyInStock) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductCatalogSearch('');
+                        setCatalogCategory('all');
+                        setCatalogOnlyInStock(false);
+                      }}
+                      className="px-4 py-2 rounded-xl text-xs font-bold bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors shadow-2xs cursor-pointer"
+                    >
+                      پاک کردن همه فیلترها
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  {filteredProducts.map((p) => {
+                    const invoiceItemsForProduct = items.filter((it) => it.productId === p.id);
+                    const totalQtyInInvoice = invoiceItemsForProduct.reduce((sum, it) => sum + it.quantity, 0);
+                    const inInvoice = totalQtyInInvoice > 0;
+
+                    return (
+                      <div
+                        key={p.id}
+                        id={`catalog-product-${p.id}`}
+                        className={`rounded-2xl border transition-all p-3 sm:px-4 sm:py-3 flex items-center justify-between gap-3 select-none ${
+                          inInvoice
+                            ? 'border-emerald-500 bg-emerald-50/50 shadow-2xs ring-1 ring-emerald-500/20'
+                            : 'border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/70 shadow-2xs'
+                        }`}
+                      >
+                        {/* ONLY Product Name */}
+                        <div
+                          onClick={() => {
+                            if (p.hasVariants && p.variants && p.variants.length > 0) {
+                              setVariantPickerProduct(p);
+                            } else {
+                              handleAddProduct(p);
+                            }
+                          }}
+                          className="flex-1 min-w-0 flex items-center gap-2.5 cursor-pointer group"
+                          title="کلیک برای افزودن به فاکتور"
+                        >
+                          <div
+                            className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                              inInvoice
+                                ? 'bg-emerald-600 text-white shadow-2xs'
+                                : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200 group-hover:text-slate-800'
+                            }`}
+                          >
+                            <Package className="w-4 h-4" />
+                          </div>
+                          <span className="font-extrabold text-slate-900 text-xs sm:text-sm leading-snug group-hover:text-emerald-700 transition-colors truncate">
+                            {p.name}
+                          </span>
+                        </div>
+
+                        {/* Action Buttons: Details, Edit, Add/Stepper */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {/* Button to show details in separate window */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setViewingCatalogProduct(p);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200/80 transition-all cursor-pointer shadow-2xs active:scale-[0.98]"
+                            title="نمایش جزئیات کامل در پنجره جداگانه"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-sky-600" />
+                            <span className="text-[11px] font-black">جزئیات</span>
+                          </button>
+
+                          {/* Button to edit product right here */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditProduct(p);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 transition-all cursor-pointer shadow-2xs active:scale-[0.98]"
+                            title="ویرایش مشخصات کالا در همینجا"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-amber-600" />
+                            <span className="text-[11px] font-black">ویرایش</span>
+                          </button>
+
+                          {/* Add / Stepper */}
+                          {p.hasVariants && p.variants && p.variants.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setVariantPickerProduct(p);
+                              }}
+                              className="flex items-center gap-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-bold px-2.5 py-1.5 rounded-xl transition-all shadow-2xs cursor-pointer active:scale-[0.98]"
+                              title="انتخاب رنگ یا تنوع"
+                            >
+                              <Layers className="w-3.5 h-3.5 text-purple-600" />
+                              <span className="text-[11px] font-black">تنوع</span>
+                              {totalQtyInInvoice > 0 && (
+                                <span className="bg-purple-600 text-white text-[10px] px-1.5 py-0.2 rounded-md font-black">
+                                  {toPersianDigits(totalQtyInInvoice)}
+                                </span>
+                              )}
+                            </button>
+                          ) : inInvoice ? (
+                            <div className="flex items-center gap-0.5 bg-white border border-emerald-300 rounded-xl p-0.5 shadow-2xs">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDecrementProduct(p);
+                                }}
+                                className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-700 flex items-center justify-center text-xs transition-colors cursor-pointer"
+                                title="کاهش تعداد"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="px-1.5 text-xs font-black text-emerald-700 min-w-[20px] text-center font-mono">
+                                {toPersianDigits(totalQtyInInvoice)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAddProduct(p);
+                                }}
+                                className="w-6 h-6 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center text-xs transition-colors cursor-pointer"
+                                title="افزایش تعداد"
+                              >
+                                <Plus className="w-3 h-3 stroke-[2.5]" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddProduct(p);
+                              }}
+                              className="flex items-center gap-1 bg-slate-900 hover:bg-emerald-600 text-white text-xs font-bold px-2.5 py-1.5 rounded-xl transition-all shadow-2xs cursor-pointer active:scale-[0.98]"
+                              title="افزودن به فاکتور"
+                            >
+                              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                              <span className="text-[11px] font-black">افزودن</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Bottom Action Bar / Footer */}
+            <div className="px-5 py-3.5 bg-white border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <span className="text-xs font-bold text-slate-700">
+                    اقلام انتخابی: <strong className="font-black text-emerald-700">{toPersianDigits(items.length)} ردیف</strong> ({toPersianDigits(items.reduce((s, it) => s + it.quantity, 0))} قلم کالا)
+                  </span>
+                </div>
+                <div className="hidden sm:block text-slate-300">|</div>
+                <div className="text-xs font-bold text-slate-600">
+                  مبلغ کل فاکتور: <strong className="font-black text-slate-900">{formatPrice(finalTotal)}</strong> تومان
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setIsProductCatalogOpen(false)}
+                  className="flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                >
+                  بستن
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsProductCatalogOpen(false)}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-xs px-5 py-2 rounded-xl transition-all shadow-xs cursor-pointer"
+                >
+                  <Check className="w-4 h-4 stroke-[2.5]" />
+                  <span>تایید و بازگشت به فاکتور</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PRODUCT DETAILS (پنجره جداگانه جزئیات کامل کالا) */}
+      {viewingCatalogProduct && (
+        <div
+          id="product-details-modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setViewingCatalogProduct(null);
+          }}
+          className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150"
+        >
+          <div
+            id="product-details-modal"
+            className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200/80 max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-50/90 border-b border-slate-200/80 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shadow-2xs">
+                  <Eye className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-sm sm:text-base">
+                    جزئیات و مشخصات کالا
+                  </h3>
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    اطلاعات انبار، قیمت‌گذاری و بارکد
+                  </span>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setIsProductCatalogOpen(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
+                onClick={() => setViewingCatalogProduct(null)}
+                className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer transition-colors"
+                title="بستن"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Search input */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
-              <input
-                type="text"
-                value={productCatalogSearch}
-                onChange={(e) => setProductCatalogSearch(e.target.value)}
-                placeholder="جستجو بر اساس نام کالا، کد یا بارکد..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-9 pl-3 py-2 text-xs sm:text-sm font-medium focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              />
-            </div>
-
-            {/* Category filter pills */}
-            {categories.length > 0 && (
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setCatalogCategory('all')}
-                  className={`px-3 py-1 rounded-full font-bold whitespace-nowrap transition-colors cursor-pointer ${
-                    catalogCategory === 'all'
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  همه ({toPersianDigits(products.length)})
-                </button>
-                {categories.map((cat) => (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => setCatalogCategory(cat)}
-                    className={`px-3 py-1 rounded-full font-bold whitespace-nowrap transition-colors cursor-pointer ${
-                      catalogCategory === cat
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Product List */}
-            <div className="flex-1 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-              {filteredProducts.length === 0 ? (
-                <div className="text-center py-12 text-slate-400 text-xs">
-                  کالایی منطبق با جستجوی شما یافت نشد.
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {/* Product Title Card */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-start justify-between gap-3">
+                <div className="space-y-1.5 flex-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    نام محصول
+                  </span>
+                  <h4 className="text-base sm:text-lg font-black text-slate-900 leading-snug">
+                    {viewingCatalogProduct.name}
+                  </h4>
                 </div>
-              ) : (
-                filteredProducts.map((p, pIdx) => {
-                  const inInvoice = items.find((it) => it.productId === p.id);
-                  const isOutOfStock = p.stock <= 0;
+                <div className="shrink-0 flex flex-col items-end gap-1">
+                  {viewingCatalogProduct.category && (
+                    <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold shadow-2xs">
+                      {viewingCatalogProduct.category}
+                    </span>
+                  )}
+                  {viewingCatalogProduct.stock <= 0 ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-lg">
+                      <AlertTriangle className="w-3 h-3" />
+                      ناموجود
+                    </span>
+                  ) : viewingCatalogProduct.stock <= (viewingCatalogProduct.minStockAlert || 5) ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg">
+                      <AlertTriangle className="w-3 h-3" />
+                      موجودی رو به اتمام
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
+                      <CheckCircle2 className="w-3 h-3" />
+                      موجود در انبار
+                    </span>
+                  )}
+                </div>
+              </div>
 
-                  return (
-                    <div
-                      key={p.id}
-                      onClick={() => handleAddProduct(p)}
-                      className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
-                        inInvoice
-                          ? 'border-emerald-500 bg-emerald-50/40'
-                          : pIdx % 2 === 1
-                          ? 'border-slate-200 hover:border-slate-300 bg-slate-50/80'
-                          : 'border-slate-200 hover:border-slate-300 bg-white'
-                      }`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">
-                            {p.name}
+              {/* Specs Grid */}
+              <div className="grid grid-cols-2 gap-2.5">
+                {/* Sell Price */}
+                <div className="p-3 rounded-2xl bg-emerald-50/50 border border-emerald-200/70 space-y-1">
+                  <span className="text-[11px] font-bold text-emerald-800 flex items-center gap-1">
+                    <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                    قیمت فروش:
+                  </span>
+                  <div className="text-sm sm:text-base font-black text-emerald-700">
+                    {formatPrice(viewingCatalogProduct.sellPrice)} <span className="text-xs font-medium text-emerald-800/70">تومان</span>
+                  </div>
+                </div>
+
+                {/* Buy Price */}
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                  <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                    <Banknote className="w-3.5 h-3.5 text-slate-400" />
+                    قیمت خرید:
+                  </span>
+                  <div className="text-sm sm:text-base font-black text-slate-800">
+                    {viewingCatalogProduct.buyPrice ? formatPrice(viewingCatalogProduct.buyPrice) : '۰'} <span className="text-xs font-medium text-slate-500">تومان</span>
+                  </div>
+                </div>
+
+                {/* Stock */}
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                  <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                    <Boxes className="w-3.5 h-3.5 text-slate-400" />
+                    موجودی فعلی انبار:
+                  </span>
+                  <div className="text-sm sm:text-base font-black text-slate-900">
+                    {toPersianDigits(viewingCatalogProduct.stock)} <span className="text-xs font-medium text-slate-500">{viewingCatalogProduct.unit || 'عدد'}</span>
+                  </div>
+                </div>
+
+                {/* Min Stock Alert */}
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                  <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5 text-slate-400" />
+                    حداقل هشدار موجودی:
+                  </span>
+                  <div className="text-sm sm:text-base font-black text-slate-800">
+                    {toPersianDigits(viewingCatalogProduct.minStockAlert || 0)} <span className="text-xs font-medium text-slate-500">{viewingCatalogProduct.unit || 'عدد'}</span>
+                  </div>
+                </div>
+
+                {/* Code */}
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                  <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                    <Hash className="w-3.5 h-3.5 text-slate-400" />
+                    کد کالا:
+                  </span>
+                  <div className="text-xs sm:text-sm font-black font-mono text-slate-800">
+                    {toPersianDigits(viewingCatalogProduct.code)}
+                  </div>
+                </div>
+
+                {/* Barcode */}
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                  <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                    <Barcode className="w-3.5 h-3.5 text-slate-400" />
+                    بارکد کالا:
+                  </span>
+                  <div className="text-xs sm:text-sm font-black font-mono text-slate-800 truncate">
+                    {viewingCatalogProduct.barcode ? toPersianDigits(viewingCatalogProduct.barcode) : 'ثبت نشده'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Description if available */}
+              {viewingCatalogProduct.description && (
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                  <span className="text-[11px] font-bold text-slate-500">توضیحات و مشخصات تکمیلی:</span>
+                  <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
+                    {viewingCatalogProduct.description}
+                  </p>
+                </div>
+              )}
+
+              {/* Variants List if available */}
+              {viewingCatalogProduct.hasVariants && viewingCatalogProduct.variants && viewingCatalogProduct.variants.length > 0 && (
+                <div className="p-3.5 rounded-2xl bg-purple-50/50 border border-purple-200/80 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-purple-900">
+                    <span className="flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-purple-600" />
+                      تنوع‌های رنگ و مدل تعریف‌شده ({toPersianDigits(viewingCatalogProduct.variants.length)} مورد):
+                    </span>
+                  </div>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                    {viewingCatalogProduct.variants.map((v) => (
+                      <div
+                        key={v.id}
+                        className="bg-white p-2.5 rounded-xl border border-purple-100 flex items-center justify-between text-xs"
+                      >
+                        <span className="font-bold text-slate-800">{v.name}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[11px] text-slate-500">
+                            موجودی: <strong className="text-slate-800">{toPersianDigits(v.stock)}</strong>
                           </span>
-                          <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md font-mono">
-                            {toPersianDigits(p.code)}
-                          </span>
-                          {p.hasVariants && p.variants && p.variants.length > 0 && (
-                            <span className="text-[10px] bg-purple-100 text-purple-800 border border-purple-200 font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1">
-                              <Layers className="w-3 h-3 text-purple-600" />
-                              <span>{toPersianDigits(p.variants.length)} تنوع رنگ/مدل</span>
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-3">
-                          <span>
-                            موجودی:{' '}
-                            <strong
-                              className={isOutOfStock ? 'text-rose-500' : 'text-slate-800'}
-                            >
-                              {toPersianDigits(p.stock)} {p.unit}
-                            </strong>
-                          </span>
-                          <span>|</span>
-                          <span className="font-black text-emerald-700">
-                            {formatPrice(p.sellPrice)}
+                          <span className="text-[11px] font-black text-emerald-700">
+                            {formatPrice(v.sellPrice || viewingCatalogProduct.sellPrice)} تومان
                           </span>
                         </div>
                       </div>
-
-                      {/* Add badge or counter */}
-                      <div className="shrink-0">
-                        {p.hasVariants && p.variants && p.variants.length > 0 ? (
-                          <div className="flex items-center gap-1 bg-purple-50 text-purple-700 border border-purple-200 text-[11px] font-bold px-2.5 py-1.5 rounded-xl shadow-2xs hover:bg-purple-100 transition-colors">
-                            <Layers className="w-3.5 h-3.5 text-purple-600" />
-                            <span>انتخاب رنگ/مدل</span>
-                            <ChevronLeft className="w-3 h-3 text-purple-500" />
-                          </div>
-                        ) : inInvoice ? (
-                          <div className="flex items-center gap-1 bg-emerald-600 text-white text-xs font-black px-2.5 py-1 rounded-xl shadow-xs">
-                            <Check className="w-3.5 h-3.5" />
-                            <span>{toPersianDigits(inInvoice.quantity)}</span>
-                          </div>
-                        ) : (
-                          <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors">
-                            <Plus className="w-4 h-4 stroke-[2.5]" />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
 
-            {/* Bottom Modal Close */}
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500">
-                اقلام انتخابی: {toPersianDigits(items.length)} ردیف
-              </span>
+            {/* Footer */}
+            <div className="px-5 py-3.5 bg-slate-50/80 border-t border-slate-200/80 flex items-center justify-between gap-2 shrink-0">
               <button
                 type="button"
-                onClick={() => setIsProductCatalogOpen(false)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl transition-colors shadow-xs"
+                onClick={() => {
+                  const p = viewingCatalogProduct;
+                  setViewingCatalogProduct(null);
+                  handleOpenEditProduct(p);
+                }}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-all cursor-pointer shadow-2xs"
               >
-                تایید و بازگشت به فاکتور
+                <Pencil className="w-3.5 h-3.5 text-amber-600" />
+                <span>ویرایش این کالا</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setViewingCatalogProduct(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+                >
+                  بستن
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (viewingCatalogProduct.hasVariants && viewingCatalogProduct.variants && viewingCatalogProduct.variants.length > 0) {
+                      setVariantPickerProduct(viewingCatalogProduct);
+                    } else {
+                      handleAddProduct(viewingCatalogProduct);
+                    }
+                    setViewingCatalogProduct(null);
+                  }}
+                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-xs cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>افزودن به فاکتور</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PRODUCT QUICK EDIT (پنجره ویرایش کالا در همانجا) */}
+      {editingCatalogProduct && (
+        <div
+          id="product-edit-modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setEditingCatalogProduct(null);
+          }}
+          className="fixed inset-0 z-70 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150"
+        >
+          <div
+            id="product-edit-modal"
+            className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200/80 max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-900 text-white shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                  <Pencil className="w-4 h-4 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm sm:text-base">
+                    ویرایش مشخصات کالا
+                  </h3>
+                  <span className="text-[11px] text-slate-300 font-medium">
+                    بروزرسانی مستقیم نام، قیمت و موجودی انبار
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingCatalogProduct(null)}
+                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+                title="بستن"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
+
+            {/* Form */}
+            <form onSubmit={handleSaveProductEdit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                {/* Product Name (الزامی) */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    نام کالا *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editProductForm.name}
+                    onChange={(e) => setEditProductForm({ ...editProductForm, name: e.target.value })}
+                    placeholder="نام کامل کالا..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Code */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      کد کالا
+                    </label>
+                    <input
+                      type="text"
+                      value={editProductForm.code}
+                      onChange={(e) => setEditProductForm({ ...editProductForm, code: e.target.value })}
+                      placeholder="کد کالا..."
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all"
+                    />
+                  </div>
+
+                  {/* Barcode */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      بارکد
+                    </label>
+                    <input
+                      type="text"
+                      value={editProductForm.barcode}
+                      onChange={(e) => setEditProductForm({ ...editProductForm, barcode: e.target.value })}
+                      placeholder="بارکد..."
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all"
+                    />
+                  </div>
+
+                  {/* Category */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      دسته‌بندی
+                    </label>
+                    <input
+                      type="text"
+                      value={editProductForm.category}
+                      onChange={(e) => setEditProductForm({ ...editProductForm, category: e.target.value })}
+                      placeholder="مثال: عمومی، ابزار..."
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all"
+                    />
+                  </div>
+
+                  {/* Unit */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      واحد سنجش
+                    </label>
+                    <select
+                      value={editProductForm.unit}
+                      onChange={(e) => setEditProductForm({ ...editProductForm, unit: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all cursor-pointer"
+                    >
+                      <option value="عدد">عدد</option>
+                      <option value="دستگاه">دستگاه</option>
+                      <option value="بسته">بسته</option>
+                      <option value="کیلوگرم">کیلوگرم</option>
+                      <option value="متر">متر</option>
+                      <option value="کارتن">کارتن</option>
+                      <option value="جفت">جفت</option>
+                      <option value="لیتر">لیتر</option>
+                      <option value="قوطی">قوطی</option>
+                      <option value="شاخه">شاخه</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Pricing Box */}
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
+                  <span className="text-[11px] font-black text-slate-700 block">
+                    قیمت‌گذاری مالی ({settings.currency}):
+                  </span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                        قیمت فروش ({settings.currency}) *
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editProductForm.sellPrice}
+                        onChange={(e) => setEditProductForm({ ...editProductForm, sellPrice: parseFloat(e.target.value) || 0 })}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                        قیمت خرید ({settings.currency})
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editProductForm.buyPrice}
+                        onChange={(e) => setEditProductForm({ ...editProductForm, buyPrice: parseFloat(e.target.value) || 0 })}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stock Box */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      موجودی انبار ({editProductForm.unit})
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editProductForm.stock}
+                      onChange={(e) => setEditProductForm({ ...editProductForm, stock: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      حداقل موجودی هشدار
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editProductForm.minStockAlert}
+                      onChange={(e) => setEditProductForm({ ...editProductForm, minStockAlert: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    توضیحات و مشخصات
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={editProductForm.description}
+                    onChange={(e) => setEditProductForm({ ...editProductForm, description: e.target.value })}
+                    placeholder="مشخصات فنی، محل قفسه یا یادداشت..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all resize-none"
+                  />
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-5 py-3.5 bg-slate-50/80 border-t border-slate-200/80 flex items-center justify-end gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setEditingCatalogProduct(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+                >
+                  انصراف
+                </button>
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-5 py-2 rounded-xl transition-all shadow-xs cursor-pointer active:scale-[0.98]"
+                >
+                  <Check className="w-4 h-4 stroke-[2.5]" />
+                  <span>ذخیره تغییرات کالا</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -2700,60 +3510,148 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
             {/* Payment Method Selector */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              <label className="block text-xs font-bold text-slate-700 mb-2">
                 روش پرداخت / تسویه:
               </label>
-              <div className="grid grid-cols-4 gap-1.5">
+              <div id="checkout-payment-methods-grid" className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('cash')}
-                  className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors flex flex-col items-center gap-1 ${
+                  className={`group p-3 rounded-2xl border text-right transition-all flex items-center justify-between gap-3 cursor-pointer select-none active:scale-[0.99] ${
                     paymentMethod === 'cash'
-                      ? 'border-blue-500 bg-blue-50 text-blue-800'
-                      : 'border-slate-200 bg-white text-slate-600'
+                      ? 'border-blue-600 bg-blue-50/80 text-blue-950 shadow-xs ring-1 ring-blue-500/20'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50/70'
                   }`}
                 >
-                  <Banknote className="w-4 h-4" />
-                  <span>نقدی</span>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                        paymentMethod === 'cash'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 group-hover:bg-slate-200'
+                      }`}
+                    >
+                      <Banknote className="w-5 h-5" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs sm:text-sm font-bold text-slate-900 truncate">پرداخت نقدی</span>
+                      <span className="text-[11px] text-slate-500 font-medium truncate">دریافت وجه نقد فوری</span>
+                    </div>
+                  </div>
+                  <div
+                    className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all ${
+                      paymentMethod === 'cash'
+                        ? 'border-blue-600 bg-blue-600 text-white'
+                        : 'border-slate-300 bg-slate-50'
+                    }`}
+                  >
+                    {paymentMethod === 'cash' && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                  </div>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setPaymentMethod('transfer')}
-                  className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors flex flex-col items-center gap-1 ${
-                    paymentMethod === 'transfer'
-                      ? 'border-blue-500 bg-blue-50 text-blue-800'
-                      : 'border-slate-200 bg-white text-slate-600'
+                  onClick={() => setPaymentMethod('pos')}
+                  className={`group p-3 rounded-2xl border text-right transition-all flex items-center justify-between gap-3 cursor-pointer select-none active:scale-[0.99] ${
+                    paymentMethod === 'pos'
+                      ? 'border-blue-600 bg-blue-50/80 text-blue-950 shadow-xs ring-1 ring-blue-500/20'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50/70'
                   }`}
                 >
-                  <CreditCard className="w-4 h-4" />
-                  <span>کارتخوان</span>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                        paymentMethod === 'pos'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 group-hover:bg-slate-200'
+                      }`}
+                    >
+                      <CreditCard className="w-5 h-5" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs sm:text-sm font-bold text-slate-900 truncate">کارتخوان (POS)</span>
+                      <span className="text-[11px] text-slate-500 font-medium truncate">پایانه فروشگاهی</span>
+                    </div>
+                  </div>
+                  <div
+                    className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all ${
+                      paymentMethod === 'pos'
+                        ? 'border-blue-600 bg-blue-600 text-white'
+                        : 'border-slate-300 bg-slate-50'
+                    }`}
+                  >
+                    {paymentMethod === 'pos' && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                  </div>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('cheque')}
-                  className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors flex flex-col items-center gap-1 ${
+                  className={`group p-3 rounded-2xl border text-right transition-all flex items-center justify-between gap-3 cursor-pointer select-none active:scale-[0.99] ${
                     paymentMethod === 'cheque'
-                      ? 'border-blue-500 bg-blue-50 text-blue-800'
-                      : 'border-slate-200 bg-white text-slate-600'
+                      ? 'border-blue-600 bg-blue-50/80 text-blue-950 shadow-xs ring-1 ring-blue-500/20'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50/70'
                   }`}
                 >
-                  <Landmark className="w-4 h-4" />
-                  <span>چک صیادی</span>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                        paymentMethod === 'cheque'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 group-hover:bg-slate-200'
+                      }`}
+                    >
+                      <Landmark className="w-5 h-5" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs sm:text-sm font-bold text-slate-900 truncate">چک صیادی</span>
+                      <span className="text-[11px] text-slate-500 font-medium truncate">ثبت مشخصات و سررسید</span>
+                    </div>
+                  </div>
+                  <div
+                    className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all ${
+                      paymentMethod === 'cheque'
+                        ? 'border-blue-600 bg-blue-600 text-white'
+                        : 'border-slate-300 bg-slate-50'
+                    }`}
+                  >
+                    {paymentMethod === 'cheque' && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                  </div>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('transfer')}
-                  className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors flex flex-col items-center gap-1 ${
+                  className={`group p-3 rounded-2xl border text-right transition-all flex items-center justify-between gap-3 cursor-pointer select-none active:scale-[0.99] ${
                     paymentMethod === 'transfer'
-                      ? 'border-blue-500 bg-blue-50 text-blue-800'
-                      : 'border-slate-200 bg-white text-slate-600'
+                      ? 'border-blue-600 bg-blue-50/80 text-blue-950 shadow-xs ring-1 ring-blue-500/20'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50/70'
                   }`}
                 >
-                  <CreditCard className="w-4 h-4" />
-                  <span>کارت به کارت</span>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                        paymentMethod === 'transfer'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 group-hover:bg-slate-200'
+                      }`}
+                    >
+                      <ArrowUpDown className="w-5 h-5" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs sm:text-sm font-bold text-slate-900 truncate">کارت به کارت / حواله</span>
+                      <span className="text-[11px] text-slate-500 font-medium truncate">انتقال وجه و شماره پیگیری</span>
+                    </div>
+                  </div>
+                  <div
+                    className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all ${
+                      paymentMethod === 'transfer'
+                        ? 'border-blue-600 bg-blue-600 text-white'
+                        : 'border-slate-300 bg-slate-50'
+                    }`}
+                  >
+                    {paymentMethod === 'transfer' && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                  </div>
                 </button>
               </div>
             </div>

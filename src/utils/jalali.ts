@@ -55,6 +55,12 @@ export function toPersianDigits(n: number | string): string {
   return String(n).replace(/\d/g, (d) => persianDigits[parseInt(d, 10)] || d);
 }
 
+export function toEnglishDigits(str: number | string): string {
+  return String(str)
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776))
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
+}
+
 export function formatPrice(amount: number, currency = 'تومان', usePersianDigits = true): string {
   const formatted = Math.round(amount).toLocaleString('en-US');
   const result = `${formatted} ${currency}`;
