@@ -422,6 +422,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
         <ExcelImportModal
           isOpen={isImportModalOpen}
           onClose={() => setIsImportModalOpen(false)}
+          type="customers"
           mode="customers"
           existingCustomers={customers}
           onImportCustomers={(imported, importMode) => {

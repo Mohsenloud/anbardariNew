@@ -177,7 +177,7 @@ const DEFAULT_INITIAL_DATA = {
   ],
   invoices: [],
   movements: [],
-  exitSlipLogs: [],
+  exitSlipLogs: {},
   settings: {
     storeName: 'فروشگاه و توزیع سپهر',
     storePhone: '۰۲۱-۵۵۴۴۳۳۲۲',
@@ -339,6 +339,9 @@ function validateDatabaseSchema(data: any): { valid: boolean; error?: string } {
   }
   if (data.settings !== undefined && (typeof data.settings !== 'object' || Array.isArray(data.settings))) {
     return { valid: false, error: 'بخش تنظیمات سیستم نامعتبر است.' };
+  }
+  if (data.exitSlipLogs !== undefined && (typeof data.exitSlipLogs !== 'object' || Array.isArray(data.exitSlipLogs))) {
+    return { valid: false, error: 'بخش رهگیری برگه‌های خروج (exitSlipLogs) باید یک شیء معتبر باشد.' };
   }
   return { valid: true };
 }

@@ -8,9 +8,12 @@ function normalizeKey(str: string): string {
     .toString()
     .trim()
     .toLowerCase()
-    .replace(/[\s_\-/\\]+/g, '')
+    .replace(/[*\(\)\[\]{}:;.,،؟!~`#$^+=|\\/]+/g, '')
+    .replace(/[\s_\-]+/g, '')
     .replace(/[یي]/g, 'ی')
-    .replace(/[کك]/g, 'ک');
+    .replace(/[کك]/g, 'ک')
+    .replace(/[آاإأ]/g, 'ا')
+    .replace(/ة/g, 'ه');
 }
 
 // Convert Persian/Arabic digits to English digits
@@ -28,6 +31,20 @@ export function parseNumber(val: any): number {
 export function parseString(val: any): string {
   if (val === undefined || val === null) return '';
   return String(val).trim();
+}
+
+// Format Iranian phone numbers, preserving leading 0 for mobile numbers if stripped by Excel
+export function parsePhoneNumber(val: any): string {
+  if (val === undefined || val === null || val === '') return '';
+  let str = String(val).trim()
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776))
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632))
+    .replace(/[^\d+]/g, '');
+  // If Excel stored 0912... as number 912... (10 digits)
+  if (str.length === 10 && str.startsWith('9')) {
+    str = '0' + str;
+  }
+  return str;
 }
 
 /**
@@ -276,8 +293,24 @@ export async function parseProductsExcel(file: File): Promise<ProductImportResul
   const data = await file.arrayBuffer();
   const workbook = XLSX.read(data, { type: 'array' });
 
-  const firstSheetName = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[firstSheetName];
+  // Find sheet with data
+  let worksheet: XLSX.WorkSheet | null = null;
+  for (const name of workbook.SheetNames) {
+    const ws = workbook.Sheets[name];
+    if (ws && ws['!ref']) {
+      const testRows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      if (testRows && testRows.length >= 2) {
+        worksheet = ws;
+        break;
+      }
+    }
+  }
+
+  if (!worksheet) {
+    const firstSheetName = workbook.SheetNames[0];
+    worksheet = workbook.Sheets[firstSheetName];
+  }
+
   if (!worksheet) {
     throw new Error('فایل اکسل انتخاب شده خالی است یا شیت معتبری ندارد.');
   }
@@ -287,7 +320,20 @@ export async function parseProductsExcel(file: File): Promise<ProductImportResul
     throw new Error('فایل اکسل باید حداقل دارای یک سطر عنوان و یک سطر داده باشد.');
   }
 
-  const headerRow: string[] = (rawRows[0] || []).map((h: any) => String(h || '').trim());
+  // Detect header row by scanning first 10 rows
+  let headerRowIndex = 0;
+  for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
+    const candidateRow = (rawRows[i] || []).map((h: any) => normalizeKey(String(h || '')));
+    const hasProductCol = candidateRow.some((h: string) =>
+      h.includes('نامکالا') || h.includes('ناممحصول') || h.includes('کالا') || h.includes('محصول') || h.includes('product')
+    );
+    if (hasProductCol) {
+      headerRowIndex = i;
+      break;
+    }
+  }
+
+  const headerRow: string[] = (rawRows[headerRowIndex] || []).map((h: any) => String(h || '').trim());
   const normalizedHeaders = headerRow.map(normalizeKey);
 
   // Column matching helper
@@ -300,18 +346,22 @@ export async function parseProductsExcel(file: File): Promise<ProductImportResul
     return -1;
   };
 
-  const nameIdx = findColIndex('نامکالا', 'ناممحصول', 'نام', 'title', 'productname', 'name');
-  const codeIdx = findColIndex('کدکالا', 'کد', 'بارکد', 'code', 'sku', 'barcode');
-  const variantIdx = findColIndex('تنوع', 'رنگ', 'مدل', 'سایز', 'variant', 'color', 'attribute');
-  const variantCodeIdx = findColIndex('کداختصاصیتنوع', 'کدتنوع', 'variantcode', 'variantsku');
-  const categoryIdx = findColIndex('دستهبندی', 'دسته', 'گروه', 'category', 'group');
+  let nameIdx = findColIndex('نامکالا', 'ناممحصول', 'کالا', 'محصول', 'نام', 'title', 'productname', 'itemname', 'item', 'name');
+  const codeIdx = findColIndex('کدکالا', 'کدمحصول', 'شناسهکالا', 'کد', 'بارکد', 'code', 'sku', 'barcode', 'itemcode');
+  const variantIdx = findColIndex('تنوعرنگمدل', 'تنوع', 'رنگ', 'مدل', 'سایز', 'ابعاد', 'variant', 'color', 'attribute');
+  const variantCodeIdx = findColIndex('کداختصاصیتنوع', 'کدتنوع', 'شناسهتنوع', 'variantcode', 'variantsku');
+  const categoryIdx = findColIndex('دستهبندی', 'دسته', 'گروهکالا', 'گروه', 'category', 'group');
   const unitIdx = findColIndex('واحدسنجش', 'واحد', 'unit');
-  const buyPriceIdx = findColIndex('قیمتخرید', 'فیخرید', 'خرید', 'buyprice', 'purchaseprice');
-  const sellPriceIdx = findColIndex('قیمتفروش', 'فیفروش', 'فروش', 'sellprice', 'price');
-  const stockIdx = findColIndex('موجودیانبار', 'موجودی', 'تعداد', 'stock', 'qty', 'quantity');
-  const minStockIdx = findColIndex('حداقلحداکثر', 'حداقلهشدارموجودی', 'حداقلهشدار', 'نقطهسفارش', 'minstock', 'alert');
+  const buyPriceIdx = findColIndex('قیمتخرید', 'فیخرید', 'خرید', 'buyprice', 'purchaseprice', 'cost');
+  const sellPriceIdx = findColIndex('قیمتفروش', 'فیفروش', 'قیمت', 'فروش', 'sellprice', 'price');
+  const stockIdx = findColIndex('موجودیانبار', 'موجودی', 'تعداد', 'موجودیفعلی', 'stock', 'qty', 'quantity', 'count');
+  const minStockIdx = findColIndex('حداقلحداکثر', 'حداقلهشدارموجودی', 'حداقلهشدار', 'نقطهسفارش', 'هشدارموجودی', 'minstock', 'alert');
   const descIdx = findColIndex('توضیحات', 'مشخصات', 'شرح', 'description', 'desc', 'notes');
 
+  if (nameIdx === -1) {
+    // Fallback: check if header row has any item that contains 'نام'
+    nameIdx = normalizedHeaders.findIndex((h) => h.includes('نام'));
+  }
   if (nameIdx === -1) {
     throw new Error('ستون «نام کالا» در فایل اکسل یافت نشد. لطفاً از قالب استاندارد اکسل استفاده فرمایید.');
   }
@@ -321,7 +371,7 @@ export async function parseProductsExcel(file: File): Promise<ProductImportResul
   let validRows = 0;
   let totalVariantsCount = 0;
 
-  for (let r = 1; r < rawRows.length; r++) {
+  for (let r = headerRowIndex + 1; r < rawRows.length; r++) {
     const row = rawRows[r];
     if (!row || row.length === 0) continue;
 
@@ -423,8 +473,24 @@ export async function parseCustomersExcel(file: File): Promise<CustomerImportRes
   const data = await file.arrayBuffer();
   const workbook = XLSX.read(data, { type: 'array' });
 
-  const firstSheetName = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[firstSheetName];
+  // Find sheet with data
+  let worksheet: XLSX.WorkSheet | null = null;
+  for (const name of workbook.SheetNames) {
+    const ws = workbook.Sheets[name];
+    if (ws && ws['!ref']) {
+      const testRows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      if (testRows && testRows.length >= 2) {
+        worksheet = ws;
+        break;
+      }
+    }
+  }
+
+  if (!worksheet) {
+    const firstSheetName = workbook.SheetNames[0];
+    worksheet = workbook.Sheets[firstSheetName];
+  }
+
   if (!worksheet) {
     throw new Error('فایل اکسل انتخاب شده خالی است یا شیت معتبری ندارد.');
   }
@@ -434,7 +500,20 @@ export async function parseCustomersExcel(file: File): Promise<CustomerImportRes
     throw new Error('فایل اکسل باید حداقل دارای یک سطر عنوان و یک سطر داده باشد.');
   }
 
-  const headerRow: string[] = (rawRows[0] || []).map((h: any) => String(h || '').trim());
+  // Detect header row by scanning first 10 rows for customer/name columns
+  let headerRowIndex = 0;
+  for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
+    const candidateRow = (rawRows[i] || []).map((h: any) => normalizeKey(String(h || '')));
+    const hasCustomerCol = candidateRow.some((h: string) =>
+      h.includes('مشتری') || h.includes('خریدار') || h.includes('طرفحساب') || h.includes('نام') || h.includes('customer') || h.includes('client')
+    );
+    if (hasCustomerCol) {
+      headerRowIndex = i;
+      break;
+    }
+  }
+
+  const headerRow: string[] = (rawRows[headerRowIndex] || []).map((h: any) => String(h || '').trim());
   const normalizedHeaders = headerRow.map(normalizeKey);
 
   const findColIndex = (...candidates: string[]) => {
@@ -446,11 +525,94 @@ export async function parseCustomersExcel(file: File): Promise<CustomerImportRes
     return -1;
   };
 
-  const nameIdx = findColIndex('ناممشترییاشرکت', 'ناممشتری', 'خریدار', 'نامطرفحساب', 'نام', 'customer', 'customername', 'name');
-  const phoneIdx = findColIndex('شمارهتماس', 'تلفنهمراه', 'موبایل', 'تلفن', 'شماره', 'phone', 'mobile', 'tel');
-  const nationalIdIdx = findColIndex('کدملییاشناسهاقتصادی', 'کدملی', 'شناسهاقتصادی', 'کداقتصادی', 'nationalid', 'economiccode', 'nationalcode');
-  const addressIdx = findColIndex('آدرس', 'نشانی', 'محل', 'address', 'location');
-  const notesIdx = findColIndex('یادداشت', 'توضیحات', 'شرح', 'notes', 'description');
+  let nameIdx = findColIndex(
+    'ناممشترییاشرکت',
+    'ناممشتری',
+    'نامشرکت',
+    'خریدار',
+    'نامطرفحساب',
+    'طرفحساب',
+    'نامشخص',
+    'ناموخانوادگی',
+    'نامخانوادگی',
+    'نام',
+    'عنوان',
+    'شخص',
+    'customer',
+    'customername',
+    'buyer',
+    'client',
+    'company',
+    'name',
+    'contact'
+  );
+
+  const phoneIdx = findColIndex(
+    'شمارهتماس',
+    'شمارههمراه',
+    'تلفنهمراه',
+    'شمارهتلفن',
+    'موبایل',
+    'تلفن',
+    'همراه',
+    'تماس',
+    'شماره',
+    'phone',
+    'mobile',
+    'tel',
+    'cell'
+  );
+
+  const nationalIdIdx = findColIndex(
+    'کدملییاشناسهاقتصادی',
+    'شناسهملییاکدملی',
+    'کدملی',
+    'شناسهملی',
+    'شناسهاقتصادی',
+    'کداقتصادی',
+    'کدشخص',
+    'کدمشتری',
+    'کدطرفحساب',
+    'nationalid',
+    'economiccode',
+    'nationalcode',
+    'id'
+  );
+
+  const addressIdx = findColIndex(
+    'آدرس',
+    'نشانی',
+    'محل',
+    'محلتحویل',
+    'اقامتگاه',
+    'محلکار',
+    'آدرسشرکت',
+    'آدرسمشتری',
+    'address',
+    'location'
+  );
+
+  const notesIdx = findColIndex(
+    'یادداشت',
+    'توضیحات',
+    'شرح',
+    'ملاحظات',
+    'توضیح',
+    'notes',
+    'description',
+    'memo',
+    'comment'
+  );
+
+  // Fallback 1: check if any column header has "نام" or "خریدار" or "مشتری"
+  if (nameIdx === -1) {
+    nameIdx = normalizedHeaders.findIndex((h) => h.includes('نام') || h.includes('مشتری') || h.includes('طرف'));
+  }
+
+  // Fallback 2: if still not found, check if column 0 has data in subsequent rows
+  if (nameIdx === -1 && rawRows.length > headerRowIndex + 1) {
+    nameIdx = 0;
+  }
 
   if (nameIdx === -1) {
     throw new Error('ستون «نام مشتری» در فایل اکسل یافت نشد. لطفاً از قالب استاندارد اکسل استفاده فرمایید.');
@@ -460,7 +622,7 @@ export async function parseCustomersExcel(file: File): Promise<CustomerImportRes
   const errors: string[] = [];
   let validRows = 0;
 
-  for (let r = 1; r < rawRows.length; r++) {
+  for (let r = headerRowIndex + 1; r < rawRows.length; r++) {
     const row = rawRows[r];
     if (!row || row.length === 0) continue;
 
@@ -469,13 +631,13 @@ export async function parseCustomersExcel(file: File): Promise<CustomerImportRes
 
     validRows++;
 
-    const rawPhone = phoneIdx !== -1 ? parseString(row[phoneIdx]) : '';
+    const rawPhone = phoneIdx !== -1 ? parsePhoneNumber(row[phoneIdx]) : '';
     const rawNationalId = nationalIdIdx !== -1 ? parseString(row[nationalIdIdx]) : '';
     const rawAddress = addressIdx !== -1 ? parseString(row[addressIdx]) : '';
     const rawNotes = notesIdx !== -1 ? parseString(row[notesIdx]) : '';
 
     customers.push({
-      id: `cust-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: `cust-${Date.now()}-${Math.random().toString(36).substring(2, 6)}-${validRows}`,
       name: rawName.trim(),
       phone: rawPhone,
       nationalId: rawNationalId,

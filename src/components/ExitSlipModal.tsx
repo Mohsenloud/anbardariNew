@@ -26,15 +26,18 @@ import {
   AlertCircle,
   Settings,
   Smartphone,
-  Download
+  Download,
+  Truck
 } from 'lucide-react';
+import { ExitSlipDeliveryModal } from './ExitSlipDeliveryModal';
 
 interface ExitSlipModalProps {
   invoice: Invoice | null;
   settings: StoreSettings;
   currentUser?: AppUser;
   slipLog: ExitSlipData;
-  onRecordPrint: () => void;
+  onRecordPrint: (currentSlipLog?: ExitSlipData) => void;
+  onUpdateDelivery?: (deliveryData: any) => void;
   onUpdateSettings?: (settings: StoreSettings) => void;
   onClose: () => void;
 }
@@ -45,10 +48,12 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
   currentUser,
   slipLog,
   onRecordPrint,
+  onUpdateDelivery,
   onUpdateSettings,
   onClose,
 }) => {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [showSocialModal, setShowSocialModal] = useState(false);
   const [statusNotification, setStatusNotification] = useState<string | null>(null);
@@ -67,8 +72,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
 
   // 1. PRINT HANDLER
   const handlePrint = (mode: 'new-window' | 'direct' = 'new-window') => {
-    // 1. Record print log in storage
-    onRecordPrint();
+    // 1. Record print log in storage, explicitly preserving driver and vehicle info
+    onRecordPrint(slipLog);
     
     if (mode === 'new-window') {
       const opened = printElementInNewWindow(
@@ -99,7 +104,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
   const handleExportPdf = async () => {
     try {
       setIsExportingPdf(true);
-      onRecordPrint();
+      onRecordPrint(slipLog);
       
       const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}`;
       const result = await exportElementToPdf('printable-exit-slip', filename);
@@ -134,10 +139,16 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
       ),
       `---------------------------------`,
       `مجموع کل واحدهای تحویلی: *${toPersianDigits(totalUnits)} واحد فیزیکی*`,
+      slipLog.isDelivered 
+        ? `✅ *وضعیت: بار تحویل شد (خروج قطعی)* ${slipLog.deliveredAt ? `[${toPersianDigits(slipLog.deliveredAt)}]` : ''}` 
+        : `⏳ *وضعیت: در انتظار بارگیری و تحویل بار*`,
+      slipLog.receiverName ? `👤 تحویل‌گیرنده / راننده: ${slipLog.receiverName}` : '',
+      slipLog.receiverPhone ? `📞 تلفن راننده: ${toPersianDigits(slipLog.receiverPhone)}` : '',
+      slipLog.vehicleInfo ? `🚚 مشخصات ماشین: ${slipLog.vehicleInfo}` : '',
+      slipLog.deliveryNotes ? `📝 یادداشت / بارنامه: ${slipLog.deliveryNotes}` : '',
       currentUser?.fullName ? `انباردار صادرکننده: ${currentUser.fullName}` : '',
       settings.storeName ? `مرکز: ${settings.storeName}` : '',
       settings.phone ? `تلفن انبار: ${toPersianDigits(settings.phone)}` : '',
-      `وضعیت: تایید خروج فیزیکی از انبار`
     ].filter(Boolean);
     return lines.join('\n');
   };
@@ -291,6 +302,21 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             >
               <History className="w-3.5 h-3.5 text-blue-400" />
               <span className="hidden sm:inline">تاریخچه چاپ</span>
+            </button>
+
+            {/* Delivery & Vehicle Specs Button */}
+            <button
+              id="exit-slip-header-delivery-btn"
+              onClick={() => setShowDeliveryModal(true)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer ${
+                slipLog.isDelivered 
+                  ? 'bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-500/50' 
+                  : 'bg-amber-600 hover:bg-amber-500 text-white'
+              }`}
+              title="ثبت یا ویرایش نام راننده، مشخصات ماشین و تایید تحویل بار"
+            >
+              <Truck className="w-3.5 h-3.5" />
+              <span>{slipLog.isDelivered ? 'بار تحویل شد (مشخصات)' : 'ثبت تحویل بار و خودرو'}</span>
             </button>
 
             {/* Social Media Share Button */}
@@ -524,6 +550,77 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                   <div className="sm:col-span-3">
                     <span className="text-slate-400">نشانی تحویل: </span>
                     <span className="text-slate-700">{invoice.customerAddress}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Delivery, Vehicle & Driver Information Box */}
+            <div className="border border-slate-300 rounded-xl p-3.5 mb-5 bg-slate-50/80 text-xs">
+              <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-200">
+                <div className="text-slate-800 font-bold flex items-center gap-1.5">
+                  <Truck className="w-4 h-4 text-blue-600" />
+                  <span>مشخصات بارگیری، وسیله نقلیه و تحویل کالا:</span>
+                </div>
+                <div>
+                  {slipLog.isDelivered ? (
+                    <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[11px] font-bold border border-emerald-300">
+                      <Check className="w-3 h-3 text-emerald-600" />
+                      <span>بار تحویل شد (خروج قطعی)</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full text-[11px] font-bold border border-amber-300">
+                      <Clock className="w-3 h-3 text-amber-600" />
+                      <span>در انتظار بارگیری و تحویل</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <span className="text-slate-500">تحویل‌گیرنده / راننده: </span>
+                  <span className="font-bold text-slate-900 font-['Vazirmatn']">
+                    {slipLog.receiverName || invoice.customerName || '—'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-slate-500">تلفن راننده / تحویل‌گیرنده: </span>
+                  <span className="font-['Vazirmatn'] font-semibold text-slate-800">
+                    {slipLog.receiverPhone ? toPersianDigits(slipLog.receiverPhone) : (invoice.customerPhone ? toPersianDigits(invoice.customerPhone) : '—')}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-slate-500">مشخصات ماشین و پلاک: </span>
+                  <span className="font-bold text-slate-900 font-['Vazirmatn']">
+                    {slipLog.vehicleInfo || '—'}
+                  </span>
+                </div>
+
+                {slipLog.deliveredAt && (
+                  <div>
+                    <span className="text-slate-500">زمان تایید تحویل: </span>
+                    <span className="font-['Vazirmatn'] text-slate-700">
+                      {toPersianDigits(slipLog.deliveredAt)}
+                    </span>
+                  </div>
+                )}
+
+                {slipLog.deliveredBy && (
+                  <div>
+                    <span className="text-slate-500">انباردار تاییدکننده: </span>
+                    <span className="font-medium text-slate-800">
+                      {slipLog.deliveredBy}
+                    </span>
+                  </div>
+                )}
+
+                {slipLog.deliveryNotes && (
+                  <div className="sm:col-span-3">
+                    <span className="text-slate-500">شماره بارنامه / یادداشت خروج: </span>
+                    <span className="text-slate-800 font-medium">{slipLog.deliveryNotes}</span>
                   </div>
                 )}
               </div>
@@ -901,6 +998,27 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
 
           </div>
         </div>
+      )}
+
+      {/* Exit Slip Delivery Modal (for quick confirmation from inside print view) */}
+      {showDeliveryModal && (
+        <ExitSlipDeliveryModal
+          isOpen={showDeliveryModal}
+          invoice={invoice}
+          slipLog={slipLog}
+          currentUser={currentUser}
+          onClose={() => setShowDeliveryModal(false)}
+          onSave={(deliveryData) => {
+            if (onUpdateDelivery) {
+              onUpdateDelivery(deliveryData);
+            }
+            showNotification(
+              deliveryData.isDelivered 
+                ? 'وضعیت تحویل بار و مشخصات وسیله نقلیه با موفقیت ثبت شد.' 
+                : 'مشخصات راننده و خودرو ذخیره شد.'
+            );
+          }}
+        />
       )}
 
     </div>

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Product, ProductVariant, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData, InboundReceipt, InboundReceiptItem } from '../types';
-import { toPersianDigits, getCurrentJalaliDate, formatPrice } from '../utils/jalali';
+import { toPersianDigits, getCurrentJalaliDate, getCurrentJalaliTime, formatPrice } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
 import { exportProductsToExcel } from '../utils/excelHelper';
 import { ExcelImportModal } from './ExcelImportModal';
 import { ExitSlipModal } from './ExitSlipModal';
+import { ExitSlipDeliveryModal } from './ExitSlipDeliveryModal';
 import { InboundReceiptsList } from './InboundReceiptsList';
 import { 
   Plus, 
@@ -32,8 +33,18 @@ import {
   Download,
   Upload,
   Sparkles,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Barcode,
+  RefreshCw,
+  Hash
 } from 'lucide-react';
+import {
+  generateNextProductCode,
+  generateProductBarcode,
+  generateVariantCode,
+  generateVariantBarcode,
+} from '../utils/codeGenerator';
+import { BarcodeVisual } from './BarcodeVisual';
 
 interface InventoryManagerProps {
   products: Product[];
@@ -89,8 +100,17 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   const [exitSlipLogs, setExitSlipLogs] = useState<Record<string, ExitSlipData>>(() => StorageService.getExitSlipLogs());
   const [selectedExitSlipInvoice, setSelectedExitSlipInvoice] = useState<Invoice | null>(null);
   const [historyModalInvoice, setHistoryModalInvoice] = useState<Invoice | null>(null);
+  const [deliveryModalInvoice, setDeliveryModalInvoice] = useState<Invoice | null>(null);
   const [exitSlipSearch, setExitSlipSearch] = useState('');
-  const [exitSlipFilter, setExitSlipFilter] = useState<'all' | 'unprinted' | 'printed'>('all');
+  const [exitSlipFilter, setExitSlipFilter] = useState<'all' | 'pending_delivery' | 'delivered' | 'unprinted' | 'printed'>('all');
+
+  // Keep exitSlipLogs in sync with storage updates
+  useEffect(() => {
+    const unsub = StorageService.subscribe(() => {
+      setExitSlipLogs(StorageService.getExitSlipLogs());
+    });
+    return () => unsub();
+  }, []);
 
   // Modal states
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -135,11 +155,14 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     return matchesSearch && matchesCategory && matchesStock;
   });
 
-  // Open New Product Modal
+  // Open New Product Modal - با تعیین خودکار کد و بارکد توسط سیستم
   const handleOpenNewProduct = () => {
+    const nextCode = generateNextProductCode(products);
+    const nextBarcode = generateProductBarcode(nextCode, products);
     setEditingProduct({
       id: '',
-      code: `${1000 + products.length + 1}`,
+      code: nextCode,
+      barcode: nextBarcode,
       name: '',
       category: 'عمومی',
       unit: 'عدد',
@@ -157,22 +180,57 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
   // Open Edit Modal
   const handleOpenEditProduct = (prod: Product) => {
+    const otherProducts = products.filter((p) => p.id !== prod.id);
+    const safeCode = prod.code?.trim() || generateNextProductCode(otherProducts);
+    const safeBarcode = prod.barcode?.trim() || generateProductBarcode(safeCode, otherProducts);
     setEditingProduct({
       ...prod,
+      code: safeCode,
+      barcode: safeBarcode,
       hasVariants: !!prod.hasVariants,
-      variants: prod.variants ? [...prod.variants] : [],
+      variants: prod.variants ? prod.variants.map((v, idx) => ({
+        ...v,
+        code: v.code?.trim() || generateVariantCode(safeCode, idx + 1, v.name),
+        barcode: v.barcode?.trim() || generateVariantBarcode(safeCode, idx + 1, products),
+      })) : [],
     });
     setIsProductModalOpen(true);
+  };
+
+  // تولید مجدد کد و بارکد کالا توسط سیستم
+  const handleRegenerateCode = () => {
+    if (!editingProduct) return;
+    const otherProducts = products.filter((p) => p.id !== editingProduct.id);
+    const newCode = generateNextProductCode(otherProducts);
+    const newBarcode = generateProductBarcode(newCode, otherProducts);
+    setEditingProduct({
+      ...editingProduct,
+      code: newCode,
+      barcode: newBarcode,
+    });
+  };
+
+  const handleRegenerateBarcode = () => {
+    if (!editingProduct) return;
+    const otherProducts = products.filter((p) => p.id !== editingProduct.id);
+    const newBarcode = generateProductBarcode(editingProduct.code || '1000', otherProducts);
+    setEditingProduct({
+      ...editingProduct,
+      barcode: newBarcode,
+    });
   };
 
   // Variant helper functions for Product Modal
   const handleToggleHasVariants = (enabled: boolean) => {
     if (!editingProduct) return;
     if (enabled && (!editingProduct.variants || editingProduct.variants.length === 0)) {
+      const vCode = generateVariantCode(editingProduct.code || '1000', 1, 'طوسی');
+      const vBarcode = generateVariantBarcode(editingProduct.code || '1000', 1, products);
       const defaultVariant: ProductVariant = {
         id: `var-${Date.now()}-1`,
         name: 'طوسی',
-        code: `${editingProduct.code || '1000'}-GR`,
+        code: vCode,
+        barcode: vBarcode,
         stock: editingProduct.stock || 0,
         buyPrice: editingProduct.buyPrice || 0,
         sellPrice: editingProduct.sellPrice || 0,
@@ -200,10 +258,14 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     if (currentVariants.some((v) => v.name.trim().toLowerCase() === variantName.trim().toLowerCase())) {
       return;
     }
+    const variantIndex = currentVariants.length + 1;
+    const vCode = generateVariantCode(editingProduct.code || '1000', variantIndex, variantName);
+    const vBarcode = generateVariantBarcode(editingProduct.code || '1000', variantIndex, products);
     const newVariant: ProductVariant = {
       id: `var-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
       name: variantName,
-      code: `${editingProduct.code || '1000'}-${variantName}`,
+      code: vCode,
+      barcode: vBarcode,
       stock: 0,
       buyPrice: editingProduct.buyPrice || 0,
       sellPrice: editingProduct.sellPrice || 0,
@@ -251,9 +313,19 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     e.preventDefault();
     if (!editingProduct || !editingProduct.name.trim()) return;
 
+    const otherProducts = products.filter((p) => p.id !== editingProduct.id);
+    const finalCode = editingProduct.code.trim() || generateNextProductCode(otherProducts);
+    const finalBarcode = editingProduct.barcode?.trim() || generateProductBarcode(finalCode, otherProducts);
+
     const hasVars = !!editingProduct.hasVariants && (editingProduct.variants?.length || 0) > 0;
     const cleanVariants = hasVars 
-      ? (editingProduct.variants || []).filter((v) => v.name && v.name.trim().length > 0)
+      ? (editingProduct.variants || [])
+          .filter((v) => v.name && v.name.trim().length > 0)
+          .map((v, vIdx) => ({
+            ...v,
+            code: v.code?.trim() || generateVariantCode(finalCode, vIdx + 1, v.name),
+            barcode: v.barcode?.trim() || generateVariantBarcode(finalCode, vIdx + 1, products),
+          }))
       : [];
     const totalStock = hasVars && cleanVariants.length > 0
       ? cleanVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
@@ -263,7 +335,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       ...editingProduct,
       id: editingProduct.id || `prod-${Date.now()}`,
       name: editingProduct.name.trim(),
-      code: editingProduct.code.trim() || `P-${Date.now().toString().slice(-4)}`,
+      code: finalCode,
+      barcode: finalBarcode,
       buyPrice: Math.max(0, Number(editingProduct.buyPrice) || 0),
       sellPrice: Math.max(0, Number(editingProduct.sellPrice) || 0),
       stock: totalStock,
@@ -307,6 +380,13 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     (inv) => !exitSlipLogs[inv.id] || exitSlipLogs[inv.id].printCount === 0
   ).length;
   const printedSlipsCount = invoices.length - unprintedSlipsCount;
+  const pendingDeliverySlipsCount = invoices.filter(
+    (inv) => !exitSlipLogs[inv.id]?.isDelivered
+  ).length;
+  const deliveredSlipsCount = invoices.filter(
+    (inv) => Boolean(exitSlipLogs[inv.id]?.isDelivered)
+  ).length;
+
   const totalDispatchedUnits = invoices.reduce(
     (sum, inv) => sum + inv.items.reduce((s, it) => s + it.quantity, 0),
     0
@@ -316,10 +396,13 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     (r) => r.status === 'pending_verification'
   ).length;
 
-  const handleRecordExitSlipPrint = (invoiceId: string) => {
+  const handleRecordExitSlipPrint = (invoiceId: string, currentSlipLog?: ExitSlipData) => {
+    const currentInMemory = currentSlipLog || exitSlipLogs[invoiceId];
     const updated = StorageService.recordExitSlipPrint(
       invoiceId,
-      currentUser?.fullName || 'انباردار'
+      currentUser?.fullName || 'انباردار',
+      undefined,
+      currentInMemory
     );
     setExitSlipLogs((prev) => ({
       ...prev,
@@ -327,8 +410,48 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     }));
   };
 
+  const handleSaveExitSlipDelivery = (
+    invoiceId: string,
+    deliveryData: {
+      isDelivered: boolean;
+      deliveredAt: string;
+      deliveredBy: string;
+      receiverName: string;
+      receiverPhone: string;
+      vehicleInfo: string;
+      deliveryNotes: string;
+    }
+  ) => {
+    const updated = StorageService.updateExitSlipDelivery(invoiceId, deliveryData);
+    setExitSlipLogs((prev) => ({
+      ...prev,
+      [invoiceId]: updated,
+    }));
+  };
+
+  const handleQuickToggleDelivery = (invoiceId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const current = exitSlipLogs[invoiceId] || { invoiceId, printCount: 0, history: [] };
+    const nextIsDelivered = !current.isDelivered;
+    const updated = StorageService.updateExitSlipDelivery(invoiceId, {
+      isDelivered: nextIsDelivered,
+      deliveredAt: nextIsDelivered ? `${getCurrentJalaliDate()} - ساعت ${getCurrentJalaliTime()}` : '',
+      deliveredBy: nextIsDelivered ? (currentUser?.fullName || 'انباردار') : '',
+      receiverName: current.receiverName || '',
+      receiverPhone: current.receiverPhone || '',
+      vehicleInfo: current.vehicleInfo || '',
+      deliveryNotes: current.deliveryNotes || '',
+    });
+    setExitSlipLogs((prev) => ({
+      ...prev,
+      [invoiceId]: updated,
+    }));
+  };
+
   const filteredExitSlips = invoices.filter((inv) => {
-    const log = exitSlipLogs[inv.id] || { printCount: 0 };
+    const log = exitSlipLogs[inv.id] || { printCount: 0, isDelivered: false };
+    if (exitSlipFilter === 'pending_delivery' && log.isDelivered) return false;
+    if (exitSlipFilter === 'delivered' && !log.isDelivered) return false;
     if (exitSlipFilter === 'unprinted' && log.printCount > 0) return false;
     if (exitSlipFilter === 'printed' && log.printCount === 0) return false;
 
@@ -337,7 +460,10 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       const matchesNum = inv.invoiceNumber.toLowerCase().includes(q);
       const matchesCust = inv.customerName.toLowerCase().includes(q);
       const matchesItem = inv.items.some((it) => it.productName.toLowerCase().includes(q));
-      return matchesNum || matchesCust || matchesItem;
+      const matchesReceiver = (log.receiverName || '').toLowerCase().includes(q);
+      const matchesPhone = (log.receiverPhone || '').includes(q);
+      const matchesVehicle = (log.vehicleInfo || '').toLowerCase().includes(q);
+      return matchesNum || matchesCust || matchesItem || matchesReceiver || matchesPhone || matchesVehicle;
     }
     return true;
   });
@@ -469,22 +595,65 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       </div>
 
       {/* Top Header Card (Desktop & Tablet) */}
-      <div className="hidden sm:flex flex-col xl:flex-row xl:items-center justify-between gap-4 xl:gap-6 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-blue-50 text-blue-700 shrink-0">
-              <PackageCheck className="w-5 h-5" />
+      <div className="hidden sm:flex flex-col gap-4 bg-white p-5 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs">
+        {/* Top Tier: Title, Description & Action Buttons */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="p-2.5 rounded-2xl bg-blue-50 text-blue-700 shrink-0 shadow-2xs">
+              <PackageCheck className="w-6 h-6" />
             </span>
-            <h2 className="text-xl font-bold text-slate-800">مدیریت انبار و موجودی کالاها</h2>
+            <div>
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-tight">
+                مدیریت انبار و موجودی کالاها
+              </h2>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                کنترل لحظه‌ای موجودی، برگه‌های خروج انبارداری (حواله تحویل)، رسید ورود و تاریخچه گردش کالا
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            کنترل لحظه‌ای موجودی، برگه‌های خروج انبارداری (حواله تحویل)، رسید ورود و تاریخچه گردش کالا
-          </p>
+
+          {/* Action Buttons (Excel Export/Import & New Product) */}
+          <div className="flex items-center gap-2 shrink-0 self-start md:self-auto">
+            {/* Excel Export */}
+            <button
+              type="button"
+              id="export-inventory-excel-btn"
+              onClick={() => exportProductsToExcel(products)}
+              title="خروجی فایل اکسل از همه کالاها و تنوع‌ها"
+              className="flex items-center gap-1.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 border border-slate-200/90 hover:border-slate-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+            >
+              <Download className="w-4 h-4 text-slate-500" />
+              <span>خروجی اکسل</span>
+            </button>
+
+            {/* Excel Import */}
+            <button
+              type="button"
+              id="import-inventory-excel-btn"
+              onClick={() => setIsImportModalOpen(true)}
+              title="ورود کالاها و تنوع‌ها از فایل اکسل"
+              className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-800 border border-emerald-200 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <span>ورود از اکسل</span>
+            </button>
+
+            {/* New Product */}
+            <button
+              id="add-new-product-btn"
+              onClick={handleOpenNewProduct}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200/80 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>کالای جدید</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Bottom Tier: Sub-Tab Navigation Bar */}
+        <div className="border-t border-slate-100/90 pt-3.5 flex items-center justify-between gap-3 overflow-x-auto no-scrollbar">
           {/* Sub Tab Switcher */}
-          <div className="flex flex-wrap items-center bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/90 gap-1.5 shadow-2xs">
+          <div className="flex items-center bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/90 gap-1.5 shadow-2xs shrink-0">
             {/* Tab 1: کالاها و موجودی */}
             <button
               id="subtab-items"
@@ -581,42 +750,6 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             >
               <History className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'movements' ? 'text-purple-600' : 'text-slate-400'}`} />
               <span>گردش و کاردکس</span>
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Excel Export */}
-            <button
-              type="button"
-              id="export-inventory-excel-btn"
-              onClick={() => exportProductsToExcel(products)}
-              title="خروجی فایل اکسل از همه کالاها و تنوع‌ها"
-              className="flex items-center gap-1.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 border border-slate-300 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5 text-slate-500" />
-              <span className="hidden sm:inline">خروجی اکسل</span>
-            </button>
-
-            {/* Excel Import */}
-            <button
-              type="button"
-              id="import-inventory-excel-btn"
-              onClick={() => setIsImportModalOpen(true)}
-              title="ورود کالاها و تنوع‌ها از فایل اکسل"
-              className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-800 border border-emerald-300 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>ورود از اکسل</span>
-            </button>
-
-            {/* New Product */}
-            <button
-              id="add-new-product-btn"
-              onClick={handleOpenNewProduct}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>کالای جدید</span>
             </button>
           </div>
         </div>
@@ -790,9 +923,15 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <h4 className="font-bold text-slate-900 text-sm leading-tight">{prod.name}</h4>
-                        <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500">
-                          <span className="bg-slate-100 px-2 py-0.5 rounded-md font-medium">{prod.category}</span>
-                          <span className="font-mono text-slate-400">کد: {toPersianDigits(prod.code)}</span>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px] text-slate-500">
+                          <span className="bg-slate-100 px-2 py-0.5 rounded-md font-medium text-slate-600">{prod.category}</span>
+                          <span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded font-semibold">کد: {toPersianDigits(prod.code)}</span>
+                          {prod.barcode && (
+                            <span className="font-mono text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 font-bold">
+                              <Barcode className="w-3 h-3 text-indigo-500" />
+                              <span className="dir-ltr">{toPersianDigits(prod.barcode)}</span>
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -923,8 +1062,14 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
                     return (
                       <tr key={prod.id} className={`${index % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'} hover:bg-slate-100/70 transition-colors`}>
-                        <td className="p-3.5 font-mono text-slate-600 font-semibold">
-                          {toPersianDigits(prod.code)}
+                        <td className="p-3.5">
+                          <div className="font-mono text-slate-800 font-bold text-xs">{toPersianDigits(prod.code)}</div>
+                          {prod.barcode && (
+                            <div className="flex items-center gap-1 mt-1 font-mono text-[10px] text-indigo-700 bg-indigo-50/80 border border-indigo-200/60 px-1.5 py-0.5 rounded-md w-fit font-bold">
+                              <Barcode className="w-3 h-3 text-indigo-500 shrink-0" />
+                              <span className="dir-ltr">{toPersianDigits(prod.barcode)}</span>
+                            </div>
+                          )}
                         </td>
                         <td className="p-3.5">
                           <div className="font-bold text-slate-900">{prod.name}</div>
@@ -1217,7 +1362,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
               <input
                 id="exit-slip-search-input"
                 type="text"
-                placeholder="جستجو در شماره فاکتور، نام خریدار یا کالا..."
+                placeholder="جستجو در فاکتور، مشتری، کالا، راننده، ماشین یا تلفن..."
                 value={exitSlipSearch}
                 onChange={(e) => setExitSlipSearch(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-right"
@@ -1225,7 +1370,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto">
+            <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
               <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-medium">
                 <button
                   id="filter-all-slips"
@@ -1237,20 +1382,40 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                   همه حواله‌ها ({toPersianDigits(invoices.length)})
                 </button>
                 <button
+                  id="filter-pending-delivery-slips"
+                  onClick={() => setExitSlipFilter('pending_delivery')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                    exitSlipFilter === 'pending_delivery' ? 'bg-white text-amber-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                  <span>در انتظار تحویل ({toPersianDigits(pendingDeliverySlipsCount)})</span>
+                </button>
+                <button
+                  id="filter-delivered-slips"
+                  onClick={() => setExitSlipFilter('delivered')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                    exitSlipFilter === 'delivered' ? 'bg-white text-emerald-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Truck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>بار تحویل شد ({toPersianDigits(deliveredSlipsCount)})</span>
+                </button>
+                <button
                   id="filter-unprinted-slips"
                   onClick={() => setExitSlipFilter('unprinted')}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                    exitSlipFilter === 'unprinted' ? 'bg-white text-amber-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                    exitSlipFilter === 'unprinted' ? 'bg-white text-blue-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                  <AlertCircle className="w-3.5 h-3.5 text-blue-600" />
                   <span>منتظر چاپ ({toPersianDigits(unprintedSlipsCount)})</span>
                 </button>
                 <button
                   id="filter-printed-slips"
                   onClick={() => setExitSlipFilter('printed')}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                    exitSlipFilter === 'printed' ? 'bg-white text-emerald-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                    exitSlipFilter === 'printed' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -1264,9 +1429,9 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
             <div className="p-4 border-b border-slate-200/80 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <h3 className="font-bold text-slate-800 text-sm">لیست برگه‌های خروج کالای انبار (حواله‌های تحویل فیزیکی)</h3>
+                <h3 className="font-bold text-slate-800 text-sm">لیست برگه‌های خروج کالای انبار (کنترل فیزیکی و تحویل بار)</h3>
                 <p className="text-xs text-slate-500">
-                  برای هر فاکتور فروش صادر شده، یک برگ خروج با رهگیری دقیق دفعات، ساعت و تاریخ چاپ جهت تحویل اجناس قرار دارد
+                  ثبت تاییدیه تحویل بار توسط انباردار، ثبت مشخصات ماشین و شماره تماس راننده، به همراه چاپ فیزیکی و سوابق
                 </p>
               </div>
               <div className="text-xs text-slate-500 font-mono">
@@ -1291,6 +1456,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                   {filteredExitSlips.map((inv, index) => {
                     const slipLog = exitSlipLogs[inv.id] || { invoiceId: inv.id, printCount: 0, history: [] };
                     const isPrinted = slipLog.printCount > 0;
+                    const isDelivered = Boolean(slipLog.isDelivered);
                     const totalQty = inv.items.reduce((s, it) => s + it.quantity, 0);
 
                     return (
@@ -1303,25 +1469,46 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                             <span className="text-xs text-slate-500 font-['Vazirmatn']">{toPersianDigits(inv.date)}</span>
                           </div>
 
-                          <span
-                            className={`px-2 py-0.5 rounded-md font-semibold text-[11px] flex items-center gap-1 ${
-                              isPrinted
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-amber-100 text-amber-800'
-                            }`}
-                          >
-                            {isPrinted ? (
-                              <>
-                                <Check className="w-3 h-3 text-emerald-600" />
-                                <span>چاپ شده ({toPersianDigits(slipLog.printCount)} بار)</span>
-                              </>
-                            ) : (
-                              <>
-                                <AlertCircle className="w-3 h-3 text-amber-600" />
+                          <div className="flex items-center gap-1.5">
+                            {/* Delivery Status Badge */}
+                            <span
+                              className={`px-2 py-0.5 rounded-md font-bold text-[11px] flex items-center gap-1 border ${
+                                isDelivered
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                  : 'bg-amber-100 text-amber-800 border-amber-300'
+                              }`}
+                            >
+                              {isDelivered ? (
+                                <>
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                  <span>بار تحویل شد</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Clock className="w-3 h-3 text-amber-600" />
+                                  <span>در انتظار تحویل</span>
+                                </>
+                              )}
+                            </span>
+
+                            {/* Print Badge */}
+                            <span
+                              className={`px-2 py-0.5 rounded-md font-semibold text-[11px] flex items-center gap-1 ${
+                                isPrinted
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {isPrinted ? (
+                                <>
+                                  <Check className="w-3 h-3 text-blue-600" />
+                                  <span>چاپ شده ({toPersianDigits(slipLog.printCount)})</span>
+                                </>
+                              ) : (
                                 <span>منتظر چاپ</span>
-                              </>
-                            )}
-                          </span>
+                              )}
+                            </span>
+                          </div>
                         </div>
 
                         <div>
@@ -1331,8 +1518,46 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                           </div>
                         </div>
 
+                        {/* Delivery & Vehicle info box */}
+                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/90 text-xs space-y-1.5">
+                          <div className="flex items-center justify-between pb-1 border-b border-slate-200">
+                            <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                              <Truck className="w-3.5 h-3.5 text-blue-600" />
+                              <span>مشخصات تحویل و بارگیری:</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setDeliveryModalInvoice(inv)}
+                              className="text-[11px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                              <span>{isDelivered ? 'ویرایش مشخصات' : 'ثبت تحویل بار'}</span>
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-1.5 text-[11px] pt-0.5">
+                            <div>
+                              <span className="text-slate-500">راننده / تحویل‌گیرنده: </span>
+                              <span className="font-bold text-slate-800">{slipLog.receiverName || inv.customerName || 'ثبت نشده'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500">تلفن: </span>
+                              <span className="font-['Vazirmatn'] text-slate-800">{slipLog.receiverPhone ? toPersianDigits(slipLog.receiverPhone) : (inv.customerPhone ? toPersianDigits(inv.customerPhone) : 'ثبت نشده')}</span>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-slate-500">مشخصات خودرو و پلاک: </span>
+                              <span className="font-bold text-slate-800">{slipLog.vehicleInfo || 'ثبت نشده'}</span>
+                            </div>
+                            {slipLog.deliveredAt && (
+                              <div className="col-span-2 text-slate-500 text-[10px]">
+                                تایید خروج: {toPersianDigits(slipLog.deliveredAt)} {slipLog.deliveredBy ? `(توسط: ${slipLog.deliveredBy})` : ''}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
                         {/* Print details */}
-                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-[11px] space-y-1">
+                        <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-100 text-[11px] space-y-1">
                           <div className="flex items-center justify-between text-slate-600">
                             <span>تعداد دفعات چاپ:</span>
                             <span className="font-['Vazirmatn'] font-bold text-slate-800">{toPersianDigits(slipLog.printCount)} بار</span>
@@ -1348,15 +1573,31 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                         {/* Action buttons */}
                         <div className="flex items-center gap-2 pt-1">
                           <button
+                            type="button"
+                            onClick={() => setDeliveryModalInvoice(inv)}
+                            className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
+                              isDelivered 
+                                ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200' 
+                                : 'bg-amber-600 text-white hover:bg-amber-700'
+                            }`}
+                            title="ثبت یا ویرایش مشخصات ماشین، شماره تماس راننده و تایید تحویل"
+                          >
+                            <Truck className="w-4 h-4" />
+                            <span>{isDelivered ? 'مشخصات ماشین' : 'ثبت تحویل بار'}</span>
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={() => setSelectedExitSlipInvoice(inv)}
                             className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
                           >
                             <Printer className="w-4 h-4" />
-                            <span>مشاهده و چاپ برگه خروج</span>
+                            <span>چاپ برگه خروج</span>
                           </button>
 
                           {slipLog.history && slipLog.history.length > 0 && (
                             <button
+                              type="button"
                               onClick={() => setHistoryModalInvoice(inv)}
                               className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl border border-blue-200 transition-colors cursor-pointer"
                               title="مشاهده سوابق، تاریخ و زمان چاپ‌ها"
@@ -1377,11 +1618,12 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                       <tr className="bg-slate-100/70 text-slate-700 border-b border-slate-200">
                         <th className="p-3.5 font-bold">شماره حواله / فاکتور</th>
                         <th className="p-3.5 font-bold">تاریخ صدور</th>
-                        <th className="p-3.5 font-bold">تحویل‌گیرنده / خریدار</th>
+                        <th className="p-3.5 font-bold">خریدار / مشتری</th>
                         <th className="p-3.5 font-bold text-center">تنوع اقلام</th>
-                        <th className="p-3.5 font-bold text-center">مجموع واحد تحویلی</th>
+                        <th className="p-3.5 font-bold text-center">تعداد کل</th>
+                        <th className="p-3.5 font-bold">وضعیت تحویل و مشخصات خودرو / راننده</th>
                         <th className="p-3.5 font-bold text-center">وضعیت و دفعات چاپ</th>
-                        <th className="p-3.5 font-bold">زمان و تاریخ آخرین چاپ</th>
+                        <th className="p-3.5 font-bold">آخرین چاپ</th>
                         <th className="p-3.5 font-bold text-center">عملیات انبارداری</th>
                       </tr>
                     </thead>
@@ -1389,6 +1631,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                       {filteredExitSlips.map((inv, index) => {
                         const slipLog = exitSlipLogs[inv.id] || { invoiceId: inv.id, printCount: 0, history: [] };
                         const isPrinted = slipLog.printCount > 0;
+                        const isDelivered = Boolean(slipLog.isDelivered);
                         const totalQty = inv.items.reduce((s, it) => s + it.quantity, 0);
 
                         return (
@@ -1411,6 +1654,72 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                             <td className="p-3.5 text-center font-['Vazirmatn'] font-black text-slate-900 text-sm">
                               {toPersianDigits(totalQty)}
                             </td>
+
+                            {/* Delivery Status & Vehicle Column */}
+                            <td className="p-3.5">
+                              <div className="space-y-1.5 min-w-[220px]">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleQuickToggleDelivery(inv.id, e)}
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${
+                                      isDelivered
+                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
+                                        : 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200'
+                                    }`}
+                                    title="کلیک جهت تایید یا تغییر سریع وضعیت تحویل بار"
+                                  >
+                                    {isDelivered ? (
+                                      <>
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                        <span>بار تحویل شد</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                        <span>در انتظار تحویل</span>
+                                      </>
+                                    )}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeliveryModalInvoice(inv)}
+                                    className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer font-medium"
+                                    title="ثبت یا ویرایش نام راننده، شماره تماس و مشخصات وسیله نقلیه"
+                                  >
+                                    <Edit3 className="w-3 h-3" />
+                                    <span>{isDelivered ? 'ویرایش مشخصات' : 'ثبت خودرو'}</span>
+                                  </button>
+                                </div>
+
+                                {(slipLog.receiverName || slipLog.vehicleInfo || slipLog.receiverPhone) ? (
+                                  <div className="bg-slate-50 p-2 rounded-lg border border-slate-200/70 text-[11px] space-y-0.5">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-slate-500">راننده / گیرنده:</span>
+                                      <span className="font-bold text-slate-800">{slipLog.receiverName || inv.customerName}</span>
+                                    </div>
+                                    {slipLog.vehicleInfo && (
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-slate-500">ماشین و پلاک:</span>
+                                        <span className="font-semibold text-slate-900">{slipLog.vehicleInfo}</span>
+                                      </div>
+                                    )}
+                                    {slipLog.receiverPhone && (
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-slate-500">تلفن:</span>
+                                        <span className="font-['Vazirmatn'] text-slate-700">{toPersianDigits(slipLog.receiverPhone)}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-[11px] text-slate-400 italic block">
+                                    مشخصات خودرو/راننده ثبت نشده
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
                             <td className="p-3.5 text-center">
                               {isPrinted ? (
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
@@ -1420,7 +1729,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                               ) : (
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
                                   <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-                                  <span>منتظر چاپ (جدید)</span>
+                                  <span>منتظر چاپ</span>
                                 </span>
                               )}
                             </td>
@@ -1441,6 +1750,21 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                             <td className="p-3.5 text-center">
                               <div className="flex items-center justify-center gap-1.5">
                                 <button
+                                  type="button"
+                                  onClick={() => setDeliveryModalInvoice(inv)}
+                                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer ${
+                                    isDelivered
+                                      ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200'
+                                      : 'bg-amber-600 hover:bg-amber-500 text-white'
+                                  }`}
+                                  title="ثبت یا ویرایش مشخصات وسیله نقلیه، نام راننده و شماره تماس تحویل‌گیرنده"
+                                >
+                                  <Truck className="w-3.5 h-3.5" />
+                                  <span>{isDelivered ? 'خودرو' : 'تحویل بار'}</span>
+                                </button>
+
+                                <button
+                                  type="button"
                                   onClick={() => setSelectedExitSlipInvoice(inv)}
                                   className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
                                   title="پرینت برگه خروج از انبار"
@@ -1450,6 +1774,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                                 </button>
 
                                 <button
+                                  type="button"
                                   onClick={() => setHistoryModalInvoice(inv)}
                                   className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 transition-colors cursor-pointer"
                                   title="مشاهده سوابق و دفعات چاپ با زمان و تاریخ"
@@ -1505,17 +1830,88 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     />
                   </div>
 
+                  {/* فیلد کد کالا - با تعیین هوشمند خودکار توسط سیستم */}
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">کد کالا / بارکد</label>
-                    <input
-                      type="text"
-                      id="product-modal-code"
-                      value={editingProduct.code}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, code: e.target.value })}
-                      placeholder="1001"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                    />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-slate-700">کد اختصاصی کالا</label>
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                        <Sparkles className="w-2.5 h-2.5 text-emerald-600" />
+                        <span>سیستم</span>
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        id="product-modal-code"
+                        value={editingProduct.code}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, code: e.target.value })}
+                        placeholder="1001"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 pl-9 text-xs font-mono font-bold text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-left"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRegenerateCode}
+                        className="absolute left-1.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                        title="تخصیص مجدد کد بعدی توسط سیستم"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
+
+                  {/* فیلد بارکد استاندارد EAN-13 - با تعیین خودکار توسط سیستم */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-slate-700">بارکد استاندارد (EAN-13)</label>
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                        <Barcode className="w-2.5 h-2.5 text-indigo-600" />
+                        <span>خودکار</span>
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        id="product-modal-barcode"
+                        value={editingProduct.barcode || ''}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, barcode: e.target.value })}
+                        placeholder="2100000010015"
+                        maxLength={13}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 pl-9 text-xs font-mono font-bold text-indigo-900 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-left"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRegenerateBarcode}
+                        className="absolute left-1.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                        title="تولید مجدد بارکد توسط سیستم"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* پیش‌نمایش بصری بارکد تعیین‌شده توسط سیستم */}
+                  {editingProduct.barcode && (
+                    <div className="col-span-2 bg-gradient-to-r from-slate-50 to-indigo-50/30 border border-slate-200/80 rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-xs text-slate-600">
+                        <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                          <Barcode className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                            <span>پیش‌نمایش بارکد کالا</span>
+                            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded">ثبت سیستم</span>
+                          </div>
+                          <div className="text-[11px] text-slate-500">کد: {toPersianDigits(editingProduct.code)}</div>
+                        </div>
+                      </div>
+                      <BarcodeVisual
+                        value={editingProduct.barcode}
+                        height={28}
+                        showText={true}
+                        className="border-indigo-200 bg-white"
+                      />
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">دسته‌بندی</label>
@@ -1832,14 +2228,15 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                         <thead className="bg-purple-50 text-purple-900 border-b border-purple-100 font-bold">
                           <tr>
                             <th className="p-3">نام تنوع / رنگ *</th>
-                            <th className="p-3">کد اختصاصی</th>
-                            <th className="p-3 text-center w-28">موجودی انبار</th>
-                            {currentUser?.role === 'admin' && <th className="p-3 text-center w-32">قیمت فروش</th>}
+                            <th className="p-3">کد تنوع (سیستم)</th>
+                            <th className="p-3">بارکد EAN-13 (سیستم)</th>
+                            <th className="p-3 text-center w-24">موجودی</th>
+                            {currentUser?.role === 'admin' && <th className="p-3 text-center w-28">قیمت فروش</th>}
                             <th className="p-3 text-center w-10">حذف</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-purple-50">
-                          {(editingProduct.variants || []).map((v) => (
+                          {(editingProduct.variants || []).map((v, vIndex) => (
                             <tr key={v.id} className="hover:bg-purple-50/30 transition-colors">
                               <td className="p-2">
                                 <input
@@ -1857,7 +2254,17 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                                   placeholder={`${editingProduct.code || '1000'}-${v.name}`}
                                   value={v.code || ''}
                                   onChange={(e) => handleUpdateVariantField(v.id, 'code', e.target.value)}
-                                  className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none focus:border-purple-500 text-left"
+                                  className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none focus:border-purple-500 text-left font-bold"
+                                />
+                              </td>
+                              <td className="p-2">
+                                <input
+                                  type="text"
+                                  placeholder="بارکد EAN-13"
+                                  value={v.barcode || ''}
+                                  onChange={(e) => handleUpdateVariantField(v.id, 'barcode', e.target.value)}
+                                  maxLength={13}
+                                  className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none focus:border-purple-500 text-left font-bold text-indigo-900"
                                 />
                               </td>
                               <td className="p-2">
@@ -1933,14 +2340,24 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                               />
                             </div>
                             <div>
-                              <label className="block text-[10px] font-medium text-slate-500 mb-1">کد اختصاصی</label>
+                              <label className="block text-[10px] font-medium text-slate-500 mb-1">کد اختصاصی (سیستم)</label>
                               <input
                                 type="text"
                                 value={v.code || ''}
                                 onChange={(e) => handleUpdateVariantField(v.id, 'code', e.target.value)}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-mono text-left"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-mono text-left font-bold"
                               />
                             </div>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-medium text-slate-500 mb-1">بارکد استاندارد EAN-13 (سیستم)</label>
+                            <input
+                              type="text"
+                              value={v.barcode || ''}
+                              onChange={(e) => handleUpdateVariantField(v.id, 'barcode', e.target.value)}
+                              maxLength={13}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-mono text-left font-bold text-indigo-900"
+                            />
                           </div>
                           {currentUser?.role === 'admin' && (
                             <div>
@@ -2162,9 +2579,28 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           settings={settings}
           currentUser={currentUser}
           slipLog={exitSlipLogs[selectedExitSlipInvoice.id] || { invoiceId: selectedExitSlipInvoice.id, printCount: 0, history: [] }}
-          onRecordPrint={() => handleRecordExitSlipPrint(selectedExitSlipInvoice.id)}
+          onRecordPrint={(currentSlip) => handleRecordExitSlipPrint(selectedExitSlipInvoice.id, currentSlip)}
+          onUpdateDelivery={(deliveryData) => handleSaveExitSlipDelivery(selectedExitSlipInvoice.id, deliveryData)}
           onUpdateSettings={onUpdateSettings}
           onClose={() => setSelectedExitSlipInvoice(null)}
+        />
+      )}
+
+      {/* EXIT SLIP DELIVERY & VEHICLE MODAL */}
+      {deliveryModalInvoice && (
+        <ExitSlipDeliveryModal
+          isOpen={Boolean(deliveryModalInvoice)}
+          invoice={deliveryModalInvoice}
+          slipLog={exitSlipLogs[deliveryModalInvoice.id] || { invoiceId: deliveryModalInvoice.id, printCount: 0, history: [] }}
+          currentUser={currentUser}
+          onClose={() => setDeliveryModalInvoice(null)}
+          onSave={(deliveryData) => handleSaveExitSlipDelivery(deliveryModalInvoice.id, deliveryData)}
+          onSaveAndPrint={(deliveryData) => {
+            handleSaveExitSlipDelivery(deliveryModalInvoice.id, deliveryData);
+            const targetInv = deliveryModalInvoice;
+            setDeliveryModalInvoice(null);
+            setSelectedExitSlipInvoice(targetInv);
+          }}
         />
       )}
 

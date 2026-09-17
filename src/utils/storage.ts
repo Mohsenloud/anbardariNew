@@ -18,6 +18,13 @@ import {
   ServerBackupInfo
 } from '../types';
 import { getCurrentJalaliDate, getCurrentJalaliTime } from './jalali';
+import {
+  ensureProductCodesAndBarcodes,
+  generateNextProductCode,
+  generateProductBarcode,
+  generateVariantCode,
+  generateVariantBarcode,
+} from './codeGenerator';
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cheque: 'چک (شماره، تاریخ و نام چک)',
@@ -165,6 +172,7 @@ const initialProducts: Product[] = [
   {
     id: 'prod-hardener-1',
     code: '1000',
+    barcode: '2100000010009',
     name: 'پودر سخت کننده خشک پاش صنعتی',
     category: 'مصالح بتن و کفسازی',
     unit: 'کیسه ۲۵ کیلویی',
@@ -180,6 +188,7 @@ const initialProducts: Product[] = [
         id: 'var-hardener-grey',
         name: 'طوسی',
         code: '1000-GR',
+        barcode: '2110000100011',
         buyPrice: 2800000,
         sellPrice: 3500000,
         stock: 80,
@@ -189,6 +198,7 @@ const initialProducts: Product[] = [
         id: 'var-hardener-red',
         name: 'قرمز',
         code: '1000-RD',
+        barcode: '2110000100028',
         buyPrice: 2950000,
         sellPrice: 3750000,
         stock: 45,
@@ -198,6 +208,7 @@ const initialProducts: Product[] = [
         id: 'var-hardener-green',
         name: 'سبز',
         code: '1000-GN',
+        barcode: '2110000100035',
         buyPrice: 3200000,
         sellPrice: 4100000,
         stock: 30,
@@ -208,6 +219,7 @@ const initialProducts: Product[] = [
   {
     id: 'prod-1',
     code: '1001',
+    barcode: '2100000010016',
     name: 'لپ‌تاپ ایسوس Vivobook 15 (Core i5/16GB/512SSD)',
     category: 'رایانه و لپ‌تاپ',
     unit: 'دستگاه',
@@ -221,6 +233,7 @@ const initialProducts: Product[] = [
   {
     id: 'prod-2',
     code: '1002',
+    barcode: '2100000010023',
     name: 'ماوس بی‌سیم لاجیتک مدل M185',
     category: 'لوازم جانبی',
     unit: 'عدد',
@@ -234,6 +247,7 @@ const initialProducts: Product[] = [
   {
     id: 'prod-3',
     code: '1003',
+    barcode: '2100000010030',
     name: 'کیبورد مکانیکی گیمینگ تسکو GK 8128',
     category: 'لوازم جانبی',
     unit: 'عدد',
@@ -247,6 +261,7 @@ const initialProducts: Product[] = [
   {
     id: 'prod-4',
     code: '1004',
+    barcode: '2100000010047',
     name: 'هارد اکسترنال وسترن دیجیتال Elements ظرفیت 1TB',
     category: 'ذخیره‌سازی',
     unit: 'عدد',
@@ -260,6 +275,7 @@ const initialProducts: Product[] = [
   {
     id: 'prod-5',
     code: '1005',
+    barcode: '2100000010054',
     name: 'بسته کاغذ A4 دابل ای Double A (۵۰۰ برگی ۸۰ گرم)',
     category: 'ملزومات اداری',
     unit: 'بسته',
@@ -273,6 +289,7 @@ const initialProducts: Product[] = [
   {
     id: 'prod-6',
     code: '1006',
+    barcode: '2100000010061',
     name: 'فلش مموری سن‌دیسک Ultra Flair 64GB',
     category: 'ذخیره‌سازی',
     unit: 'عدد',
@@ -286,6 +303,7 @@ const initialProducts: Product[] = [
   {
     id: 'prod-7',
     code: '1007',
+    barcode: '2100000010078',
     name: 'کابل تبدیل چندکاره Type-C به HDMI و USB3',
     category: 'کابل و رابط',
     unit: 'عدد',
@@ -686,7 +704,30 @@ export const StorageService = {
         if (Array.isArray(d.movements)) localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(d.movements));
         if (d.settings && typeof d.settings === 'object') localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(d.settings));
         if (Array.isArray(d.users)) localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(d.users));
-        if (d.exitSlipLogs && typeof d.exitSlipLogs === 'object') localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(d.exitSlipLogs));
+        if (d.exitSlipLogs && typeof d.exitSlipLogs === 'object' && !Array.isArray(d.exitSlipLogs)) {
+          const localLogs = this.getExitSlipLogs();
+          const remoteLogs = (d.exitSlipLogs || {}) as Record<string, ExitSlipData>;
+          const merged: Record<string, ExitSlipData> = { ...remoteLogs };
+          for (const invId of Object.keys(localLogs)) {
+            const localSlip: ExitSlipData = localLogs[invId];
+            const existingRemote = merged[invId];
+            if (!existingRemote) {
+              merged[invId] = localSlip;
+            } else {
+              merged[invId] = {
+                ...existingRemote,
+                receiverName: existingRemote.receiverName || localSlip.receiverName,
+                receiverPhone: existingRemote.receiverPhone || localSlip.receiverPhone,
+                vehicleInfo: existingRemote.vehicleInfo || localSlip.vehicleInfo,
+                deliveryNotes: existingRemote.deliveryNotes || localSlip.deliveryNotes,
+                isDelivered: existingRemote.isDelivered !== undefined ? existingRemote.isDelivered : localSlip.isDelivered,
+                deliveredAt: existingRemote.deliveredAt || localSlip.deliveredAt,
+                deliveredBy: existingRemote.deliveredBy || localSlip.deliveredBy,
+              };
+            }
+          }
+          localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(merged));
+        }
         if (Array.isArray(d.activityLogs)) localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(d.activityLogs));
         return true;
       }
@@ -774,27 +815,36 @@ export const StorageService = {
 
   getProducts(): Product[] {
     const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
+    let list: Product[] = [];
     if (!data) {
-      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(initialProducts));
-      return initialProducts;
-    }
-    try {
-      const parsed: Product[] = JSON.parse(data);
-      // Ensure the hardener variant example product is present so user has an immediate live example
-      if (!parsed.some((p) => p.hasVariants || p.id === 'prod-hardener-1')) {
-        const merged = [initialProducts[0], ...parsed];
-        localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(merged));
-        return merged;
+      list = initialProducts;
+    } else {
+      try {
+        const parsed: Product[] = JSON.parse(data);
+        // Ensure the hardener variant example product is present so user has an immediate live example
+        if (!parsed.some((p) => p.hasVariants || p.id === 'prod-hardener-1')) {
+          list = [initialProducts[0], ...parsed];
+        } else {
+          list = parsed;
+        }
+      } catch {
+        list = initialProducts;
       }
-      return parsed;
-    } catch {
-      return initialProducts;
     }
+
+    // تضمین خودکار کد و بارکد کالاها و تنوع‌ها توسط سیستم
+    const { products: ensuredProducts, changed } = ensureProductCodesAndBarcodes(list);
+    if (changed || !data) {
+      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(ensuredProducts));
+    }
+    return ensuredProducts;
   },
 
   saveProducts(products: Product[]) {
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
-    this.pushToServer({ products });
+    // پیش از ذخیره‌سازی، اطمینان از تکمیل بودن کد و بارکد تمام اقلام توسط سیستم
+    const { products: ensuredProducts } = ensureProductCodesAndBarcodes(products);
+    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(ensuredProducts));
+    this.pushToServer({ products: ensuredProducts });
   },
 
   getCustomers(): Customer[] {
@@ -903,11 +953,37 @@ export const StorageService = {
 
   saveProduct(product: Product) {
     const products = this.getProducts();
-    const idx = products.findIndex((p) => p.id === product.id);
+    const otherProducts = products.filter((p) => p.id !== product.id);
+    let toSave: Product = { ...product };
+
+    // تعیین خودکار کد کالا در صورت خالی بودن
+    if (!toSave.code || !toSave.code.trim()) {
+      toSave.code = generateNextProductCode(otherProducts);
+    }
+
+    // تعیین خودکار بارکد کالا در صورت خالی بودن
+    if (!toSave.barcode || !toSave.barcode.trim()) {
+      toSave.barcode = generateProductBarcode(toSave.code, otherProducts);
+    }
+
+    // تعیین خودکار کد و بارکد برای تنوع‌ها در صورت وجود
+    if (toSave.hasVariants && toSave.variants && toSave.variants.length > 0) {
+      toSave.variants = toSave.variants.map((v, vIdx) => {
+        const vCode = v.code && v.code.trim() ? v.code.trim() : generateVariantCode(toSave.code, vIdx + 1, v.name);
+        const vBarcode = v.barcode && v.barcode.trim() ? v.barcode.trim() : generateVariantBarcode(toSave.code, vIdx + 1, otherProducts);
+        return {
+          ...v,
+          code: vCode,
+          barcode: vBarcode,
+        };
+      });
+    }
+
+    const idx = products.findIndex((p) => p.id === toSave.id);
     if (idx >= 0) {
-      products[idx] = product;
+      products[idx] = toSave;
     } else {
-      products.push(product);
+      products.push(toSave);
     }
     this.saveProducts(products);
   },
@@ -1145,15 +1221,21 @@ export const StorageService = {
     const data = localStorage.getItem(STORAGE_KEYS.EXIT_SLIP_LOGS);
     if (!data) return {};
     try {
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return {};
+      }
+      return parsed;
     } catch {
       return {};
     }
   },
 
   saveExitSlipLogs(logs: Record<string, ExitSlipData>) {
-    localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(logs));
-    this.pushToServer({ exitSlipLogs: logs });
+    const safeLogs = (logs && typeof logs === 'object' && !Array.isArray(logs)) ? logs : {};
+    localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(safeLogs));
+    this.pushToServer({ exitSlipLogs: safeLogs });
+    this.notifyChange();
   },
 
   getExitSlipLog(invoiceId: string): ExitSlipData {
@@ -1165,9 +1247,14 @@ export const StorageService = {
     };
   },
 
-  recordExitSlipPrint(invoiceId: string, printedBy: string, printedAt?: string): ExitSlipData {
+  recordExitSlipPrint(
+    invoiceId: string, 
+    printedBy: string, 
+    printedAt?: string,
+    fallbackData?: Partial<ExitSlipData>
+  ): ExitSlipData {
     const logs = this.getExitSlipLogs();
-    const current = logs[invoiceId] || {
+    const current = logs[invoiceId] || fallbackData || {
       invoiceId,
       printCount: 0,
       history: [],
@@ -1178,11 +1265,50 @@ export const StorageService = {
       printedBy: printedBy || 'انباردار',
     };
     const updated: ExitSlipData = {
+      ...fallbackData,
       ...current,
-      printCount: (current.printCount || 0) + 1,
+      invoiceId,
+      printCount: (current.printCount || fallbackData?.printCount || 0) + 1,
       lastPrintedAt: timestamp,
       lastPrintedBy: printedBy || 'انباردار',
-      history: [newRecord, ...(current.history || [])],
+      history: [newRecord, ...(current.history || fallbackData?.history || [])],
+    };
+
+    // Explicitly guarantee delivery details are never wiped
+    if (fallbackData?.receiverName && !updated.receiverName) updated.receiverName = fallbackData.receiverName;
+    if (fallbackData?.receiverPhone && !updated.receiverPhone) updated.receiverPhone = fallbackData.receiverPhone;
+    if (fallbackData?.vehicleInfo && !updated.vehicleInfo) updated.vehicleInfo = fallbackData.vehicleInfo;
+    if (fallbackData?.deliveryNotes && !updated.deliveryNotes) updated.deliveryNotes = fallbackData.deliveryNotes;
+    if (fallbackData?.isDelivered !== undefined && updated.isDelivered === undefined) updated.isDelivered = fallbackData.isDelivered;
+    if (fallbackData?.deliveredAt && !updated.deliveredAt) updated.deliveredAt = fallbackData.deliveredAt;
+    if (fallbackData?.deliveredBy && !updated.deliveredBy) updated.deliveredBy = fallbackData.deliveredBy;
+
+    logs[invoiceId] = updated;
+    this.saveExitSlipLogs(logs);
+    return updated;
+  },
+
+  updateExitSlipDelivery(
+    invoiceId: string,
+    deliveryData: {
+      isDelivered: boolean;
+      deliveredAt?: string;
+      deliveredBy?: string;
+      receiverName?: string;
+      receiverPhone?: string;
+      vehicleInfo?: string;
+      deliveryNotes?: string;
+    }
+  ): ExitSlipData {
+    const logs = this.getExitSlipLogs();
+    const current = logs[invoiceId] || {
+      invoiceId,
+      printCount: 0,
+      history: [],
+    };
+    const updated: ExitSlipData = {
+      ...current,
+      ...deliveryData,
     };
     logs[invoiceId] = updated;
     this.saveExitSlipLogs(logs);

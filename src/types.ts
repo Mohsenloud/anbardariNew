@@ -1,7 +1,8 @@
 export interface ProductVariant {
   id: string;
   name: string; // نام یا ویژگی تنوع (مانند: طوسی، قرمز، سایز، بسته‌بندی، مدل و...)
-  code?: string; // کد یا بارکد اختصاصی این تنوع
+  code?: string; // کد اختصاصی این تنوع
+  barcode?: string; // بارکد اختصاصی این تنوع (تعیین‌شده توسط سیستم)
   sku?: string;
   buyPrice?: number; // قیمت خرید اختصاصی تنوع (در صورت تفاوت با کالای پایه)
   sellPrice?: number; // قیمت فروش اختصاصی تنوع (در صورت تفاوت با کالای پایه)
@@ -42,6 +43,7 @@ export interface InvoiceItem {
   productId: string;
   productName: string;
   productCode: string;
+  barcode?: string; // بارکد محصول یا خدمت
   unit: string;
   quantity: number;
   unitPrice: number;
@@ -211,6 +213,15 @@ export interface ExitSlipData {
   lastPrintedAt?: string; // تاریخ و زمان آخرین چاپ
   lastPrintedBy?: string; // نام انباردار یا کاربر آخرین چاپ
   history: ExitSlipPrintRecord[]; // تاریخچه کامل دفعات چاپ با زمان و تاریخ
+  
+  // تایید تحویل بار و مشخصات تحویل‌گیرنده و خودرو
+  isDelivered?: boolean; // آیا بار توسط انباردار تحویل داده شده است؟
+  deliveredAt?: string; // تاریخ و زمان تایید تحویل بار
+  deliveredBy?: string; // نام انباردار تاییدکننده تحویل
+  receiverName?: string; // نام و نام‌خانوادگی تحویل‌گیرنده یا راننده
+  receiverPhone?: string; // شماره تماس تحویل‌گیرنده یا راننده
+  vehicleInfo?: string; // مشخصات ماشین (نوع خودرو، مدل و پلاک)
+  deliveryNotes?: string; // شماره بارنامه یا یادداشت خروج
 }
 
 // ----------------------------------------------------

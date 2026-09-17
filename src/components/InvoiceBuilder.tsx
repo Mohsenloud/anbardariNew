@@ -39,9 +39,17 @@ import {
   ArrowRight,
   Eye,
   Info,
-  Barcode
+  Barcode,
+  RefreshCw
 } from 'lucide-react';
 import { StorageService } from '../utils/storage';
+import {
+  generateNextProductCode,
+  generateProductBarcode,
+  generateNextServiceCode,
+  generateServiceBarcode,
+} from '../utils/codeGenerator';
+import { BarcodeVisual } from './BarcodeVisual';
 
 interface InvoiceBuilderProps {
   products: Product[];
@@ -344,6 +352,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
         productId: prod.id,
         productName: variant ? `${prod.name} (${variant.name})` : prod.name,
         productCode: variant?.code || prod.code,
+        barcode: variant?.barcode || prod.barcode,
         unit: prod.unit || 'عدد',
         quantity: 1,
         unitPrice: unitPrice,
@@ -383,10 +392,13 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   // Open Quick Edit for a product from the catalog
   const handleOpenEditProduct = (prod: Product) => {
     setEditingCatalogProduct(prod);
+    const otherProducts = products.filter((p) => p.id !== prod.id);
+    const safeCode = prod.code?.trim() || generateNextProductCode(otherProducts);
+    const safeBarcode = prod.barcode?.trim() || generateProductBarcode(safeCode, otherProducts);
     setEditProductForm({
       name: prod.name || '',
-      code: prod.code || '',
-      barcode: prod.barcode || '',
+      code: safeCode,
+      barcode: safeBarcode,
       category: prod.category || '',
       unit: prod.unit || 'عدد',
       stock: prod.stock ?? 0,
@@ -402,11 +414,15 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     e.preventDefault();
     if (!editingCatalogProduct || !editProductForm.name.trim()) return;
 
+    const otherProducts = products.filter((p) => p.id !== editingCatalogProduct.id);
+    const finalCode = editProductForm.code.trim() || generateNextProductCode(otherProducts);
+    const finalBarcode = editProductForm.barcode.trim() || generateProductBarcode(finalCode, otherProducts);
+
     const updatedProduct: Product = {
       ...editingCatalogProduct,
       name: editProductForm.name.trim(),
-      code: editProductForm.code.trim() || editingCatalogProduct.code,
-      barcode: editProductForm.barcode.trim() || undefined,
+      code: finalCode,
+      barcode: finalBarcode,
       category: editProductForm.category.trim() || 'عمومی',
       unit: editProductForm.unit.trim() || 'عدد',
       stock: Math.max(0, Number(editProductForm.stock) || 0),
@@ -429,7 +445,9 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
         if (it.productId === updatedProduct.id) {
           return {
             ...it,
-            description: updatedProduct.name,
+            productCode: updatedProduct.code,
+            barcode: updatedProduct.barcode,
+            productName: updatedProduct.name,
             unitPrice: updatedProduct.sellPrice,
             total: Math.max(0, it.quantity * updatedProduct.sellPrice - (it.discount || 0)),
           };
@@ -446,7 +464,23 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     setEditingCatalogProduct(null);
   };
 
-  // Add custom non-inventory / service item
+  // تولید مجدد کد و بارکد در فرم ویرایش سریع کالا
+  const handleRegenerateCatalogCode = () => {
+    if (!editingCatalogProduct) return;
+    const otherProducts = products.filter((p) => p.id !== editingCatalogProduct.id);
+    const newCode = generateNextProductCode(otherProducts);
+    const newBarcode = generateProductBarcode(newCode, otherProducts);
+    setEditProductForm((prev) => ({ ...prev, code: newCode, barcode: newBarcode }));
+  };
+
+  const handleRegenerateCatalogBarcode = () => {
+    if (!editingCatalogProduct) return;
+    const otherProducts = products.filter((p) => p.id !== editingCatalogProduct.id);
+    const newBarcode = generateProductBarcode(editProductForm.code || '1000', otherProducts);
+    setEditProductForm((prev) => ({ ...prev, barcode: newBarcode }));
+  };
+
+  // Add custom non-inventory / service item with automatic system code & barcode
   const handleAddServiceItem = () => {
     if (!serviceName.trim()) {
       setErrorMessage('لطفاً عنوان خدمات یا آیتم را وارد نمایید.');
@@ -454,11 +488,14 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     }
     const safeQty = Math.max(1, serviceQuantity || 1);
     const safePrice = Math.max(0, servicePrice || 0);
+    const srvCode = generateNextServiceCode(items);
+    const srvBarcode = generateServiceBarcode(srvCode, items);
     const newItem: InvoiceItem = {
       id: `service-${Date.now()}`,
       productId: '', // empty productId indicates non-inventory service item
       productName: serviceName.trim(),
-      productCode: 'SRV',
+      productCode: srvCode,
+      barcode: srvBarcode,
       unit: serviceUnit || 'موردی',
       quantity: safeQty,
       unitPrice: safePrice,
@@ -2501,13 +2538,29 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
                   <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
                     <Barcode className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    بارکد کالا:
+                    بارکد کالا (سیستم):
                   </span>
                   <div className="text-xs sm:text-sm font-black font-mono text-slate-800 truncate">
                     {viewingCatalogProduct.barcode ? toPersianDigits(viewingCatalogProduct.barcode) : 'ثبت نشده'}
                   </div>
                 </div>
               </div>
+
+              {/* Barcode Visual Display */}
+              {viewingCatalogProduct.barcode && (
+                <div className="p-3 rounded-2xl bg-indigo-50/50 border border-indigo-100 flex flex-col sm:flex-row items-center justify-between gap-2">
+                  <div className="text-xs text-indigo-950 font-bold flex items-center gap-1.5">
+                    <Barcode className="w-4 h-4 text-indigo-600" />
+                    <span>بارکد استاندارد EAN-13 صادرشده:</span>
+                  </div>
+                  <BarcodeVisual
+                    value={viewingCatalogProduct.barcode}
+                    height={32}
+                    showText={true}
+                    className="border-indigo-200 bg-white"
+                  />
+                </div>
+              )}
 
               {/* Description if available */}
               {viewingCatalogProduct.description && (
@@ -2653,32 +2706,84 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
                   {/* Code */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      کد کالا
-                    </label>
-                    <input
-                      type="text"
-                      value={editProductForm.code}
-                      onChange={(e) => setEditProductForm({ ...editProductForm, code: e.target.value })}
-                      placeholder="کد کالا..."
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all"
-                    />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-700">
+                        کد کالا
+                      </label>
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-1.5 py-0.2 rounded-full flex items-center gap-1">
+                        <Sparkles className="w-2.5 h-2.5 text-emerald-600" />
+                        <span>سیستم</span>
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={editProductForm.code}
+                        onChange={(e) => setEditProductForm({ ...editProductForm, code: e.target.value })}
+                        placeholder="کد کالا..."
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 pl-8 text-xs font-mono font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all text-left"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRegenerateCatalogCode}
+                        className="absolute left-1.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                        title="تولید مجدد کد کالا توسط سیستم"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Barcode */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      بارکد
-                    </label>
-                    <input
-                      type="text"
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-700">
+                        بارکد (EAN-13)
+                      </label>
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-1.5 py-0.2 rounded-full flex items-center gap-1">
+                        <Barcode className="w-2.5 h-2.5 text-indigo-600" />
+                        <span>خودکار</span>
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={editProductForm.barcode}
+                        onChange={(e) => setEditProductForm({ ...editProductForm, barcode: e.target.value })}
+                        placeholder="بارکد..."
+                        maxLength={13}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 pl-8 text-xs font-mono font-bold text-indigo-900 outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all text-left"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRegenerateCatalogBarcode}
+                        className="absolute left-1.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                        title="تولید مجدد بارکد توسط سیستم"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Barcode Visual in Quick Edit */}
+                {editProductForm.barcode && (
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-2.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <Barcode className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <span className="text-[11px] font-bold text-slate-700">پیش‌نمایش بارکد معتبر:</span>
+                    </div>
+                    <BarcodeVisual
                       value={editProductForm.barcode}
-                      onChange={(e) => setEditProductForm({ ...editProductForm, barcode: e.target.value })}
-                      placeholder="بارکد..."
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all"
+                      height={24}
+                      showText={true}
+                      className="border-indigo-100 bg-white scale-90 origin-left"
                     />
                   </div>
+                )}
 
+                {/* Category & Unit */}
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
                   {/* Category */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -3003,6 +3108,29 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   onChange={(e) => setServiceQuantity(parseInt(e.target.value, 10) || 1)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
                 />
+              </div>
+
+              {/* کد و بارکد اختصاصی خدمات تعیین‌شده توسط سیستم */}
+              <div className="bg-blue-50/70 border border-blue-200/80 rounded-2xl p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-blue-900 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                    <span>شناسه و بارکد اختصاصی خدمات (سیستم خودکار):</span>
+                  </span>
+                  <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
+                    سیستم هوشمند
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-white p-2 rounded-xl border border-blue-100">
+                    <span className="text-[10px] text-slate-500 block mb-0.5">کد خدمات:</span>
+                    <span className="font-mono font-bold text-blue-950 text-xs">{toPersianDigits(generateNextServiceCode(items))}</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-blue-100">
+                    <span className="text-[10px] text-slate-500 block mb-0.5">بارکد EAN-13:</span>
+                    <span className="font-mono font-bold text-indigo-950 text-xs dir-ltr block">{toPersianDigits(generateServiceBarcode(generateNextServiceCode(items), items))}</span>
+                  </div>
+                </div>
               </div>
             </div>
 

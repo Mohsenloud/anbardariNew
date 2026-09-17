@@ -26,22 +26,32 @@ import {
 } from 'lucide-react';
 
 interface ExcelImportModalProps {
-  type: 'products' | 'customers';
+  type?: 'products' | 'customers';
+  mode?: 'products' | 'customers';
   isOpen: boolean;
   currency?: string;
   onClose: () => void;
+  existingProducts?: Product[];
+  existingCustomers?: Customer[];
   onImportProducts?: (products: Product[], mode: 'merge' | 'replace') => void;
   onImportCustomers?: (customers: Customer[], mode: 'merge' | 'replace') => void;
 }
 
 export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   type,
+  mode: propMode,
   isOpen,
   currency = 'ریال',
   onClose,
+  existingProducts,
+  existingCustomers,
   onImportProducts,
   onImportCustomers,
 }) => {
+  // Normalize target type: seamlessly support either `type` or `mode` prop
+  const targetType: 'products' | 'customers' =
+    type || (propMode === 'customers' ? 'customers' : 'products');
+
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -57,7 +67,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   if (!isOpen) return null;
 
   const handleDownloadTemplate = () => {
-    if (type === 'products') {
+    if (targetType === 'products') {
       generateProductExcelTemplate();
     } else {
       generateCustomerExcelTemplate();
@@ -82,7 +92,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     setIsLoading(true);
 
     try {
-      if (type === 'products') {
+      if (targetType === 'products') {
         const res = await parseProductsExcel(selectedFile);
         if (res.products.length === 0) {
           setError('هیچ کالای معتبری در فایل اکسل یافت نشد. لطفاً ساختار ستون‌های فایل را بررسی فرمایید.');
@@ -91,8 +101,8 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         }
       } else {
         const res = await parseCustomersExcel(selectedFile);
-        if (res.customers.length === 0) {
-          setError('هیچ مشتری معتبری در فایل اکسل یافت نشد. لطفاً ساختار ستون‌های فایل را بررسی فرمایید.');
+        if (!res.customers || res.customers.length === 0) {
+          setError('هیچ مشتری معتبری در فایل اکسل یافت نشد. لطفاً از وجود ستون نام مشتری یا خریدار و ردیف‌های دارای اطلاعات اطمینان حاصل فرمایید.');
         } else {
           setCustomerResult(res);
         }
@@ -122,10 +132,10 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   };
 
   const handleConfirmImport = () => {
-    if (type === 'products' && productResult && onImportProducts) {
+    if (targetType === 'products' && productResult && productResult.products.length > 0 && onImportProducts) {
       onImportProducts(productResult.products, importMode);
       onClose();
-    } else if (type === 'customers' && customerResult && onImportCustomers) {
+    } else if (targetType === 'customers' && customerResult && customerResult.customers.length > 0 && onImportCustomers) {
       onImportCustomers(customerResult.customers, importMode);
       onClose();
     }
@@ -141,7 +151,10 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     }
   };
 
-  const hasData = (type === 'products' && productResult) || (type === 'customers' && customerResult);
+  const hasData = Boolean(
+    (targetType === 'products' && productResult && productResult.products.length > 0) ||
+    (targetType === 'customers' && customerResult && customerResult.customers.length > 0)
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/65 backdrop-blur-xs">
@@ -154,10 +167,10 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-sm sm:text-base">
-                {type === 'products' ? 'ورود محصولات و کالاها از اکسل (با پشتیبانی تنوع)' : 'ورود مشتریان از فایل اکسل'}
+                {targetType === 'products' ? 'ورود محصولات و کالاها از اکسل (با پشتیبانی تنوع)' : 'ورود مشتریان از فایل اکسل'}
               </h3>
               <p className="text-[11px] text-slate-300 mt-0.5">
-                {type === 'products' 
+                {targetType === 'products' 
                   ? 'ثبت دسته‌جمعی اقلام انبار، قیمت‌ها، موجودی و تنوع رنگ/مدل از طریق فایل اکسل' 
                   : 'بارگذاری سریع فهرست مشتریان، شماره‌ها و آدرس‌ها'}
               </p>
@@ -183,7 +196,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                   قالب آماده و استاندارد اکسل را دانلود کنید:
                 </strong>
                 <span className="text-[11px] text-emerald-800 leading-relaxed block mt-0.5">
-                  {type === 'products'
+                  {targetType === 'products'
                     ? 'فایل نمونه شامل ستون‌های نام کالا، کد، رنگ/تنوع (مانند طوسی یا قرمز برای پودر خشک پاش)، موجودی و قیمت‌ها است.'
                     : 'فایل نمونه شامل نام مشتری یا شرکت، تلفن، کد ملی، آدرس و توضیحات است.'}
                 </span>
@@ -242,7 +255,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                 </div>
               </div>
 
-              {type === 'products' && (
+              {targetType === 'products' && (
                 <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-[11px] font-medium border border-blue-100">
                   <Info className="w-3.5 h-3.5 text-blue-500" />
                   <span>
@@ -274,7 +287,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                     <span>فایل «{file?.name}» تحلیل شد</span>
                   </div>
-                  {type === 'products' && productResult && (
+                  {targetType === 'products' && productResult && (
                     <div className="flex items-center gap-2">
                       <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-lg text-[11px]">
                         {toPersianDigits(productResult.products.length)} کالا
@@ -287,7 +300,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                       )}
                     </div>
                   )}
-                  {type === 'customers' && customerResult && (
+                  {targetType === 'customers' && customerResult && (
                     <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-lg text-[11px]">
                       {toPersianDigits(customerResult.customers.length)} مشتری آماده ورود
                     </span>
@@ -357,7 +370,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
               </div>
 
               {/* Products Preview Table */}
-              {type === 'products' && productResult && (
+              {targetType === 'products' && productResult && (
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
                   <div className="bg-slate-100 px-3 py-2 font-bold text-slate-700 flex justify-between items-center text-[11px]">
                     <span>پیش‌نمایش ۵ قلم اول آماده ورود:</span>
@@ -408,7 +421,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
               )}
 
               {/* Customers Preview Table */}
-              {type === 'customers' && customerResult && (
+              {targetType === 'customers' && customerResult && (
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
                   <div className="bg-slate-100 px-3 py-2 font-bold text-slate-700 flex justify-between items-center text-[11px]">
                     <span>پیش‌نمایش مشتریان آماده ورود:</span>
@@ -455,17 +468,17 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
           <button
             type="button"
             id="confirm-import-excel-btn"
-            disabled={!hasData}
+            disabled={!hasData || isLoading}
             onClick={handleConfirmImport}
             className={`flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer ${
-              hasData
+              hasData && !isLoading
                 ? 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95'
                 : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             }`}
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>
-              {type === 'products'
+              {targetType === 'products'
                 ? `تایید و ورود ${productResult ? toPersianDigits(productResult.products.length) : ''} کالا به انبار`
                 : `تایید و ورود ${customerResult ? toPersianDigits(customerResult.customers.length) : ''} مشتری`}
             </span>
