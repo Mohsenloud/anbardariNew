@@ -319,10 +319,16 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
       ...wh,
       isDefault: wh.id === selectedDefaultWh,
     }));
+    const selectedWh = updated.find(w => w.id === selectedDefaultWh) || updated[0];
     const newSettings: StoreSettings = {
       ...settings,
       warehouses: updated,
       defaultWarehouseId: selectedDefaultWh,
+      originWarehouseName: selectedWh?.name || settings.originWarehouseName || 'انبار مرکزی سپهر',
+      originWarehouseCode: selectedWh?.code || settings.originWarehouseCode || 'WH-01',
+      originWarehouseAddress: selectedWh?.address || settings.originWarehouseAddress || '',
+      originWarehousePhone: selectedWh?.phone || settings.originWarehousePhone || '',
+      originWarehouseManager: selectedWh?.managerName || settings.originWarehouseManager || '',
     };
     if (onUpdateSettings) {
       onUpdateSettings(newSettings);

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Invoice, StoreSettings, AppUser, ExitSlipData } from '../types';
 import { toPersianDigits } from '../utils/jalali';
 import { exportElementToPdf, printElementDirectly, printElementInNewWindow, generatePdfBlob } from '../utils/pdfHelper';
+import { StorageService } from '../utils/storage';
 import { 
   Printer, 
   X, 
@@ -27,7 +28,9 @@ import {
   Settings,
   Smartphone,
   Download,
-  Truck
+  Truck,
+  Warehouse,
+  Building2
 } from 'lucide-react';
 import { ExitSlipDeliveryModal } from './ExitSlipDeliveryModal';
 
@@ -54,10 +57,52 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
 }) => {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+  const [showWarehouseConfigModal, setShowWarehouseConfigModal] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [showSocialModal, setShowSocialModal] = useState(false);
   const [statusNotification, setStatusNotification] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const originWarehouseName = settings.originWarehouseName || 
+    settings.warehouses?.find(w => w.id === settings.defaultWarehouseId)?.name || 
+    'انبار مرکزی سپهر';
+
+  const [originWarehouseFormData, setOriginWarehouseFormData] = useState({
+    originWarehouseName: settings.originWarehouseName || 'انبار مرکزی سپهر',
+    originWarehouseCode: settings.originWarehouseCode || 'WH-01',
+    originWarehouseAddress: settings.originWarehouseAddress || '',
+    originWarehousePhone: settings.originWarehousePhone || '',
+    originWarehouseManager: settings.originWarehouseManager || '',
+  });
+
+  useEffect(() => {
+    setOriginWarehouseFormData({
+      originWarehouseName: settings.originWarehouseName || 'انبار مرکزی سپهر',
+      originWarehouseCode: settings.originWarehouseCode || 'WH-01',
+      originWarehouseAddress: settings.originWarehouseAddress || '',
+      originWarehousePhone: settings.originWarehousePhone || '',
+      originWarehouseManager: settings.originWarehouseManager || '',
+    });
+  }, [settings]);
+
+  const handleSaveOriginWarehouse = (e: React.FormEvent) => {
+    e.preventDefault();
+    const updatedSettings: StoreSettings = {
+      ...settings,
+      originWarehouseName: originWarehouseFormData.originWarehouseName.trim() || 'انبار مرکزی سپهر',
+      originWarehouseCode: originWarehouseFormData.originWarehouseCode.trim(),
+      originWarehouseAddress: originWarehouseFormData.originWarehouseAddress.trim(),
+      originWarehousePhone: originWarehouseFormData.originWarehousePhone.trim(),
+      originWarehouseManager: originWarehouseFormData.originWarehouseManager.trim(),
+    };
+    if (onUpdateSettings) {
+      onUpdateSettings(updatedSettings);
+    } else {
+      StorageService.saveSettings(updatedSettings);
+    }
+    setShowWarehouseConfigModal(false);
+    showNotification('نام و مشخصات انبار مبدأ با موفقیت ذخیره شد.');
+  };
 
   if (!invoice) return null;
 
@@ -128,6 +173,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
       `📦 *برگ خروج کالا از انبار (حواله تحویل فیزیکی)*`,
       `شماره حواله / فاکتور: ${toPersianDigits(invoice.invoiceNumber)}`,
       `تاریخ صدور: ${toPersianDigits(invoice.date)}`,
+      `🏭 انبار مبدأ بارگیری: ${originWarehouseName}${settings.originWarehouseCode ? ` (کد: ${toPersianDigits(settings.originWarehouseCode)})` : ''}`,
+      settings.originWarehouseAddress ? `📍 نشانی انبار مبدأ: ${settings.originWarehouseAddress}` : '',
       `تحویل‌گیرنده: ${invoice.customerName}`,
       invoice.customerPhone ? `شماره تماس: ${toPersianDigits(invoice.customerPhone)}` : '',
       invoice.customerAddress ? `نشانی تحویل: ${invoice.customerAddress}` : '',
@@ -147,8 +194,9 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
       slipLog.vehicleInfo ? `🚚 مشخصات ماشین: ${slipLog.vehicleInfo}` : '',
       slipLog.deliveryNotes ? `📝 یادداشت / بارنامه: ${slipLog.deliveryNotes}` : '',
       currentUser?.fullName ? `انباردار صادرکننده: ${currentUser.fullName}` : '',
-      settings.storeName ? `مرکز: ${settings.storeName}` : '',
-      settings.phone ? `تلفن انبار: ${toPersianDigits(settings.phone)}` : '',
+      settings.originWarehouseManager ? `مسئول انبار مبدأ: ${settings.originWarehouseManager}` : '',
+      settings.originWarehousePhone ? `تلفن انبار: ${toPersianDigits(settings.originWarehousePhone)}` : (settings.phone ? `تلفن انبار: ${toPersianDigits(settings.phone)}` : ''),
+      settings.storeName ? `مرکز فروشگاه: ${settings.storeName}` : '',
     ].filter(Boolean);
     return lines.join('\n');
   };
@@ -302,6 +350,26 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             >
               <History className="w-3.5 h-3.5 text-blue-400" />
               <span className="hidden sm:inline">تاریخچه چاپ</span>
+            </button>
+
+            {/* Origin Warehouse Settings Button */}
+            <button
+              id="exit-slip-header-warehouse-settings-btn"
+              onClick={() => {
+                setOriginWarehouseFormData({
+                  originWarehouseName: settings.originWarehouseName || 'انبار مرکزی سپهر',
+                  originWarehouseCode: settings.originWarehouseCode || 'WH-01',
+                  originWarehouseAddress: settings.originWarehouseAddress || '',
+                  originWarehousePhone: settings.originWarehousePhone || '',
+                  originWarehouseManager: settings.originWarehouseManager || '',
+                });
+                setShowWarehouseConfigModal(true);
+              }}
+              className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
+              title="تنظیم نام و مشخصات انبار مبدأ توسط مدیریت"
+            >
+              <Warehouse className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">تنظیم انبار مبدأ</span>
             </button>
 
             {/* Delivery & Vehicle Specs Button */}
@@ -509,9 +577,31 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
               </div>
 
               <div className="space-y-1">
-                <span className="text-slate-400 block text-[11px]">انبار مبدأ:</span>
-                <span className="font-bold text-slate-800">
-                  انبار مرکزی سپهر
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 block text-[11px]">انبار مبدأ:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOriginWarehouseFormData({
+                        originWarehouseName: settings.originWarehouseName || 'انبار مرکزی سپهر',
+                        originWarehouseCode: settings.originWarehouseCode || 'WH-01',
+                        originWarehouseAddress: settings.originWarehouseAddress || '',
+                        originWarehousePhone: settings.originWarehousePhone || '',
+                        originWarehouseManager: settings.originWarehouseManager || '',
+                      });
+                      setShowWarehouseConfigModal(true);
+                    }}
+                    className="no-print text-[10px] text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5 cursor-pointer"
+                    title="تغییر یا تنظیم مشخصات انبار مبدأ"
+                  >
+                    <span>ویرایش</span>
+                  </button>
+                </div>
+                <span className="font-bold text-slate-800 flex items-center gap-1">
+                  <span>{originWarehouseName}</span>
+                  {settings.originWarehouseCode && (
+                    <span className="text-[10px] text-slate-500 font-mono">({toPersianDigits(settings.originWarehouseCode)})</span>
+                  )}
                 </span>
               </div>
 
@@ -520,6 +610,73 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                 <span className="font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded text-[11px] inline-block font-['Vazirmatn']">
                   {slipLog.printCount > 0 ? `چاپ نوبت ${toPersianDigits(slipLog.printCount + 1)}` : 'نسخه اول (اصل)'}
                 </span>
+              </div>
+            </div>
+
+            {/* Origin Warehouse Information Box (مشخصات و آدرس انبار مبدأ) */}
+            <div className="border border-slate-200 rounded-xl p-3.5 mb-5 bg-slate-50/60 text-xs print:bg-slate-50">
+              <div className="text-slate-700 font-bold mb-2 pb-1 border-b border-slate-200/80 flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Warehouse className="w-3.5 h-3.5 text-amber-600" />
+                  <span>مشخصات انبار مبدأ (محل بارگیری و خروج کالا):</span>
+                  <strong className="text-slate-900">{originWarehouseName}</strong>
+                  {settings.originWarehouseCode && (
+                    <span className="text-[10px] text-slate-500 font-mono font-normal">
+                      [شناسه: {toPersianDigits(settings.originWarehouseCode)}]
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOriginWarehouseFormData({
+                      originWarehouseName: settings.originWarehouseName || 'انبار مرکزی سپهر',
+                      originWarehouseCode: settings.originWarehouseCode || 'WH-01',
+                      originWarehouseAddress: settings.originWarehouseAddress || '',
+                      originWarehousePhone: settings.originWarehousePhone || '',
+                      originWarehouseManager: settings.originWarehouseManager || '',
+                    });
+                    setShowWarehouseConfigModal(true);
+                  }}
+                  className="no-print text-[11px] text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
+                  title="تغییر مشخصات انبار مبدأ توسط مدیریت"
+                >
+                  <Settings className="w-3 h-3" />
+                  <span>تنظیم انبار</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <span className="text-slate-400">مسئول انبار مبدأ: </span>
+                  <span className="font-bold text-slate-800">
+                    {settings.originWarehouseManager || '—'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-slate-400">شماره تماس انبار: </span>
+                  <span className="font-['Vazirmatn'] font-semibold text-slate-800">
+                    {settings.originWarehousePhone 
+                      ? toPersianDigits(settings.originWarehousePhone) 
+                      : (settings.phone ? toPersianDigits(settings.phone) : '—')}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-slate-400">کد انبار: </span>
+                  <span className="font-mono font-bold text-slate-700">
+                    {settings.originWarehouseCode ? toPersianDigits(settings.originWarehouseCode) : 'WH-01'}
+                  </span>
+                </div>
+
+                {settings.originWarehouseAddress && (
+                  <div className="sm:col-span-3 pt-1 border-t border-slate-200/50 flex items-start gap-1 text-[11px]">
+                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                    <span className="text-slate-500">نشانی دقیق محل بارگیری: </span>
+                    <span className="font-medium text-slate-800">{settings.originWarehouseAddress}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -741,7 +898,9 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             <div className="grid grid-cols-3 gap-4 pt-3 border-t border-slate-300 text-center text-xs">
               <div className="space-y-12">
                 <span className="font-bold text-slate-700 block">امضا و مهر انباردار</span>
-                <span className="text-[10px] text-slate-400 block">نام مسئول انبار / تاریخ</span>
+                <span className="text-[10px] text-slate-500 block">
+                  {settings.originWarehouseManager || currentUser?.fullName || 'نام متصدی انبار'} / تاریخ
+                </span>
               </div>
 
               <div className="space-y-12 border-x border-slate-200">
@@ -1006,6 +1165,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
           isOpen={showDeliveryModal}
           invoice={invoice}
           slipLog={slipLog}
+          settings={settings}
           currentUser={currentUser}
           onClose={() => setShowDeliveryModal(false)}
           onSave={(deliveryData) => {
@@ -1019,6 +1179,148 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             );
           }}
         />
+      )}
+
+      {/* Origin Warehouse Settings Modal (Quick Edit by Management) */}
+      {showWarehouseConfigModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs font-['Vazirmatn']">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden border border-slate-200 animate-scaleUp">
+            <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Warehouse className="w-5 h-5 text-amber-400" />
+                <div>
+                  <h4 className="font-bold text-sm text-white">تنظیم مشخصات انبار مبدأ (حواله خروج)</h4>
+                  <p className="text-[11px] text-slate-400">تغییر نام، آدرس، تلفن و متصدی انبار مبدأ جهت درج در برگه خروج</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWarehouseConfigModal(false)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveOriginWarehouse} className="p-4 sm:p-5 space-y-4 text-xs">
+              {/* Warehouse selector if warehouses exist */}
+              {settings.warehouses && settings.warehouses.length > 0 && (
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  <label className="block font-bold text-slate-700 mb-1">
+                    انتخاب از انبارهای تعریف‌شده:
+                  </label>
+                  <select
+                    onChange={(e) => {
+                      const selId = e.target.value;
+                      const wh = settings.warehouses?.find(w => w.id === selId);
+                      if (wh) {
+                        setOriginWarehouseFormData({
+                          originWarehouseName: wh.name,
+                          originWarehouseCode: wh.code || originWarehouseFormData.originWarehouseCode,
+                          originWarehouseAddress: wh.address || originWarehouseFormData.originWarehouseAddress,
+                          originWarehousePhone: wh.phone || originWarehouseFormData.originWarehousePhone,
+                          originWarehouseManager: wh.managerName || originWarehouseFormData.originWarehouseManager,
+                        });
+                      }
+                    }}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold cursor-pointer"
+                  >
+                    <option value="">-- انتخاب انبار جهت جایگذاری مشخصات --</option>
+                    {settings.warehouses.map((wh) => (
+                      <option key={wh.id} value={wh.id}>
+                        {wh.name} {wh.isDefault ? '(پیش‌فرض)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    نام انبار مبدأ <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={originWarehouseFormData.originWarehouseName}
+                    onChange={(e) => setOriginWarehouseFormData({ ...originWarehouseFormData, originWarehouseName: e.target.value })}
+                    placeholder="مثال: انبار مرکزی سپهر"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    کد / شناسه انبار مبدأ
+                  </label>
+                  <input
+                    type="text"
+                    value={originWarehouseFormData.originWarehouseCode}
+                    onChange={(e) => setOriginWarehouseFormData({ ...originWarehouseFormData, originWarehouseCode: e.target.value })}
+                    placeholder="مثال: WH-01"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    شماره تماس انبار مبدأ
+                  </label>
+                  <input
+                    type="text"
+                    value={originWarehouseFormData.originWarehousePhone}
+                    onChange={(e) => setOriginWarehouseFormData({ ...originWarehouseFormData, originWarehousePhone: e.target.value })}
+                    placeholder="مثال: ۰۲۱-۵۵۶۶۷۷۸۸"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs dir-ltr text-right focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    نام مسئول / سرپرست انبار
+                  </label>
+                  <input
+                    type="text"
+                    value={originWarehouseFormData.originWarehouseManager}
+                    onChange={(e) => setOriginWarehouseFormData({ ...originWarehouseFormData, originWarehouseManager: e.target.value })}
+                    placeholder="مثال: مرتضی اکبری"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block font-bold text-slate-700 mb-1">
+                    نشانی و آدرس دقیق محل بارگیری
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={originWarehouseFormData.originWarehouseAddress}
+                    onChange={(e) => setOriginWarehouseFormData({ ...originWarehouseFormData, originWarehouseAddress: e.target.value })}
+                    placeholder="آدرس دقیق و راهنمای بارگیری رانندگان..."
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowWarehouseConfigModal(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                >
+                  انصراف
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-bold bg-amber-600 hover:bg-amber-700 active:scale-95 text-white rounded-xl shadow-md cursor-pointer transition-all"
+                >
+                  ذخیره تنظیمات انبار
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
     </div>

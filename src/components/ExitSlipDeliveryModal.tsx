@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Invoice, ExitSlipData, AppUser } from '../types';
+import { Invoice, ExitSlipData, AppUser, StoreSettings } from '../types';
 import { getCurrentJalaliDate, getCurrentJalaliTime, toPersianDigits } from '../utils/jalali';
 import {
   Truck,
@@ -15,7 +15,9 @@ import {
   PackageCheck,
   Sparkles,
   ArrowRight,
-  Printer
+  Printer,
+  Warehouse,
+  MapPin
 } from 'lucide-react';
 import { IranPlatePicker } from './IranPlatePicker';
 
@@ -23,6 +25,7 @@ interface ExitSlipDeliveryModalProps {
   isOpen: boolean;
   invoice: Invoice | null;
   slipLog: ExitSlipData;
+  settings?: StoreSettings;
   currentUser?: AppUser;
   onClose: () => void;
   onSave: (deliveryData: {
@@ -49,11 +52,15 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
   isOpen,
   invoice,
   slipLog,
+  settings,
   currentUser,
   onClose,
   onSave,
   onSaveAndPrint,
 }) => {
+  const originWarehouseName = settings?.originWarehouseName || 
+    settings?.warehouses?.find(w => w.id === settings?.defaultWarehouseId)?.name || 
+    'انبار مرکزی سپهر';
   const [isDelivered, setIsDelivered] = useState<boolean>(slipLog.isDelivered ?? false);
   const [receiverName, setReceiverName] = useState<string>(slipLog.receiverName || '');
   const [receiverPhone, setReceiverPhone] = useState<string>(slipLog.receiverPhone || '');
@@ -126,13 +133,19 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
               <h3 className="font-bold text-sm sm:text-base">
                 ثبت مشخصات بارگیری و تایید تحویل بار
               </h3>
-              <p className="text-xs text-slate-300 mt-0.5">
-                حواله خروج انبار شماره{' '}
-                <span className="font-bold text-blue-300 font-['Vazirmatn']">
-                  {toPersianDigits(invoice.invoiceNumber)}
-                </span>{' '}
-                - تحویل به{' '}
-                <span className="font-semibold text-white">{invoice.customerName}</span>
+              <p className="text-xs text-slate-300 mt-0.5 flex flex-wrap items-center gap-1.5">
+                <span>حواله خروج شماره <strong className="text-blue-300 font-['Vazirmatn']">{toPersianDigits(invoice.invoiceNumber)}</strong></span>
+                <span>•</span>
+                <span>تحویل به <strong className="text-white">{invoice.customerName}</strong></span>
+                {originWarehouseName && (
+                  <>
+                    <span>•</span>
+                    <span className="text-amber-300 font-medium flex items-center gap-1">
+                      <Warehouse className="w-3 h-3 text-amber-400" />
+                      انبار مبدأ: {originWarehouseName}
+                    </span>
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -221,9 +234,12 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
                 {toPersianDigits(totalUnits)} واحد فیزیکی
               </strong>
             </div>
-            <div className="text-slate-500">
-              تاریخ صدور فاکتور:{' '}
-              <span className="font-['Vazirmatn'] text-slate-700">{toPersianDigits(invoice.date)}</span>
+            <div className="flex items-center gap-1.5 text-slate-600 font-medium">
+              <Warehouse className="w-3.5 h-3.5 text-slate-400" />
+              <span>انبار مبدأ: <strong className="text-slate-800">{originWarehouseName}</strong></span>
+              {settings?.originWarehouseCode && (
+                <span className="text-[10px] text-slate-400 font-mono">[{toPersianDigits(settings.originWarehouseCode)}]</span>
+              )}
             </div>
           </div>
 

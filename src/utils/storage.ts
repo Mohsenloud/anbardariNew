@@ -577,11 +577,16 @@ const initialSettings: StoreSettings = {
   eitaaChannel: '',
   baleChannel: '',
   warehouses: [
-    { id: 'wh-1', name: 'انبار مرکزی', isDefault: true },
-    { id: 'wh-2', name: 'انبار شعبه ۱', isDefault: false },
-    { id: 'wh-3', name: 'انبار ضایعات و رزرو', isDefault: false },
+    { id: 'wh-1', name: 'انبار مرکزی', code: 'WH-01', address: 'تهران، جاده مخصوص، کیلومتر ۱۲، سوله شماره ۴', phone: '۰۲۱-۵۵۴۴۳۳۲۲', managerName: 'مرتضی اکبری', isDefault: true },
+    { id: 'wh-2', name: 'انبار شعبه ۱', code: 'WH-02', address: 'تهران، خیابان امیرکبیر، کوچه بهار، پلاک ۲۴', phone: '۰۲۱-۳۳۴۴۵۵۶۶', managerName: 'علی رضایی', isDefault: false },
+    { id: 'wh-3', name: 'انبار ضایعات و رزرو', code: 'WH-03', address: 'تهران، انتهای جاده قدیم، پلاک ۸', phone: '۰۲۱-۲۲۳۳۴۴۵۵', managerName: 'حسن مرادی', isDefault: false },
   ],
   defaultWarehouseId: 'wh-1',
+  originWarehouseName: 'انبار مرکزی سپهر',
+  originWarehouseCode: 'WH-01',
+  originWarehouseAddress: 'تهران، جاده مخصوص، کیلومتر ۱۲، خیابان بهار، سوله شماره ۴',
+  originWarehousePhone: '۰۲۱-۵۵۴۴۳۳۲۲',
+  originWarehouseManager: 'مرتضی اکبری (انباردار مرکزی)',
 };
 
 const initialActivityLogs: ActivityLog[] = [
@@ -1056,6 +1061,21 @@ export const StorageService = {
       if (!merged.warehouses || merged.warehouses.length === 0) {
         merged.warehouses = defaultWhs;
         merged.defaultWarehouseId = 'wh-1';
+      }
+      if (!merged.originWarehouseName) {
+        merged.originWarehouseName = initialSettings.originWarehouseName || 'انبار مرکزی سپهر';
+      }
+      if (!merged.originWarehouseCode) {
+        merged.originWarehouseCode = initialSettings.originWarehouseCode || 'WH-01';
+      }
+      if (!merged.originWarehouseAddress) {
+        merged.originWarehouseAddress = initialSettings.originWarehouseAddress || 'تهران، جاده مخصوص، کیلومتر ۱۲، خیابان بهار، سوله شماره ۴';
+      }
+      if (!merged.originWarehousePhone) {
+        merged.originWarehousePhone = initialSettings.originWarehousePhone || '۰۲۱-۵۵۴۴۳۳۲۲';
+      }
+      if (!merged.originWarehouseManager) {
+        merged.originWarehouseManager = initialSettings.originWarehouseManager || 'مرتضی اکبری (انباردار مرکزی)';
       }
       return merged;
     } catch {

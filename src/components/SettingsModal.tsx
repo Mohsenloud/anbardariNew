@@ -18,7 +18,12 @@ import {
   Landmark,
   ShieldCheck,
   Lock,
-  Activity
+  Activity,
+  Warehouse,
+  MapPin,
+  Phone,
+  UserCheck,
+  Hash
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -250,6 +255,132 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     value={formData.invoiceFooterText}
                     onChange={(e) => setFormData({ ...formData, invoiceFooterText: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Section: Origin Warehouse Settings (تنظیمات و مشخصات انبار مبدأ) */}
+            <div className="space-y-4 pt-4 border-t border-slate-200">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                  <Warehouse className="w-4 h-4 text-emerald-600" />
+                  <span>نام و مشخصات انبار مبدأ (حواله خروج کالا و بارگیری)</span>
+                </h4>
+                <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full font-bold border border-emerald-200/60">
+                  قابل تنظیم توسط مدیریت
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                مشخصات انبار مبدأ در سربرگ و بدنه برگه‌های خروج کالا، حواله‌های تحویل فیزیکی و متون ارسالی به رانندگان و انبارداران درج می‌شود.
+              </p>
+
+              {/* Warehouse Selection Helper (if warehouses exist) */}
+              {formData.warehouses && formData.warehouses.length > 0 && (
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                  <div className="text-xs">
+                    <span className="font-bold text-slate-700 block">انتخاب سریع از انبارهای تعریف‌شده:</span>
+                    <span className="text-[11px] text-slate-400">با انتخاب انبار، اطلاعات به فرم منتقل می‌شود</span>
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <select
+                      id="settings-select-origin-warehouse"
+                      value={formData.defaultWarehouseId || ''}
+                      onChange={(e) => {
+                        const selectedId = e.target.value;
+                        const wh = formData.warehouses?.find(w => w.id === selectedId);
+                        if (wh) {
+                          setFormData({
+                            ...formData,
+                            defaultWarehouseId: selectedId,
+                            originWarehouseName: wh.name,
+                            originWarehouseCode: wh.code || formData.originWarehouseCode || '',
+                            originWarehouseAddress: wh.address || formData.originWarehouseAddress || '',
+                            originWarehousePhone: wh.phone || formData.originWarehousePhone || '',
+                            originWarehouseManager: wh.managerName || formData.originWarehouseManager || '',
+                          });
+                        }
+                      }}
+                      className="w-full sm:w-56 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                    >
+                      {formData.warehouses.map((wh) => (
+                        <option key={wh.id} value={wh.id}>
+                          {wh.name} {wh.isDefault ? '(پیش‌فرض)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-medium text-slate-700 mb-1 text-xs">
+                    نام انبار مبدأ <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="settings-origin-warehouse-name"
+                    placeholder="مثال: انبار مرکزی سپهر"
+                    value={formData.originWarehouseName || ''}
+                    onChange={(e) => setFormData({ ...formData, originWarehouseName: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-bold text-slate-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-slate-700 mb-1 text-xs">
+                    کد یا شناسه انبار مبدأ
+                  </label>
+                  <input
+                    type="text"
+                    id="settings-origin-warehouse-code"
+                    placeholder="مثال: WH-01 یا کد انبار"
+                    value={formData.originWarehouseCode || ''}
+                    onChange={(e) => setFormData({ ...formData, originWarehouseCode: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono text-left"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-slate-700 mb-1 text-xs">
+                    شماره تماس / داخلی انبار مبدأ
+                  </label>
+                  <input
+                    type="text"
+                    id="settings-origin-warehouse-phone"
+                    placeholder="مثال: ۰۲۱-۵۵۴۴۳۳۲۲ یا شماره همراه انباردار"
+                    value={formData.originWarehousePhone || ''}
+                    onChange={(e) => setFormData({ ...formData, originWarehousePhone: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 dir-ltr text-right"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-slate-700 mb-1 text-xs">
+                    نام مسئول / متصدی انبار مبدأ
+                  </label>
+                  <input
+                    type="text"
+                    id="settings-origin-warehouse-manager"
+                    placeholder="مثال: مرتضی اکبری (سرپرست انبار)"
+                    value={formData.originWarehouseManager || ''}
+                    onChange={(e) => setFormData({ ...formData, originWarehouseManager: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block font-medium text-slate-700 mb-1 text-xs">
+                    نشانی و آدرس دقیق محل بارگیری انبار مبدأ
+                  </label>
+                  <textarea
+                    id="settings-origin-warehouse-address"
+                    rows={2}
+                    placeholder="نشانی فیزیکی، سوله، کوچه یا پلاک انبار مبدأ جهت درج در حواله بارگیری و راهنمای رانندگان"
+                    value={formData.originWarehouseAddress || ''}
+                    onChange={(e) => setFormData({ ...formData, originWarehouseAddress: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 resize-none"
                   />
                 </div>
               </div>

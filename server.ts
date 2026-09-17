@@ -205,6 +205,11 @@ const DEFAULT_INITIAL_DATA = {
     showLowStockAlerts: true,
     paperSize: 'a4',
     enableExitSlipPrint: true,
+    originWarehouseName: 'انبار مرکزی سپهر',
+    originWarehouseCode: 'WH-01',
+    originWarehouseAddress: 'تهران، جاده مخصوص، کیلومتر ۱۲، خیابان بهار، سوله شماره ۴',
+    originWarehousePhone: '۰۲۱-۵۵۴۴۳۳۲۲',
+    originWarehouseManager: 'مرتضی اکبری (انباردار مرکزی)',
   },
   users: [
     {

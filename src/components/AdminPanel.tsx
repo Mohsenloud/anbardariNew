@@ -6,11 +6,13 @@ import { exportInvoicesToCsv } from '../utils/csvExport';
 import { UsersManager } from './UsersManager';
 import { ActivityLogsViewer } from './ActivityLogsViewer';
 import { BackupManager } from './BackupManager';
+import { WarehouseSettingsManager } from './WarehouseSettingsManager';
 import {
   ShieldCheck,
   SlidersHorizontal,
   LayoutGrid,
   Boxes,
+  Warehouse,
   Users,
   BarChart3,
   ReceiptText,
@@ -83,7 +85,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const canAccessFullAdmin = !currentUser || currentUser.permissions.canAccessAdmin;
   const canManageUsers = !currentUser || currentUser.permissions.canManageUsers;
 
-  const [activeSection, setActiveSection] = useState<'overview' | 'invoices' | 'logs' | 'modules' | 'invoice' | 'templates' | 'store' | 'users' | 'data'>(
+  const [activeSection, setActiveSection] = useState<'overview' | 'invoices' | 'logs' | 'warehouses' | 'modules' | 'invoice' | 'templates' | 'store' | 'users' | 'data'>(
     canAccessFullAdmin ? 'overview' : 'users'
   );
   const [adminInvoiceSearch, setAdminInvoiceSearch] = useState('');
@@ -208,6 +210,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     ...(canAccessFullAdmin
       ? [
           { id: 'overview', label: 'داشبورد و وضعیت اجزا', icon: LayoutGrid },
+          { id: 'warehouses', label: 'تنظیمات و تعریف انبارها', icon: Warehouse },
           { id: 'invoices', label: 'لیست فاکتورها و خروجی CSV', icon: FileSpreadsheet },
           { id: 'logs', label: 'لاگ فعالیت و ردگیری رویدادها', icon: History },
           { id: 'modules', label: 'کنترل ماژول‌های سیستم', icon: SlidersHorizontal },
@@ -388,7 +391,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                 </div>
 
-                {/* Inventory Component */}
+                {/* Inventory & Warehouses Component */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
@@ -409,14 +412,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         : 'موجودی انبار متعادل'}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => onNavigateToTab('inventory')}
-                    className="mt-3 text-xs text-blue-700 font-bold hover:underline text-right flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>مدیریت کالا و انبار</span>
-                    <span>←</span>
-                  </button>
+                  <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => onNavigateToTab('inventory')}
+                      className="text-blue-700 font-bold hover:underline text-right flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>کاردکس کالا</span>
+                      <span>←</span>
+                    </button>
+                    <button
+                      type="button"
+                      id="admin-overview-warehouses-btn"
+                      onClick={() => setActiveSection('warehouses')}
+                      className="text-amber-800 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                      title="تنظیمات و تعریف انبارها در پنل مدیریت"
+                    >
+                      <Warehouse className="w-3.5 h-3.5 text-amber-600" />
+                      <span>تعریف انبارها</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Customers Component */}
@@ -790,6 +805,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <ActivityLogsViewer currentUser={currentUser} users={users} />
           )}
 
+          {/* WAREHOUSE SETTINGS & DEFINITIONS SECTION (تنظیمات و تعریف انبارها) */}
+          {activeSection === 'warehouses' && (
+            <WarehouseSettingsManager
+              settings={formData}
+              products={products}
+              movements={movements}
+              onSaveSettings={(newSettings) => {
+                setFormData(newSettings);
+                onSaveSettings(newSettings);
+                setSaveSuccess(true);
+                setTimeout(() => setSaveSuccess(false), 2500);
+              }}
+              onNavigateToTab={onNavigateToTab}
+            />
+          )}
+
           {/* 2. MODULES CONTROL (کنترل ماژول‌های سیستم) */}
           {activeSection === 'modules' && (
             <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
@@ -877,6 +908,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <p className="text-[11px] text-slate-500">
                       نمایش تب انبار در منوی اصلی، تعریف کالا، مدیریت موجودی، ورود و خروج کالا و گردش کالا.
                     </p>
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        id="modules-goto-warehouses-btn"
+                        onClick={() => setActiveSection('warehouses')}
+                        className="inline-flex items-center gap-1.5 text-[11px] text-amber-700 bg-amber-50 hover:bg-amber-100 font-bold px-2.5 py-1 rounded-lg border border-amber-200 transition-colors cursor-pointer"
+                      >
+                        <Warehouse className="w-3.5 h-3.5 text-amber-600" />
+                        <span>پیکربندی انبارها و انبار مبدأ حواله خروج</span>
+                        <span>←</span>
+                      </button>
+                    </div>
                   </div>
                   <button
                     type="button"

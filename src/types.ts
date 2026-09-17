@@ -112,6 +112,10 @@ export interface StockMovement {
 export interface WarehouseInfo {
   id: string;
   name: string;
+  code?: string;
+  address?: string;
+  phone?: string;
+  managerName?: string;
   isDefault?: boolean;
 }
 
@@ -171,6 +175,13 @@ export interface StoreSettings {
   baleChannel?: string; // شناسه یا کانال بله
   warehouses?: WarehouseInfo[]; // مشخصات انبارها
   defaultWarehouseId?: string; // شناسه انبار پیش‌فرض
+
+  // تنظیمات و مشخصات انبار مبدأ (جهت ثبت در حواله خروج، بارگیری و تحویل فیزیکی)
+  originWarehouseName?: string; // نام انبار مبدأ
+  originWarehouseCode?: string; // کد یا شناسه انبار مبدأ
+  originWarehouseAddress?: string; // نشانی و آدرس دقیق انبار مبدأ
+  originWarehousePhone?: string; // شماره تلفن / داخلی انبار مبدأ
+  originWarehouseManager?: string; // نام مدیر، سرپرست یا انباردار انبار مبدأ
 }
 
 export type UserRole = 'admin' | 'cashier' | 'warehouse' | 'accountant' | 'custom';
