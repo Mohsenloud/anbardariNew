@@ -256,3 +256,94 @@ export function getPostgresStatus() {
     connected: isConnected,
   };
 }
+
+// Live diagnostics and connection test for Admin Panel
+export async function testPostgresConnectionDetails(): Promise<{
+  success: boolean;
+  connected: boolean;
+  database: string;
+  host: string;
+  user: string;
+  serverTime?: string;
+  version?: string;
+  dbSizeBytes?: number;
+  tablesCount?: number;
+  latencyMs?: number;
+  message: string;
+  guide?: string;
+}> {
+  const currentDb = process.env.PGDATABASE || 'mana_db';
+  const currentHost = process.env.PGHOST || 'postgres';
+  const currentUser = process.env.PGUSER || 'mana_user';
+
+  const startTime = Date.now();
+  const currentPool = getPostgresPool();
+  if (!currentPool) {
+    return {
+      success: false,
+      connected: false,
+      database: currentDb,
+      host: currentHost,
+      user: currentUser,
+      message: 'تنظیمات کانکشن‌پول در دسترس نیست یا مقداردهی اولیه انجام نشده است.',
+      guide: 'بررسی کنید آیا متغیرهای محیطی یا کانتینر postgres در docker-compose فعال است یا خیر.',
+    };
+  }
+
+  let client: pg.PoolClient | null = null;
+  try {
+    client = await currentPool.connect();
+    const latencyMs = Date.now() - startTime;
+    isConnected = true;
+
+    // Run diagnostics queries
+    const timeRes = await client.query('SELECT NOW() as now_time, version() as pg_version, current_database() as db_name');
+    
+    // Count tables in mana_db
+    let tablesCount = 0;
+    try {
+      const tablesRes = await client.query(
+        "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"
+      );
+      tablesCount = parseInt(tablesRes.rows[0]?.count || '0', 10);
+    } catch {}
+
+    // Get size if permitted
+    let dbSizeBytes = 0;
+    try {
+      const sizeRes = await client.query(`SELECT pg_database_size(current_database()) as size`);
+      dbSizeBytes = parseInt(sizeRes.rows[0]?.size || '0', 10);
+    } catch {}
+
+    return {
+      success: true,
+      connected: true,
+      database: timeRes.rows[0]?.db_name || currentDb,
+      host: currentHost,
+      user: currentUser,
+      serverTime: timeRes.rows[0]?.now_time,
+      version: timeRes.rows[0]?.pg_version?.split(' ')?.[0] + ' ' + (timeRes.rows[0]?.pg_version?.split(' ')?.[1] || ''),
+      dbSizeBytes,
+      tablesCount,
+      latencyMs,
+      message: `ارتباط با دیتابیس PostgreSQL (${currentDb}) با موفقیت برقرار است و پینگ سرور ${latencyMs} میلی‌ثانیه است.`,
+    };
+  } catch (err: any) {
+    isConnected = false;
+    const latencyMs = Date.now() - startTime;
+    return {
+      success: false,
+      connected: false,
+      database: currentDb,
+      host: currentHost,
+      user: currentUser,
+      latencyMs,
+      message: `خطای عدم امکان اتصال به PostgreSQL (${err.code || err.message})`,
+      guide: 'در محیط لوکال یا سرور، اطمینان حاصل کنید دستور docker compose up -d اجرا شده و کانتینر mana_postgres_db در حال اجراست.',
+    };
+  } finally {
+    if (client) {
+      client.release();
+    }
+  }
+}

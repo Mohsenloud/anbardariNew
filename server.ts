@@ -11,6 +11,7 @@ import {
   loadStateFromPostgres,
   saveStateToPostgres,
   getPostgresStatus,
+  testPostgresConnectionDetails,
 } from './server/db';
 
 const app = express();
@@ -640,6 +641,78 @@ app.get('/api/health', (req, res) => {
       lastBackup: backups[0] || null,
     },
   });
+});
+
+// 1.1 Detailed Database Diagnostic & Status
+app.get('/api/database/status', async (req, res) => {
+  try {
+    const diag = await testPostgresConnectionDetails();
+    const exists = fs.existsSync(DB_FILE);
+    let localFileStats = { exists, sizeBytes: 0, path: DB_FILE };
+    if (exists) {
+      try {
+        const s = fs.statSync(DB_FILE);
+        localFileStats.sizeBytes = s.size;
+      } catch {}
+    }
+
+    const backups = getBackupsList();
+
+    res.json({
+      success: true,
+      postgres: diag,
+      localFile: localFileStats,
+      backupsCount: backups.length,
+      serverTime: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 1.2 Test PostgreSQL Connection manually on demand
+app.post('/api/database/test', async (req, res) => {
+  try {
+    const result = await testPostgresConnectionDetails();
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 1.3 Force Synchronization from Local to PostgreSQL or vice versa
+app.post('/api/database/force-sync', async (req, res) => {
+  try {
+    const localData = readDatabase();
+    const pgStatus = getPostgresStatus();
+    
+    if (!pgStatus.connected) {
+      // Try testing connection
+      const test = await testPostgresConnectionDetails();
+      if (!test.connected) {
+        return res.status(503).json({
+          success: false,
+          message: 'امکان اتصال به پایگاه داده PostgreSQL وجود ندارد. لطفاً از روشن بودن کانتینر دیتابیس اطمینان حاصل کنید.',
+          details: test,
+        });
+      }
+    }
+
+    const saved = await saveStateToPostgres(localData);
+    if (saved) {
+      return res.json({
+        success: true,
+        message: 'کلیه اطلاعات سیستم با موفقیت در جداول پایگاه‌داده PostgreSQL (mana_db) همگام‌سازی و ذخیره شد.',
+      });
+    } else {
+      return res.status(500).json({
+        success: false,
+        message: 'خطا در ثبت اطلاعات در دیتابیس PostgreSQL.',
+      });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 // 2. Fetch all shared data (Central synchronization with PostgreSQL support)

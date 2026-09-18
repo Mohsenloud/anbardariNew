@@ -818,6 +818,37 @@ export const StorageService = {
     }
   },
 
+  // -------------------------------------------------------------
+  // POSTGRESQL & DATABASE STATUS / TEST APIS
+  // -------------------------------------------------------------
+  async getDatabaseStatus(): Promise<any> {
+    try {
+      const res = await fetch('/api/database/status');
+      if (!res.ok) return { success: false, message: 'عدم پاسخگویی سرور' };
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در برقراری ارتباط با سرور' };
+    }
+  },
+
+  async testDatabaseConnection(): Promise<any> {
+    try {
+      const res = await fetch('/api/database/test', { method: 'POST' });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در تست اتصال دیتابیس' };
+    }
+  },
+
+  async forceSyncToPostgres(): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await fetch('/api/database/force-sync', { method: 'POST' });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در اجرای همگام‌سازی با PostgreSQL' };
+    }
+  },
+
   getProducts(): Product[] {
     const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
     let list: Product[] = [];

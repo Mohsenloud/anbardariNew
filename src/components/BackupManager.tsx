@@ -17,7 +17,15 @@ import {
   Lock,
   Archive,
   Layers,
-  HardDrive
+  HardDrive,
+  Terminal,
+  Copy,
+  Check,
+  Server,
+  Activity,
+  Sparkles,
+  Cpu,
+  ExternalLink,
 } from 'lucide-react';
 
 interface BackupManagerProps {
@@ -38,6 +46,13 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [confirmRestoreFile, setConfirmRestoreFile] = useState<ServerBackupInfo | null>(null);
 
+  // PostgreSQL & Database Diagnostics State
+  const [dbDiag, setDbDiag] = useState<any>(null);
+  const [testingDb, setTestingDb] = useState<boolean>(false);
+  const [syncingDb, setSyncingDb] = useState<boolean>(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [showTerminalGuide, setShowTerminalGuide] = useState<boolean>(false);
+
   // Load backups on mount
   const fetchBackups = async () => {
     setLoading(true);
@@ -56,13 +71,70 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
     }
   };
 
+  // Fetch PostgreSQL & database diagnostics
+  const fetchDbDiag = async () => {
+    try {
+      const res = await StorageService.getDatabaseStatus();
+      if (res && res.success) {
+        setDbDiag(res);
+      }
+    } catch {
+      // Ignore
+    }
+  };
+
   useEffect(() => {
     fetchBackups();
+    fetchDbDiag();
   }, []);
 
   const showNotification = (type: 'success' | 'error', text: string) => {
     setStatusMessage({ type, text });
     setTimeout(() => setStatusMessage(null), 5000);
+  };
+
+  // Copy command to clipboard with visual feedback
+  const handleCopyCommand = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2500);
+  };
+
+  // Live Test Database Connection
+  const handleTestDatabaseConnection = async () => {
+    setTestingDb(true);
+    try {
+      const res = await StorageService.testDatabaseConnection();
+      if (res && res.connected) {
+        showNotification('success', res.message || 'اتصال به دیتابیس PostgreSQL (mana_db) با موفقیت تأیید شد.');
+      } else {
+        showNotification('error', (res && res.message) || 'عدم دسترسی به سرور پایگاه داده PostgreSQL.');
+      }
+      await fetchDbDiag();
+    } catch {
+      showNotification('error', 'خطا در برقراری ارتباط با سرور.');
+    } finally {
+      setTestingDb(false);
+    }
+  };
+
+  // Force sync local state into PostgreSQL
+  const handleForceSyncDatabase = async () => {
+    setSyncingDb(true);
+    try {
+      const res = await StorageService.forceSyncToPostgres();
+      if (res && res.success) {
+        showNotification('success', res.message || 'کلیه اطلاعات با موفقیت در دیتابیس PostgreSQL همگام‌سازی شد.');
+        await fetchDbDiag();
+        await fetchBackups();
+      } else {
+        showNotification('error', (res && res.message) || 'خطا در ثبت اطلاعات در دیتابیس PostgreSQL.');
+      }
+    } catch {
+      showNotification('error', 'خطا در ارتباط با سرور.');
+    } finally {
+      setSyncingDb(false);
+    }
   };
 
   // Handle manual backup creation
@@ -266,6 +338,230 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
           </button>
         </div>
       )}
+
+      {/* 0. POSTGRESQL (mana_db) ACCESS & LIVE DIAGNOSTICS CARD */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 sm:p-6 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center shrink-0">
+              <Database className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-black text-slate-900">
+                  وضعیت و پیکربندی پایگاه‌داده مرکزی (PostgreSQL - mana_db)
+                </h3>
+                {dbDiag?.postgres?.connected ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    متصل به mana_db
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    ذخیره‌سازی محلی (فایل پیش‌فرض)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                مدیریت نحوه اتصال، پارامترهای کانکشن‌پول، همگام‌سازی خودکار و دستورات مدیریتی پایگاه‌داده در سرور
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={handleTestDatabaseConnection}
+              disabled={testingDb}
+              className="py-2 px-3 bg-blue-50 hover:bg-blue-100 active:scale-95 text-blue-800 border border-blue-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Activity className={`w-3.5 h-3.5 ${testingDb ? 'animate-spin' : ''}`} />
+              <span>{testingDb ? 'در حال تست...' : 'تست زنده اتصال'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleForceSyncDatabase}
+              disabled={syncingDb}
+              className="py-2 px-3 bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="همگام‌سازی آنی تمام رکوردها با دیتابیس PostgreSQL"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${syncingDb ? 'animate-spin' : ''}`} />
+              <span>{syncingDb ? 'در حال ذخیره‌سازی...' : 'همگام‌سازی فوری'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowTerminalGuide(!showTerminalGuide)}
+              className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <Terminal className="w-3.5 h-3.5 text-slate-600" />
+              <span>{showTerminalGuide ? 'بستن دستورات ترمینال' : 'دستورات داکر و شل'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Database Metric Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl">
+            <span className="text-[10px] text-slate-500 font-bold block mb-1">نام پایگاه‌داده (Database)</span>
+            <span className="font-mono text-xs font-bold text-slate-800">
+              {dbDiag?.postgres?.database || 'mana_db'}
+            </span>
+          </div>
+
+          <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl">
+            <span className="text-[10px] text-slate-500 font-bold block mb-1">کاربر دیتابیس (User)</span>
+            <span className="font-mono text-xs font-bold text-slate-800">
+              {dbDiag?.postgres?.user || 'mana_user'}
+            </span>
+          </div>
+
+          <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl">
+            <span className="text-[10px] text-slate-500 font-bold block mb-1">میزبان و پورت (Host : Port)</span>
+            <span className="font-mono text-xs font-bold text-slate-800">
+              {dbDiag?.postgres?.host || 'postgres'}:5432
+            </span>
+          </div>
+
+          <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl">
+            <span className="text-[10px] text-slate-500 font-bold block mb-1">زمان پاسخ و پینگ (Latency)</span>
+            <span className="font-mono text-xs font-bold text-slate-800">
+              {dbDiag?.postgres?.latencyMs !== undefined
+                ? `${toPersianDigits(dbDiag.postgres.latencyMs)} میلی‌ثانیه`
+                : 'آفلاین'}
+            </span>
+          </div>
+        </div>
+
+        {/* Diagnostic message or status details */}
+        {dbDiag?.postgres?.message && (
+          <div className={`p-3 rounded-xl text-xs flex items-center justify-between gap-2 ${
+            dbDiag.postgres.connected
+              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+              : 'bg-slate-100 text-slate-700 border border-slate-200'
+          }`}>
+            <div className="flex items-center gap-2">
+              {dbDiag.postgres.connected ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <HardDrive className="w-4 h-4 text-slate-500 shrink-0" />
+              )}
+              <span>{dbDiag.postgres.message}</span>
+            </div>
+            {dbDiag.postgres.connected && dbDiag.postgres.tablesCount !== undefined && (
+              <span className="font-bold text-[11px] bg-emerald-100 px-2 py-0.5 rounded-full text-emerald-900 shrink-0">
+                {toPersianDigits(dbDiag.postgres.tablesCount)} جدول فعال
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Collapsible Terminal & Docker Commands Guide */}
+        {showTerminalGuide && (
+          <div className="p-4 bg-slate-900 rounded-xl text-slate-100 space-y-4 border border-slate-800 text-xs animate-in fade-in">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                <Terminal className="w-4 h-4" />
+                <span>دستورات کاربردی ترمینال سرور برای پایگاه‌داده PostgreSQL (محیط داکر)</span>
+              </div>
+              <span className="text-[10px] text-slate-400">کلیک روی دکمه برای کپی</span>
+            </div>
+
+            <div className="space-y-3">
+              {/* Command 1: Interactive psql */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-slate-300 font-bold text-[11px]">
+                  <span>۱. ورود مستقیم به خط فرمان PostgreSQL (psql) داخل کانتینر:</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleCopyCommand(
+                        'docker exec -it mana_postgres_db psql -U mana_user -d mana_db',
+                        'cmd1'
+                      )
+                    }
+                    className="p-1 px-2 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-emerald-400 flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    {copiedKey === 'cmd1' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedKey === 'cmd1' ? 'کپی شد' : 'کپی دستور'}</span>
+                  </button>
+                </div>
+                <div className="p-2.5 bg-black/70 rounded-lg font-mono text-[11px] text-emerald-300 text-left overflow-x-auto" dir="ltr">
+                  docker exec -it mana_postgres_db psql -U mana_user -d mana_db
+                </div>
+              </div>
+
+              {/* Command 2: pg_dump backup */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-slate-300 font-bold text-[11px]">
+                  <span>۲. پشتیبان‌گیری کامل و خروجی SQL از mana_db:</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleCopyCommand(
+                        'docker exec -t mana_postgres_db pg_dump -U mana_user mana_db > /var/backups/mana_db_$(date +%Y%m%d).sql',
+                        'cmd2'
+                      )
+                    }
+                    className="p-1 px-2 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-emerald-400 flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    {copiedKey === 'cmd2' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedKey === 'cmd2' ? 'کپی شد' : 'کپی دستور'}</span>
+                  </button>
+                </div>
+                <div className="p-2.5 bg-black/70 rounded-lg font-mono text-[11px] text-emerald-300 text-left overflow-x-auto" dir="ltr">
+                  docker exec -t mana_postgres_db pg_dump -U mana_user mana_db &gt; /var/backups/mana_db_$(date +%Y%m%d).sql
+                </div>
+              </div>
+
+              {/* Command 3: restore sql */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-slate-300 font-bold text-[11px]">
+                  <span>۳. بازیابی (Restore) فایل بکاپ SQL در دیتابیس mana_db:</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleCopyCommand(
+                        'cat /var/backups/your_backup.sql | docker exec -i mana_postgres_db psql -U mana_user -d mana_db',
+                        'cmd3'
+                      )
+                    }
+                    className="p-1 px-2 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-emerald-400 flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    {copiedKey === 'cmd3' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedKey === 'cmd3' ? 'کپی شد' : 'کپی دستور'}</span>
+                  </button>
+                </div>
+                <div className="p-2.5 bg-black/70 rounded-lg font-mono text-[11px] text-emerald-300 text-left overflow-x-auto" dir="ltr">
+                  cat /var/backups/your_backup.sql | docker exec -i mana_postgres_db psql -U mana_user -d mana_db
+                </div>
+              </div>
+
+              {/* Command 4: logs */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-slate-300 font-bold text-[11px]">
+                  <span>۴. مشاهده زنده لاگ‌های کانتینر PostgreSQL:</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleCopyCommand('docker compose logs -f postgres', 'cmd4')
+                    }
+                    className="p-1 px-2 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-emerald-400 flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    {copiedKey === 'cmd4' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedKey === 'cmd4' ? 'کپی شد' : 'کپی دستور'}</span>
+                  </button>
+                </div>
+                <div className="p-2.5 bg-black/70 rounded-lg font-mono text-[11px] text-emerald-300 text-left overflow-x-auto" dir="ltr">
+                  docker compose logs -f postgres
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* 1. Automated Health & Hardening Banner */}
       <div className="bg-gradient-to-br from-emerald-900 to-slate-900 rounded-2xl p-5 sm:p-6 text-white shadow-sm border border-emerald-800/40 relative overflow-hidden">

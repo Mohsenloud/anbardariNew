@@ -223,7 +223,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       ? [{ id: 'users', label: 'کاربران و سطوح دسترسی', icon: UserCheck }]
       : []),
     ...(canAccessFullAdmin
-      ? [{ id: 'data', label: 'مرکز داده و پشتیبان‌گیری', icon: Database }]
+      ? [{ id: 'data', label: 'پایگاه داده، بکاپ و بازیابی', icon: Database }]
       : []),
   ];
 
