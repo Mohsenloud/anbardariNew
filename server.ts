@@ -6,6 +6,12 @@ import crypto from 'crypto';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { createServer as createViteServer } from 'vite';
+import {
+  testAndInitPostgres,
+  loadStateFromPostgres,
+  saveStateToPostgres,
+  getPostgresStatus,
+} from './server/db';
 
 const app = express();
 const PORT = 3000;
@@ -604,7 +610,7 @@ function writeDatabase(data: any, allowAutoSnapshot = true): boolean {
 // REST API ENDPOINTS
 // -------------------------------------------------------------
 
-// 1. Health check & status with backup metrics
+// 1. Health check & status with backup metrics & PostgreSQL status
 app.get('/api/health', (req, res) => {
   const exists = fs.existsSync(DB_FILE);
   let dbStats = { exists, sizeBytes: 0, revision: 1, checksum: '' };
@@ -619,6 +625,7 @@ app.get('/api/health', (req, res) => {
   }
 
   const backups = getBackupsList();
+  const pgStatus = getPostgresStatus();
 
   res.json({
     status: 'ok',
@@ -626,6 +633,7 @@ app.get('/api/health', (req, res) => {
     serverTime: new Date().toISOString(),
     dataDir: DATA_DIR,
     database: dbStats,
+    postgres: pgStatus,
     backups: {
       total: backups.length,
       autoBackupIntervalHours: 4,
@@ -634,13 +642,35 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// 2. Fetch all shared data (Central synchronization)
-app.get('/api/db', (req, res) => {
+// 2. Fetch all shared data (Central synchronization with PostgreSQL support)
+app.get('/api/db', async (req, res) => {
   try {
+    // 1. First attempt to fetch persistent data from PostgreSQL (mana_db)
+    const pgData = await loadStateFromPostgres();
+    if (pgData && typeof pgData === 'object' && Array.isArray(pgData.products)) {
+      return res.json({
+        success: true,
+        data: pgData,
+        source: 'postgresql',
+        database: 'mana_db',
+        serverTime: new Date().toISOString(),
+      });
+    }
+
+    // 2. Fallback to local hardened JSON file
     const data = readDatabase();
+
+    // If PostgreSQL is connected but table was just created empty, seed initial data to mana_db
+    if (getPostgresStatus().connected) {
+      saveStateToPostgres(data).catch((e) => {
+        console.warn('[PostgreSQL Initial Sync Warning]:', e.message);
+      });
+    }
+
     res.json({
       success: true,
       data,
+      source: 'local-file',
       serverTime: new Date().toISOString(),
     });
   } catch (error: any) {
@@ -648,8 +678,8 @@ app.get('/api/db', (req, res) => {
   }
 });
 
-// 3. Save or update database (Hardened with validation, rate-limiting and anti-pollution)
-app.post('/api/db', dbWriteLimiter, (req, res) => {
+// 3. Save or update database (Dual persistence: PostgreSQL mana_db + Local Snapshot)
+app.post('/api/db', dbWriteLimiter, async (req, res) => {
   try {
     const incomingData = req.body;
     
@@ -668,15 +698,31 @@ app.post('/api/db', dbWriteLimiter, (req, res) => {
       }
     }
 
-    const currentDb = readDatabase();
+    const currentDb = (await loadStateFromPostgres()) || readDatabase();
+    const currentRev = typeof currentDb.revision === 'number' ? currentDb.revision : 1;
+    const nowIso = new Date().toISOString();
+    
     const updatedDb = {
       ...currentDb,
       ...incomingData,
-      updatedAt: new Date().toISOString(),
+      revision: currentRev + 1,
+      updatedAt: nowIso,
     };
 
-    const success = writeDatabase(updatedDb, true);
-    if (!success) {
+    // Calculate checksum
+    const rawContent = JSON.stringify(updatedDb, null, 2);
+    updatedDb.checksum = crypto.createHash('sha256').update(rawContent).digest('hex');
+
+    // Dual-write: write to local file snapshot
+    const successLocal = writeDatabase(updatedDb, true);
+
+    // Write to PostgreSQL mana_db
+    let pgSaved = false;
+    if (getPostgresStatus().connected) {
+      pgSaved = await saveStateToPostgres(updatedDb);
+    }
+
+    if (!successLocal && !pgSaved) {
       return res.status(500).json({ success: false, message: 'خطا در ذخیره‌سازی داده‌ها در سرور' });
     }
 
@@ -685,7 +731,12 @@ app.post('/api/db', dbWriteLimiter, (req, res) => {
       revision: updatedDb.revision,
       checksum: updatedDb.checksum,
       updatedAt: updatedDb.updatedAt,
-      message: 'داده‌ها با موفقیت در پایگاه‌داده مرکزی سرور ذخیره شدند.',
+      storage: {
+        local: successLocal,
+        postgresql: pgSaved,
+        database: 'mana_db',
+      },
+      message: 'داده‌ها با موفقیت در پایگاه‌داده ذخیره شدند.',
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -930,6 +981,13 @@ app.get('/api/backup', (req, res) => {
 // VITE OR STATIC CLIENT SERVING
 // -------------------------------------------------------------
 async function startServer() {
+  // Test and initialize PostgreSQL if configured
+  try {
+    await testAndInitPostgres();
+  } catch (err: any) {
+    console.warn('[PostgreSQL Bootstrap Warning]:', err.message);
+  }
+
   const server = http.createServer(app);
 
   if (process.env.NODE_ENV !== 'production') {

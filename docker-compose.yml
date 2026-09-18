@@ -1,17 +1,56 @@
 version: '3.8'
 
 services:
-  sepehr_invoice:
+  # ۱. سرویس پایگاه‌داده PostgreSQL (mana_db)
+  postgres:
+    image: postgres:16-alpine
+    container_name: mana_postgres_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mana_db
+      POSTGRES_USER: mana_user
+      POSTGRES_PASSWORD: ManaSecurePass_2026!
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      # ذخیره‌سازی همیشگی و دائمی داده‌های PostgreSQL روی سرور شما
+      - postgres_data:/var/lib/postgresql/data
+      # ساخت خودکار جداول mana_db در اولین اجرا
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      # فقط جهت دسترسی داخلی؛ در صورت تمایل به اتصال مستقیم پورت 5432 باز می‌شود
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mana_user -d mana_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ۲. سرویس وب‌اپلیکیشن (فرانت‌انت + بک‌اند Express)
+  app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: sepehr_invoice_app
+    container_name: mana_factor_app
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "3000:3000"
     volumes:
-      # ذخیره دائمی دیتابیس در پوشه data سرور شما (ماندگاری ۱۰۰٪ حتی پس از خاموش شدن یا آپدیت کانتینر)
+      # بکاپ‌ها و اسنپ‌شات‌های محلی
       - ./data:/app/data
     environment:
       - NODE_ENV=production
+      - PORT=3000
       - DATA_DIR=/app/data
+      - DATABASE_URL=postgresql://mana_user:ManaSecurePass_2026!@postgres:5432/mana_db
+      - PGDATABASE=mana_db
+      - PGUSER=mana_user
+      - PGPASSWORD=ManaSecurePass_2026!
+      - PGHOST=postgres
+      - PGPORT=5432
+
+volumes:
+  postgres_data:
+    driver: local
