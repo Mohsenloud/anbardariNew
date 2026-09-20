@@ -262,66 +262,71 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
 
           {/* Fields Grid */}
           <div className="space-y-4">
-            {/* 1. Receiver / Driver Name */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="font-bold text-slate-800 flex items-center gap-1.5">
-                  <User className="w-4 h-4 text-slate-500" />
-                  <span>نام و مشخصات تحویل‌گیرنده یا راننده</span>
-                  <span className="text-rose-500">*</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setReceiverName(invoice.customerName)}
-                  className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center gap-1"
-                >
-                  <Sparkles className="w-3 h-3 text-blue-500" />
-                  <span>درج خودکار نام خریدار ({invoice.customerName})</span>
-                </button>
-              </div>
-              <input
-                type="text"
-                id="receiver-name-input"
-                placeholder="مثال: رضا احمدی (راننده باربری) یا نام مشتری"
-                value={receiverName}
-                onChange={(e) => {
-                  setReceiverName(e.target.value);
-                  if (errorMsg) setErrorMsg(null);
-                }}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-slate-900"
-              />
-            </div>
-
-            {/* 2. Receiver Phone */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="font-bold text-slate-800 flex items-center gap-1.5">
-                  <Phone className="w-4 h-4 text-slate-500" />
-                  <span>شماره تماس تحویل‌گیرنده یا راننده</span>
-                </label>
-                {invoice.customerPhone && (
+            {/* 1 & 2. Receiver Name and Phone (Compact 2-Column Grid) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-slate-500" />
+                    <span>تحویل‌گیرنده / راننده</span>
+                    <span className="text-rose-500">*</span>
+                  </label>
                   <button
                     type="button"
-                    onClick={() => setReceiverPhone(invoice.customerPhone || '')}
-                    className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center gap-1"
+                    onClick={() => setReceiverName(invoice.customerName)}
+                    className="text-[10px] text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center gap-0.5"
                   >
-                    <span>درج شماره خریدار ({toPersianDigits(invoice.customerPhone)})</span>
+                    <Sparkles className="w-3 h-3 text-blue-500" />
+                    <span>درج نام خریدار</span>
                   </button>
-                )}
+                </div>
+                <input
+                  type="text"
+                  id="receiver-name-input"
+                  placeholder="مثال: رضا احمدی یا نام خریدار"
+                  value={receiverName}
+                  onChange={(e) => {
+                    setReceiverName(e.target.value);
+                    if (errorMsg) setErrorMsg(null);
+                  }}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-xs sm:text-sm font-medium text-slate-900"
+                />
               </div>
-              <input
-                type="text"
-                id="receiver-phone-input"
-                dir="ltr"
-                placeholder="۰۹۱۲۳۴۵۶۷۸۹"
-                value={receiverPhone}
-                onChange={(e) => setReceiverPhone(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-['Vazirmatn'] text-left text-slate-900"
-              />
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-slate-500" />
+                    <span>شماره تماس راننده / تحویل‌گیرنده</span>
+                  </label>
+                  {invoice.customerPhone && (
+                    <button
+                      type="button"
+                      onClick={() => setReceiverPhone(invoice.customerPhone || '')}
+                      className="text-[10px] text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                    >
+                      تلفن خریدار ({toPersianDigits(invoice.customerPhone)})
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  id="receiver-phone-input"
+                  dir="ltr"
+                  placeholder="۰۹۱۲۳۴۵۶۷۸۹"
+                  value={receiverPhone}
+                  onChange={(e) => setReceiverPhone(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-xs sm:text-sm font-['Vazirmatn'] text-left text-slate-900"
+                />
+              </div>
             </div>
 
             {/* 3. Vehicle Specifications & Plate (Selectable Fields) */}
             <div>
+              <label className="block text-xs font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                <Truck className="w-3.5 h-3.5 text-blue-600" />
+                <span>مشخصات ماشین و پلاک ملی حمل‌کننده:</span>
+              </label>
               <IranPlatePicker
                 value={vehicleInfo}
                 onChange={(formatted) => setVehicleInfo(formatted)}

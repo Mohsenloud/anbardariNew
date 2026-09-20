@@ -92,7 +92,7 @@ export interface Invoice {
   updatedAt?: string; // تاریخ آخرین ویرایش فاکتور
 }
 
-export type StockMovementType = 'sale' | 'purchase' | 'adjustment' | 'return';
+export type StockMovementType = 'sale' | 'purchase' | 'adjustment' | 'return' | 'direct_out' | 'direct_in';
 
 export interface StockMovement {
   id: string;
@@ -357,5 +357,86 @@ export interface ServerBackupInfo {
     inboundReceiptsCount: number;
   };
 }
+
+// ----------------------------------------------------
+// ورود و خروج مستقیم انبار بدون فاکتور (امانی، تعمیرات، سرویس، مصرف داخلی)
+// ----------------------------------------------------
+
+export type DirectTransferType = 
+  | 'repair' // اعزام به تعمیرگاه و سرویس
+  | 'temporary_loan' // امانی یا تست نزد مشتری/همکار
+  | 'internal_use' // مصرف داخلی در کارگاه یا شرکت
+  | 'sample' // نمونه کالا
+  | 'other_out'; // سایر خروج‌های مستقیم بدون فاکتور
+
+export type DirectTransferStatus = 
+  | 'dispatched' // خارج شده از انبار (دست تعمیرکار یا امانت‌گیرنده)
+  | 'partially_returned' // بخشی از اقلام بازگشته است
+  | 'returned' // به طور کامل به انبار بازگشت
+  | 'completed_no_return'; // مختومه (مصرف شد یا نیاز به برگشت ندارد)
+
+export interface DirectTransferItem {
+  id: string;
+  productId: string;
+  productName: string;
+  productCode: string;
+  variantId?: string;
+  variantName?: string;
+  unit: string;
+  quantity: number; // تعداد خارج شده
+  returnedQuantity: number; // تعداد تا کنون بازگشته
+  serialNumber?: string; // شماره سریال، کد پلاک دستگاه، مدل
+  notes?: string; // توضیحات یا عیب ظاهری دستگاه
+}
+
+export interface DirectTransferReturnRecord {
+  id: string;
+  returnedAt: string; // تاریخ و زمان بازگشت به انبار (مثلاً ۱۴۰۳/۰۶/۲۵ - ساعت ۱۶:۲۰)
+  receivedByWarehouseUser: string; // انباردار تحویل‌گیرنده در انبار
+  returnerName: string; // نام آورنده یا راننده دستگاه
+  returnerPhone?: string; // شماره تماس آورنده
+  returnVehicleInfo?: string; // مشخصات ماشین و پلاک آورنده (مثلاً وانت مزدا نقره‌ای - پلاک ...)
+  itemsReturned: {
+    itemId: string;
+    productId: string;
+    productName: string;
+    quantity: number;
+  }[];
+  healthStatus?: 'healthy' | 'repaired' | 'damaged' | 'unrepaired' | 'scrapped'; // وضعیت سلامت پس از بازگشت
+  notes?: string; // گزارش فنی یا توضیحات بازگشت
+}
+
+export interface DirectTransfer {
+  id: string;
+  transferNumber: string; // شماره حواله مانند TRF-1001 یا خروج ۶۰۰۱
+  title: string; // عنوان حواله (مثلاً: اعزام دستگاه پمپ بتن به تعمیرگاه تهران‌صنعت)
+  type: DirectTransferType;
+  status: DirectTransferStatus;
+  isReturnable: boolean; // آیا دستگاه باید برگردد؟ (برای تعمیرات و امانی پیش‌فرض بله است)
+  expectedReturnDate?: string; // تاریخ مورد انتظار بازگشت (شمسی)
+
+  // اقلام حواله
+  items: DirectTransferItem[];
+
+  // مشخصات انبار مبدأ
+  warehouseId?: string;
+  warehouseName?: string;
+
+  // ۱. اطلاعات خروج از انبار (Dispatch)
+  dispatchedAt: string; // تاریخ و ساعت خروج
+  dispatchedBy: string; // نام انباردار یا کاربر صادرکننده
+  receiverName: string; // نام شخص، تعمیرگاه، راننده یا تحویل‌گیرنده
+  receiverPhone?: string; // شماره تماس
+  dispatchVehicleInfo?: string; // مشخصات ماشین و پلاک خارج‌کننده (مثلاً وانت نیسان آبی - پلاک ۲۴ ع ۵۶۷ ایران ۶۸)
+  destination?: string; // مقصد / نشانی تعمیرگاه یا مشتری
+  dispatchNotes?: string; // توضیحات، علت خروج یا شرح خرابی اولیه
+
+  // ۲. سوابق بازگشت و ورود مجدد به انبار (Returns)
+  returnRecords: DirectTransferReturnRecord[];
+
+  createdAt: string;
+  updatedAt?: string;
+}
+
 
 

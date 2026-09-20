@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Product, ProductVariant, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData, InboundReceipt, InboundReceiptItem } from '../types';
+import { Product, ProductVariant, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData, InboundReceipt, InboundReceiptItem, DirectTransfer } from '../types';
 import { toPersianDigits, getCurrentJalaliDate, getCurrentJalaliTime, formatPrice } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
 import { exportProductsToExcel } from '../utils/excelHelper';
@@ -7,12 +7,14 @@ import { ExcelImportModal } from './ExcelImportModal';
 import { ExitSlipModal } from './ExitSlipModal';
 import { ExitSlipDeliveryModal } from './ExitSlipDeliveryModal';
 import { InboundReceiptsList } from './InboundReceiptsList';
+import { DirectTransfersList } from './DirectTransfersList';
 import { 
   Plus, 
   Search, 
   AlertTriangle, 
   ArrowDownRight, 
   ArrowUpLeft, 
+  ArrowLeftRight,
   Edit3, 
   Trash2, 
   History, 
@@ -70,6 +72,7 @@ interface InventoryManagerProps {
     verifiedBy: string
   ) => void;
   selectedInboundReceiptId?: string | null;
+  initialSubTab?: 'items' | 'inbound-receipts' | 'exit-slips' | 'direct-transfers' | 'movements';
   onUpdateSettings?: (newSettings: StoreSettings) => void;
 }
 
@@ -86,15 +89,26 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   onImportProducts,
   onConfirmInboundReceipt,
   selectedInboundReceiptId,
+  initialSubTab,
   onUpdateSettings,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'items' | 'inbound-receipts' | 'exit-slips' | 'movements'>(() => {
+  const [activeSubTab, setActiveSubTab] = useState<'items' | 'inbound-receipts' | 'exit-slips' | 'direct-transfers' | 'movements'>(() => {
     if (selectedInboundReceiptId) return 'inbound-receipts';
+    if (initialSubTab) return initialSubTab;
     return 'items';
   });
+
+  useEffect(() => {
+    if (initialSubTab) {
+      setActiveSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'in_stock' | 'low_stock' | 'out_of_stock'>('all');
+
+  // Direct Transfers (خروج و ورود بدون فاکتور - امانی/تعمیرات)
+  const [directTransfers, setDirectTransfers] = useState<DirectTransfer[]>(() => StorageService.getDirectTransfers());
 
   // Exit Slips State
   const [exitSlipLogs, setExitSlipLogs] = useState<Record<string, ExitSlipData>>(() => StorageService.getExitSlipLogs());
@@ -104,10 +118,11 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   const [exitSlipSearch, setExitSlipSearch] = useState('');
   const [exitSlipFilter, setExitSlipFilter] = useState<'all' | 'pending_delivery' | 'delivered' | 'unprinted' | 'printed'>('all');
 
-  // Keep exitSlipLogs in sync with storage updates
+  // Keep storage in sync with updates
   useEffect(() => {
     const unsub = StorageService.subscribe(() => {
       setExitSlipLogs(StorageService.getExitSlipLogs());
+      setDirectTransfers(StorageService.getDirectTransfers());
     });
     return () => unsub();
   }, []);
@@ -448,6 +463,26 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     }));
   };
 
+  // Direct Transfers Handlers (خروج و ورود بدون فاکتور - تعمیرات/امانی)
+  const activeDirectCount = directTransfers.filter(
+    (t) => t.status === 'dispatched' || t.status === 'partially_returned'
+  ).length;
+
+  const handleSaveDirectDispatch = (data: Omit<DirectTransfer, 'id' | 'createdAt'>) => {
+    StorageService.createDirectTransferDispatch(data);
+    setDirectTransfers(StorageService.getDirectTransfers());
+  };
+
+  const handleSaveDirectReturn = (transferId: string, returnData: any) => {
+    StorageService.recordDirectTransferReturn(transferId, returnData);
+    setDirectTransfers(StorageService.getDirectTransfers());
+  };
+
+  const handleDeleteDirectTransfer = (transferId: string, returnStock: boolean) => {
+    StorageService.deleteDirectTransfer(transferId, returnStock);
+    setDirectTransfers(StorageService.getDirectTransfers());
+  };
+
   const filteredExitSlips = invoices.filter((inv) => {
     const log = exitSlipLogs[inv.id] || { printCount: 0, isDelivered: false };
     if (exitSlipFilter === 'pending_delivery' && log.isDelivered) return false;
@@ -472,31 +507,31 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 pb-12">
       {/* MOBILE-FIRST DEDICATED WAREHOUSE NAVIGATION BAR (STICKY BELOW MAIN HEADER) */}
       <div className="sm:hidden sticky top-16 z-20 bg-slate-100 pb-2 pt-1.5 -mx-3 px-3 border-b border-slate-200/90 shadow-xs">
-        {/* 4 Ergonomic Mobile Touch Tabs */}
-        <div className="grid grid-cols-4 gap-1.5 p-1 bg-white rounded-2xl border border-slate-200 shadow-xs">
+        {/* 5 Ergonomic Mobile Touch Tabs */}
+        <div className="grid grid-cols-5 gap-1 p-1 bg-white rounded-2xl border border-slate-200 shadow-xs">
           {/* Tab 1: کالاها و موجودی */}
           <button
             type="button"
             id="mobile-tab-items"
             onClick={() => setActiveSubTab('items')}
-            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+            className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
               activeSubTab === 'items'
                 ? 'bg-blue-600 text-white shadow-xs font-bold'
                 : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
             }`}
           >
             <div className="relative">
-              <PackageCheck className="w-5 h-5" />
+              <PackageCheck className="w-4 h-4" />
               {lowStockCount > 0 && (
-                <span className={`absolute -top-1.5 -right-2 text-[9px] font-bold px-1 py-0.2 rounded-full ${
+                <span className={`absolute -top-1.5 -right-2 text-[8px] font-bold px-1 py-0.2 rounded-full ${
                   activeSubTab === 'items' ? 'bg-amber-400 text-amber-950' : 'bg-amber-500 text-white'
                 }`}>
                   {toPersianDigits(lowStockCount)}
                 </span>
               )}
             </div>
-            <span className="text-[11px] mt-0.5 whitespace-nowrap">کالاها</span>
-            <span className={`text-[9px] ${activeSubTab === 'items' ? 'text-blue-100' : 'text-slate-400'}`}>
+            <span className="text-[10px] mt-0.5 whitespace-nowrap">کالاها</span>
+            <span className={`text-[8px] ${activeSubTab === 'items' ? 'text-blue-100' : 'text-slate-400'}`}>
               ({toPersianDigits(products.length)})
             </span>
           </button>
@@ -506,65 +541,90 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             type="button"
             id="mobile-tab-inbound"
             onClick={() => setActiveSubTab('inbound-receipts')}
-            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+            className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
               activeSubTab === 'inbound-receipts'
                 ? 'bg-emerald-600 text-white shadow-xs font-bold'
                 : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
             }`}
           >
             <div className="relative">
-              <ArrowDownRight className="w-5 h-5" />
+              <ArrowDownRight className="w-4 h-4" />
               {pendingInboundCount > 0 && (
-                <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[9px] font-bold px-1 py-0.2 rounded-full animate-pulse shadow-xs">
+                <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[8px] font-bold px-1 py-0.2 rounded-full animate-pulse shadow-xs">
                   {toPersianDigits(pendingInboundCount)}
                 </span>
               )}
             </div>
-            <span className="text-[11px] mt-0.5 whitespace-nowrap">حواله ورود</span>
-            <span className={`text-[9px] ${activeSubTab === 'inbound-receipts' ? 'text-emerald-100' : 'text-slate-400'}`}>
+            <span className="text-[10px] mt-0.5 whitespace-nowrap">حواله ورود</span>
+            <span className={`text-[8px] ${activeSubTab === 'inbound-receipts' ? 'text-emerald-100' : 'text-slate-400'}`}>
               ({toPersianDigits(inboundReceipts.length)})
             </span>
           </button>
 
-          {/* Tab 3: برگه خروج انبار */}
+          {/* Tab 3: برگه خروج فاکتورها */}
           <button
             type="button"
             id="mobile-tab-exit-slips"
             onClick={() => setActiveSubTab('exit-slips')}
-            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+            className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
               activeSubTab === 'exit-slips'
                 ? 'bg-indigo-600 text-white shadow-xs font-bold'
                 : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
             }`}
           >
             <div className="relative">
-              <Truck className="w-5 h-5" />
+              <Truck className="w-4 h-4" />
               {unprintedSlipsCount > 0 && (
-                <span className="absolute -top-1.5 -right-2 bg-amber-500 text-white text-[9px] font-bold px-1 py-0.2 rounded-full shadow-xs">
+                <span className="absolute -top-1.5 -right-2 bg-amber-500 text-white text-[8px] font-bold px-1 py-0.2 rounded-full shadow-xs">
                   {toPersianDigits(unprintedSlipsCount)}
                 </span>
               )}
             </div>
-            <span className="text-[11px] mt-0.5 whitespace-nowrap">برگه خروج</span>
-            <span className={`text-[9px] ${activeSubTab === 'exit-slips' ? 'text-indigo-100' : 'text-slate-400'}`}>
+            <span className="text-[10px] mt-0.5 whitespace-nowrap">برگه خروج</span>
+            <span className={`text-[8px] ${activeSubTab === 'exit-slips' ? 'text-indigo-100' : 'text-slate-400'}`}>
               ({toPersianDigits(invoices.length)})
             </span>
           </button>
 
-          {/* Tab 4: گردش و کاردکس */}
+          {/* Tab 4: خروج مستقیم بدون فاکتور (امانی / تعمیرات) */}
+          <button
+            type="button"
+            id="mobile-tab-direct-transfers"
+            onClick={() => setActiveSubTab('direct-transfers')}
+            className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+              activeSubTab === 'direct-transfers'
+                ? 'bg-amber-600 text-white shadow-xs font-bold'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
+            }`}
+          >
+            <div className="relative">
+              <ArrowLeftRight className="w-4 h-4" />
+              {activeDirectCount > 0 && (
+                <span className="absolute -top-1.5 -right-2 bg-amber-500 text-slate-950 text-[8px] font-black px-1 py-0.2 rounded-full shadow-xs animate-pulse">
+                  {toPersianDigits(activeDirectCount)}
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] mt-0.5 whitespace-nowrap">تعمیرات/امانی</span>
+            <span className={`text-[8px] ${activeSubTab === 'direct-transfers' ? 'text-amber-100' : 'text-slate-400'}`}>
+              ({toPersianDigits(directTransfers.length)})
+            </span>
+          </button>
+
+          {/* Tab 5: گردش و کاردکس */}
           <button
             type="button"
             id="mobile-tab-movements"
             onClick={() => setActiveSubTab('movements')}
-            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+            className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
               activeSubTab === 'movements'
                 ? 'bg-slate-800 text-white shadow-xs font-bold'
                 : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
             }`}
           >
-            <History className="w-5 h-5" />
-            <span className="text-[11px] mt-0.5 whitespace-nowrap">کاردکس</span>
-            <span className={`text-[9px] ${activeSubTab === 'movements' ? 'text-slate-300' : 'text-slate-400'}`}>
+            <History className="w-4 h-4" />
+            <span className="text-[10px] mt-0.5 whitespace-nowrap">کاردکس</span>
+            <span className={`text-[8px] ${activeSubTab === 'movements' ? 'text-slate-300' : 'text-slate-400'}`}>
               گردش
             </span>
           </button>
@@ -579,6 +639,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             {activeSubTab === 'items' && 'کالاها و موجودی انبار'}
             {activeSubTab === 'inbound-receipts' && 'حواله‌های ورود و رسید انبار'}
             {activeSubTab === 'exit-slips' && 'برگه‌های خروج و تحویل انبار'}
+            {activeSubTab === 'direct-transfers' && 'خروج و ورود بدون فاکتور (امانی/تعمیرات)'}
             {activeSubTab === 'movements' && 'کاردکس و تاریخچه گردش کالا'}
           </span>
         </div>
@@ -738,7 +799,35 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
               )}
             </button>
 
-            {/* Tab 4: گردش و کاردکس */}
+            {/* Tab 4: خروج و ورود مستقیم (بدون فاکتور - امانی/تعمیرات) */}
+            <button
+              id="subtab-direct-transfers"
+              onClick={() => setActiveSubTab('direct-transfers')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
+                activeSubTab === 'direct-transfers'
+                  ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 font-extrabold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-semibold'
+              }`}
+            >
+              <ArrowLeftRight className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'direct-transfers' ? 'text-amber-600' : 'text-slate-400'}`} />
+              <span>خروج و ورود بدون فاکتور (امانی/تعمیرات)</span>
+              <span
+                className={`text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors ${
+                  activeSubTab === 'direct-transfers'
+                    ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-500/20'
+                    : 'bg-slate-200/80 text-slate-600'
+                }`}
+              >
+                {toPersianDigits(directTransfers.length)}
+              </span>
+              {activeDirectCount > 0 && (
+                <span className="bg-amber-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs animate-pulse">
+                  {toPersianDigits(activeDirectCount)} بیرون انبار
+                </span>
+              )}
+            </button>
+
+            {/* Tab 5: گردش و کاردکس */}
             <button
               id="subtab-movements"
               onClick={() => setActiveSubTab('movements')}
@@ -1793,6 +1882,19 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {/* SUBTAB: DIRECT TRANSFERS (خروج و ورود مستقیم کالا بدون فاکتور - امانی / تعمیرات) */}
+      {activeSubTab === 'direct-transfers' && (
+        <DirectTransfersList
+          transfers={directTransfers}
+          products={products}
+          settings={settings}
+          currentUserName={currentUser?.fullName || currentUser?.name || 'انباردار'}
+          onSaveDispatch={handleSaveDirectDispatch}
+          onSaveReturn={handleSaveDirectReturn}
+          onDeleteTransfer={handleDeleteDirectTransfer}
+        />
       )}
 
       {/* MODAL: ADD / EDIT PRODUCT */}

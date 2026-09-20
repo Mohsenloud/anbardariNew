@@ -235,10 +235,6 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   const [serviceQuantity, setServiceQuantity] = useState<number>(1);
   const [serviceUnit, setServiceUnit] = useState<string>('موردی');
 
-  const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState<boolean>(false);
-  const [barcodeInput, setBarcodeInput] = useState<string>('');
-  const [cameraActive, setCameraActive] = useState<boolean>(false);
-
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState<boolean>(false);
 
@@ -510,27 +506,6 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     setIsServiceModalOpen(false);
   };
 
-  // Barcode scan handler
-  const handleScanBarcode = (barcode: string) => {
-    const q = barcode.trim().toLowerCase();
-    if (!q) return;
-    const found = products.find(
-      (p) =>
-        p.code.toLowerCase() === q ||
-        (p.barcode && p.barcode.toLowerCase() === q) ||
-        p.name.toLowerCase().includes(q)
-    );
-    if (found) {
-      handleAddProduct(found);
-      setBarcodeInput('');
-      setIsBarcodeModalOpen(false);
-      setCameraActive(false);
-    } else {
-      setErrorMessage(`کالایی با بارکد "${barcode}" یافت نشد.`);
-      setTimeout(() => setErrorMessage(''), 3500);
-    }
-  };
-
   // Adjust item quantity
   const handleAdjustQuantity = (itemId: string, delta: number) => {
     setItems((prev) => {
@@ -687,7 +662,6 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
   // Desktop specific states
   const [desktopSidebarTab, setDesktopSidebarTab] = useState<'catalog' | 'checkout'>('catalog');
-  const [desktopBarcodeInput, setDesktopBarcodeInput] = useState<string>('');
   const [desktopCatalogSearch, setDesktopCatalogSearch] = useState<string>('');
   const [desktopCatalogCategory, setDesktopCatalogCategory] = useState<string>('all');
 
@@ -753,14 +727,6 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     }
   };
 
-  // Desktop quick barcode / code submit
-  const handleDesktopBarcodeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!desktopBarcodeInput.trim()) return;
-    handleScanBarcode(desktopBarcodeInput);
-    setDesktopBarcodeInput('');
-  };
-
   // Desktop Global Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -768,7 +734,6 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
         isCustomerModalOpen ||
         isProductCatalogOpen ||
         isServiceModalOpen ||
-        isBarcodeModalOpen ||
         isSettingsModalOpen ||
         isCheckoutModalOpen
       ) {
@@ -3119,105 +3084,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
         </div>
       )}
 
-      {/* MODAL 3: BARCODE SCANNER (بارکد اسکنر) */}
-      {isBarcodeModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3">
-          <div className="bg-white rounded-3xl w-full max-w-md p-5 shadow-2xl space-y-4 animate-in zoom-in-95">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center">
-                  <ScanLine className="w-5 h-5 stroke-[2.2]" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-base">بارکد اسکنر کالا</h3>
-                  <span className="text-[11px] text-slate-400 font-medium">اسکن سریع کالا و درج خودکار در فاکتور</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsBarcodeModalOpen(false);
-                  setCameraActive(false);
-                }}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Camera scanner simulator */}
-            <div className="relative rounded-2xl bg-slate-950 text-white h-44 flex flex-col items-center justify-center overflow-hidden border border-slate-800">
-              {cameraActive ? (
-                <div className="relative w-full h-full flex flex-col items-center justify-center">
-                  <div className="absolute inset-x-8 top-1/2 h-0.5 bg-rose-500 shadow-lg shadow-rose-500 animate-pulse" />
-                  <span className="text-xs text-slate-400 font-medium">بارکد را در برابر کادر قرمز نگه دارید...</span>
-                </div>
-              ) : (
-                <div className="text-center space-y-2 p-4">
-                  <Camera className="w-10 h-10 text-slate-400 mx-auto stroke-[1.5]" />
-                  <p className="text-xs text-slate-300">
-                    برای اسکن زنده با دوربین دکمه زیر را لمس کرده یا بارکد را وارد نمایید.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setCameraActive(true)}
-                    className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-xs transition-colors"
-                  >
-                    فعال‌سازی دوربین
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Input Barcode */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700">
-                ورود دستی بارکد یا کد کالا:
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={barcodeInput}
-                  onChange={(e) => setBarcodeInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleScanBarcode(barcodeInput);
-                    }
-                  }}
-                  placeholder="مثلاً 1001 یا اسکن با بارکدخوان فیزیکی..."
-                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  onClick={() => handleScanBarcode(barcodeInput)}
-                  className="bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition-colors"
-                >
-                  افزودن
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Demo suggestions */}
-            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[11px] text-slate-400 font-bold">تست سریع:</span>
-              {products.slice(0, 3).map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => handleScanBarcode(p.code)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-1 rounded-lg transition-colors"
-                >
-                  کد {p.code} ({p.name.slice(0, 12)}...)
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 4: CUSTOMER SELECTOR (انتخاب مشتری) */}
+      {/* MODAL 3: CUSTOMER SELECTOR (انتخاب مشتری) */}
       {isCustomerModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3">
           <div className="bg-white rounded-3xl w-full max-w-md lg:max-w-xl p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col animate-in zoom-in-95">

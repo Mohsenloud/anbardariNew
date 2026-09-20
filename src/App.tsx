@@ -43,6 +43,7 @@ export default function App() {
     const saved = localStorage.getItem('sepehr_last_tab');
     return saved || 'dashboard';
   });
+  const [inventorySubTab, setInventorySubTab] = useState<'items' | 'inbound-receipts' | 'exit-slips' | 'direct-transfers' | 'movements'>('items');
   const [selectedInboundReceiptId, setSelectedInboundReceiptId] = useState<string | null>(null);
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
@@ -1100,7 +1101,15 @@ export default function App() {
             settings={settings}
             currentUser={currentUser}
             onNavigate={(tab) => {
-              if (isTabPermitted(tab, currentUser, settings)) {
+              if (tab === 'direct-transfers') {
+                if (isTabPermitted('inventory', currentUser, settings)) {
+                  setInventorySubTab('direct-transfers');
+                  setActiveTab('inventory');
+                }
+              } else if (isTabPermitted(tab, currentUser, settings)) {
+                if (tab === 'inventory') {
+                  setInventorySubTab('items');
+                }
                 setActiveTab(tab);
               }
             }}
@@ -1187,6 +1196,7 @@ export default function App() {
             onImportProducts={handleImportProducts}
             onConfirmInboundReceipt={handleConfirmInboundReceipt}
             selectedInboundReceiptId={selectedInboundReceiptId}
+            initialSubTab={inventorySubTab}
             onUpdateSettings={handleSaveSettings}
           />
         )}

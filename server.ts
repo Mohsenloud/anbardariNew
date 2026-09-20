@@ -346,6 +346,7 @@ function validateDatabaseSchema(data: any): { valid: boolean; error?: string } {
     'purchaseInvoices',
     'inboundReceipts',
     'activityLogs',
+    'directTransfers',
   ];
   for (const key of arrayKeys) {
     if (data[key] !== undefined && !Array.isArray(data[key])) {

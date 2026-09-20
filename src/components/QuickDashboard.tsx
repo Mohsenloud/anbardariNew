@@ -44,7 +44,8 @@ import {
   ShieldCheck,
   Lock,
   LogOut,
-  CreditCard
+  CreditCard,
+  ArrowLeftRight
 } from 'lucide-react';
 
 const getAvatarBgClass = (color?: string, role?: string) => {
@@ -134,16 +135,9 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
   }, [canReports, activeSubTab]);
 
   // Interactive Modals State
-  const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
-  const [isQuickInvoiceModalOpen, setIsQuickInvoiceModalOpen] = useState(false);
   const [isWarehouseModalOpen, setIsWarehouseModalOpen] = useState(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [activeStatusFilter, setActiveStatusFilter] = useState<'draft' | 'confirmed' | 'cancelled' | null>(null);
-
-  // Barcode Scanner Modal State
-  const [barcodeQuery, setBarcodeQuery] = useState('');
-  const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
-  const [cameraActive, setCameraActive] = useState(false);
 
   // Warehouse Modal State
   const initialWarehouses: WarehouseInfo[] = useMemo(() => {
@@ -274,6 +268,20 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
         hoverLabelClass: 'group-hover:text-emerald-700',
         onClick: () => setIsAuditModalOpen(true),
       });
+
+      list.push({
+        id: 'direct-transfers',
+        label: 'خروج/ورود بدون فاکتور (تعمیرات)',
+        icon: ArrowLeftRight,
+        borderClass: 'border-amber-200',
+        bgClass: 'bg-amber-50',
+        textClass: 'text-amber-600',
+        hoverBgClass: 'group-hover:bg-amber-600',
+        hoverTextClass: 'group-hover:text-white',
+        hoverBorderClass: 'group-hover:border-amber-600',
+        hoverLabelClass: 'group-hover:text-amber-700',
+        onClick: () => onNavigate('direct-transfers'),
+      });
     }
 
     // If not inventory, but has customer permission
@@ -336,23 +344,6 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
       StorageService.saveSettings(newSettings);
     }
     setIsWarehouseModalOpen(false);
-  };
-
-  // Handle Barcode Scan search
-  const handleBarcodeSearch = (query: string) => {
-    setBarcodeQuery(query);
-    if (!query.trim()) {
-      setScannedProduct(null);
-      return;
-    }
-    const q = query.trim().toLowerCase();
-    const found = products.find(
-      (p) =>
-        p.code.toLowerCase() === q ||
-        p.name.toLowerCase().includes(q) ||
-        (p.description && p.description.toLowerCase().includes(q))
-    );
-    setScannedProduct(found || null);
   };
 
   // Stocktaking Adjustment Submission
@@ -582,54 +573,56 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
           <div className="lg:hidden space-y-3.5">
             {/* ROW 1: TWO LARGE CARDS (SIDE BY SIDE) */}
           <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            {/* Left Card: بارکد اسکنر کالا */}
-            <div
-              id="card-barcode-scanner"
-              onClick={() => setIsBarcodeModalOpen(true)}
-              className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between items-center text-center cursor-pointer hover:border-sky-300 hover:shadow-md transition-all active:scale-98 min-h-[155px]"
-            >
-              {/* Header: بارکد اسکنر کالا + Search Icon */}
-              <div className="w-full flex items-center justify-between gap-1">
-                <span className="text-xs sm:text-sm font-extrabold text-slate-800 tracking-tight">
-                  بارکد اسکنر کالا
+            {/* Left Card: صدور فاکتور جدید */}
+            {canInvoice ? (
+              <div
+                id="card-quick-new-invoice-mobile"
+                onClick={() => onNewInvoice()}
+                className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-center items-center text-center cursor-pointer hover:border-emerald-300 hover:shadow-md transition-all active:scale-98 min-h-[155px]"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-md shadow-emerald-500/25 flex items-center justify-center text-white mb-2.5">
+                  <PlusCircle className="w-7 h-7 stroke-[2.2]" />
+                </div>
+                <span className="text-sm sm:text-base font-extrabold text-slate-800">
+                  صدور فاکتور
                 </span>
-                <div className="w-6 h-6 rounded-full bg-sky-50 text-sky-500 flex items-center justify-center shrink-0">
-                  <Search className="w-3.5 h-3.5 stroke-[2.5]" />
-                </div>
+                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
+                  فروش نقدی، اعتباری و رسمی
+                </span>
               </div>
-
-              {/* Barcode graphic with brackets */}
-              <div className="my-2 relative flex items-center justify-center py-2 px-3">
-                {/* Scanner Bracket Corners */}
-                <div className="relative border-2 border-dashed border-slate-300 rounded-lg p-2.5 bg-slate-50/70 group-hover:border-sky-400">
-                  {/* Top-Left Corner Bracket */}
-                  <span className="absolute -top-1 -left-1 w-2.5 h-2.5 border-t-2 border-l-2 border-slate-800" />
-                  {/* Top-Right Corner Bracket */}
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 border-t-2 border-r-2 border-slate-800" />
-                  {/* Bottom-Left Corner Bracket */}
-                  <span className="absolute -bottom-1 -left-1 w-2.5 h-2.5 border-b-2 border-l-2 border-slate-800" />
-                  {/* Bottom-Right Corner Bracket */}
-                  <span className="absolute -bottom-1 -right-1 w-2.5 h-2.5 border-b-2 border-r-2 border-slate-800" />
-
-                  {/* Vertical Barcode Lines */}
-                  <div className="flex items-center gap-[2.5px] h-7 px-1">
-                    <span className="w-[3px] h-full bg-slate-800 rounded-xs" />
-                    <span className="w-[1.5px] h-full bg-slate-800 rounded-xs" />
-                    <span className="w-[4px] h-full bg-slate-800 rounded-xs" />
-                    <span className="w-[1.5px] h-full bg-slate-800 rounded-xs" />
-                    <span className="w-[2px] h-full bg-slate-800 rounded-xs" />
-                    <span className="w-[3.5px] h-full bg-slate-800 rounded-xs" />
-                    <span className="w-[1.5px] h-full bg-slate-800 rounded-xs" />
-                    <span className="w-[3px] h-full bg-slate-800 rounded-xs" />
-                    <span className="w-[2px] h-full bg-slate-800 rounded-xs" />
-                  </div>
+            ) : canInventory ? (
+              <div
+                id="card-inventory-list-mobile"
+                onClick={() => onNavigate('inventory')}
+                className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-center items-center text-center cursor-pointer hover:border-amber-300 hover:shadow-md transition-all active:scale-98 min-h-[155px]"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 shadow-md shadow-amber-500/25 flex items-center justify-center text-white mb-2.5">
+                  <Boxes className="w-7 h-7 stroke-[2.2]" />
                 </div>
+                <span className="text-sm sm:text-base font-extrabold text-slate-800">
+                  موجودی انبار
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
+                  کاردکس و گردش اقلام
+                </span>
               </div>
-
-              <span className="text-[11px] font-semibold text-sky-600 hover:underline">
-                لمس برای اسکن و جستجو
-              </span>
-            </div>
+            ) : (
+              <div
+                id="card-invoices-list-mobile"
+                onClick={() => onNavigate('invoices')}
+                className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-center items-center text-center cursor-pointer hover:border-sky-300 hover:shadow-md transition-all active:scale-98 min-h-[155px]"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 shadow-md shadow-sky-500/25 flex items-center justify-center text-white mb-2.5">
+                  <ReceiptText className="w-7 h-7 stroke-[2.2]" />
+                </div>
+                <span className="text-sm sm:text-base font-extrabold text-slate-800">
+                  لیست سفارشات
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
+                  مشاهده و بررسی فاکتورها
+                </span>
+              </div>
+            )}
 
             {/* Right Card: Context-Sensitive to Permissions */}
             {canReports ? (
@@ -826,7 +819,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
           {canInvoice && (
             <div
               id="banner-quick-invoice"
-              onClick={() => setIsQuickInvoiceModalOpen(true)}
+              onClick={() => onNewInvoice()}
               className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 text-white rounded-2xl p-4 shadow-md shadow-emerald-600/15 flex items-center justify-between cursor-pointer hover:shadow-lg hover:brightness-105 active:scale-99 transition-all"
             >
               {/* Right: White Circle with Green Plus */}
@@ -841,22 +834,22 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                     فاکتور فروش سریع
                   </span>
                   <span className="text-[11px] font-medium text-white/90 mt-0.5">
-                    روش: پاپ آپ انتخاب روش ظاهر شود
+                    ثبت فوری اقلام، مشتری و صدور فاکتور
                   </span>
                 </div>
               </div>
 
-              {/* Left: Three Dots Button */}
+              {/* Left: Button */}
               <button
                 type="button"
                 id="quick-invoice-options-btn"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsQuickInvoiceModalOpen(true);
+                  onNewInvoice();
                 }}
                 className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-colors"
               >
-                <MoreHorizontal className="w-5 h-5" />
+                <ChevronLeft className="w-5 h-5" />
               </button>
             </div>
           )}
@@ -893,140 +886,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
         <div className="hidden lg:grid lg:grid-cols-12 gap-6 items-start">
           {/* RIGHT COLUMN (8 COLS): CORE WORKSTATION */}
           <div className="lg:col-span-8 space-y-5">
-            {/* 1. INTERACTIVE BARCODE & DIRECT PRODUCT SEARCH CONSOLE */}
-            <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center">
-                    <Search className="w-5 h-5 stroke-[2.2]" />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-slate-900 text-base">بارکد اسکنر و جستجوی آنی کالا</h3>
-                    <p className="text-xs text-slate-400 font-medium">اسکن بارکد کالا یا جستجوی مستقیم بر اساس نام و کد جهت تسریع فرآیند فروش</p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  id="desktop-open-camera-scanner-btn"
-                  onClick={() => {
-                    setIsBarcodeModalOpen(true);
-                    setCameraActive(true);
-                  }}
-                  className="flex items-center gap-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 px-3.5 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                >
-                  <Camera className="w-4 h-4 text-sky-600" />
-                  <span>اسکن با دوربین / وبکم</span>
-                </button>
-              </div>
-
-              {/* Direct Search Input */}
-              <div className="relative">
-                <input
-                  type="text"
-                  value={barcodeQuery}
-                  onChange={(e) => handleBarcodeSearch(e.target.value)}
-                  placeholder="بارکد را با بارکدخوان اسکن کنید یا کد/نام کالا را تایپ نمایید..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl pr-4 pl-10 py-3 text-sm font-medium focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none transition-all placeholder:text-slate-400"
-                />
-                {barcodeQuery ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBarcodeQuery('');
-                      setScannedProduct(null);
-                    }}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-600 flex items-center justify-center text-xs"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                ) : (
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                    <Search className="w-4 h-4" />
-                  </div>
-                )}
-              </div>
-
-              {/* Quick Sample Test Chips */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-slate-400 font-bold">کالاهای پرفروش انبار:</span>
-                {products.slice(0, 5).map((p) => (
-                  <button
-                    key={`desk-chip-${p.id}`}
-                    type="button"
-                    onClick={() => handleBarcodeSearch(p.code)}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-2.5 py-1 rounded-xl transition-colors cursor-pointer"
-                  >
-                    {p.name.slice(0, 18)} (کد {p.code})
-                  </button>
-                ))}
-              </div>
-
-              {/* Live Found Product Detail Box */}
-              {scannedProduct ? (
-                <div className="bg-sky-50/80 border border-sky-200 rounded-2xl p-4 space-y-3 animate-in fade-in duration-150">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="bg-sky-600 text-white text-xs font-black px-2.5 py-0.5 rounded-full">
-                        کد کالا: {toPersianDigits(scannedProduct.code)}
-                      </span>
-                      {scannedProduct.barcode && (
-                        <span className="text-xs text-slate-500 font-mono bg-white px-2 py-0.5 rounded-md border border-slate-200">
-                          بارکد: {scannedProduct.barcode}
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-xs font-bold text-sky-900">اطلاعات لحظه‌ای کالا</span>
-                  </div>
-
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <h4 className="text-base font-black text-slate-900">{scannedProduct.name}</h4>
-                    <div className="flex items-center gap-4">
-                      <div className="text-left">
-                        <span className="text-xs text-slate-500 block">موجودی انبار:</span>
-                        <span className="text-sm font-black text-slate-900">
-                          {toPersianDigits(scannedProduct.stock)} {scannedProduct.unit}
-                        </span>
-                      </div>
-                      <div className="text-left">
-                        <span className="text-xs text-slate-500 block">قیمت فروش:</span>
-                        <span className="text-base font-black text-emerald-700">
-                          {formatPrice(scannedProduct.sellPrice)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-1 flex items-center gap-2.5 border-t border-sky-100">
-                    {canInvoice && (
-                      <button
-                        type="button"
-                        onClick={onNewInvoice}
-                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 rounded-xl text-center transition-colors shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
-                      >
-                        <ShoppingCart className="w-4 h-4" />
-                        <span>صدور فاکتور با این کالا</span>
-                      </button>
-                    )}
-                    {canInventory && (
-                      <button
-                        type="button"
-                        onClick={() => onNavigate('inventory')}
-                        className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition-colors cursor-pointer"
-                      >
-                        مشاهده کاردکس کالا
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : barcodeQuery.trim() ? (
-                <div className="text-center py-4 bg-slate-50 rounded-2xl border border-slate-200/80 text-xs text-slate-400">
-                  کالایی با بارکد یا کد «{barcodeQuery}» در انبار یافت نشد.
-                </div>
-              ) : null}
-            </div>
-
-            {/* 2. GOODS & WAREHOUSE OPERATIONS CARD */}
+            {/* 1. GOODS & WAREHOUSE OPERATIONS CARD */}
             <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs p-5 space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
@@ -1140,21 +1000,11 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsQuickInvoiceModalOpen(true);
-                    }}
-                    className="px-3.5 py-2 bg-white/15 hover:bg-white/25 rounded-xl text-xs font-bold text-white transition-colors flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <MoreHorizontal className="w-4 h-4" />
-                    <span>انتخاب روش</span>
-                  </button>
-                  <button
-                    type="button"
                     onClick={onNewInvoice}
-                    className="px-4 py-2 bg-white text-emerald-800 hover:bg-emerald-50 rounded-xl text-xs font-black transition-colors shadow-xs cursor-pointer"
+                    className="px-5 py-2.5 bg-white text-emerald-800 hover:bg-emerald-50 rounded-xl text-xs font-black transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
                   >
-                    شروع صدور
+                    <Plus className="w-4 h-4" />
+                    <span>شروع صدور فاکتور</span>
                   </button>
                 </div>
               </div>
@@ -1545,237 +1395,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
 
       {/* ===================== MODALS ===================== */}
 
-      {/* 1. BARCODE SCANNER & PRODUCT SEARCH MODAL */}
-      {isBarcodeModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3">
-          <div className="bg-white rounded-3xl w-full max-w-md p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in-95">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center">
-                  <Search className="w-4 h-4 stroke-[2.2]" />
-                </div>
-                <span className="font-extrabold text-slate-900 text-base">بارکد اسکنر کالا</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsBarcodeModalOpen(false);
-                  setCameraActive(false);
-                  setScannedProduct(null);
-                }}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Simulated / Live Camera Box */}
-            <div className="relative rounded-2xl bg-slate-900 text-white h-44 flex flex-col items-center justify-center overflow-hidden border border-slate-700">
-              {cameraActive ? (
-                <div className="relative w-full h-full flex flex-col items-center justify-center bg-slate-950">
-                  <div className="absolute inset-x-8 top-1/2 h-0.5 bg-rose-500 shadow-lg shadow-rose-500 animate-pulse" />
-                  <span className="text-xs text-slate-400 font-medium">دوربین فعال شد - بارکد را مقابل لنز بگیرید</span>
-                </div>
-              ) : (
-                <div className="text-center space-y-2 p-4">
-                  <Camera className="w-10 h-10 text-slate-400 mx-auto stroke-[1.5]" />
-                  <p className="text-xs text-slate-300">
-                    برای اسکن زنده با دوربین روی دکمه زیر کلیک کنید یا بارکد/کد کالا را تایپ نمایید.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setCameraActive(true)}
-                    className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-xs transition-colors"
-                  >
-                    فعال‌سازی دوربین
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Quick Search Input */}
-            <div className="relative">
-              <input
-                type="text"
-                value={barcodeQuery}
-                onChange={(e) => handleBarcodeSearch(e.target.value)}
-                placeholder="اسکن بارکد یا جستجوی کد کالا (مثلاً 1001)..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
-              />
-            </div>
-
-            {/* Quick Suggestions for Demo / Fast Click */}
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              <span className="text-[11px] text-slate-400 font-bold self-center">تست سریع:</span>
-              {products.slice(0, 3).map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => handleBarcodeSearch(p.code)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-1 rounded-lg transition-colors"
-                >
-                  {p.code} - {p.name.slice(0, 15)}...
-                </button>
-              ))}
-            </div>
-
-            {/* Scanned Product Details Card */}
-            {scannedProduct ? (
-              <div className="bg-sky-50 border border-sky-200 rounded-2xl p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-sky-900">کالای یافته شده:</span>
-                  <span className="bg-sky-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
-                    کد: {toPersianDigits(scannedProduct.code)}
-                  </span>
-                </div>
-                <h4 className="text-sm font-extrabold text-slate-900">{scannedProduct.name}</h4>
-                <div className="grid grid-cols-2 gap-2 text-xs pt-1">
-                  <div>
-                    <span className="text-slate-500 block">موجودی انبار:</span>
-                    <span className="font-extrabold text-slate-800">
-                      {toPersianDigits(scannedProduct.stock)} {scannedProduct.unit}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block">قیمت فروش:</span>
-                    <span className="font-extrabold text-emerald-700">
-                      {formatPrice(scannedProduct.sellPrice)}
-                    </span>
-                  </div>
-                </div>
-
-                {(canInvoice || canInventory) && (
-                  <div className="pt-2 flex gap-2">
-                    {canInvoice && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsBarcodeModalOpen(false);
-                          onNewInvoice();
-                        }}
-                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 rounded-xl text-center transition-colors"
-                      >
-                        افزودن به فاکتور فروش
-                      </button>
-                    )}
-                    {canInventory && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsBarcodeModalOpen(false);
-                          onNavigate('inventory');
-                        }}
-                        className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold px-3 py-2 rounded-xl transition-colors"
-                      >
-                        کاردکس
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : barcodeQuery.trim() ? (
-              <p className="text-center text-xs text-slate-400 py-2">کالایی با این بارکد یا کد یافت نشد.</p>
-            ) : null}
-          </div>
-        </div>
-      )}
-
-      {/* 2. QUICK INVOICE METHOD POPUP MODAL ("روش: پاپ آپ انتخاب روش ظاهر شود") */}
-      {isQuickInvoiceModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3">
-          <div className="bg-white rounded-3xl w-full max-w-md p-5 shadow-2xl space-y-4 animate-in zoom-in-95">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
-                  <Plus className="w-5 h-5 stroke-[2.5]" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-base">انتخاب روش صدور فاکتور سریع</h3>
-                  <span className="text-[11px] text-slate-400 font-medium">روش مورد نظر خود را انتخاب کنید</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsQuickInvoiceModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Method Options */}
-            <div className="space-y-2.5">
-              {/* Option 1: صدور با بارکدخوان */}
-              <div
-                onClick={() => {
-                  setIsQuickInvoiceModalOpen(false);
-                  setIsBarcodeModalOpen(true);
-                }}
-                className="p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition-all cursor-pointer flex items-center gap-3.5 group"
-              >
-                <div className="w-11 h-11 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <Search className="w-5 h-5 stroke-[2.2]" />
-                </div>
-                <div className="flex-1">
-                  <span className="text-sm font-extrabold text-slate-800 group-hover:text-emerald-800 block">
-                    ۱. صدور با بارکدخوان سریع
-                  </span>
-                  <span className="text-xs text-slate-500 mt-0.5 block leading-relaxed">
-                    اسکن با دوربین یا بارکدخوان فیزیکی و درج آنی در ردیف‌های فاکتور
-                  </span>
-                </div>
-                <ChevronLeft className="w-4 h-4 text-slate-400 group-hover:text-emerald-600" />
-              </div>
-
-              {/* Option 2: فاکتور استاندارد کامل */}
-              <div
-                onClick={() => {
-                  setIsQuickInvoiceModalOpen(false);
-                  onNewInvoice();
-                }}
-                className="p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition-all cursor-pointer flex items-center gap-3.5 group"
-              >
-                <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <FileText className="w-5 h-5 stroke-[2.2]" />
-                </div>
-                <div className="flex-1">
-                  <span className="text-sm font-extrabold text-slate-800 group-hover:text-emerald-800 block">
-                    ۲. فاکتور استاندارد کامل (رسمی / عادی)
-                  </span>
-                  <span className="text-xs text-slate-500 mt-0.5 block leading-relaxed">
-                    فرم جامع صدور فاکتور با انتخاب مشتری، تخفیفات، ارزش افزوده و چاپ فوری
-                  </span>
-                </div>
-                <ChevronLeft className="w-4 h-4 text-slate-400 group-hover:text-emerald-600" />
-              </div>
-
-              {/* Option 3: فروش لمسی POS */}
-              <div
-                onClick={() => {
-                  setIsQuickInvoiceModalOpen(false);
-                  onNewInvoice();
-                }}
-                className="p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition-all cursor-pointer flex items-center gap-3.5 group"
-              >
-                <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <ShoppingCart className="w-5 h-5 stroke-[2.2]" />
-                </div>
-                <div className="flex-1">
-                  <span className="text-sm font-extrabold text-slate-800 group-hover:text-emerald-800 block">
-                    ۳. انتخاب لمسی از لیست کالاها (POS)
-                  </span>
-                  <span className="text-xs text-slate-500 mt-0.5 block leading-relaxed">
-                    لمس کالاهای پرفروش و ثبت تسویه حساب نقدی یا کارتخوان
-                  </span>
-                </div>
-                <ChevronLeft className="w-4 h-4 text-slate-400 group-hover:text-emerald-600" />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 3. WAREHOUSE SETTINGS MODAL ("ویرایش مشخصات انبار") */}
+      {/* 1. WAREHOUSE SETTINGS MODAL ("ویرایش مشخصات انبار") */}
       {isWarehouseModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3">
           <div className="bg-white rounded-3xl w-full max-w-md p-5 shadow-2xl space-y-4 animate-in zoom-in-95">

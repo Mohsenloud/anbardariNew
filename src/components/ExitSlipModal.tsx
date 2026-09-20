@@ -33,6 +33,72 @@ import {
   Building2
 } from 'lucide-react';
 import { ExitSlipDeliveryModal } from './ExitSlipDeliveryModal';
+import { parseVehicleInfo } from './IranPlatePicker';
+
+// Mini graphic Iranian license plate for clean display in delivery slip
+const MiniIranPlate: React.FC<{ plateInfo: string }> = ({ plateInfo }) => {
+  const parsed = parseVehicleInfo(plateInfo);
+  if (!parsed || parsed.isFreeText || !parsed.part1 || !parsed.letter || !parsed.part2 || !parsed.iranCode) {
+    return (
+      <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-300 font-['Vazirmatn'] text-[11px]">
+        {plateInfo}
+      </span>
+    );
+  }
+
+  const isYellow = parsed.letter === 'ع' || parsed.letter === 'ت';
+
+  return (
+    <div className="inline-flex items-center gap-1.5 flex-wrap">
+      {parsed.vehicleType && (
+        <span className="text-[11px] font-bold text-slate-800">
+          {parsed.vehicleType}
+          {parsed.colorDesc ? ` (${parsed.colorDesc})` : ''}:
+        </span>
+      )}
+      <div 
+        dir="ltr"
+        className={`inline-flex items-stretch border border-slate-900 rounded-sm overflow-hidden text-slate-950 font-black shadow-2xs select-none ${
+          isYellow ? 'bg-amber-300' : 'bg-white'
+        }`}
+        style={{ height: '22px' }}
+      >
+        {/* Blue band */}
+        <div className="bg-[#003399] text-white w-3.5 flex flex-col items-center justify-between py-0.5 px-0.5 shrink-0">
+          <div className="w-2 h-1 flex flex-col justify-between">
+            <span className="h-[0.5px] bg-[#239f40] w-full block"></span>
+            <span className="h-[0.5px] bg-white w-full block"></span>
+            <span className="h-[0.5px] bg-[#da0000] w-full block"></span>
+          </div>
+          <span className="text-[5px] font-sans font-bold leading-none">IR</span>
+        </div>
+
+        {/* 2 digits */}
+        <div className="px-1 flex items-center justify-center font-['Vazirmatn'] text-[11px] font-black min-w-[16px]">
+          {toPersianDigits(parsed.part1)}
+        </div>
+
+        {/* Letter */}
+        <div className="px-1 flex items-center justify-center font-['Vazirmatn'] text-[10px] font-black min-w-[14px]">
+          {parsed.letter}
+        </div>
+
+        {/* 3 digits */}
+        <div className="px-1 flex items-center justify-center font-['Vazirmatn'] text-[11px] font-black min-w-[22px]">
+          {toPersianDigits(parsed.part2)}
+        </div>
+
+        {/* Iran code */}
+        <div className="border-r border-slate-900 bg-slate-50/70 px-1 flex flex-col items-center justify-center leading-none">
+          <span className="text-[5px] text-slate-600 font-bold">ایران</span>
+          <span className="font-['Vazirmatn'] text-[10px] font-black text-slate-950">
+            {toPersianDigits(parsed.iranCode)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface ExitSlipModalProps {
   invoice: Invoice | null;
@@ -310,51 +376,160 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden my-auto print:max-h-none print:shadow-none print:border-none print:w-full print:rounded-none">
         
         {/* MODAL HEADER (No Print) */}
-        <div className="no-print bg-slate-900 text-white px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-              <PackageCheck className="w-5 h-5" />
-            </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm sm:text-base font-bold text-white">
-                  برگ خروج کالا از انبار (حواله تحویل)
-                </h3>
-                <span className="text-xs font-['Vazirmatn'] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
-                  فاکتور: {toPersianDigits(invoice.invoiceNumber)}
-                </span>
+        <div className="no-print bg-slate-900 text-white px-3.5 sm:px-6 py-3 border-b border-slate-800 shrink-0">
+          {/* Top Line: Title & Core Badges + Actions & Close Button */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="p-1.5 sm:p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
+                <PackageCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+              </span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                  <h3 className="text-xs sm:text-base font-bold text-white truncate">
+                    برگ خروج کالا از انبار (حواله تحویل)
+                  </h3>
+                  <span className="text-[10px] sm:text-xs font-['Vazirmatn'] text-emerald-300 bg-emerald-950/80 border border-emerald-600/40 px-2 py-0.5 rounded font-bold">
+                    فاکتور: {toPersianDigits(invoice.invoiceNumber)}
+                  </span>
+                  <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-['Vazirmatn'] text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                    <Printer className="w-3 h-3 text-emerald-400" />
+                    <span>{slipLog.printCount > 0 ? `چاپ نوبت ${toPersianDigits(slipLog.printCount + 1)}` : 'نسخه اول (اصل)'}</span>
+                  </span>
+                </div>
+                <p className="hidden sm:block text-[11px] text-slate-400 truncate">
+                  حواله رسمی تحویل فیزیکی اقلام انبار بدون مبالغ مالی
+                </p>
               </div>
-              <p className="text-[11px] text-slate-400">
-                حواله رسمی تحویل اقلام فیزیکی بدون مبالغ مالی
-              </p>
+            </div>
+
+            {/* Header Action Badges & Buttons */}
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              {/* Delivery & Vehicle Specs Button (Desktop) */}
+              <button
+                type="button"
+                id="exit-slip-header-delivery-btn"
+                onClick={() => setShowDeliveryModal(true)}
+                className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer ${
+                  slipLog.isDelivered 
+                    ? 'bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-500/50' 
+                    : 'bg-amber-600 hover:bg-amber-500 text-white'
+                }`}
+                title="ثبت یا ویرایش نام راننده، مشخصات ماشین و تایید تحویل بار"
+              >
+                <Truck className="w-3.5 h-3.5" />
+                <span>{slipLog.isDelivered ? 'بار تحویل شد' : 'ثبت تحویل بار'}</span>
+              </button>
+
+              {/* Origin Warehouse Settings Button (Desktop) */}
+              <button
+                type="button"
+                id="exit-slip-header-warehouse-settings-btn"
+                onClick={() => {
+                  setOriginWarehouseFormData({
+                    originWarehouseName: settings.originWarehouseName || 'انبار مرکزی سپهر',
+                    originWarehouseCode: settings.originWarehouseCode || 'WH-01',
+                    originWarehouseAddress: settings.originWarehouseAddress || '',
+                    originWarehousePhone: settings.originWarehousePhone || '',
+                    originWarehouseManager: settings.originWarehouseManager || '',
+                  });
+                  setShowWarehouseConfigModal(true);
+                }}
+                className="hidden md:flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
+                title="تنظیم نام و مشخصات انبار مبدأ"
+              >
+                <Warehouse className="w-3.5 h-3.5 text-amber-400" />
+                <span>انبار مبدأ</span>
+              </button>
+
+              {/* History Toggle Button */}
+              <button
+                type="button"
+                id="exit-slip-history-toggle-btn"
+                onClick={() => setShowHistoryModal(!showHistoryModal)}
+                className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
+                title="مشاهده تاریخچه دفعات چاپ"
+              >
+                <History className="w-3.5 h-3.5 text-blue-400" />
+                <span className="hidden lg:inline">تاریخچه</span>
+                {slipLog.printCount > 0 && (
+                  <span className="font-['Vazirmatn'] font-bold text-blue-300 text-[10px] bg-blue-900/60 px-1.5 py-0.2 rounded-full border border-blue-500/30">
+                    {toPersianDigits(slipLog.printCount)}
+                  </span>
+                )}
+              </button>
+
+              {/* Social Media Share Button (Desktop) */}
+              <button
+                type="button"
+                id="exit-slip-header-social-btn"
+                onClick={() => setShowSocialModal(true)}
+                className="hidden sm:flex items-center gap-1 bg-sky-600 hover:bg-sky-500 active:scale-95 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                title="ارسال به شبکه‌های اجتماعی"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>اشتراک</span>
+              </button>
+
+              {/* PDF Export Button (Desktop) */}
+              <button
+                type="button"
+                id="exit-slip-header-pdf-btn"
+                onClick={handleExportPdf}
+                disabled={isExportingPdf}
+                className="hidden sm:flex items-center gap-1 bg-rose-600 hover:bg-rose-500 active:scale-95 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                title="تبدیل به PDF"
+              >
+                {isExportingPdf ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <FileDown className="w-3.5 h-3.5" />
+                )}
+                <span>PDF</span>
+              </button>
+
+              {/* Main Print Button */}
+              <button
+                type="button"
+                id="exit-slip-print-action-btn"
+                onClick={() => handlePrint('new-window')}
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                title="چاپ برگه خروج"
+              >
+                <Printer className="w-4 h-4" />
+                <span>چاپ</span>
+              </button>
+
+              {/* Close Button */}
+              <button
+                type="button"
+                id="exit-slip-close-modal-btn"
+                onClick={onClose}
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
           </div>
 
-          {/* Header Action Badges & Buttons */}
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Print Status Badge */}
-            <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-2.5 py-1 rounded-lg text-xs">
-              <Printer className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-slate-300">دفعات چاپ:</span>
-              <span className="font-bold text-emerald-400 font-['Vazirmatn']">
-                {toPersianDigits(slipLog.printCount)} بار
-              </span>
-            </div>
-
-            {/* History Toggle Button */}
+          {/* Mobile Secondary Action Toolbar */}
+          <div className="flex sm:hidden items-center justify-between gap-1.5 pt-2 mt-2 border-t border-slate-800/80 text-xs">
+            {/* Delivery status button on mobile */}
             <button
-              id="exit-slip-history-toggle-btn"
-              onClick={() => setShowHistoryModal(!showHistoryModal)}
-              className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
-              title="مشاهده تاریخچه دفعات چاپ"
+              type="button"
+              onClick={() => setShowDeliveryModal(true)}
+              className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold ${
+                slipLog.isDelivered
+                  ? 'bg-emerald-700 text-white border border-emerald-500/50'
+                  : 'bg-amber-600 text-white'
+              }`}
             >
-              <History className="w-3.5 h-3.5 text-blue-400" />
-              <span className="hidden sm:inline">تاریخچه چاپ</span>
+              <Truck className="w-3.5 h-3.5" />
+              <span>{slipLog.isDelivered ? 'تحویل شد' : 'ثبت تحویل'}</span>
             </button>
 
-            {/* Origin Warehouse Settings Button */}
+            {/* Warehouse settings on mobile */}
             <button
-              id="exit-slip-header-warehouse-settings-btn"
+              type="button"
               onClick={() => {
                 setOriginWarehouseFormData({
                   originWarehouseName: settings.originWarehouseName || 'انبار مرکزی سپهر',
@@ -365,89 +540,31 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                 });
                 setShowWarehouseConfigModal(true);
               }}
-              className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
-              title="تنظیم نام و مشخصات انبار مبدأ توسط مدیریت"
+              className="flex items-center gap-1 bg-slate-800 text-slate-300 px-2.5 py-1.5 rounded-lg text-[11px] border border-slate-700"
             >
               <Warehouse className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">تنظیم انبار مبدأ</span>
+              <span>انبار</span>
             </button>
 
-            {/* Delivery & Vehicle Specs Button */}
+            {/* Share on mobile */}
             <button
-              id="exit-slip-header-delivery-btn"
-              onClick={() => setShowDeliveryModal(true)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer ${
-                slipLog.isDelivered 
-                  ? 'bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-500/50' 
-                  : 'bg-amber-600 hover:bg-amber-500 text-white'
-              }`}
-              title="ثبت یا ویرایش نام راننده، مشخصات ماشین و تایید تحویل بار"
-            >
-              <Truck className="w-3.5 h-3.5" />
-              <span>{slipLog.isDelivered ? 'بار تحویل شد (مشخصات)' : 'ثبت تحویل بار و خودرو'}</span>
-            </button>
-
-            {/* Social Media Share Button */}
-            <button
-              id="exit-slip-header-social-btn"
+              type="button"
               onClick={() => setShowSocialModal(true)}
-              className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 active:scale-95 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-              title="ارسال به شبکه‌های اجتماعی و پیام‌رسان‌ها"
+              className="flex items-center gap-1 bg-sky-600 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold"
             >
               <Share2 className="w-3.5 h-3.5" />
-              <span>ارسال به شبکه اجتماعی</span>
+              <span>اشتراک</span>
             </button>
 
-            {/* PDF Export Button */}
+            {/* PDF on mobile */}
             <button
-              id="exit-slip-header-pdf-btn"
+              type="button"
               onClick={handleExportPdf}
               disabled={isExportingPdf}
-              className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 active:scale-95 disabled:opacity-60 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-              title="تبدیل و دانلود فایل PDF برگه خروج در کمترین حجم ممکن (فشرده، زیر ۱۵۰ کیلوبایت)"
+              className="flex items-center gap-1 bg-rose-600 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold"
             >
-              {isExportingPdf ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>در حال تولید PDF...</span>
-                </>
-              ) : (
-                <>
-                  <FileDown className="w-3.5 h-3.5" />
-                  <span>تبدیل به PDF (کم‌حجم)</span>
-                </>
-              )}
-            </button>
-
-            {/* Main Print Button (New Window Popup with Auto-Print) */}
-            <button
-              id="exit-slip-print-action-btn"
-              onClick={() => handlePrint('new-window')}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-              title="باز کردن پنجره پرینتر و چاپ برگه خروج (تضمینی بدون محدودیت فریم مرورگر)"
-            >
-              <Printer className="w-4 h-4" />
-              <span>چاپ برگه خروج</span>
-            </button>
-
-            {/* Direct In-Page Print Button */}
-            <button
-              id="exit-slip-print-direct-btn"
-              onClick={() => handlePrint('direct')}
-              className="hidden lg:flex items-center gap-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
-              title="چاپ مستقیم در همین صفحه بدون پنجره مجزا"
-            >
-              <Printer className="w-3.5 h-3.5 text-emerald-400" />
-              <span>چاپ در صفحه</span>
-            </button>
-
-            {/* Close Button */}
-            <button
-              id="exit-slip-close-modal-btn"
-              onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
+              {isExportingPdf ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
+              <span>PDF</span>
             </button>
           </div>
         </div>
@@ -515,378 +632,375 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
         )}
 
         {/* PRINTABLE SLIP CONTENT VIEW (Scrollable on screen, Full page on Print) */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100/60 print:p-0 print:bg-white">
+        <div className="flex-1 overflow-y-auto p-2.5 sm:p-5 md:p-8 bg-slate-100/70 print:p-0 print:bg-white">
           <div 
             id="printable-exit-slip"
-            className="print-container bg-white border border-slate-300 rounded-xl p-6 sm:p-8 max-w-3xl mx-auto text-slate-900 shadow-sm print:border-none print:shadow-none print:p-0"
+            className="print-container bg-white border border-slate-300 rounded-2xl p-4 sm:p-6 md:p-8 max-w-4xl mx-auto text-slate-900 shadow-sm print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none"
           >
-            
             {/* Header: Store details & Exit Voucher Title */}
-            <div className="border-b-2 border-slate-800 pb-4 mb-5">
-              <div className="flex items-start justify-between gap-4">
+            <div className="border-b-2 border-slate-900 pb-3 sm:pb-4 mb-4">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4">
                 {/* Store Branding */}
                 <div className="space-y-1">
-                  <h1 className="text-lg sm:text-xl font-black text-slate-900">
-                    {settings.storeName || 'فروشگاه و انبار مرکزی'}
-                  </h1>
+                  <div className="flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-black text-sm print:border print:border-slate-800">
+                      {settings.storeName ? settings.storeName.charAt(0) : 'ا'}
+                    </span>
+                    <h1 className="text-base sm:text-xl font-black text-slate-900 tracking-tight">
+                      {settings.storeName || 'فروشگاه و انبار مرکزی'}
+                    </h1>
+                  </div>
                   {settings.tagline && (
-                    <p className="text-xs text-slate-500 font-medium">{settings.tagline}</p>
+                    <p className="text-[11px] sm:text-xs text-slate-500 font-medium">{settings.tagline}</p>
                   )}
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 pt-1">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600 pt-0.5">
                     {settings.phone && (
                       <span className="flex items-center gap-1">
-                        <Phone className="w-3.5 h-3.5 text-slate-400" />
+                        <Phone className="w-3 h-3 text-slate-400" />
                         <span>تلفن: {toPersianDigits(settings.phone)}</span>
                       </span>
                     )}
                     {settings.address && (
                       <span className="flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                        <MapPin className="w-3 h-3 text-slate-400" />
                         <span>{settings.address}</span>
                       </span>
                     )}
                   </div>
                 </div>
 
-                {/* Slip Badge Title */}
-                <div className="text-left shrink-0">
-                  <div className="inline-block border-2 border-slate-900 bg-slate-900 text-white px-4 py-1.5 rounded-lg text-sm sm:text-base font-extrabold shadow-xs">
+                {/* Slip Badge Title & Serial */}
+                <div className="text-right sm:text-left shrink-0 bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3 print:bg-white print:border-slate-800">
+                  <div className="inline-block border-2 border-slate-900 bg-slate-900 text-white px-3 sm:px-4 py-1 rounded-lg text-xs sm:text-sm font-black shadow-2xs">
                     برگ خروج کالا از انبار
                   </div>
-                  <div className="text-[11px] text-slate-500 font-bold mt-1 text-center">
-                    حواله تحویل قطعی اجناس
+                  <div className="text-[10px] sm:text-[11px] text-slate-600 font-bold mt-1">
+                    حواله رسمی تحویل قطعی اجناس
+                  </div>
+                  <div className="flex items-center justify-between sm:justify-end gap-3 text-[11px] font-['Vazirmatn'] text-slate-700 pt-1.5 mt-1 border-t border-slate-200">
+                    <div>
+                      <span className="text-slate-400 text-[10px]">شماره حواله: </span>
+                      <strong className="text-slate-900 text-xs">{toPersianDigits(invoice.invoiceNumber)}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">تاریخ صدور: </span>
+                      <strong>{toPersianDigits(invoice.date)}</strong>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Voucher Metadata Bar */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200 mb-5 text-xs">
-              <div className="space-y-1">
-                <span className="text-slate-400 block text-[11px]">شماره حواله / فاکتور:</span>
-                <span className="font-['Vazirmatn'] font-black text-slate-900 text-sm">
-                  {toPersianDigits(invoice.invoiceNumber)}
-                </span>
-              </div>
-
-              <div className="space-y-1">
-                <span className="text-slate-400 block text-[11px]">تاریخ صدور فاکتور:</span>
-                <span className="font-['Vazirmatn'] font-bold text-slate-800">
-                  {toPersianDigits(invoice.date)}
-                </span>
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400 block text-[11px]">انبار مبدأ:</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOriginWarehouseFormData({
-                        originWarehouseName: settings.originWarehouseName || 'انبار مرکزی سپهر',
-                        originWarehouseCode: settings.originWarehouseCode || 'WH-01',
-                        originWarehouseAddress: settings.originWarehouseAddress || '',
-                        originWarehousePhone: settings.originWarehousePhone || '',
-                        originWarehouseManager: settings.originWarehouseManager || '',
-                      });
-                      setShowWarehouseConfigModal(true);
-                    }}
-                    className="no-print text-[10px] text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5 cursor-pointer"
-                    title="تغییر یا تنظیم مشخصات انبار مبدأ"
-                  >
-                    <span>ویرایش</span>
-                  </button>
-                </div>
-                <span className="font-bold text-slate-800 flex items-center gap-1">
-                  <span>{originWarehouseName}</span>
-                  {settings.originWarehouseCode && (
-                    <span className="text-[10px] text-slate-500 font-mono">({toPersianDigits(settings.originWarehouseCode)})</span>
-                  )}
-                </span>
-              </div>
-
-              <div className="space-y-1">
-                <span className="text-slate-400 block text-[11px]">دفعات چاپ برگه:</span>
-                <span className="font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded text-[11px] inline-block font-['Vazirmatn']">
-                  {slipLog.printCount > 0 ? `چاپ نوبت ${toPersianDigits(slipLog.printCount + 1)}` : 'نسخه اول (اصل)'}
-                </span>
-              </div>
-            </div>
-
-            {/* Origin Warehouse Information Box (مشخصات و آدرس انبار مبدأ) */}
-            <div className="border border-slate-200 rounded-xl p-3.5 mb-5 bg-slate-50/60 text-xs print:bg-slate-50">
-              <div className="text-slate-700 font-bold mb-2 pb-1 border-b border-slate-200/80 flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Warehouse className="w-3.5 h-3.5 text-amber-600" />
-                  <span>مشخصات انبار مبدأ (محل بارگیری و خروج کالا):</span>
-                  <strong className="text-slate-900">{originWarehouseName}</strong>
-                  {settings.originWarehouseCode && (
-                    <span className="text-[10px] text-slate-500 font-mono font-normal">
-                      [شناسه: {toPersianDigits(settings.originWarehouseCode)}]
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOriginWarehouseFormData({
-                      originWarehouseName: settings.originWarehouseName || 'انبار مرکزی سپهر',
-                      originWarehouseCode: settings.originWarehouseCode || 'WH-01',
-                      originWarehouseAddress: settings.originWarehouseAddress || '',
-                      originWarehousePhone: settings.originWarehousePhone || '',
-                      originWarehouseManager: settings.originWarehouseManager || '',
-                    });
-                    setShowWarehouseConfigModal(true);
-                  }}
-                  className="no-print text-[11px] text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
-                  title="تغییر مشخصات انبار مبدأ توسط مدیریت"
-                >
-                  <Settings className="w-3 h-3" />
-                  <span>تنظیم انبار</span>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Consolidated 2-Column Info Deck */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 text-xs">
+              
+              {/* Card 1: Origin Warehouse (مشخصات انبار مبدأ و بارگیری) */}
+              <div className="bg-slate-50/90 border border-slate-200/90 rounded-xl p-3 flex flex-col justify-between print:bg-white">
                 <div>
-                  <span className="text-slate-400">مسئول انبار مبدأ: </span>
-                  <span className="font-bold text-slate-800">
-                    {settings.originWarehouseManager || '—'}
-                  </span>
-                </div>
-
-                <div>
-                  <span className="text-slate-400">شماره تماس انبار: </span>
-                  <span className="font-['Vazirmatn'] font-semibold text-slate-800">
-                    {settings.originWarehousePhone 
-                      ? toPersianDigits(settings.originWarehousePhone) 
-                      : (settings.phone ? toPersianDigits(settings.phone) : '—')}
-                  </span>
-                </div>
-
-                <div>
-                  <span className="text-slate-400">کد انبار: </span>
-                  <span className="font-mono font-bold text-slate-700">
-                    {settings.originWarehouseCode ? toPersianDigits(settings.originWarehouseCode) : 'WH-01'}
-                  </span>
-                </div>
-
-                {settings.originWarehouseAddress && (
-                  <div className="sm:col-span-3 pt-1 border-t border-slate-200/50 flex items-start gap-1 text-[11px]">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                    <span className="text-slate-500">نشانی دقیق محل بارگیری: </span>
-                    <span className="font-medium text-slate-800">{settings.originWarehouseAddress}</span>
+                  <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-200">
+                    <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                      <Warehouse className="w-3.5 h-3.5 text-amber-600" />
+                      <span>انبار مبدأ بارگیری و خروج:</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
+                        {originWarehouseName}
+                      </span>
+                      {settings.originWarehouseCode && (
+                        <span className="text-[10px] font-mono text-slate-500">
+                          ({toPersianDigits(settings.originWarehouseCode)})
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOriginWarehouseFormData({
+                            originWarehouseName: settings.originWarehouseName || 'انبار مرکزی سپهر',
+                            originWarehouseCode: settings.originWarehouseCode || 'WH-01',
+                            originWarehouseAddress: settings.originWarehouseAddress || '',
+                            originWarehousePhone: settings.originWarehousePhone || '',
+                            originWarehouseManager: settings.originWarehouseManager || '',
+                          });
+                          setShowWarehouseConfigModal(true);
+                        }}
+                        className="no-print text-[10px] text-blue-600 hover:text-blue-800 underline mr-1 cursor-pointer"
+                        title="ویرایش مشخصات انبار مبدأ"
+                      >
+                        ویرایش
+                      </button>
+                    </div>
                   </div>
-                )}
-              </div>
-            </div>
 
-            {/* Recipient / Customer Information */}
-            <div className="border border-slate-200 rounded-xl p-3.5 mb-5 bg-white text-xs">
-              <div className="text-slate-500 font-bold mb-2 pb-1 border-b border-slate-100 flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-slate-400" />
-                <span>مشخصات تحویل‌گیرنده / خریدار:</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <span className="text-slate-400">نام شخص یا شرکت: </span>
-                  <span className="font-bold text-slate-900">{invoice.customerName}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400">شماره تماس: </span>
-                  <span className="font-['Vazirmatn'] font-semibold text-slate-800">
-                    {invoice.customerPhone ? toPersianDigits(invoice.customerPhone) : '—'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400">کد / شناسه ملی: </span>
-                  <span className="font-['Vazirmatn'] text-slate-800">
-                    {invoice.customerNationalId ? toPersianDigits(invoice.customerNationalId) : '—'}
-                  </span>
-                </div>
-                {invoice.customerAddress && (
-                  <div className="sm:col-span-3">
-                    <span className="text-slate-400">نشانی تحویل: </span>
-                    <span className="text-slate-700">{invoice.customerAddress}</span>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <span className="text-slate-500">متصدی / انباردار: </span>
+                      <strong className="text-slate-800">{settings.originWarehouseManager || currentUser?.fullName || '—'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">تلفن انبار: </span>
+                      <span className="font-['Vazirmatn'] font-semibold text-slate-800">
+                        {settings.originWarehousePhone ? toPersianDigits(settings.originWarehousePhone) : (settings.phone ? toPersianDigits(settings.phone) : '—')}
+                      </span>
+                    </div>
+                    <div className="col-span-2 pt-1 border-t border-slate-200/60">
+                      <span className="text-slate-500">نشانی محل بارگیری: </span>
+                      <span className="text-slate-800 font-medium">
+                        {settings.originWarehouseAddress || settings.address || 'آدرس انبار مرکزی'}
+                      </span>
+                    </div>
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* Delivery, Vehicle & Driver Information Box */}
-            <div className="border border-slate-300 rounded-xl p-3.5 mb-5 bg-slate-50/80 text-xs">
-              <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-200">
-                <div className="text-slate-800 font-bold flex items-center gap-1.5">
-                  <Truck className="w-4 h-4 text-blue-600" />
-                  <span>مشخصات بارگیری، وسیله نقلیه و تحویل کالا:</span>
                 </div>
-                <div>
-                  {slipLog.isDelivered ? (
-                    <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[11px] font-bold border border-emerald-300">
-                      <Check className="w-3 h-3 text-emerald-600" />
-                      <span>بار تحویل شد (خروج قطعی)</span>
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full text-[11px] font-bold border border-amber-300">
-                      <Clock className="w-3 h-3 text-amber-600" />
-                      <span>در انتظار بارگیری و تحویل</span>
-                    </span>
-                  )}
+
+                <div className="mt-2 pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[10px] text-slate-500">
+                  <span>وضعیت چاپ سند:</span>
+                  <span className="font-['Vazirmatn'] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    {slipLog.printCount > 0 ? `چاپ نوبت ${toPersianDigits(slipLog.printCount + 1)}` : 'نسخه اول (اصل سند)'}
+                  </span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Card 2: Destination, Customer & Transport Fleet (مشخصات تحویل‌گیرنده و ناوگان حمل) */}
+              <div className="bg-slate-50/90 border border-slate-200/90 rounded-xl p-3 flex flex-col justify-between print:bg-white">
                 <div>
-                  <span className="text-slate-500">تحویل‌گیرنده / راننده: </span>
-                  <span className="font-bold text-slate-900 font-['Vazirmatn']">
-                    {slipLog.receiverName || invoice.customerName || '—'}
-                  </span>
-                </div>
+                  <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-200">
+                    <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                      <Truck className="w-3.5 h-3.5 text-blue-600" />
+                      <span>تحویل‌گیرنده و ناوگان حمل:</span>
+                    </div>
+                    <div>
+                      {slipLog.isDelivered ? (
+                        <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full text-[10px] font-bold border border-emerald-300">
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span>بار تحویل شد</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-300">
+                          <Clock className="w-3 h-3 text-amber-600" />
+                          <span>در انتظار بارگیری</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
-                <div>
-                  <span className="text-slate-500">تلفن راننده / تحویل‌گیرنده: </span>
-                  <span className="font-['Vazirmatn'] font-semibold text-slate-800">
-                    {slipLog.receiverPhone ? toPersianDigits(slipLog.receiverPhone) : (invoice.customerPhone ? toPersianDigits(invoice.customerPhone) : '—')}
-                  </span>
-                </div>
+                  <div className="space-y-1.5 text-[11px]">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-slate-500">خریدار / مشتری: </span>
+                        <strong className="text-slate-900">{invoice.customerName}</strong>
+                      </div>
+                      {invoice.customerPhone && (
+                        <div className="font-['Vazirmatn'] text-slate-700">
+                          {toPersianDigits(invoice.customerPhone)}
+                        </div>
+                      )}
+                    </div>
 
-                <div>
-                  <span className="text-slate-500">مشخصات ماشین و پلاک: </span>
-                  <span className="font-bold text-slate-900 font-['Vazirmatn']">
-                    {slipLog.vehicleInfo || '—'}
-                  </span>
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/60">
+                      <div>
+                        <span className="text-slate-500">تحویل‌گیرنده / راننده: </span>
+                        <strong className="text-slate-800 font-['Vazirmatn']">
+                          {slipLog.receiverName || invoice.customerName || '—'}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">تماس راننده: </span>
+                        <span className="font-['Vazirmatn'] font-semibold text-slate-800">
+                          {slipLog.receiverPhone ? toPersianDigits(slipLog.receiverPhone) : (invoice.customerPhone ? toPersianDigits(invoice.customerPhone) : '—')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Vehicle & Iranian License Plate */}
+                    <div className="pt-1 border-t border-slate-200/60 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-slate-500">مشخصات خودرو و پلاک: </span>
+                        {slipLog.vehicleInfo ? (
+                          <MiniIranPlate plateInfo={slipLog.vehicleInfo} />
+                        ) : (
+                          <span className="text-slate-400 italic">ثبت نشده</span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowDeliveryModal(true)}
+                        className="no-print text-[10px] text-blue-600 hover:text-blue-800 underline cursor-pointer"
+                      >
+                        {slipLog.vehicleInfo ? 'ویرایش' : 'ثبت خودرو'}
+                      </button>
+                    </div>
+
+                    {slipLog.deliveryNotes && (
+                      <div className="pt-1 text-slate-600">
+                        <span className="text-slate-400">یادداشت خروج / بارنامه: </span>
+                        <span className="font-medium text-slate-800">{slipLog.deliveryNotes}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {slipLog.deliveredAt && (
-                  <div>
-                    <span className="text-slate-500">زمان تایید تحویل: </span>
-                    <span className="font-['Vazirmatn'] text-slate-700">
-                      {toPersianDigits(slipLog.deliveredAt)}
-                    </span>
-                  </div>
-                )}
-
-                {slipLog.deliveredBy && (
-                  <div>
-                    <span className="text-slate-500">انباردار تاییدکننده: </span>
-                    <span className="font-medium text-slate-800">
-                      {slipLog.deliveredBy}
-                    </span>
-                  </div>
-                )}
-
-                {slipLog.deliveryNotes && (
-                  <div className="sm:col-span-3">
-                    <span className="text-slate-500">شماره بارنامه / یادداشت خروج: </span>
-                    <span className="text-slate-800 font-medium">{slipLog.deliveryNotes}</span>
+                  <div className="mt-2 pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[10px] text-slate-500 font-['Vazirmatn']">
+                    <span>زمان تایید خروج: {toPersianDigits(slipLog.deliveredAt)}</span>
+                    {slipLog.deliveredBy && <span>توسط: {slipLog.deliveredBy}</span>}
                   </div>
                 )}
               </div>
+
             </div>
 
             {/* Items Physical Inventory Table (NO FINANCIAL / PRICE DATA) */}
-            <div className="mb-5 overflow-hidden border border-slate-300 rounded-xl">
-              <div className="bg-slate-100 px-4 py-2 text-xs font-bold text-slate-800 border-b border-slate-300 flex items-center justify-between">
-                <span>لیست اقلام تحویلی از انبار (کنترل فیزیکی)</span>
-                <span className="text-[11px] text-slate-500 font-normal">
-                  (فاقد هرگونه قیمت و گردش مالی)
+            <div className="mb-4 overflow-hidden border border-slate-300 rounded-xl bg-white">
+              <div className="bg-slate-100/90 px-3.5 py-2 text-xs font-bold text-slate-800 border-b border-slate-300 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <PackageCheck className="w-4 h-4 text-emerald-600" />
+                  <span>لیست اقلام تحویلی از انبار (کنترل فیزیکی اقلام)</span>
+                </span>
+                <span className="text-[10px] sm:text-[11px] text-slate-500 font-normal">
+                  (سند انبارداری - فاقد هرگونه قیمت و گردش مالی)
                 </span>
               </div>
-              <table className="w-full text-right border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-700 border-b border-slate-300 font-bold">
-                    <th className="p-2.5 text-center w-12 border-l border-slate-200">ردیف</th>
-                    <th className="p-2.5 w-24 border-l border-slate-200">کد کالا</th>
-                    <th className="p-2.5 border-l border-slate-200">شرح کالا و مشخصات فنی</th>
-                    <th className="p-2.5 text-center w-20 border-l border-slate-200">واحد</th>
-                    <th className="p-2.5 text-center w-24 border-l border-slate-200 bg-slate-100 font-black">
-                      تعداد حواله
-                    </th>
-                    <th className="p-2.5 text-center w-24 border-l border-slate-200">تعداد تحویلی</th>
-                    <th className="p-2.5 text-center w-20">کنترل سلامت</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {invoice.items.map((item, index) => (
-                    <tr
-                      key={item.id || index}
-                      className={`${
-                        index % 2 === 1 ? 'bg-slate-50/85' : 'bg-white'
-                      } hover:bg-slate-100/70 transition-colors`}
-                    >
-                      <td className="p-2.5 text-center font-['Vazirmatn'] border-l border-slate-200 text-slate-500">
-                        {toPersianDigits(index + 1)}
-                      </td>
-                      <td className="p-2.5 font-['Vazirmatn'] text-slate-600 border-l border-slate-200 text-[11px]">
-                        {toPersianDigits(item.productId.replace('prod-', ''))}
-                      </td>
-                      <td className="p-2.5 font-bold text-slate-900 border-l border-slate-200">
-                        {item.productName}
-                      </td>
-                      <td className="p-2.5 text-center text-slate-600 border-l border-slate-200">
-                        {item.unit || 'عدد'}
-                      </td>
-                      <td className="p-2.5 text-center font-['Vazirmatn'] font-black text-slate-900 text-sm bg-slate-50/80 border-l border-slate-200">
-                        {toPersianDigits(item.quantity)}
-                      </td>
-                      <td className="p-2.5 text-center border-l border-slate-200">
-                        <span className="font-['Vazirmatn'] font-bold text-slate-800">
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-right border-collapse text-xs min-w-[540px] sm:min-w-full">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-700 border-b border-slate-300 font-bold text-[11px] sm:text-xs">
+                      <th className="py-2.5 px-2 text-center w-10 border-l border-slate-200">ردیف</th>
+                      <th className="py-2.5 px-2 text-center w-20 border-l border-slate-200">کد کالا</th>
+                      <th className="py-2.5 px-3 border-l border-slate-200">شرح کالا و مشخصات فنی</th>
+                      <th className="py-2.5 px-2 text-center w-16 border-l border-slate-200">واحد</th>
+                      <th className="py-2.5 px-2 text-center w-20 border-l border-slate-200 bg-slate-100 font-black">
+                        تعداد حواله
+                      </th>
+                      <th className="py-2.5 px-2 text-center w-20 border-l border-slate-200">تعداد تحویلی</th>
+                      <th className="py-2.5 px-2 text-center w-16">کنترل سلامت</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {invoice.items.map((item, index) => (
+                      <tr
+                        key={item.id || index}
+                        className={`${
+                          index % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'
+                        } hover:bg-slate-100/60 transition-colors`}
+                      >
+                        <td className="py-2.5 px-2 text-center font-['Vazirmatn'] border-l border-slate-200 text-slate-500 font-bold">
+                          {toPersianDigits(index + 1)}
+                        </td>
+                        <td className="py-2.5 px-2 text-center font-['Vazirmatn'] text-slate-600 border-l border-slate-200 text-[11px] font-mono">
+                          {toPersianDigits(item.productId.replace('prod-', ''))}
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-slate-900 border-l border-slate-200">
+                          {item.productName}
+                        </td>
+                        <td className="py-2.5 px-2 text-center text-slate-600 border-l border-slate-200 text-[11px]">
+                          {item.unit || 'عدد'}
+                        </td>
+                        <td className="py-2.5 px-2 text-center font-['Vazirmatn'] font-black text-slate-900 text-sm bg-slate-50/60 border-l border-slate-200">
                           {toPersianDigits(item.quantity)}
-                        </span>
+                        </td>
+                        <td className="py-2.5 px-2 text-center border-l border-slate-200">
+                          <span className="font-['Vazirmatn'] font-bold text-slate-800">
+                            {toPersianDigits(item.quantity)}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-2 text-center">
+                          <div className="w-4 h-4 border border-slate-400 rounded-xs mx-auto flex items-center justify-center text-[10px] text-slate-400">
+                            ✓
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900 text-xs">
+                      <td colSpan={4} className="py-2.5 px-3 text-left border-l border-slate-300">
+                        مجموع کل اقلام فیزیکی تحویل شده:
                       </td>
-                      <td className="p-2.5 text-center">
-                        <div className="w-4 h-4 border border-slate-400 rounded-sm mx-auto flex items-center justify-center text-[10px] text-slate-400">
-                          ✓
-                        </div>
+                      <td className="py-2.5 px-2 text-center font-['Vazirmatn'] font-black text-sm sm:text-base text-emerald-800 bg-emerald-50 border-l border-slate-300">
+                        {toPersianDigits(totalUnits)}
+                      </td>
+                      <td colSpan={2} className="py-2.5 px-3 text-slate-600 text-[11px]">
+                        ({toPersianDigits(invoice.items.length)} ردیف کالایی)
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900">
-                    <td colSpan={4} className="p-2.5 text-left border-l border-slate-300">
-                      مجموع اقلام تحویل شده:
-                    </td>
-                    <td className="p-2.5 text-center font-['Vazirmatn'] font-black text-base text-emerald-800 bg-emerald-50 border-l border-slate-300">
-                      {toPersianDigits(totalUnits)}
-                    </td>
-                    <td colSpan={2} className="p-2.5 text-slate-500 text-[11px]">
-                      (تعداد {toPersianDigits(invoice.items.length)} ردیف کالای فیزیکی)
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
+                  </tfoot>
+                </table>
+              </div>
             </div>
 
             {/* Delivery Terms & Notes */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-6 text-xs text-slate-600 space-y-1">
-              <div className="font-bold text-slate-800 flex items-center gap-1">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3 mb-4 text-xs text-slate-600 space-y-1">
+              <div className="font-bold text-slate-800 flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>شروط و ضوابط خروج از انبار:</span>
+                <span>ضوابط و شرایط ترخیص و خروج از انبار:</span>
               </div>
-              <p className="text-[11px] leading-relaxed">
-                ۱. کلیه اقلام فوق از لحاظ تعداد فیزیکی، بسته‌بندی و سلامت ظاهری به رویت و تایید تحویل‌گیرنده رسیده و تحویل گردید.
-              </p>
-              <p className="text-[11px] leading-relaxed">
-                ۲. خروج هرگونه کالا از درب انبار منوط به اخذ امضای کامل متصدی انبار و برگه تایید نگهبانی می‌باشد.
-              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[11px] leading-relaxed pt-0.5">
+                <p>
+                  ۱. کلیه اقلام فوق از لحاظ تعداد فیزیکی، بسته‌بندی و سلامت ظاهری به رویت و تایید کامل تحویل‌گیرنده رسید.
+                </p>
+                <p>
+                  ۲. خروج هرگونه بار از محوطه انبار منوط به امضای متصدی انبار و برگه تایید گیت نگهبانی می‌باشد.
+                </p>
+              </div>
               {invoice.notes && (
-                <div className="pt-1 border-t border-slate-200 text-slate-700">
-                  <span className="font-bold">یادداشت حواله: </span>
+                <div className="pt-1.5 mt-1 border-t border-slate-200 text-slate-700 text-[11px]">
+                  <span className="font-bold">یادداشت فاکتور / حواله: </span>
                   <span>{invoice.notes}</span>
                 </div>
               )}
             </div>
 
-            {/* Print Log Footer on Paper */}
-            <div className="flex items-center justify-between text-[11px] text-slate-400 pb-4 mb-4 border-b border-dashed border-slate-200">
-              <div className="flex items-center gap-2">
-                <span>رهگیری برگه:</span>
-                <span className="font-['Vazirmatn'] font-bold text-slate-600">
-                  نوبت چاپ {toPersianDigits(slipLog.printCount + 1)}
-                </span>
+            {/* Official Signatures & Approvals Grid */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-4 pt-2 border-t border-slate-300 text-center text-xs">
+              
+              {/* Box 1: Warehouse keeper */}
+              <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-2.5 flex flex-col justify-between h-28 sm:h-32">
+                <div>
+                  <span className="font-bold text-slate-800 block text-[11px] sm:text-xs">امضا و مهر انباردار</span>
+                  <span className="text-[10px] text-slate-500 block mt-0.5">
+                    {settings.originWarehouseManager || currentUser?.fullName || 'متصدی انبار'}
+                  </span>
+                </div>
+                <div className="border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-400">
+                  محل مهر و تایید خروج
+                </div>
               </div>
 
-              <div className="flex items-center gap-3 font-['Vazirmatn']">
+              {/* Box 2: Receiver / Driver */}
+              <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-2.5 flex flex-col justify-between h-28 sm:h-32">
+                <div>
+                  <span className="font-bold text-slate-800 block text-[11px] sm:text-xs">امضا و اثر انگشت تحویل‌گیرنده</span>
+                  <span className="text-[10px] text-slate-500 block mt-0.5">
+                    {slipLog.receiverName || invoice.customerName}
+                  </span>
+                </div>
+                <div className="border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-400">
+                  محل امضا و اثر انگشت
+                </div>
+              </div>
+
+              {/* Box 3: Exit Gate & Security */}
+              <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-2.5 flex flex-col justify-between h-28 sm:h-32">
+                <div>
+                  <span className="font-bold text-slate-800 block text-[11px] sm:text-xs">کنترل نهایی گیت خروج</span>
+                  <span className="text-[10px] text-slate-500 block mt-0.5">نگهبانی و بازرسی درب</span>
+                </div>
+                <div className="border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-400">
+                  ساعت خروج: ..........
+                </div>
+              </div>
+
+            </div>
+
+            {/* Document Tracking Bar */}
+            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-3 mt-3 border-t border-slate-200 font-['Vazirmatn']">
+              <div>
+                <span>شناسه سند: </span>
+                <span className="font-mono text-slate-600 font-bold">OUT-{invoice.invoiceNumber}</span>
+                <span className="mx-1.5">•</span>
+                <span>نوبت چاپ: {toPersianDigits(slipLog.printCount + 1)}</span>
+              </div>
+              <div className="flex items-center gap-2">
                 {slipLog.lastPrintedAt && (
                   <span>آخرین چاپ: {toPersianDigits(slipLog.lastPrintedAt)}</span>
                 )}
@@ -894,67 +1008,47 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
               </div>
             </div>
 
-            {/* Official Signatures Grid */}
-            <div className="grid grid-cols-3 gap-4 pt-3 border-t border-slate-300 text-center text-xs">
-              <div className="space-y-12">
-                <span className="font-bold text-slate-700 block">امضا و مهر انباردار</span>
-                <span className="text-[10px] text-slate-500 block">
-                  {settings.originWarehouseManager || currentUser?.fullName || 'نام متصدی انبار'} / تاریخ
-                </span>
-              </div>
-
-              <div className="space-y-12 border-x border-slate-200">
-                <span className="font-bold text-slate-700 block">امضا و اثر انگشت تحویل‌گیرنده</span>
-                <span className="text-[10px] text-slate-400 block">نام راننده یا مشتری / تاریخ</span>
-              </div>
-
-              <div className="space-y-12">
-                <span className="font-bold text-slate-700 block">کنترل نهایی گیت خروج</span>
-                <span className="text-[10px] text-slate-400 block">امضا و تایید نگهبانی</span>
-              </div>
-            </div>
-
           </div>
         </div>
 
         {/* MODAL FOOTER (No Print) */}
-        <div className="no-print bg-slate-50 border-t border-slate-200 px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-          <div className="text-xs text-slate-500 flex items-center gap-1.5 text-center sm:text-right">
+        <div className="no-print bg-slate-50 border-t border-slate-200 px-3.5 sm:px-6 py-2.5 sm:py-3 flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-4 shrink-0">
+          <div className="hidden sm:flex text-xs text-slate-500 items-center gap-1.5">
             <CheckSquare className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>با فشردن دکمه پرینت یا تبدیل به PDF، زمان دقیق و دفعات چاپ به صورت رسمی در انبار ثبت می‌شود.</span>
+            <span>با فشردن دکمه چاپ یا خروجی PDF، تاریخچه و دفعات پرینت در سامانه انبار ثبت می‌گردد.</span>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 w-full sm:w-auto">
-            {/* Social Share Button in Footer */}
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
+            {/* Social Share Button */}
             <button
               id="exit-slip-footer-social-btn"
               type="button"
               onClick={() => setShowSocialModal(true)}
-              className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+              className="flex items-center justify-center gap-1.5 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
               title="ارسال به شبکه‌های اجتماعی"
             >
-              <Share2 className="w-4 h-4" />
-              <span>ارسال به شبکه اجتماعی</span>
+              <Share2 className="w-3.5 h-3.5" />
+              <span>اشتراک‌گذاری</span>
             </button>
 
-            {/* PDF Export Button in Footer */}
+            {/* PDF Export Button */}
             <button
               id="exit-slip-footer-pdf-btn"
               type="button"
               onClick={handleExportPdf}
               disabled={isExportingPdf}
-              className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 disabled:opacity-60 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-              title="تبدیل به PDF با حجم بسیار کم (زیر ۱۵۰ کیلوبایت)"
+              className="flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 disabled:opacity-60 text-white px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+              title="تبدیل به PDF استاندارد و کم‌حجم"
             >
               {isExportingPdf ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>در حال تبدیل به PDF...</span>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>در حال ساخت...</span>
                 </>
               ) : (
                 <>
-                  <FileDown className="w-4 h-4" />
-                  <span>تبدیل به PDF (کم‌حجم)</span>
+                  <FileDown className="w-3.5 h-3.5" />
+                  <span>دانلود PDF</span>
                 </>
               )}
             </button>
@@ -964,21 +1058,21 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
               id="exit-slip-footer-close-btn"
               type="button"
               onClick={onClose}
-              className="px-3.5 py-2 text-xs text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer font-medium"
+              className="flex items-center justify-center px-3 py-2 text-xs text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer font-medium"
             >
               بستن
             </button>
 
-            {/* Main Print Button in Footer (Guaranteed Printer Dialog) */}
+            {/* Main Print Button */}
             <button
               id="exit-slip-footer-print-btn"
               type="button"
               onClick={() => handlePrint('new-window')}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors shadow-xs cursor-pointer"
+              className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors shadow-xs cursor-pointer"
               title="باز کردن پنجره پرینتر جهت چاپ مستقیم برگه خروج"
             >
-              <Printer className="w-4 h-4" />
-              <span>چاپ برگه خروج</span>
+              <Printer className="w-3.5 h-3.5" />
+              <span>چاپ حواله خروج</span>
             </button>
           </div>
         </div>
