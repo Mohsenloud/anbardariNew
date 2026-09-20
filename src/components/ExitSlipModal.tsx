@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Invoice, StoreSettings, AppUser, ExitSlipData } from '../types';
-import { toPersianDigits } from '../utils/jalali';
+import { toPersianDigits, getCurrentJalaliTime, toEnglishDigits } from '../utils/jalali';
 import { exportElementToPdf, printElementDirectly, printElementInNewWindow, generatePdfBlob } from '../utils/pdfHelper';
 import { StorageService } from '../utils/storage';
 import { 
@@ -100,6 +100,34 @@ const MiniIranPlate: React.FC<{ plateInfo: string }> = ({ plateInfo }) => {
   );
 };
 
+// Helper to extract or fallback issuance time
+export const getInvoiceIssueTime = (inv: Invoice): string => {
+  const anyInv = inv as any;
+  if (anyInv.time && typeof anyInv.time === 'string' && anyInv.time.includes(':')) {
+    return anyInv.time;
+  }
+  if (anyInv.invoiceTime && typeof anyInv.invoiceTime === 'string' && anyInv.invoiceTime.includes(':')) {
+    return anyInv.invoiceTime;
+  }
+  if (inv.createdAt) {
+    try {
+      const d = new Date(inv.createdAt);
+      if (!isNaN(d.getTime())) {
+        const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+        return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      }
+    } catch {}
+
+    const english = toEnglishDigits(inv.createdAt);
+    const match = english.match(/(\d{1,2}):(\d{2})/);
+    if (match) {
+      const pad = (s: string) => (s.length === 1 ? `0${s}` : s);
+      return `${pad(match[1])}:${match[2]}`;
+    }
+  }
+  return getCurrentJalaliTime();
+};
+
 interface ExitSlipModalProps {
   invoice: Invoice | null;
   settings: StoreSettings;
@@ -128,6 +156,47 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
   const [showSocialModal, setShowSocialModal] = useState(false);
   const [statusNotification, setStatusNotification] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Paper format & orientation settings (persisted across sessions)
+  const [pageSize, setPageSize] = useState<'a4' | 'a5'>(() => {
+    try {
+      return (localStorage.getItem('exit_slip_paper_size') as 'a4' | 'a5') || 'a4';
+    } catch {
+      return 'a4';
+    }
+  });
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>(() => {
+    try {
+      return (localStorage.getItem('exit_slip_orientation') as 'portrait' | 'landscape') || 'portrait';
+    } catch {
+      return 'portrait';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('exit_slip_paper_size', pageSize);
+    } catch {}
+  }, [pageSize]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('exit_slip_orientation', orientation);
+    } catch {}
+  }, [orientation]);
+
+  // Proportional layout helpers
+  const isA5 = pageSize === 'a5';
+  const isLandscape = orientation === 'landscape';
+  const isA5Landscape = isA5 && isLandscape;
+  const isA5Portrait = isA5 && !isLandscape;
+  const isA4Landscape = !isA5 && isLandscape;
+  const isA4Portrait = !isA5 && !isLandscape;
+
+  // Derive issuance time from invoice or fallback to current time
+  const issuedTime = React.useMemo(() => {
+    return invoice ? getInvoiceIssueTime(invoice) : getCurrentJalaliTime();
+  }, [invoice?.id, invoice?.createdAt]);
 
   const originWarehouseName = settings.originWarehouseName || 
     settings.warehouses?.find(w => w.id === settings.defaultWarehouseId)?.name || 
@@ -186,26 +255,30 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
     // 1. Record print log in storage, explicitly preserving driver and vehicle info
     onRecordPrint(slipLog);
     
+    const printOptions = { pageSize, orientation };
+
     if (mode === 'new-window') {
       const opened = printElementInNewWindow(
         'printable-exit-slip', 
-        `برگ خروج انبار - فاکتور ${invoice.invoiceNumber}`
+        `برگ خروج انبار (${pageSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'}) - فاکتور ${invoice.invoiceNumber}`,
+        printOptions
       );
       if (opened) {
-        showNotification('پنجره چاپ پرینتر در حال آماده‌سازی و باز شدن است.');
+        showNotification(`پنجره چاپ پرینتر در اندازه ${pageSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'} آماده‌سازی شد.`);
       } else {
         // Fallback to direct print if popup was blocked
-        printElementDirectly('printable-exit-slip');
+        printElementDirectly('printable-exit-slip', printOptions);
         showNotification('دستور چاپ مستقیم ارسال شد.');
       }
     } else {
-      const printed = printElementDirectly('printable-exit-slip');
+      const printed = printElementDirectly('printable-exit-slip', printOptions);
       if (printed) {
         showNotification('دستور چاپ مستقیم در همین صفحه ارسال شد.');
       } else {
         printElementInNewWindow(
           'printable-exit-slip', 
-          `برگ خروج انبار - فاکتور ${invoice.invoiceNumber}`
+          `برگ خروج انبار - فاکتور ${invoice.invoiceNumber}`,
+          printOptions
         );
       }
     }
@@ -217,11 +290,11 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
       setIsExportingPdf(true);
       onRecordPrint(slipLog);
       
-      const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}`;
-      const result = await exportElementToPdf('printable-exit-slip', filename);
+      const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}_${pageSize}_${orientation}`;
+      const result = await exportElementToPdf('printable-exit-slip', filename, { pageSize, orientation });
       
       if (result.success) {
-        showNotification('فایل PDF برگه خروج با موفقیت تولید و دانلود شد.');
+        showNotification(`فایل PDF برگه خروج در اندازه ${pageSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'} با موفقیت تولید و دانلود شد.`);
       } else {
         showNotification(result.error || 'خطا در تبدیل به PDF');
       }
@@ -238,7 +311,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
     const lines = [
       `📦 *برگ خروج کالا از انبار (حواله تحویل فیزیکی)*`,
       `شماره حواله / فاکتور: ${toPersianDigits(invoice.invoiceNumber)}`,
-      `تاریخ صدور: ${toPersianDigits(invoice.date)}`,
+      `تاریخ و ساعت صدور: ${toPersianDigits(invoice.date)} - ساعت ${toPersianDigits(issuedTime)}`,
+      `قالب سند: ${pageSize.toUpperCase()} (${orientation === 'portrait' ? 'عمودی' : 'افقی'})`,
       `🏭 انبار مبدأ بارگیری: ${originWarehouseName}${settings.originWarehouseCode ? ` (کد: ${toPersianDigits(settings.originWarehouseCode)})` : ''}`,
       settings.originWarehouseAddress ? `📍 نشانی انبار مبدأ: ${settings.originWarehouseAddress}` : '',
       `تحویل‌گیرنده: ${invoice.customerName}`,
@@ -284,8 +358,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
   const handleSharePdfDirectly = async () => {
     setIsExportingPdf(true);
     try {
-      const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}.pdf`;
-      const { success, blob, file, error } = await generatePdfBlob('printable-exit-slip', filename);
+      const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}_${pageSize}_${orientation}.pdf`;
+      const { success, blob, file, error } = await generatePdfBlob('printable-exit-slip', filename, { pageSize, orientation });
       if (!success || (!file && !blob)) {
         showNotification(error || 'خطا در تولید فایل PDF');
         return;
@@ -569,6 +643,80 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
           </div>
         </div>
 
+        {/* PAPER SETTINGS TOOLBAR (No Print - User paper format selection) */}
+        <div className="no-print bg-slate-800 text-slate-200 px-3.5 sm:px-6 py-2 border-b border-slate-700/80 flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs">
+          <div className="flex items-center gap-1.5 text-slate-300">
+            <Settings className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="font-bold text-slate-200 text-xs">تنظیمات قطع و جهت چاپ:</span>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            {/* Paper Size selector: A4 / A5 */}
+            <div className="inline-flex items-center bg-slate-900/90 rounded-lg p-0.5 border border-slate-700">
+              <span className="text-[10px] text-slate-400 px-2 select-none">اندازه کاغذ:</span>
+              <button
+                type="button"
+                id="exit-slip-size-a4-btn"
+                onClick={() => setPageSize('a4')}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                  pageSize === 'a4'
+                    ? 'bg-amber-500 text-slate-950 shadow-xs'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                A4
+              </button>
+              <button
+                type="button"
+                id="exit-slip-size-a5-btn"
+                onClick={() => setPageSize('a5')}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                  pageSize === 'a5'
+                    ? 'bg-amber-500 text-slate-950 shadow-xs'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                A5
+              </button>
+            </div>
+
+            {/* Orientation selector: عمودی (portrait) / افقی (landscape) */}
+            <div className="inline-flex items-center bg-slate-900/90 rounded-lg p-0.5 border border-slate-700">
+              <span className="text-[10px] text-slate-400 px-2 select-none">جهت کاغذ:</span>
+              <button
+                type="button"
+                id="exit-slip-orientation-portrait-btn"
+                onClick={() => setOrientation('portrait')}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                  orientation === 'portrait'
+                    ? 'bg-amber-500 text-slate-950 shadow-xs'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                عمودی
+              </button>
+              <button
+                type="button"
+                id="exit-slip-orientation-landscape-btn"
+                onClick={() => setOrientation('landscape')}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                  orientation === 'landscape'
+                    ? 'bg-amber-500 text-slate-950 shadow-xs'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                افقی
+              </button>
+            </div>
+
+            {/* Current Active Label Badge */}
+            <span className="bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 px-2 py-0.5 rounded text-[11px] font-bold hidden sm:inline-flex items-center gap-1 font-['Vazirmatn']">
+              <span>قالب:</span>
+              <strong>{pageSize.toUpperCase()} {orientation === 'portrait' ? 'عمودی' : 'افقی'}</strong>
+            </span>
+          </div>
+        </div>
+
         {/* STATUS NOTIFICATION BANNER */}
         {statusNotification && (
           <div className="no-print bg-blue-50 border-b border-blue-200 text-blue-900 px-4 py-2.5 text-xs flex items-center justify-between animate-fadeIn">
@@ -631,14 +779,147 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
           </div>
         )}
 
+        {/* Dynamic print stylesheet for selected paper size and orientation */}
+        <style>{`
+          @media print {
+            @page {
+              size: ${pageSize.toUpperCase()} ${orientation} !important;
+              margin: ${isA5Landscape ? '3mm' : isA5Portrait ? '4mm' : '8mm'} !important;
+            }
+            body {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+          }
+
+          /* === A5 GENERAL COMPACTING (All info fits on single sheet) === */
+          #printable-exit-slip.paper-a5 {
+            font-size: 10px;
+          }
+          #printable-exit-slip.paper-a5 table th,
+          #printable-exit-slip.paper-a5 table td {
+            padding: 3px 5px !important;
+            font-size: 10px !important;
+          }
+
+          /* A5 Landscape - Specifically optimized for 148mm paper height */
+          #printable-exit-slip.paper-a5.paper-landscape {
+            padding: 10px 14px !important;
+            max-width: 760px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-landscape .exit-slip-header {
+            padding-bottom: 5px !important;
+            margin-bottom: 5px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-landscape .exit-slip-title {
+            font-size: 13px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-landscape .exit-slip-badge {
+            font-size: 10.5px !important;
+            padding: 2px 8px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-landscape .exit-slip-info-deck {
+            gap: 6px !important;
+            margin-bottom: 6px !important;
+            font-size: 9.5px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-landscape .exit-slip-card {
+            padding: 5px 8px !important;
+            border-radius: 8px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-landscape .exit-slip-table-box {
+            margin-bottom: 6px !important;
+            border-radius: 8px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-landscape .exit-slip-table-header {
+            padding: 3px 8px !important;
+            font-size: 9.5px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-landscape .exit-slip-terms {
+            padding: 4px 8px !important;
+            margin-bottom: 6px !important;
+            font-size: 8.5px !important;
+            line-height: 1.35 !important;
+            border-radius: 8px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-landscape .signature-box {
+            height: 52px !important;
+            padding: 3px 6px !important;
+            border-radius: 8px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-landscape .signature-box-title {
+            font-size: 9px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-landscape .signature-box-subtitle {
+            font-size: 8px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-landscape .signature-box-line {
+            font-size: 8px !important;
+            padding-top: 2px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-landscape .exit-slip-tracking {
+            padding-top: 4px !important;
+            margin-top: 4px !important;
+            font-size: 8.5px !important;
+          }
+
+          /* A5 Portrait */
+          #printable-exit-slip.paper-a5.paper-portrait {
+            padding: 12px 14px !important;
+            max-width: 540px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-header {
+            padding-bottom: 8px !important;
+            margin-bottom: 8px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-info-deck {
+            gap: 8px !important;
+            margin-bottom: 8px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-card {
+            padding: 6px 10px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-table-box {
+            margin-bottom: 8px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-terms {
+            padding: 6px 10px !important;
+            margin-bottom: 8px !important;
+            font-size: 9px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .signature-box {
+            height: 70px !important;
+            padding: 5px 8px !important;
+          }
+
+          /* === A4 FORMATS (Spacious executive proportions) === */
+          #printable-exit-slip.paper-a4.paper-landscape {
+            padding: 18px 24px !important;
+            max-width: 1040px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-landscape .signature-box {
+            height: 84px !important;
+          }
+
+          #printable-exit-slip.paper-a4.paper-portrait {
+            padding: 24px 32px !important;
+            max-width: 860px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .signature-box {
+            height: 105px !important;
+          }
+        `}</style>
+
         {/* PRINTABLE SLIP CONTENT VIEW (Scrollable on screen, Full page on Print) */}
-        <div className="flex-1 overflow-y-auto p-2.5 sm:p-5 md:p-8 bg-slate-100/70 print:p-0 print:bg-white">
+        <div className="flex-1 overflow-y-auto p-2.5 sm:p-5 md:p-8 bg-slate-100/70 print:p-0 print:bg-white flex justify-center">
           <div 
             id="printable-exit-slip"
-            className="print-container bg-white border border-slate-300 rounded-2xl p-4 sm:p-6 md:p-8 max-w-4xl mx-auto text-slate-900 shadow-sm print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none"
+            className={`print-container bg-white border border-slate-300 rounded-2xl text-slate-900 shadow-sm print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none w-full transition-all ${
+              isA5 ? 'paper-a5' : 'paper-a4'
+            } ${isLandscape ? 'paper-landscape' : 'paper-portrait'}`}
           >
             {/* Header: Store details & Exit Voucher Title */}
-            <div className="border-b-2 border-slate-900 pb-3 sm:pb-4 mb-4">
+            <div className="exit-slip-header border-b-2 border-slate-900 pb-3 sm:pb-4 mb-4">
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4">
                 {/* Store Branding */}
                 <div className="space-y-1">
@@ -646,7 +927,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                     <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-black text-sm print:border print:border-slate-800">
                       {settings.storeName ? settings.storeName.charAt(0) : 'ا'}
                     </span>
-                    <h1 className="text-base sm:text-xl font-black text-slate-900 tracking-tight">
+                    <h1 className="exit-slip-title text-base sm:text-xl font-black text-slate-900 tracking-tight">
                       {settings.storeName || 'فروشگاه و انبار مرکزی'}
                     </h1>
                   </div>
@@ -671,20 +952,24 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
 
                 {/* Slip Badge Title & Serial */}
                 <div className="text-right sm:text-left shrink-0 bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3 print:bg-white print:border-slate-800">
-                  <div className="inline-block border-2 border-slate-900 bg-slate-900 text-white px-3 sm:px-4 py-1 rounded-lg text-xs sm:text-sm font-black shadow-2xs">
+                  <div className="exit-slip-badge inline-block border-2 border-slate-900 bg-slate-900 text-white px-3 sm:px-4 py-1 rounded-lg text-xs sm:text-sm font-black shadow-2xs">
                     برگ خروج کالا از انبار
                   </div>
                   <div className="text-[10px] sm:text-[11px] text-slate-600 font-bold mt-1">
                     حواله رسمی تحویل قطعی اجناس
                   </div>
-                  <div className="flex items-center justify-between sm:justify-end gap-3 text-[11px] font-['Vazirmatn'] text-slate-700 pt-1.5 mt-1 border-t border-slate-200">
+                  <div className="flex flex-wrap items-center justify-between sm:justify-end gap-x-3 gap-y-1 text-[11px] font-['Vazirmatn'] text-slate-700 pt-1.5 mt-1 border-t border-slate-200">
                     <div>
                       <span className="text-slate-400 text-[10px]">شماره حواله: </span>
                       <strong className="text-slate-900 text-xs">{toPersianDigits(invoice.invoiceNumber)}</strong>
                     </div>
                     <div>
                       <span className="text-slate-400 text-[10px]">تاریخ صدور: </span>
-                      <strong>{toPersianDigits(invoice.date)}</strong>
+                      <strong className="text-slate-900 text-xs">{toPersianDigits(invoice.date)}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">ساعت صدور: </span>
+                      <strong className="text-slate-900 text-xs font-mono">{toPersianDigits(issuedTime)}</strong>
                     </div>
                   </div>
                 </div>
@@ -692,10 +977,10 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             </div>
 
             {/* Consolidated 2-Column Info Deck */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 text-xs">
+            <div className="exit-slip-info-deck grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 text-xs">
               
               {/* Card 1: Origin Warehouse (مشخصات انبار مبدأ و بارگیری) */}
-              <div className="bg-slate-50/90 border border-slate-200/90 rounded-xl p-3 flex flex-col justify-between print:bg-white">
+              <div className="exit-slip-card bg-slate-50/90 border border-slate-200/90 rounded-xl p-3 flex flex-col justify-between print:bg-white">
                 <div>
                   <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-200">
                     <div className="flex items-center gap-1.5 font-bold text-slate-800">
@@ -760,7 +1045,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
               </div>
 
               {/* Card 2: Destination, Customer & Transport Fleet (مشخصات تحویل‌گیرنده و ناوگان حمل) */}
-              <div className="bg-slate-50/90 border border-slate-200/90 rounded-xl p-3 flex flex-col justify-between print:bg-white">
+              <div className="exit-slip-card bg-slate-50/90 border border-slate-200/90 rounded-xl p-3 flex flex-col justify-between print:bg-white">
                 <div>
                   <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-200">
                     <div className="flex items-center gap-1.5 font-bold text-slate-800">
@@ -849,8 +1134,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             </div>
 
             {/* Items Physical Inventory Table (NO FINANCIAL / PRICE DATA) */}
-            <div className="mb-4 overflow-hidden border border-slate-300 rounded-xl bg-white">
-              <div className="bg-slate-100/90 px-3.5 py-2 text-xs font-bold text-slate-800 border-b border-slate-300 flex items-center justify-between">
+            <div className="exit-slip-table-box mb-4 overflow-hidden border border-slate-300 rounded-xl bg-white">
+              <div className="exit-slip-table-header bg-slate-100/90 px-3.5 py-2 text-xs font-bold text-slate-800 border-b border-slate-300 flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <PackageCheck className="w-4 h-4 text-emerald-600" />
                   <span>لیست اقلام تحویلی از انبار (کنترل فیزیکی اقلام)</span>
@@ -929,7 +1214,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             </div>
 
             {/* Delivery Terms & Notes */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3 mb-4 text-xs text-slate-600 space-y-1">
+            <div className="exit-slip-terms bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3 mb-4 text-xs text-slate-600 space-y-1">
               <div className="font-bold text-slate-800 flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                 <span>ضوابط و شرایط ترخیص و خروج از انبار:</span>
@@ -951,41 +1236,41 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             </div>
 
             {/* Official Signatures & Approvals Grid */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-4 pt-2 border-t border-slate-300 text-center text-xs">
+            <div className="exit-slip-signatures grid grid-cols-3 gap-2 sm:gap-4 pt-2 border-t border-slate-300 text-center text-xs">
               
               {/* Box 1: Warehouse keeper */}
-              <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-2.5 flex flex-col justify-between h-28 sm:h-32">
+              <div className="signature-box bg-slate-50/70 border border-slate-200 rounded-xl p-2.5 flex flex-col justify-between h-28 sm:h-32">
                 <div>
-                  <span className="font-bold text-slate-800 block text-[11px] sm:text-xs">امضا و مهر انباردار</span>
-                  <span className="text-[10px] text-slate-500 block mt-0.5">
+                  <span className="signature-box-title font-bold text-slate-800 block text-[11px] sm:text-xs">امضا و مهر انباردار</span>
+                  <span className="signature-box-subtitle text-[10px] text-slate-500 block mt-0.5">
                     {settings.originWarehouseManager || currentUser?.fullName || 'متصدی انبار'}
                   </span>
                 </div>
-                <div className="border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-400">
+                <div className="signature-box-line border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-400">
                   محل مهر و تایید خروج
                 </div>
               </div>
 
               {/* Box 2: Receiver / Driver */}
-              <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-2.5 flex flex-col justify-between h-28 sm:h-32">
+              <div className="signature-box bg-slate-50/70 border border-slate-200 rounded-xl p-2.5 flex flex-col justify-between h-28 sm:h-32">
                 <div>
-                  <span className="font-bold text-slate-800 block text-[11px] sm:text-xs">امضا و اثر انگشت تحویل‌گیرنده</span>
-                  <span className="text-[10px] text-slate-500 block mt-0.5">
+                  <span className="signature-box-title font-bold text-slate-800 block text-[11px] sm:text-xs">امضا و اثر انگشت تحویل‌گیرنده</span>
+                  <span className="signature-box-subtitle text-[10px] text-slate-500 block mt-0.5">
                     {slipLog.receiverName || invoice.customerName}
                   </span>
                 </div>
-                <div className="border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-400">
+                <div className="signature-box-line border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-400">
                   محل امضا و اثر انگشت
                 </div>
               </div>
 
               {/* Box 3: Exit Gate & Security */}
-              <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-2.5 flex flex-col justify-between h-28 sm:h-32">
+              <div className="signature-box bg-slate-50/70 border border-slate-200 rounded-xl p-2.5 flex flex-col justify-between h-28 sm:h-32">
                 <div>
-                  <span className="font-bold text-slate-800 block text-[11px] sm:text-xs">کنترل نهایی گیت خروج</span>
-                  <span className="text-[10px] text-slate-500 block mt-0.5">نگهبانی و بازرسی درب</span>
+                  <span className="signature-box-title font-bold text-slate-800 block text-[11px] sm:text-xs">کنترل نهایی گیت خروج</span>
+                  <span className="signature-box-subtitle text-[10px] text-slate-500 block mt-0.5">نگهبانی و بازرسی درب</span>
                 </div>
-                <div className="border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-400">
+                <div className="signature-box-line border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-400">
                   ساعت خروج: ..........
                 </div>
               </div>
@@ -993,12 +1278,16 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             </div>
 
             {/* Document Tracking Bar */}
-            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-3 mt-3 border-t border-slate-200 font-['Vazirmatn']">
+            <div className="exit-slip-tracking flex items-center justify-between text-[10px] text-slate-400 pt-3 mt-3 border-t border-slate-200 font-['Vazirmatn']">
               <div>
                 <span>شناسه سند: </span>
                 <span className="font-mono text-slate-600 font-bold">OUT-{invoice.invoiceNumber}</span>
                 <span className="mx-1.5">•</span>
                 <span>نوبت چاپ: {toPersianDigits(slipLog.printCount + 1)}</span>
+                <span className="mx-1.5">•</span>
+                <span>زمان صدور: {toPersianDigits(invoice.date)} - ساعت {toPersianDigits(issuedTime)}</span>
+                <span className="mx-1.5">•</span>
+                <span>قالب: {pageSize.toUpperCase()} ({orientation === 'portrait' ? 'عمودی' : 'افقی'})</span>
               </div>
               <div className="flex items-center gap-2">
                 {slipLog.lastPrintedAt && (

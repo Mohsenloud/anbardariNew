@@ -38,31 +38,46 @@ export function extractNumericFromCode(code: string): number {
 
 /**
  * تعیین خودکار کد کالا/محصول بعدی توسط سیستم
- * با بررسی کلیه کدهای موجود و تولید کوچکترین کد آزاد متوالی بالای ۱۰۰۰
+ * با بررسی کلیه کدهای موجود و تولید کد متوالی آزاد نهایتاً ۳ رقمی (۱۰۱ تا ۹۹۹)
  */
 export function generateNextProductCode(existingProducts: Product[] = []): string {
   const usedCodes = new Set<string>();
-  let maxNumeric = 999;
+  let maxThreeDigit = 100;
 
   existingProducts.forEach((p) => {
     if (p.code) {
-      usedCodes.add(p.code.trim());
-      const num = extractNumericFromCode(p.code);
-      if (num > maxNumeric && num < 100000) {
-        maxNumeric = num;
+      const trimmed = p.code.trim();
+      usedCodes.add(trimmed);
+      const num = extractNumericFromCode(trimmed);
+      // فقط کدهای حداکثر ۳ رقمی (۱۰۰ تا ۹۹۹) را در محاسبه دنباله در نظر می‌گیریم
+      if (num >= 100 && num <= 999 && num > maxThreeDigit) {
+        maxThreeDigit = num;
       }
     }
   });
 
-  let candidate = maxNumeric + 1;
-  if (candidate < 1001) candidate = 1001;
-
-  // اطمینان از عدم تکراری بودن
-  while (usedCodes.has(candidate.toString())) {
-    candidate++;
+  // تلاش اول: تولید کد بعدی بعد از بزرگترین کد ۳ رقمی موجود
+  const candidate = maxThreeDigit + 1;
+  if (candidate <= 999 && !usedCodes.has(candidate.toString())) {
+    return candidate.toString();
   }
 
-  return candidate.toString();
+  // اگر کد بعدی موجود نبود، یافتن اولین کد خالی در بازه ۱۰۱ تا ۹۹۹
+  for (let i = 101; i <= 999; i++) {
+    if (!usedCodes.has(i.toString())) {
+      return i.toString();
+    }
+  }
+
+  // در صورت پر بودن ۱۰۱ تا ۹۹۹، بررسی بازه ۱ تا ۱۰۰ (که باز هم حداکثر ۳ رقم است)
+  for (let i = 1; i <= 100; i++) {
+    if (!usedCodes.has(i.toString())) {
+      return i.toString();
+    }
+  }
+
+  // سقف نهایی کدهای ۳ رقمی
+  return '999';
 }
 
 /**
@@ -85,7 +100,7 @@ export function generateProductBarcode(
 
   let num = extractNumericFromCode(productCode);
   if (num <= 0) {
-    num = existingProducts.length + 1001;
+    num = existingProducts.length + 101;
   }
 
   let candidateBarcode = generateEan13('210', num);
@@ -106,7 +121,7 @@ export function generateVariantCode(
   variantIndex: number,
   variantName?: string
 ): string {
-  const safeParent = parentCode ? parentCode.trim() : '1000';
+  const safeParent = parentCode ? parentCode.trim() : '101';
   const paddedIndex = String(variantIndex).padStart(2, '0');
   
   if (!variantName) {
@@ -159,7 +174,7 @@ export function generateVariantBarcode(
     }
   });
 
-  const parentNum = extractNumericFromCode(parentCode) || 1000;
+  const parentNum = extractNumericFromCode(parentCode) || 101;
   const combinedSeq = parentNum * 100 + variantIndex;
 
   let candidateBarcode = generateEan13('211', combinedSeq);
@@ -261,7 +276,7 @@ export function ensureProductCodesAndBarcodes(products: Product[]): {
     let pChanged = false;
     let code = p.code?.trim() || '';
     if (!code) {
-      code = (1001 + index).toString();
+      code = (101 + index).toString();
       pChanged = true;
       changed = true;
     }

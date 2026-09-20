@@ -215,6 +215,12 @@ const DEFAULT_INITIAL_DATA = {
     showLowStockAlerts: true,
     paperSize: 'a4',
     enableExitSlipPrint: true,
+    warehouses: [
+      { id: 'wh-1', name: 'انبار مرکزی', code: 'WH-01', address: 'تهران، جاده مخصوص، کیلومتر ۱۲، سوله شماره ۴', phone: '۰۲۱-۵۵۴۴۳۳۲۲', managerName: 'مرتضی اکبری', isDefault: true },
+      { id: 'wh-2', name: 'انبار شعبه ۱', code: 'WH-02', address: 'تهران، خیابان امیرکبیر، کوچه بهار، پلاک ۲۴', phone: '۰۲۱-۳۳۴۴۵۵۶۶', managerName: 'علی رضایی', isDefault: false },
+      { id: 'wh-3', name: 'انبار ضایعات و رزرو', code: 'WH-03', address: 'تهران، انتهای جاده قدیم، پلاک ۸', phone: '۰۲۱-۲۲۳۳۴۴۵۵', managerName: 'حسن مرادی', isDefault: false },
+    ],
+    defaultWarehouseId: 'wh-1',
     originWarehouseName: 'انبار مرکزی سپهر',
     originWarehouseCode: 'WH-01',
     originWarehouseAddress: 'تهران، جاده مخصوص، کیلومتر ۱۲، خیابان بهار، سوله شماره ۴',
@@ -541,6 +547,13 @@ function readDatabaseRaw(): any {
         return {
           ...DEFAULT_INITIAL_DATA,
           ...parsed,
+          settings: {
+            ...DEFAULT_INITIAL_DATA.settings,
+            ...(parsed.settings || {}),
+            warehouses: Array.isArray(parsed.settings?.warehouses) && parsed.settings.warehouses.length > 0
+              ? parsed.settings.warehouses
+              : DEFAULT_INITIAL_DATA.settings.warehouses,
+          },
         };
       }
     } catch {}
@@ -558,6 +571,13 @@ function readDatabase() {
         return {
           ...DEFAULT_INITIAL_DATA,
           ...parsed,
+          settings: {
+            ...DEFAULT_INITIAL_DATA.settings,
+            ...(parsed.settings || {}),
+            warehouses: Array.isArray(parsed.settings?.warehouses) && parsed.settings.warehouses.length > 0
+              ? parsed.settings.warehouses
+              : DEFAULT_INITIAL_DATA.settings.warehouses,
+          },
         };
       }
     }
@@ -851,9 +871,22 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
     const currentRev = typeof currentDb.revision === 'number' ? currentDb.revision : 1;
     const nowIso = new Date().toISOString();
     
+    // Deep merge settings if provided so partial updates don't destroy existing settings
+    let mergedSettings = currentDb.settings;
+    if (incomingData.settings && typeof incomingData.settings === 'object') {
+      mergedSettings = {
+        ...(currentDb.settings || {}),
+        ...incomingData.settings,
+      };
+      if (Array.isArray(incomingData.settings.warehouses)) {
+        mergedSettings.warehouses = incomingData.settings.warehouses;
+      }
+    }
+
     const updatedDb = {
       ...currentDb,
       ...incomingData,
+      ...(mergedSettings ? { settings: mergedSettings } : {}),
       revision: currentRev + 1,
       updatedAt: nowIso,
     };

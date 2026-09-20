@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { Product, ProductVariant, Customer } from '../types';
 import { getCurrentJalaliDate } from './jalali';
+import { generateNextProductCode } from './codeGenerator';
 
 // Helper to normalize strings for header matching
 function normalizeKey(str: string): string {
@@ -396,10 +397,12 @@ export async function parseProductsExcel(file: File): Promise<ProductImportResul
 
     let entry = productMap.get(key);
     if (!entry) {
+      const existingParsedProducts = Array.from(productMap.values()).map((v) => v.product);
+      const autoCode = generateNextProductCode(existingParsedProducts);
       const newProd: Product = {
         id: `prod-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         name: rawName.trim(),
-        code: rawCode || `${1000 + productMap.size + 1}`,
+        code: rawCode || autoCode,
         category: rawCategory,
         unit: rawUnit,
         buyPrice: rawBuyPrice,

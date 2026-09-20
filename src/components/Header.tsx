@@ -138,7 +138,7 @@ export const Header: React.FC<HeaderProps> = ({
     { 
       id: 'inventory', 
       label: 'مدیریت انبار و کالا', 
-      description: 'کنترل موجودی، بارکد، کاردکس و گردش کالاها',
+      description: 'کنترل موجودی، کاردکس و گردش کالاها',
       icon: Boxes, 
       badge: lowStockCount > 0 ? lowStockCount : undefined,
       enabled: isTabPermitted('inventory', currentUser, safeSettings),

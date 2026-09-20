@@ -132,6 +132,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleSave = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     onSaveSettings(formData);
+    StorageService.saveSettings(formData);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2500);
   };
@@ -814,6 +815,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               onSaveSettings={(newSettings) => {
                 setFormData(newSettings);
                 onSaveSettings(newSettings);
+                StorageService.saveSettings(newSettings);
                 setSaveSuccess(true);
                 setTimeout(() => setSaveSuccess(false), 2500);
               }}

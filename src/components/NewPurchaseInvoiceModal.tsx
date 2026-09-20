@@ -11,6 +11,7 @@ import {
 } from '../types';
 import { toPersianDigits, formatPrice, getCurrentJalaliDate } from '../utils/jalali';
 import { PAYMENT_METHOD_LABELS } from '../utils/storage';
+import { generateNextProductCode } from '../utils/codeGenerator';
 import { 
   Plus, 
   Trash2, 
@@ -195,7 +196,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
     const newProd: Product = {
       id: `prod-${Date.now()}`,
       name: newProductName.trim(),
-      code: `${1000 + products.length + createdNewProducts.length + 1}`,
+      code: generateNextProductCode([...products, ...createdNewProducts]),
       category: newProductCategory.trim() || 'عمومی',
       buyPrice: newProductBuyPrice,
       sellPrice: newProductSellPrice > 0 ? newProductSellPrice : Math.round(newProductBuyPrice * 1.25),

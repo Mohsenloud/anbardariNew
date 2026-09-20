@@ -690,6 +690,9 @@ const initialDirectTransfers: DirectTransfer[] = [
 
 export const StorageService = {
   _listeners: [] as Array<() => void>,
+  _lastServerRevision: 0,
+  _lastServerChecksum: '',
+  _lastLocalSettingsSaveTime: 0,
 
   subscribe(fn: () => void) {
     this._listeners.push(fn);
@@ -709,7 +712,7 @@ export const StorageService = {
   },
 
   // Asynchronously sync local changes to centralized server database
-  async pushToServer(customPayload?: any) {
+  async pushToServer(customPayload?: any): Promise<boolean> {
     try {
       const payload = customPayload || {
         products: this.getProducts(),
@@ -724,13 +727,23 @@ export const StorageService = {
         activityLogs: this.getActivityLogs(),
         directTransfers: this.getDirectTransfers(),
       };
-      await fetch('/api/db', {
+      const res = await fetch('/api/db', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.success) {
+          if (typeof json.revision === 'number') this._lastServerRevision = json.revision;
+          if (json.checksum) this._lastServerChecksum = json.checksum;
+          return true;
+        }
+      }
+      return false;
     } catch {
       // Local copy is safe in localStorage when offline or server unreachable
+      return false;
     }
   },
 
@@ -742,15 +755,75 @@ export const StorageService = {
       const json = await res.json();
       if (json && json.success && json.data) {
         const d = json.data;
-        if (Array.isArray(d.products)) localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(d.products));
-        if (Array.isArray(d.customers)) localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(d.customers));
-        if (Array.isArray(d.invoices)) localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(d.invoices));
-        if (Array.isArray(d.purchaseInvoices)) localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(d.purchaseInvoices));
-        if (Array.isArray(d.inboundReceipts)) localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(d.inboundReceipts));
-        if (Array.isArray(d.movements)) localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(d.movements));
-        if (d.settings && typeof d.settings === 'object') localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(d.settings));
-        if (Array.isArray(d.users)) localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(d.users));
-        if (Array.isArray(d.directTransfers)) localStorage.setItem(STORAGE_KEYS.DIRECT_TRANSFERS, JSON.stringify(d.directTransfers));
+        const serverRevision = typeof d.revision === 'number' ? d.revision : 0;
+        const serverChecksum = d.checksum || '';
+
+        // If server data hasn't changed since last sync or local push, skip overwrite
+        if (
+          this._lastServerRevision > 0 &&
+          serverRevision > 0 &&
+          serverRevision === this._lastServerRevision &&
+          serverChecksum === this._lastServerChecksum
+        ) {
+          return false;
+        }
+
+        // Protect local settings if recently saved (e.g. within last 10 seconds)
+        const isRecentSave = Date.now() - this._lastLocalSettingsSaveTime < 10000;
+
+        let hasAnyUpdate = false;
+
+        if (Array.isArray(d.products)) {
+          localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(d.products));
+          hasAnyUpdate = true;
+        }
+        if (Array.isArray(d.customers)) {
+          localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(d.customers));
+          hasAnyUpdate = true;
+        }
+        if (Array.isArray(d.invoices)) {
+          localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(d.invoices));
+          hasAnyUpdate = true;
+        }
+        if (Array.isArray(d.purchaseInvoices)) {
+          localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(d.purchaseInvoices));
+          hasAnyUpdate = true;
+        }
+        if (Array.isArray(d.inboundReceipts)) {
+          localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(d.inboundReceipts));
+          hasAnyUpdate = true;
+        }
+        if (Array.isArray(d.movements)) {
+          localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(d.movements));
+          hasAnyUpdate = true;
+        }
+        if (Array.isArray(d.users)) {
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(d.users));
+          hasAnyUpdate = true;
+        }
+        if (Array.isArray(d.directTransfers)) {
+          localStorage.setItem(STORAGE_KEYS.DIRECT_TRANSFERS, JSON.stringify(d.directTransfers));
+          hasAnyUpdate = true;
+        }
+
+        if (d.settings && typeof d.settings === 'object') {
+          if (!isRecentSave) {
+            const currentLocal = this.getSettings();
+            const mergedSettings = {
+              ...initialSettings,
+              ...currentLocal,
+              ...d.settings,
+            };
+            if (Array.isArray(d.settings.warehouses) && d.settings.warehouses.length > 0) {
+              mergedSettings.warehouses = d.settings.warehouses;
+            } else if (Array.isArray(currentLocal.warehouses) && currentLocal.warehouses.length > 0) {
+              mergedSettings.warehouses = currentLocal.warehouses;
+            }
+            localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(mergedSettings));
+            hasAnyUpdate = true;
+          }
+        }
+
         if (d.exitSlipLogs && typeof d.exitSlipLogs === 'object' && !Array.isArray(d.exitSlipLogs)) {
           const localLogs = this.getExitSlipLogs();
           const remoteLogs = (d.exitSlipLogs || {}) as Record<string, ExitSlipData>;
@@ -774,9 +847,17 @@ export const StorageService = {
             }
           }
           localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(merged));
+          hasAnyUpdate = true;
         }
-        if (Array.isArray(d.activityLogs)) localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(d.activityLogs));
-        return true;
+
+        if (Array.isArray(d.activityLogs)) {
+          localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(d.activityLogs));
+          hasAnyUpdate = true;
+        }
+
+        this._lastServerRevision = serverRevision;
+        this._lastServerChecksum = serverChecksum;
+        return hasAnyUpdate;
       }
       return false;
     } catch {
@@ -1169,11 +1250,6 @@ export const StorageService = {
 
   getSettings(): StoreSettings {
     const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    const defaultWhs = [
-      { id: 'wh-1', name: 'انبار مرکزی', isDefault: true },
-      { id: 'wh-2', name: 'انبار شعبه ۱', isDefault: false },
-      { id: 'wh-3', name: 'انبار ضایعات و رزرو', isDefault: false },
-    ];
     if (!data) {
       localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(initialSettings));
       return initialSettings;
@@ -1181,9 +1257,9 @@ export const StorageService = {
     try {
       const parsed = JSON.parse(data);
       const merged = { ...initialSettings, ...parsed };
-      if (!merged.warehouses || merged.warehouses.length === 0) {
-        merged.warehouses = defaultWhs;
-        merged.defaultWarehouseId = 'wh-1';
+      if (!Array.isArray(merged.warehouses) || merged.warehouses.length === 0) {
+        merged.warehouses = initialSettings.warehouses;
+        merged.defaultWarehouseId = initialSettings.defaultWarehouseId || 'wh-1';
       }
       if (!merged.originWarehouseName) {
         merged.originWarehouseName = initialSettings.originWarehouseName || 'انبار مرکزی سپهر';
@@ -1207,8 +1283,18 @@ export const StorageService = {
   },
 
   saveSettings(settings: StoreSettings) {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
-    this.pushToServer({ settings });
+    this._lastLocalSettingsSaveTime = Date.now();
+    const existing = this.getSettings();
+    const merged: StoreSettings = {
+      ...existing,
+      ...settings,
+    };
+    if (Array.isArray(settings.warehouses)) {
+      merged.warehouses = settings.warehouses;
+    }
+    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(merged));
+    this.notifyChange();
+    this.pushToServer({ settings: merged });
   },
 
   getUsers(): AppUser[] {

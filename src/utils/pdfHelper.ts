@@ -1,61 +1,83 @@
 import html2canvas from 'html2canvas-pro';
 import jsPDF from 'jspdf';
 
+export interface PdfExportOptions {
+  pageSize?: 'a4' | 'a5';
+  orientation?: 'portrait' | 'landscape';
+}
+
 /**
- * Exports a DOM element to an ultra-compact, high-speed, minimal-filesize A4 PDF.
+ * Exports a DOM element to an ultra-compact, high-speed, minimal-filesize PDF.
+ * Supports configurable page format (A4 or A5) and orientation (portrait or landscape).
  * Uses JPEG compression at 0.80 and internal stream compression to keep file size under ~120KB.
  */
 export const exportElementToPdf = async (
   elementId: string,
-  filename: string
+  filename: string,
+  options?: PdfExportOptions
 ): Promise<{ success: boolean; error?: string }> => {
   const element = document.getElementById(elementId);
   if (!element) {
     return { success: false, error: 'عنصر مورد نظر جهت تولید PDF یافت نشد.' };
   }
 
+  const paperSize = options?.pageSize || 'a4';
+  const orientation = options?.orientation || 'portrait';
+  const targetWidthPx = 
+    paperSize === 'a5'
+      ? (orientation === 'landscape' ? 760 : 540)
+      : (orientation === 'landscape' ? 1060 : 780);
+
   try {
-    // 1. Capture element with optimized scale (1.5x gives ~150 DPI which is crystal clear for text & borders without ballooning megabytes)
+    // 1. Capture element with optimized scale
     const canvas = await html2canvas(element, {
       scale: 1.5,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
-      windowWidth: Math.max(element.scrollWidth, 800),
+      windowWidth: Math.max(element.scrollWidth, targetWidthPx),
       onclone: (clonedDoc, clonedElement) => {
         clonedElement.style.overflow = 'visible';
         clonedElement.style.maxWidth = 'none';
-        clonedElement.style.width = '780px';
+        clonedElement.style.width = `${targetWidthPx}px`;
         clonedElement.style.margin = '0 auto';
         clonedElement.style.boxShadow = 'none';
       },
     });
 
-    // 2. Ultra-compressed JPEG dataURL (cuts 95%+ of the file size compared to raw PNG)
+    // 2. Ultra-compressed JPEG dataURL
     const imgData = canvas.toDataURL('image/jpeg', 0.80);
     
-    // 3. Create A4 PDF with Deflate compression enabled
+    // 3. Create PDF with Deflate compression enabled and user-chosen format/orientation
     const pdf = new jsPDF({
-      orientation: 'portrait',
+      orientation: orientation,
       unit: 'mm',
-      format: 'a4',
+      format: paperSize,
       compress: true,
     });
 
-    const pageWidth = 210;
-    const pageHeight = 297;
-    const margin = 8; // 8mm margin
-    const contentWidth = pageWidth - margin * 2;
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = paperSize === 'a5' ? 4 : 8; // 4mm margin for A5, 8mm for A4
+    const usableWidth = pageWidth - margin * 2;
+    const usableHeight = pageHeight - margin * 2;
+    const contentWidth = usableWidth;
     const contentHeight = (canvas.height * contentWidth) / canvas.width;
 
-    if (contentHeight <= pageHeight - margin * 2) {
-      // Single page
+    if (contentHeight <= usableHeight) {
+      // Content fits naturally on a single page
       pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, contentHeight, undefined, 'FAST');
+    } else if (paperSize === 'a5' || contentHeight <= usableHeight * 1.35) {
+      // Auto-fit to single page: scale proportionally so ALL data fits on one single sheet
+      const scale = usableHeight / contentHeight;
+      const fittedWidth = contentWidth * scale;
+      const fittedHeight = usableHeight;
+      const offsetX = margin + (usableWidth - fittedWidth) / 2;
+      pdf.addImage(imgData, 'JPEG', offsetX, margin, fittedWidth, fittedHeight, undefined, 'FAST');
     } else {
-      // Multi-page handling
+      // Multi-page handling for extensive documents with many items
       let heightLeft = contentHeight;
       let position = margin;
-      const usableHeight = pageHeight - margin * 2;
 
       pdf.addImage(imgData, 'JPEG', margin, position, contentWidth, contentHeight, undefined, 'FAST');
       heightLeft -= usableHeight;
@@ -83,12 +105,20 @@ export const exportElementToPdf = async (
  */
 export const generatePdfBlob = async (
   elementId: string,
-  filename: string
+  filename: string,
+  options?: PdfExportOptions
 ): Promise<{ success: boolean; blob?: Blob; file?: File; error?: string }> => {
   const element = document.getElementById(elementId);
   if (!element) {
     return { success: false, error: 'عنصر مورد نظر جهت تولید PDF یافت نشد.' };
   }
+
+  const paperSize = options?.pageSize || 'a4';
+  const orientation = options?.orientation || 'portrait';
+  const targetWidthPx = 
+    paperSize === 'a5'
+      ? (orientation === 'landscape' ? 760 : 540)
+      : (orientation === 'landscape' ? 1060 : 780);
 
   try {
     const canvas = await html2canvas(element, {
@@ -96,11 +126,11 @@ export const generatePdfBlob = async (
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
-      windowWidth: Math.max(element.scrollWidth, 800),
+      windowWidth: Math.max(element.scrollWidth, targetWidthPx),
       onclone: (clonedDoc, clonedElement) => {
         clonedElement.style.overflow = 'visible';
         clonedElement.style.maxWidth = 'none';
-        clonedElement.style.width = '780px';
+        clonedElement.style.width = `${targetWidthPx}px`;
         clonedElement.style.margin = '0 auto';
         clonedElement.style.boxShadow = 'none';
       },
@@ -108,24 +138,32 @@ export const generatePdfBlob = async (
 
     const imgData = canvas.toDataURL('image/jpeg', 0.80);
     const pdf = new jsPDF({
-      orientation: 'portrait',
+      orientation: orientation,
       unit: 'mm',
-      format: 'a4',
+      format: paperSize,
       compress: true,
     });
 
-    const pageWidth = 210;
-    const pageHeight = 297;
-    const margin = 8;
-    const contentWidth = pageWidth - margin * 2;
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = paperSize === 'a5' ? 4 : 8;
+    const usableWidth = pageWidth - margin * 2;
+    const usableHeight = pageHeight - margin * 2;
+    const contentWidth = usableWidth;
     const contentHeight = (canvas.height * contentWidth) / canvas.width;
 
-    if (contentHeight <= pageHeight - margin * 2) {
+    if (contentHeight <= usableHeight) {
       pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, contentHeight, undefined, 'FAST');
+    } else if (paperSize === 'a5' || contentHeight <= usableHeight * 1.35) {
+      // Auto-fit to single page
+      const scale = usableHeight / contentHeight;
+      const fittedWidth = contentWidth * scale;
+      const fittedHeight = usableHeight;
+      const offsetX = margin + (usableWidth - fittedWidth) / 2;
+      pdf.addImage(imgData, 'JPEG', offsetX, margin, fittedWidth, fittedHeight, undefined, 'FAST');
     } else {
       let heightLeft = contentHeight;
       let position = margin;
-      const usableHeight = pageHeight - margin * 2;
 
       pdf.addImage(imgData, 'JPEG', margin, position, contentWidth, contentHeight, undefined, 'FAST');
       heightLeft -= usableHeight;
@@ -157,7 +195,14 @@ export const generatePdfBlob = async (
  * Triggers direct browser printing synchronously within user gesture.
  * Applies temporary clean CSS scoping so only the target sheet prints.
  */
-export const printElementDirectly = (elementId: string): boolean => {
+export const printElementDirectly = (
+  elementId: string,
+  options?: PdfExportOptions
+): boolean => {
+  const paperSize = options?.pageSize || 'a4';
+  const orientation = options?.orientation || 'portrait';
+  const marginMm = paperSize === 'a5' ? 5 : 8;
+
   const element = document.getElementById(elementId);
   if (!element) {
     try {
@@ -169,6 +214,21 @@ export const printElementDirectly = (elementId: string): boolean => {
   }
 
   try {
+    const existingStyle = document.getElementById('dynamic-direct-print-page-style');
+    if (existingStyle) existingStyle.remove();
+
+    const styleEl = document.createElement('style');
+    styleEl.id = 'dynamic-direct-print-page-style';
+    styleEl.innerHTML = `
+      @media print {
+        @page {
+          size: ${paperSize.toUpperCase()} ${orientation} !important;
+          margin: ${marginMm}mm !important;
+        }
+      }
+    `;
+    document.head.appendChild(styleEl);
+
     // Apply printing-active-element class to isolate the element on paper
     document.body.classList.add('printing-active-element');
 
@@ -177,6 +237,7 @@ export const printElementDirectly = (elementId: string): boolean => {
 
     // Clean up
     setTimeout(() => {
+      styleEl.remove();
       document.body.classList.remove('printing-active-element');
     }, 1500);
 
@@ -192,16 +253,29 @@ export const printElementDirectly = (elementId: string): boolean => {
  * Opens a dedicated top-level print window and immediately displays the browser's printer dialog.
  * This completely bypasses any iframe sandbox restrictions (e.g., missing allow-modals in preview containers).
  */
-export const printElementInNewWindow = (elementId: string, title: string): boolean => {
+export const printElementInNewWindow = (
+  elementId: string,
+  title: string,
+  options?: PdfExportOptions
+): boolean => {
   const element = document.getElementById(elementId);
   if (!element) return false;
 
+  const paperSize = options?.pageSize || 'a4';
+  const orientation = options?.orientation || 'portrait';
+  const marginMm = paperSize === 'a5' ? 5 : 8;
+  const targetWidthPx = 
+    paperSize === 'a5'
+      ? (orientation === 'landscape' ? 760 : 540)
+      : (orientation === 'landscape' ? 1060 : 800);
+
   try {
     // Open a new standalone window
-    const printWindow = window.open('', '_blank', 'width=920,height=800');
+    const windowWidth = orientation === 'landscape' ? 1160 : 920;
+    const printWindow = window.open('', '_blank', `width=${windowWidth},height=800`);
     if (!printWindow) {
       // If popup blocked, fallback to direct print
-      return printElementDirectly(elementId);
+      return printElementDirectly(elementId, options);
     }
 
     // Collect all stylesheets from main document
@@ -227,22 +301,22 @@ export const printElementInNewWindow = (elementId: string, title: string): boole
           }
           body {
             margin: 0;
-            padding: 24px;
+            padding: ${paperSize === 'a5' ? '12px' : '24px'};
             background: #f8fafc;
             direction: rtl;
             color: #0f172a;
           }
           .print-wrapper {
-            max-width: 800px;
+            max-width: ${targetWidthPx}px;
             margin: 0 auto;
             background: #ffffff;
             border: 1px solid #cbd5e1;
             border-radius: 12px;
-            padding: 28px;
+            padding: ${paperSize === 'a5' ? '14px' : '24px'};
             box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
           }
           .top-print-toolbar {
-            max-width: 800px;
+            max-width: ${targetWidthPx}px;
             margin: 0 auto 16px auto;
             display: flex;
             align-items: center;
@@ -262,6 +336,10 @@ export const printElementInNewWindow = (elementId: string, title: string): boole
             font-weight: bold;
             cursor: pointer;
           }
+          @page {
+            size: ${paperSize.toUpperCase()} ${orientation};
+            margin: ${marginMm}mm;
+          }
           @media print {
             body {
               background: #ffffff !important;
@@ -279,15 +357,15 @@ export const printElementInNewWindow = (elementId: string, title: string): boole
               box-shadow: none !important;
             }
             @page {
-              size: A4 portrait;
-              margin: 8mm;
+              size: ${paperSize.toUpperCase()} ${orientation};
+              margin: ${marginMm}mm;
             }
           }
         </style>
       </head>
       <body>
         <div class="top-print-toolbar no-print">
-          <span style="font-size: 13px; font-weight: 500;">آماده‌سازی پیش‌نمایش چاپ برگه خروج انبار</span>
+          <span style="font-size: 13px; font-weight: 500;">آماده‌سازی پیش‌نمایش چاپ برگه خروج (${paperSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'})</span>
           <button class="top-print-btn" onclick="window.print()">باز کردن پرینتر (Print)</button>
         </div>
         <div class="print-wrapper">
@@ -309,6 +387,6 @@ export const printElementInNewWindow = (elementId: string, title: string): boole
     return true;
   } catch (err) {
     console.warn('Print in new window error, falling back to direct print:', err);
-    return printElementDirectly(elementId);
+    return printElementDirectly(elementId, options);
   }
 };

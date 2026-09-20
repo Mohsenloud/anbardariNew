@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { StoreSettings, WarehouseInfo, Product, StockMovement } from '../types';
 import { toPersianDigits } from '../utils/jalali';
+import { StorageService } from '../utils/storage';
 import {
   Warehouse,
   Plus,
@@ -111,6 +112,10 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
   // Modal State for Delete Confirmation
   const [warehouseToDelete, setWarehouseToDelete] = useState<WarehouseInfo | null>(null);
 
+  // Form dirty flag to prevent background sync from wiping in-progress changes
+  const isFormDirty = React.useRef(false);
+  const [isSaving, setIsSaving] = useState(false);
+
   // Notification / Feedback message
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -121,8 +126,29 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
     }, 3000);
   };
 
-  // Keep state synchronized if settings prop changes externally
+  // Helper to update origin warehouse form with dirty flag
+  const updateOriginField = (field: keyof typeof originWarehouseFormData, val: string) => {
+    isFormDirty.current = true;
+    setOriginWarehouseFormData((prev) => ({
+      ...prev,
+      [field]: val,
+    }));
+  };
+
+  // Helper to toggle inventory rules with dirty flag
+  const toggleRule = (field: keyof typeof inventoryRules) => {
+    isFormDirty.current = true;
+    setInventoryRules((prev) => ({
+      ...prev,
+      [field]: !prev[field],
+    }));
+  };
+
+  // Keep state synchronized if settings prop changes externally, unless user is currently editing
   React.useEffect(() => {
+    if (isFormDirty.current || isModalOpen) {
+      return;
+    }
     if (settings.warehouses && settings.warehouses.length > 0) {
       setWarehouseList(settings.warehouses);
     }
@@ -142,7 +168,7 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
       allowNegativeStock: settings.allowNegativeStock ?? false,
       showLowStockAlerts: settings.showLowStockAlerts ?? true,
     });
-  }, [settings]);
+  }, [settings, isModalOpen]);
 
   // Handle Set Default Warehouse
   const handleSetDefault = (id: string) => {
@@ -158,12 +184,14 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
       showNotification(`انبار «${targetWh.name}» به عنوان انبار پیش‌فرض سامانه تعیین شد.`);
     }
 
-    // Persist default warehouse
-    onSaveSettings({
+    // Persist default warehouse immediately
+    const updatedSettings: StoreSettings = {
       ...settings,
       warehouses: updated,
       defaultWarehouseId: id,
-    });
+    };
+    onSaveSettings(updatedSettings);
+    StorageService.saveSettings(updatedSettings);
   };
 
   // Open modal to add new warehouse
@@ -262,11 +290,13 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
     setIsModalOpen(false);
 
     // Persist immediately
-    onSaveSettings({
+    const updatedSettings: StoreSettings = {
       ...settings,
       warehouses: finalWarehouses,
       defaultWarehouseId: targetDefaultId,
-    });
+    };
+    onSaveSettings(updatedSettings);
+    StorageService.saveSettings(updatedSettings);
   };
 
   // Trigger Delete Warehouse (opens in-app confirmation modal)
@@ -321,12 +351,14 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
       showLowStockAlerts: inventoryRules.showLowStockAlerts,
     };
     onSaveSettings(newSettings);
+    StorageService.saveSettings(newSettings);
 
     showNotification(`انبار «${name}» با موفقیت از سامانه حذف گردید.`);
   };
 
   // Quick Copy from a warehouse into Origin Warehouse Settings
   const handleCopyWarehouseToOrigin = (wh: WarehouseInfo) => {
+    isFormDirty.current = true;
     setOriginWarehouseFormData({
       originWarehouseName: wh.name,
       originWarehouseCode: wh.code || 'WH-01',
@@ -339,6 +371,7 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
 
   // Master Save Function (Saves everything into StoreSettings)
   const handleMasterSave = () => {
+    setIsSaving(true);
     const updatedWarehouses = warehouseList.map((w) => ({
       ...w,
       isDefault: w.id === defaultWarehouseId,
@@ -359,8 +392,13 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
       showLowStockAlerts: inventoryRules.showLowStockAlerts,
     };
 
+    isFormDirty.current = false;
     onSaveSettings(newSettings);
-    showNotification('کلیه تنظیمات و پیکربندی انبارها با موفقیت در سیستم ذخیره شد.');
+    StorageService.saveSettings(newSettings);
+    showNotification('کلیه تنظیمات و پیکربندی انبارها با موفقیت در سیستم و سرور ذخیره شد.');
+    setTimeout(() => {
+      setIsSaving(false);
+    }, 500);
   };
 
   const defaultWh = warehouseList.find((w) => w.id === defaultWarehouseId) || warehouseList[0];
@@ -428,10 +466,11 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
             type="button"
             id="warehouse-master-save-btn"
             onClick={handleMasterSave}
-            className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200 cursor-pointer"
+            disabled={isSaving}
+            className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200 cursor-pointer"
           >
-            <Save className="w-4 h-4" />
-            <span>ذخیره تنظیمات انبار</span>
+            <Save className={`w-4 h-4 ${isSaving ? 'animate-spin' : ''}`} />
+            <span>{isSaving ? 'در حال ذخیره‌سازی...' : 'ذخیره تنظیمات انبار'}</span>
           </button>
         </div>
       </div>
@@ -724,12 +763,7 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
               type="text"
               required
               value={originWarehouseFormData.originWarehouseName}
-              onChange={(e) =>
-                setOriginWarehouseFormData({
-                  ...originWarehouseFormData,
-                  originWarehouseName: e.target.value,
-                })
-              }
+              onChange={(e) => updateOriginField('originWarehouseName', e.target.value)}
               placeholder="مثال: انبار مرکزی سپهر"
               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-bold outline-none focus:bg-white focus:border-emerald-500"
             />
@@ -741,12 +775,7 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
             <input
               type="text"
               value={originWarehouseFormData.originWarehouseCode}
-              onChange={(e) =>
-                setOriginWarehouseFormData({
-                  ...originWarehouseFormData,
-                  originWarehouseCode: e.target.value,
-                })
-              }
+              onChange={(e) => updateOriginField('originWarehouseCode', e.target.value)}
               placeholder="مثال: WH-01"
               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-mono outline-none focus:bg-white focus:border-emerald-500 text-left"
               dir="ltr"
@@ -759,12 +788,7 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
             <input
               type="text"
               value={originWarehouseFormData.originWarehouseManager}
-              onChange={(e) =>
-                setOriginWarehouseFormData({
-                  ...originWarehouseFormData,
-                  originWarehouseManager: e.target.value,
-                })
-              }
+              onChange={(e) => updateOriginField('originWarehouseManager', e.target.value)}
               placeholder="مثال: مرتضی اکبری"
               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-semibold outline-none focus:bg-white focus:border-emerald-500"
             />
@@ -778,12 +802,7 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
             <input
               type="text"
               value={originWarehouseFormData.originWarehousePhone}
-              onChange={(e) =>
-                setOriginWarehouseFormData({
-                  ...originWarehouseFormData,
-                  originWarehousePhone: e.target.value,
-                })
-              }
+              onChange={(e) => updateOriginField('originWarehousePhone', e.target.value)}
               placeholder="مثال: ۰۲۱-۵۵۴۴۳۳۲۲"
               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-mono outline-none focus:bg-white focus:border-emerald-500 text-left"
               dir="ltr"
@@ -798,12 +817,7 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
             <input
               type="text"
               value={originWarehouseFormData.originWarehouseAddress}
-              onChange={(e) =>
-                setOriginWarehouseFormData({
-                  ...originWarehouseFormData,
-                  originWarehouseAddress: e.target.value,
-                })
-              }
+              onChange={(e) => updateOriginField('originWarehouseAddress', e.target.value)}
               placeholder="تهران، جاده مخصوص، کیلومتر ۱۲، خیابان بهار، سوله شماره ۴"
               className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-medium outline-none focus:bg-white focus:border-emerald-500"
             />
@@ -884,12 +898,7 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
             </div>
             <button
               type="button"
-              onClick={() =>
-                setInventoryRules({
-                  ...inventoryRules,
-                  enableInventory: !inventoryRules.enableInventory,
-                })
-              }
+              onClick={() => toggleRule('enableInventory')}
               className={`w-12 h-6.5 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
                 inventoryRules.enableInventory ? 'bg-emerald-600' : 'bg-slate-300'
               }`}
@@ -914,12 +923,7 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
             </div>
             <button
               type="button"
-              onClick={() =>
-                setInventoryRules({
-                  ...inventoryRules,
-                  autoDeductStock: !inventoryRules.autoDeductStock,
-                })
-              }
+              onClick={() => toggleRule('autoDeductStock')}
               className={`w-12 h-6.5 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
                 inventoryRules.autoDeductStock ? 'bg-emerald-600' : 'bg-slate-300'
               }`}
@@ -944,12 +948,7 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
             </div>
             <button
               type="button"
-              onClick={() =>
-                setInventoryRules({
-                  ...inventoryRules,
-                  allowNegativeStock: !inventoryRules.allowNegativeStock,
-                })
-              }
+              onClick={() => toggleRule('allowNegativeStock')}
               className={`w-12 h-6.5 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
                 inventoryRules.allowNegativeStock ? 'bg-amber-500' : 'bg-slate-300'
               }`}
@@ -974,12 +973,7 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
             </div>
             <button
               type="button"
-              onClick={() =>
-                setInventoryRules({
-                  ...inventoryRules,
-                  showLowStockAlerts: !inventoryRules.showLowStockAlerts,
-                })
-              }
+              onClick={() => toggleRule('showLowStockAlerts')}
               className={`w-12 h-6.5 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
                 inventoryRules.showLowStockAlerts ? 'bg-emerald-600' : 'bg-slate-300'
               }`}
@@ -1011,10 +1005,11 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
         <button
           type="button"
           onClick={handleMasterSave}
-          className="flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-slate-950 px-6 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer shadow-md"
+          disabled={isSaving}
+          className="flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 active:scale-95 disabled:opacity-50 text-slate-950 px-6 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer shadow-md"
         >
-          <Check className="w-4 h-4" />
-          <span>ذخیره نهایی تنظیمات انبار</span>
+          <Check className={`w-4 h-4 ${isSaving ? 'animate-spin' : ''}`} />
+          <span>{isSaving ? 'در حال ذخیره‌سازی...' : 'ذخیره نهایی تنظیمات انبار'}</span>
         </button>
       </div>
 

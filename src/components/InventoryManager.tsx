@@ -46,7 +46,6 @@ import {
   generateVariantCode,
   generateVariantBarcode,
 } from '../utils/codeGenerator';
-import { BarcodeVisual } from './BarcodeVisual';
 
 interface InventoryManagerProps {
   products: Product[];
@@ -212,26 +211,14 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     setIsProductModalOpen(true);
   };
 
-  // تولید مجدد کد و بارکد کالا توسط سیستم
+  // تولید مجدد کد کالا توسط سیستم
   const handleRegenerateCode = () => {
     if (!editingProduct) return;
     const otherProducts = products.filter((p) => p.id !== editingProduct.id);
     const newCode = generateNextProductCode(otherProducts);
-    const newBarcode = generateProductBarcode(newCode, otherProducts);
     setEditingProduct({
       ...editingProduct,
       code: newCode,
-      barcode: newBarcode,
-    });
-  };
-
-  const handleRegenerateBarcode = () => {
-    if (!editingProduct) return;
-    const otherProducts = products.filter((p) => p.id !== editingProduct.id);
-    const newBarcode = generateProductBarcode(editingProduct.code || '1000', otherProducts);
-    setEditingProduct({
-      ...editingProduct,
-      barcode: newBarcode,
     });
   };
 
@@ -239,8 +226,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   const handleToggleHasVariants = (enabled: boolean) => {
     if (!editingProduct) return;
     if (enabled && (!editingProduct.variants || editingProduct.variants.length === 0)) {
-      const vCode = generateVariantCode(editingProduct.code || '1000', 1, 'طوسی');
-      const vBarcode = generateVariantBarcode(editingProduct.code || '1000', 1, products);
+      const vCode = generateVariantCode(editingProduct.code || '101', 1, 'طوسی');
+      const vBarcode = generateVariantBarcode(editingProduct.code || '101', 1, products);
       const defaultVariant: ProductVariant = {
         id: `var-${Date.now()}-1`,
         name: 'طوسی',
@@ -274,8 +261,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       return;
     }
     const variantIndex = currentVariants.length + 1;
-    const vCode = generateVariantCode(editingProduct.code || '1000', variantIndex, variantName);
-    const vBarcode = generateVariantBarcode(editingProduct.code || '1000', variantIndex, products);
+    const vCode = generateVariantCode(editingProduct.code || '101', variantIndex, variantName);
+    const vBarcode = generateVariantBarcode(editingProduct.code || '101', variantIndex, products);
     const newVariant: ProductVariant = {
       id: `var-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
       name: variantName,
@@ -928,7 +915,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
               <input
                 type="text"
                 id="inventory-search-input"
-                placeholder="جستجو در نام، بارکد یا کد کالا..."
+                placeholder="جستجو در نام یا کد کالا..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-xl pr-9 pl-4 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
@@ -1015,12 +1002,6 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                         <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px] text-slate-500">
                           <span className="bg-slate-100 px-2 py-0.5 rounded-md font-medium text-slate-600">{prod.category}</span>
                           <span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded font-semibold">کد: {toPersianDigits(prod.code)}</span>
-                          {prod.barcode && (
-                            <span className="font-mono text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 font-bold">
-                              <Barcode className="w-3 h-3 text-indigo-500" />
-                              <span className="dir-ltr">{toPersianDigits(prod.barcode)}</span>
-                            </span>
-                          )}
                         </div>
                       </div>
 
@@ -1130,7 +1111,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             <table className="w-full text-right border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-100/70 text-slate-700 border-b border-slate-200">
-                  <th className="p-3.5 font-bold">کد / بارکد</th>
+                  <th className="p-3.5 font-bold">کد کالا</th>
                   <th className="p-3.5 font-bold">نام کالا و دسته‌بندی</th>
                   <th className="p-3.5 font-bold text-center">وضعیت و موجودی انبار</th>
                   <th className="p-3.5 font-bold">توضیحات و مشخصات</th>
@@ -1153,12 +1134,6 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                       <tr key={prod.id} className={`${index % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'} hover:bg-slate-100/70 transition-colors`}>
                         <td className="p-3.5">
                           <div className="font-mono text-slate-800 font-bold text-xs">{toPersianDigits(prod.code)}</div>
-                          {prod.barcode && (
-                            <div className="flex items-center gap-1 mt-1 font-mono text-[10px] text-indigo-700 bg-indigo-50/80 border border-indigo-200/60 px-1.5 py-0.5 rounded-md w-fit font-bold">
-                              <Barcode className="w-3 h-3 text-indigo-500 shrink-0" />
-                              <span className="dir-ltr">{toPersianDigits(prod.barcode)}</span>
-                            </div>
-                          )}
                         </td>
                         <td className="p-3.5">
                           <div className="font-bold text-slate-900">{prod.name}</div>
@@ -1947,7 +1922,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                         id="product-modal-code"
                         value={editingProduct.code}
                         onChange={(e) => setEditingProduct({ ...editingProduct, code: e.target.value })}
-                        placeholder="1001"
+                        placeholder="101"
+                        maxLength={10}
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 pl-9 text-xs font-mono font-bold text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-left"
                       />
                       <button
@@ -1960,60 +1936,6 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                       </button>
                     </div>
                   </div>
-
-                  {/* فیلد بارکد استاندارد EAN-13 - با تعیین خودکار توسط سیستم */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-semibold text-slate-700">بارکد استاندارد (EAN-13)</label>
-                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-1.5 py-0.5 rounded-full flex items-center gap-1">
-                        <Barcode className="w-2.5 h-2.5 text-indigo-600" />
-                        <span>خودکار</span>
-                      </span>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        id="product-modal-barcode"
-                        value={editingProduct.barcode || ''}
-                        onChange={(e) => setEditingProduct({ ...editingProduct, barcode: e.target.value })}
-                        placeholder="2100000010015"
-                        maxLength={13}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 pl-9 text-xs font-mono font-bold text-indigo-900 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-left"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleRegenerateBarcode}
-                        className="absolute left-1.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                        title="تولید مجدد بارکد توسط سیستم"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* پیش‌نمایش بصری بارکد تعیین‌شده توسط سیستم */}
-                  {editingProduct.barcode && (
-                    <div className="col-span-2 bg-gradient-to-r from-slate-50 to-indigo-50/30 border border-slate-200/80 rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 text-xs text-slate-600">
-                        <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
-                          <Barcode className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                            <span>پیش‌نمایش بارکد کالا</span>
-                            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded">ثبت سیستم</span>
-                          </div>
-                          <div className="text-[11px] text-slate-500">کد: {toPersianDigits(editingProduct.code)}</div>
-                        </div>
-                      </div>
-                      <BarcodeVisual
-                        value={editingProduct.barcode}
-                        height={28}
-                        showText={true}
-                        className="border-indigo-200 bg-white"
-                      />
-                    </div>
-                  )}
 
                   <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">دسته‌بندی</label>
@@ -2331,7 +2253,6 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                           <tr>
                             <th className="p-3">نام تنوع / رنگ *</th>
                             <th className="p-3">کد تنوع (سیستم)</th>
-                            <th className="p-3">بارکد EAN-13 (سیستم)</th>
                             <th className="p-3 text-center w-24">موجودی</th>
                             {currentUser?.role === 'admin' && <th className="p-3 text-center w-28">قیمت فروش</th>}
                             <th className="p-3 text-center w-10">حذف</th>
@@ -2353,20 +2274,10 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                               <td className="p-2">
                                 <input
                                   type="text"
-                                  placeholder={`${editingProduct.code || '1000'}-${v.name}`}
+                                  placeholder={`${editingProduct.code || '101'}-${v.name}`}
                                   value={v.code || ''}
                                   onChange={(e) => handleUpdateVariantField(v.id, 'code', e.target.value)}
                                   className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none focus:border-purple-500 text-left font-bold"
-                                />
-                              </td>
-                              <td className="p-2">
-                                <input
-                                  type="text"
-                                  placeholder="بارکد EAN-13"
-                                  value={v.barcode || ''}
-                                  onChange={(e) => handleUpdateVariantField(v.id, 'barcode', e.target.value)}
-                                  maxLength={13}
-                                  className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono outline-none focus:border-purple-500 text-left font-bold text-indigo-900"
                                 />
                               </td>
                               <td className="p-2">
@@ -2450,16 +2361,6 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-mono text-left font-bold"
                               />
                             </div>
-                          </div>
-                          <div>
-                            <label className="block text-[10px] font-medium text-slate-500 mb-1">بارکد استاندارد EAN-13 (سیستم)</label>
-                            <input
-                              type="text"
-                              value={v.barcode || ''}
-                              onChange={(e) => handleUpdateVariantField(v.id, 'barcode', e.target.value)}
-                              maxLength={13}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-mono text-left font-bold text-indigo-900"
-                            />
                           </div>
                           {currentUser?.role === 'admin' && (
                             <div>
