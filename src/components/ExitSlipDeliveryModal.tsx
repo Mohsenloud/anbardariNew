@@ -74,21 +74,30 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
   const [deliveryNotes, setDeliveryNotes] = useState<string>(slipLog.deliveryNotes || '');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Sync state when invoice or slipLog changes
+  // Keep track of which invoice has been loaded into form to prevent periodic background sync resets
+  const loadedInvoiceIdRef = React.useRef<string | null>(null);
+
+  // Sync state ONLY when modal is initially opened or target invoice changes
   useEffect(() => {
     if (isOpen && invoice) {
-      setIsDelivered(slipLog.isDelivered ?? false);
-      setReceiverName(slipLog.receiverName || invoice.customerName || '');
-      setReceiverPhone(slipLog.receiverPhone || invoice.customerPhone || '');
-      setVehicleInfo(slipLog.vehicleInfo || '');
-      setDeliveredAt(
-        slipLog.deliveredAt || `${getCurrentJalaliDate()} - ساعت ${getCurrentJalaliTime()}`
-      );
-      setDeliveredBy(slipLog.deliveredBy || currentUser?.fullName || 'انباردار');
-      setDeliveryNotes(slipLog.deliveryNotes || '');
-      setErrorMsg(null);
+      if (loadedInvoiceIdRef.current !== invoice.id) {
+        loadedInvoiceIdRef.current = invoice.id;
+        setIsDelivered(slipLog.isDelivered ?? false);
+        setReceiverName(slipLog.receiverName || invoice.customerName || '');
+        setReceiverPhone(slipLog.receiverPhone || invoice.customerPhone || '');
+        setVehicleInfo(slipLog.vehicleInfo || '');
+        setDeliveredAt(
+          slipLog.deliveredAt || `${getCurrentJalaliDate()} - ساعت ${getCurrentJalaliTime()}`
+        );
+        setDeliveredBy(slipLog.deliveredBy || currentUser?.fullName || 'انباردار');
+        setDeliveryNotes(slipLog.deliveryNotes || '');
+        setErrorMsg(null);
+      }
+    } else if (!isOpen) {
+      // Reset ref when modal is closed so next opening gets fresh data
+      loadedInvoiceIdRef.current = null;
     }
-  }, [isOpen, invoice, slipLog, currentUser]);
+  }, [isOpen, invoice?.id]);
 
   if (!isOpen || !invoice) return null;
 

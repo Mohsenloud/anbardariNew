@@ -849,6 +849,56 @@ export const StorageService = {
     }
   },
 
+  async downloadPostgresSqlDump(): Promise<boolean> {
+    try {
+      const res = await fetch('/api/database/export-sql');
+      if (!res.ok) throw new Error('خطا در دریافت فایل SQL از سرور');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `mana_db_dump_${new Date().toISOString().slice(0, 10)}.sql`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      return true;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  },
+
+  async importPostgresSqlFile(sqlContent: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await fetch('/api/database/import-sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/sql' },
+        body: sqlContent,
+      });
+      const data = await res.json();
+      if (data.success) {
+        await this.syncFromServer();
+      }
+      return data;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در بارگذاری و اجرای اسکریپت SQL' };
+    }
+  },
+
+  async createPostgresSnapshot(label?: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await fetch('/api/database/snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: label || 'نسخه پشتیبان دستی دیتابیس PostgreSQL' }),
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در ثبت اسنپ‌شات در دیتابیس' };
+    }
+  },
+
   getProducts(): Product[] {
     const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
     let list: Product[] = [];

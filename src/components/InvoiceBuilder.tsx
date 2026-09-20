@@ -777,8 +777,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
       if (e.key === 'F2') {
         e.preventDefault();
-        const el = document.getElementById('desktop-quick-barcode-input');
-        if (el) el.focus();
+        setIsProductCatalogOpen(true);
       } else if (e.key === 'F4') {
         e.preventDefault();
         handleFinalSubmit(true);
@@ -1096,54 +1095,39 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
         )}
       </div>
 
-      {/* ================= 4. BOTTOM DOCK (3 ACTION BUTTONS) ================= */}
+      {/* ================= 4. BOTTOM DOCK (ACTION BUTTONS) ================= */}
       <div className="p-3 bg-white border-t border-slate-100 space-y-2.5 shrink-0">
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2.5">
           {/* Button 1 (Right in RTL): انتخاب کالا */}
           <button
             type="button"
             id="btn-dock-select-product"
             onClick={() => setIsProductCatalogOpen(true)}
-            className="bg-slate-100/80 hover:bg-slate-200/80 active:scale-97 border border-slate-200 rounded-2xl py-2.5 px-2 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+            className="bg-slate-900 hover:bg-slate-800 active:scale-97 text-white rounded-2xl py-3 px-3 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
           >
-            <span className="text-xs sm:text-sm font-extrabold text-slate-800">
+            <div className="w-6 h-6 rounded-lg bg-white/20 text-white flex items-center justify-center shrink-0">
+              <Package className="w-4 h-4 stroke-[2.2]" />
+            </div>
+            <span className="text-xs sm:text-sm font-extrabold">
               انتخاب کالا
             </span>
-            <div className="w-6 h-6 rounded-lg bg-slate-900 text-white flex items-center justify-center shrink-0">
-              <Package className="w-3.5 h-3.5 stroke-[2.2]" />
-            </div>
           </button>
 
-          {/* Button 2 (Center in RTL): آیتم خدماتی */}
+          {/* Button 2 (Left in RTL): آیتم خدماتی */}
           <button
             type="button"
             id="btn-dock-service-item"
             onClick={() => setIsServiceModalOpen(true)}
-            className="bg-slate-100/80 hover:bg-slate-200/80 active:scale-97 border border-slate-200 rounded-2xl py-2.5 px-2 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+            className="bg-slate-100 hover:bg-slate-200/90 active:scale-97 border border-slate-200 rounded-2xl py-3 px-3 flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
-            <span className="text-xs sm:text-sm font-extrabold text-slate-800">
-              آیتم خدماتی
-            </span>
-            <div className="flex items-center gap-0.5 text-slate-900 font-black text-[11px] shrink-0">
+            <div className="flex items-center gap-0.5 text-slate-800 font-black text-xs shrink-0">
               <span>▲</span>
               <span>■</span>
               <span>●</span>
             </div>
-          </button>
-
-          {/* Button 3 (Left in RTL): بارکد اسکنر */}
-          <button
-            type="button"
-            id="btn-dock-barcode-scanner"
-            onClick={() => setIsBarcodeModalOpen(true)}
-            className="bg-slate-100/80 hover:bg-slate-200/80 active:scale-97 border border-slate-200 rounded-2xl py-2.5 px-2 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-          >
             <span className="text-xs sm:text-sm font-extrabold text-slate-800">
-              بارکد اسکنر
+              آیتم خدماتی
             </span>
-            <div className="w-6 h-6 rounded-lg bg-slate-200 text-slate-800 flex items-center justify-center shrink-0">
-              <ScanLine className="w-3.5 h-3.5 stroke-[2.4]" />
-            </div>
           </button>
         </div>
 
@@ -1332,71 +1316,52 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               </div>
             </div>
 
-            {/* 2. Fast Barcode & Item Addition Toolbar */}
-            <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-xs flex items-center justify-between gap-3">
-              {/* Barcode input form */}
-              <form onSubmit={handleDesktopBarcodeSubmit} className="flex-1 flex items-center gap-2">
-                <div className="relative flex-1">
-                  <ScanLine className="w-4 h-4 text-emerald-600 absolute right-3 top-2.5" />
-                  <input
-                    id="desktop-quick-barcode-input"
-                    type="text"
-                    value={desktopBarcodeInput}
-                    onChange={(e) => setDesktopBarcodeInput(e.target.value)}
-                    placeholder="بارکد یا کد کالا را اسکن/تایپ کنید و Enter بزنید... [کلید F2]"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-9 pl-3 py-2 text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-colors shrink-0 cursor-pointer"
-                >
-                  افزودن به فاکتور
-                </button>
-              </form>
-
-              <div className="h-6 w-px bg-slate-200" />
-
+            {/* 2. Fast Item Addition Toolbar */}
+            <div className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs flex items-center justify-between gap-3">
               {/* Action buttons */}
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2.5 flex-wrap">
                 <button
                   type="button"
+                  id="btn-desktop-open-catalog"
                   onClick={() => setIsProductCatalogOpen(true)}
-                  className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs flex items-center gap-2 transition-all shadow-xs cursor-pointer"
                 >
-                  <Package className="w-4 h-4 text-slate-700" />
-                  <span>لیست کالاها</span>
+                  <Package className="w-4 h-4 text-emerald-400" />
+                  <span>+ انتخاب کالا از کاتالوگ / انبار</span>
+                  <kbd className="px-1.5 py-0.5 bg-white/20 rounded text-[10px] font-mono">F2</kbd>
                 </button>
 
                 <button
                   type="button"
+                  id="btn-desktop-open-service"
                   onClick={() => setIsServiceModalOpen(true)}
-                  className="px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 font-extrabold text-xs flex items-center gap-2 transition-all cursor-pointer"
                 >
                   <Shapes className="w-4 h-4 text-purple-600" />
-                  <span>آیتم خدماتی</span>
+                  <span>+ افزودن آیتم خدماتی / بدون کالا</span>
                 </button>
+              </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsBarcodeModalOpen(true);
-                    setCameraActive(true);
-                  }}
-                  className="px-3 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Camera className="w-4 h-4 text-sky-600" />
-                  <span>اسکن دوربین</span>
-                </button>
+              {/* Status and Clear button */}
+              <div className="flex items-center gap-3">
+                {items.length > 0 && (
+                  <div className="text-xs font-bold text-slate-500 hidden sm:flex items-center gap-1.5">
+                    <span>تعداد اقلام ثبت‌شده:</span>
+                    <strong className="text-slate-900 font-black font-mono bg-slate-100 px-2 py-0.5 rounded-md">
+                      {toPersianDigits(items.length)}
+                    </strong>
+                  </div>
+                )}
 
                 {items.length > 0 && (
                   <button
                     type="button"
                     onClick={handleClearAllItems}
                     title="پاکسازی تمامی اقلام فاکتور"
-                    className="p-2 rounded-xl hover:bg-rose-50 text-rose-500 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
+                    className="px-3 py-2 rounded-xl hover:bg-rose-50 text-rose-600 border border-rose-200/80 transition-colors cursor-pointer text-xs font-bold flex items-center gap-1.5"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>پاکسازی اقلام</span>
                   </button>
                 )}
               </div>
@@ -1413,7 +1378,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     فاکتور در حال حاضر خالی است
                   </h3>
                   <p className="text-xs text-slate-400 max-w-md mb-6 leading-relaxed">
-                    برای شروع، بارکد کالا را اسکن کنید، از کاتالوگ سریع در پنل سمت چپ روی کالا کلیک کنید، یا از دکمه «لیست کالاها» استفاده فرمایید.
+                    برای شروع، از کاتالوگ سریع در پنل سمت چپ روی کالا کلیک کنید، یا از دکمه «+ انتخاب کالا از کاتالوگ» استفاده فرمایید.
                   </p>
                   <div className="flex items-center gap-3">
                     <button

@@ -221,9 +221,14 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({ value, onChang
   const part1Ref = useRef<HTMLInputElement>(null);
   const part2Ref = useRef<HTMLInputElement>(null);
   const iranCodeRef = useRef<HTMLInputElement>(null);
+  const lastEmittedValueRef = useRef<string>(value);
 
-  // Sync internal states when external `value` changes significantly
+  // Sync internal states when external `value` changes significantly from outside
   useEffect(() => {
+    if (value === lastEmittedValueRef.current) {
+      return;
+    }
+    lastEmittedValueRef.current = value;
     const p = parseVehicleInfo(value);
     if (!value || value.trim() === '') {
       // Keep defaults
@@ -270,6 +275,7 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({ value, onChang
     ].filter(Boolean);
 
     const result = parts.join(' - ');
+    lastEmittedValueRef.current = result;
     onChange(result);
   };
 

@@ -331,6 +331,7 @@ export async function testPostgresConnectionDetails(): Promise<{
   } catch (err: any) {
     isConnected = false;
     const latencyMs = Date.now() - startTime;
+    const isLocalRefused = err.code === 'ECONNREFUSED';
     return {
       success: false,
       connected: false,
@@ -338,12 +339,266 @@ export async function testPostgresConnectionDetails(): Promise<{
       host: currentHost,
       user: currentUser,
       latencyMs,
-      message: `خطای عدم امکان اتصال به PostgreSQL (${err.code || err.message})`,
-      guide: 'در محیط لوکال یا سرور، اطمینان حاصل کنید دستور docker compose up -d اجرا شده و کانتینر mana_postgres_db در حال اجراست.',
+      message: isLocalRefused
+        ? 'پایگاه‌داده PostgreSQL در محیط پیش‌نمایش ابری فعال نیست (سیستم در حالت ذخیره‌سازی محلی کار می‌کند). این قابلیت پس از استقرار روی سرور VPS با داکر فعال خواهد بود.'
+        : `عدم امکان اتصال به دیتابیس PostgreSQL (${err.code || err.message})`,
+      guide: 'روی سرور VPS شخصی، کانتینر mana_postgres_db از طریق docker compose up -d به صورت خودکار اجرا می‌شود.',
     };
   } finally {
     if (client) {
       client.release();
     }
+  }
+}
+
+function escapeSqlString(val: any): string {
+  if (val === null || val === undefined) return 'NULL';
+  if (typeof val === 'number') return isNaN(val) ? '0' : String(val);
+  if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
+  if (typeof val === 'object') return `'${JSON.stringify(val).replace(/'/g, "''")}'::jsonb`;
+  return `'${String(val).replace(/'/g, "''")}'`;
+}
+
+// Generate complete SQL script for PostgreSQL mana_db
+export function generatePostgresSqlDump(data: any): string {
+  const now = new Date().toISOString();
+  const dbName = process.env.PGDATABASE || 'mana_db';
+  const products = Array.isArray(data?.products) ? data.products : [];
+  const customers = Array.isArray(data?.customers) ? data.customers : [];
+  const invoices = Array.isArray(data?.invoices) ? data.invoices : [];
+  const warehouses = Array.isArray(data?.settings?.warehouses) ? data.settings.warehouses : [];
+
+  const lines: string[] = [];
+  lines.push(`-- =========================================================`);
+  lines.push(`-- PostgreSQL mana_db Complete Database Export & Dump`);
+  lines.push(`-- Generated At: ${now}`);
+  lines.push(`-- Target Database: ${dbName}`);
+  lines.push(`-- Encoding: UTF-8`);
+  lines.push(`-- Compatible with: PostgreSQL 14 / 15 / 16 / 17`);
+  lines.push(`-- =========================================================\n`);
+
+  lines.push(`BEGIN;`);
+  lines.push(`SET client_encoding = 'UTF8';\n`);
+
+  // Schema creation
+  lines.push(`-- 1. Tables Creation`);
+  lines.push(`CREATE TABLE IF NOT EXISTS system_state (
+  id VARCHAR(50) PRIMARY KEY,
+  data JSONB NOT NULL,
+  revision INT DEFAULT 1,
+  checksum VARCHAR(100),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS warehouses (
+  id VARCHAR(100) PRIMARY KEY,
+  name VARCHAR(250) NOT NULL,
+  code VARCHAR(100),
+  phone VARCHAR(50),
+  manager_name VARCHAR(150),
+  address TEXT,
+  is_default BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS products (
+  id VARCHAR(100) PRIMARY KEY,
+  name VARCHAR(300) NOT NULL,
+  barcode VARCHAR(100),
+  category VARCHAR(150),
+  unit VARCHAR(50) DEFAULT 'عدد',
+  stock NUMERIC(12, 2) DEFAULT 0,
+  min_stock_alert NUMERIC(12, 2) DEFAULT 5,
+  purchase_price NUMERIC(15, 2) DEFAULT 0,
+  sell_price NUMERIC(15, 2) DEFAULT 0,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS customers (
+  id VARCHAR(100) PRIMARY KEY,
+  name VARCHAR(250) NOT NULL,
+  phone VARCHAR(50),
+  address TEXT,
+  national_id VARCHAR(50),
+  economic_code VARCHAR(50),
+  postal_code VARCHAR(50),
+  balance NUMERIC(15, 2) DEFAULT 0,
+  total_invoices INT DEFAULT 0,
+  total_spent NUMERIC(15, 2) DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS invoices (
+  id VARCHAR(100) PRIMARY KEY,
+  invoice_number VARCHAR(100) NOT NULL UNIQUE,
+  date VARCHAR(50) NOT NULL,
+  customer_id VARCHAR(100),
+  customer_name VARCHAR(250) NOT NULL,
+  customer_phone VARCHAR(50),
+  items JSONB NOT NULL,
+  total_amount NUMERIC(15, 2) NOT NULL,
+  discount NUMERIC(15, 2) DEFAULT 0,
+  tax NUMERIC(15, 2) DEFAULT 0,
+  final_amount NUMERIC(15, 2) NOT NULL,
+  status VARCHAR(50) DEFAULT 'completed',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS db_backups (
+  id SERIAL PRIMARY KEY,
+  filename VARCHAR(255) NOT NULL,
+  trigger_type VARCHAR(50) NOT NULL,
+  label VARCHAR(255),
+  size_bytes INT DEFAULT 0,
+  checksum VARCHAR(100),
+  data JSONB NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);\n`);
+
+  // Insert system_state
+  lines.push(`-- 2. System State (Primary Json Data)`);
+  lines.push(`INSERT INTO system_state (id, data, revision, updated_at)
+VALUES ('main_store_data', ${escapeSqlString(data)}, 1, CURRENT_TIMESTAMP)
+ON CONFLICT (id) DO UPDATE SET
+  data = EXCLUDED.data,
+  revision = system_state.revision + 1,
+  updated_at = CURRENT_TIMESTAMP;\n`);
+
+  // Insert warehouses
+  if (warehouses.length > 0) {
+    lines.push(`-- 3. Warehouses (${warehouses.length} records)`);
+    for (const w of warehouses) {
+      lines.push(`INSERT INTO warehouses (id, name, code, phone, manager_name, address, is_default, updated_at)
+VALUES (${escapeSqlString(w.id)}, ${escapeSqlString(w.name)}, ${escapeSqlString(w.code)}, ${escapeSqlString(w.phone)}, ${escapeSqlString(w.managerName)}, ${escapeSqlString(w.address)}, ${w.isDefault ? 'TRUE' : 'FALSE'}, CURRENT_TIMESTAMP)
+ON CONFLICT (id) DO UPDATE SET
+  name = EXCLUDED.name,
+  code = EXCLUDED.code,
+  phone = EXCLUDED.phone,
+  manager_name = EXCLUDED.manager_name,
+  address = EXCLUDED.address,
+  is_default = EXCLUDED.is_default,
+  updated_at = CURRENT_TIMESTAMP;`);
+    }
+    lines.push('');
+  }
+
+  // Insert products
+  if (products.length > 0) {
+    lines.push(`-- 4. Products (${products.length} records)`);
+    for (const p of products) {
+      lines.push(`INSERT INTO products (id, name, barcode, category, unit, stock, min_stock_alert, purchase_price, sell_price, updated_at)
+VALUES (${escapeSqlString(p.id)}, ${escapeSqlString(p.name)}, ${escapeSqlString(p.barcode)}, ${escapeSqlString(p.category)}, ${escapeSqlString(p.unit || 'عدد')}, ${Number(p.stock) || 0}, ${Number(p.minStockAlert) || 5}, ${Number(p.buyPrice) || 0}, ${Number(p.sellPrice) || 0}, CURRENT_TIMESTAMP)
+ON CONFLICT (id) DO UPDATE SET
+  name = EXCLUDED.name,
+  barcode = EXCLUDED.barcode,
+  category = EXCLUDED.category,
+  unit = EXCLUDED.unit,
+  stock = EXCLUDED.stock,
+  min_stock_alert = EXCLUDED.min_stock_alert,
+  purchase_price = EXCLUDED.purchase_price,
+  sell_price = EXCLUDED.sell_price,
+  updated_at = CURRENT_TIMESTAMP;`);
+    }
+    lines.push('');
+  }
+
+  // Insert customers
+  if (customers.length > 0) {
+    lines.push(`-- 5. Customers (${customers.length} records)`);
+    for (const c of customers) {
+      lines.push(`INSERT INTO customers (id, name, phone, address, national_id, economic_code, postal_code, balance, total_invoices, total_spent)
+VALUES (${escapeSqlString(c.id)}, ${escapeSqlString(c.name)}, ${escapeSqlString(c.phone)}, ${escapeSqlString(c.address)}, ${escapeSqlString(c.nationalId)}, ${escapeSqlString(c.economicCode)}, ${escapeSqlString(c.postalCode)}, ${Number(c.balance) || 0}, ${Number(c.totalInvoices) || 0}, ${Number(c.totalSpent) || 0})
+ON CONFLICT (id) DO UPDATE SET
+  name = EXCLUDED.name,
+  phone = EXCLUDED.phone,
+  address = EXCLUDED.address,
+  national_id = EXCLUDED.national_id,
+  economic_code = EXCLUDED.economic_code,
+  postal_code = EXCLUDED.postal_code,
+  balance = EXCLUDED.balance,
+  total_invoices = EXCLUDED.total_invoices,
+  total_spent = EXCLUDED.total_spent;`);
+    }
+    lines.push('');
+  }
+
+  // Insert invoices
+  if (invoices.length > 0) {
+    lines.push(`-- 6. Invoices (${invoices.length} records)`);
+    for (const inv of invoices) {
+      lines.push(`INSERT INTO invoices (id, invoice_number, date, customer_id, customer_name, customer_phone, items, total_amount, discount, tax, final_amount, status)
+VALUES (${escapeSqlString(inv.id)}, ${escapeSqlString(inv.invoiceNumber)}, ${escapeSqlString(inv.date)}, ${escapeSqlString(inv.customerId)}, ${escapeSqlString(inv.customerName)}, ${escapeSqlString(inv.customerPhone)}, ${escapeSqlString(inv.items || [])}, ${Number(inv.totalAmount) || 0}, ${Number(inv.discount) || 0}, ${Number(inv.tax) || 0}, ${Number(inv.finalAmount) || 0}, ${escapeSqlString(inv.status || 'completed')})
+ON CONFLICT (id) DO UPDATE SET
+  invoice_number = EXCLUDED.invoice_number,
+  date = EXCLUDED.date,
+  customer_id = EXCLUDED.customer_id,
+  customer_name = EXCLUDED.customer_name,
+  customer_phone = EXCLUDED.customer_phone,
+  items = EXCLUDED.items,
+  total_amount = EXCLUDED.total_amount,
+  discount = EXCLUDED.discount,
+  tax = EXCLUDED.tax,
+  final_amount = EXCLUDED.final_amount,
+  status = EXCLUDED.status;`);
+    }
+    lines.push('');
+  }
+
+  lines.push(`COMMIT;`);
+  lines.push(`-- Export Completed Successfully.`);
+  return lines.join('\n');
+}
+
+// Execute Raw SQL statements or import into PostgreSQL
+export async function executeRawSql(sqlContent: string): Promise<{ success: boolean; message: string; rowsAffected?: number }> {
+  const currentPool = getPostgresPool();
+  if (!currentPool) {
+    return { success: false, message: 'پایگاه داده PostgreSQL در دسترس نیست.' };
+  }
+  let client: pg.PoolClient | null = null;
+  try {
+    client = await currentPool.connect();
+    await client.query('BEGIN');
+    await client.query(sqlContent);
+    await client.query('COMMIT');
+    return { success: true, message: 'اسکریپت پایگاه داده با موفقیت بر روی mana_db اجرا شد.' };
+  } catch (err: any) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (_) {}
+    }
+    return { success: false, message: `خطا در اجرای اسکریپت SQL: ${err.message}` };
+  } finally {
+    if (client) {
+      client.release();
+    }
+  }
+}
+
+// Create a direct snapshot record inside PostgreSQL db_backups table
+export async function createPostgresDbBackupRecord(label: string, data: any): Promise<{ success: boolean; message: string; id?: number }> {
+  const currentPool = getPostgresPool();
+  if (!currentPool) {
+    return { success: false, message: 'دیتابیس PostgreSQL متصل نیست.' };
+  }
+  try {
+    const filename = `pg_backup_${Date.now()}.json`;
+    const dataStr = JSON.stringify(data);
+    const sizeBytes = Buffer.byteLength(dataStr, 'utf8');
+    const res = await currentPool.query(
+      `INSERT INTO db_backups (filename, trigger_type, label, size_bytes, data, created_at)
+       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+       RETURNING id, created_at`,
+      [filename, 'manual_admin', label || 'پشتیبان دستی PostgreSQL', sizeBytes, data]
+    );
+    return {
+      success: true,
+      message: 'نسخه پشتیبان مستقیم در جدول db_backups پایگاه‌داده mana_db ذخیره شد.',
+      id: res.rows[0]?.id,
+    };
+  } catch (err: any) {
+    return { success: false, message: `خطا در ثبت رکورد در db_backups: ${err.message}` };
   }
 }

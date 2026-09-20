@@ -12,6 +12,9 @@ import {
   saveStateToPostgres,
   getPostgresStatus,
   testPostgresConnectionDetails,
+  generatePostgresSqlDump,
+  executeRawSql,
+  createPostgresDbBackupRecord,
 } from './server/db';
 
 const app = express();
@@ -710,6 +713,78 @@ app.post('/api/database/force-sync', async (req, res) => {
         message: 'خطا در ثبت اطلاعات در دیتابیس PostgreSQL.',
       });
     }
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 1.4 Export Complete PostgreSQL .sql Script for mana_db
+app.get('/api/database/export-sql', async (req, res) => {
+  try {
+    // 1. Try to get data from PostgreSQL if online, otherwise use local data
+    let data = await loadStateFromPostgres();
+    if (!data) {
+      data = readDatabase();
+    }
+    const sqlScript = generatePostgresSqlDump(data);
+    const filename = `mana_db_${new Date().toISOString().replace(/[:.]/g, '-')}.sql`;
+
+    res.setHeader('Content-Type', 'application/sql; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(sqlScript);
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `خطا در استخراج فایل SQL: ${err.message}` });
+  }
+});
+
+// 1.5 Import SQL Script or Raw Data directly into PostgreSQL mana_db
+app.post('/api/database/import-sql', express.text({ type: ['application/sql', 'text/plain'], limit: '50mb' }), async (req, res) => {
+  try {
+    const rawSql = typeof req.body === 'string' ? req.body : req.body?.sql;
+    if (!rawSql || typeof rawSql !== 'string' || rawSql.trim().length === 0) {
+      return res.status(400).json({ success: false, message: 'محتوای فایل SQL ارسال نشده است.' });
+    }
+
+    const pgStatus = getPostgresStatus();
+    if (!pgStatus.connected) {
+      // If postgres is not reachable, check if it contains valid JSON or state to sync locally
+      return res.status(503).json({
+        success: false,
+        message: 'پایگاه‌داده PostgreSQL متصل نیست. برای اجرای دستورات SQL دیتابیس باید فعال باشد.',
+      });
+    }
+
+    const execResult = await executeRawSql(rawSql);
+    if (!execResult.success) {
+      return res.status(500).json(execResult);
+    }
+
+    // Reload system_state from PostgreSQL if updated
+    const freshData = await loadStateFromPostgres();
+    if (freshData) {
+      writeDatabase(freshData, true);
+    }
+
+    res.json({
+      success: true,
+      message: 'فایل اسکریپت SQL پایگاه داده با موفقیت در دیتابیس mana_db اجرا و بازیابی شد.',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 1.6 Create direct snapshot record in PostgreSQL db_backups table
+app.post('/api/database/snapshot', async (req, res) => {
+  try {
+    const label = req.body?.label || 'نسخه پشتیبان مستقیم دیتابیس';
+    let data = await loadStateFromPostgres();
+    if (!data) {
+      data = readDatabase();
+    }
+
+    const snapResult = await createPostgresDbBackupRecord(label, data);
+    res.json(snapResult);
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
