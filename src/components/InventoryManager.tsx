@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Product, ProductVariant, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData, InboundReceipt, InboundReceiptItem, DirectTransfer } from '../types';
-import { toPersianDigits, getCurrentJalaliDate, getCurrentJalaliTime, formatPrice } from '../utils/jalali';
+import { toPersianDigits, toEnglishDigits, getCurrentJalaliDate, getCurrentJalaliTime, formatPrice } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
 import { exportProductsToExcel } from '../utils/excelHelper';
 import { ExcelImportModal } from './ExcelImportModal';
@@ -18,7 +18,7 @@ import {
   Edit3, 
   Trash2, 
   History, 
-  PackageCheck,
+  PackageCheck, 
   Boxes,
   Filter,
   CheckCircle2,
@@ -58,10 +58,11 @@ interface InventoryManagerProps {
   onDeleteProduct: (productId: string) => void;
   onAdjustStock: (
     productId: string, 
-    type: 'purchase' | 'adjustment' | 'return', 
+    type: 'purchase' | 'adjustment' | 'return' | 'set_stock', 
     quantity: number, 
     note: string,
-    variantId?: string
+    variantId?: string,
+    exactStock?: number
   ) => void;
   onImportProducts?: (products: Product[], mode: 'merge' | 'replace') => void;
   onConfirmInboundReceipt?: (
@@ -136,8 +137,9 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
   // Stock Adjustment Modal
   const [adjustingProduct, setAdjustingProduct] = useState<Product | null>(null);
-  const [adjustType, setAdjustType] = useState<'purchase' | 'adjustment'>('purchase');
+  const [adjustType, setAdjustType] = useState<'purchase' | 'adjustment' | 'set_stock'>('purchase');
   const [adjustQuantity, setAdjustQuantity] = useState<number>(1);
+  const [exactStockTarget, setExactStockTarget] = useState<number>(0);
   const [selectedVariantId, setSelectedVariantId] = useState<string>('');
   const [adjustNote, setAdjustNote] = useState<string>('');
 
@@ -354,20 +356,59 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   };
 
   // Open Adjust Modal
-  const handleOpenAdjustStock = (prod: Product, type: 'purchase' | 'adjustment') => {
+  const handleOpenAdjustStock = (prod: Product, type: 'purchase' | 'adjustment' | 'set_stock' = 'purchase') => {
     setAdjustingProduct(prod);
     setAdjustType(type);
     setAdjustQuantity(1);
-    setSelectedVariantId(prod.hasVariants && prod.variants && prod.variants.length > 0 ? prod.variants[0].id : '');
-    setAdjustNote(type === 'purchase' ? 'ورود کالای جدید به انبار (خرید)' : 'تعدیل و انبارگردانی');
+    const hasVars = !!prod.hasVariants && Array.isArray(prod.variants) && prod.variants.length > 0;
+    const firstVarId = hasVars ? prod.variants![0].id : '';
+    setSelectedVariantId(firstVarId);
+
+    const initialCurrentStock = hasVars && firstVarId
+      ? (prod.variants?.find((v) => v.id === firstVarId)?.stock || 0)
+      : (prod.stock || 0);
+    setExactStockTarget(initialCurrentStock);
+
+    setAdjustNote(
+      type === 'purchase'
+        ? 'ورود کالای جدید به انبار (خرید)'
+        : type === 'set_stock'
+        ? 'ثبت موجودی واقعی در انبارگردانی'
+        : 'کاهش موجودی و انبارگردانی'
+    );
   };
 
   // Submit Stock Adjustment
   const handleSubmitStockAdjust = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adjustingProduct || adjustQuantity <= 0) return;
+    if (!adjustingProduct) return;
 
-    onAdjustStock(adjustingProduct.id, adjustType, adjustQuantity, adjustNote, selectedVariantId || undefined);
+    const hasVars = !!adjustingProduct.hasVariants && Array.isArray(adjustingProduct.variants) && adjustingProduct.variants.length > 0;
+    const currentTargetStock = hasVars && selectedVariantId
+      ? (adjustingProduct.variants?.find((v) => v.id === selectedVariantId)?.stock || 0)
+      : (adjustingProduct.stock || 0);
+
+    if (adjustType === 'set_stock') {
+      const cleanExact = Math.max(0, Number(exactStockTarget) || 0);
+      const diff = Math.abs(cleanExact - currentTargetStock);
+      onAdjustStock(
+        adjustingProduct.id,
+        'set_stock',
+        diff,
+        adjustNote.trim() || 'ثبت موجودی واقعی در انبارگردانی',
+        selectedVariantId || undefined,
+        cleanExact
+      );
+    } else {
+      const cleanQty = Math.max(1, Number(adjustQuantity) || 1);
+      onAdjustStock(
+        adjustingProduct.id,
+        adjustType,
+        cleanQty,
+        adjustNote.trim() || (adjustType === 'purchase' ? 'ورود کالای جدید به انبار' : 'کاهش و خروج از انبار'),
+        selectedVariantId || undefined
+      );
+    }
     setAdjustingProduct(null);
   };
 
@@ -1074,7 +1115,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => handleOpenAdjustStock(prod, 'adjustment')}
+                        onClick={() => handleOpenAdjustStock(prod, 'set_stock')}
                         className="flex-1 py-2 px-2.5 bg-blue-50 active:bg-blue-100 text-blue-800 border border-blue-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
                       >
                         <ArrowUpLeft className="w-3.5 h-3.5 text-blue-600" />
@@ -1202,11 +1243,11 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                               <ArrowDownRight className="w-4 h-4" />
                             </button>
 
-                            {/* Stock Out/Adjust */}
+                            {/* Stock Out/Adjust / Inventory Count */}
                             <button
                               id={`stock-adjust-btn-${prod.id}`}
-                              onClick={() => handleOpenAdjustStock(prod, 'adjustment')}
-                              title="انبارگردانی و اصلاح موجودی"
+                              onClick={() => handleOpenAdjustStock(prod, 'set_stock')}
+                              title="انبارگردانی و ثبت موجودی واقعی"
                               className="p-1.5 text-blue-700 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                             >
                               <ArrowUpLeft className="w-4 h-4" />
@@ -2084,17 +2125,30 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     )}
                   </div>
 
-                  {!editingProduct.hasVariants && !editingProduct.id && (
-                    <div className="col-span-2">
-                      <label className="block text-xs font-medium text-slate-700 mb-1">موجودی اولیه در انبار</label>
-                      <input
-                        type="number"
-                        id="product-modal-initialstock"
-                        min="0"
-                        value={editingProduct.stock}
-                        onChange={(e) => setEditingProduct({ ...editingProduct, stock: parseInt(e.target.value, 10) || 0 })}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                      />
+                  {!editingProduct.hasVariants && (
+                    <div className="col-span-2 bg-emerald-50/50 p-3.5 rounded-2xl border border-emerald-200/80">
+                      <label className="block text-xs font-bold text-slate-800 mb-1.5 flex items-center justify-between">
+                        <span>موجودی کالا در انبار (موجودی اولیه / فعلی)</span>
+                        <span className="text-[10px] text-emerald-700 bg-emerald-100/90 px-2 py-0.5 rounded-md font-semibold border border-emerald-300">
+                          قابل ویرایش مستقیم
+                        </span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          id="product-modal-initialstock"
+                          min="0"
+                          value={editingProduct.stock}
+                          onChange={(e) => {
+                            const val = parseInt(toEnglishDigits(e.target.value), 10);
+                            setEditingProduct({ ...editingProduct, stock: isNaN(val) || val < 0 ? 0 : val });
+                          }}
+                          className="w-full bg-white border border-emerald-300 rounded-xl px-3 py-2 text-xs font-bold font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 text-slate-900"
+                        />
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                        با ویرایش این مقدار، موجودی فعلی انبار تغییر کرده و سند اصلاحی کاردکس نیز به صورت خودکار ثبت خواهد شد.
+                      </p>
                     </div>
                   )}
 
@@ -2402,134 +2456,255 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       )}
 
       {/* MODAL: STOCK ADJUSTMENT / INTAKE */}
-      {adjustingProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden">
-            <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
-              <h3 className="font-bold text-sm">
-                {adjustType === 'purchase' ? 'رسید ورود به انبار (خرید جدید)' : 'تعدیل و انبارگردانی'}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setAdjustingProduct(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {adjustingProduct && (() => {
+        const hasVars = !!adjustingProduct.hasVariants && Array.isArray(adjustingProduct.variants) && adjustingProduct.variants.length > 0;
+        const currentTargetStock = hasVars && selectedVariantId
+          ? (adjustingProduct.variants?.find((v) => v.id === selectedVariantId)?.stock || 0)
+          : (adjustingProduct.stock || 0);
 
-            <form onSubmit={handleSubmitStockAdjust} className="p-5 space-y-4">
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1">
-                <div className="font-bold text-slate-800">{adjustingProduct.name}</div>
-                <div className="text-slate-500">
-                  موجودی کل فعلی: <strong className="text-slate-800">{toPersianDigits(adjustingProduct.stock)} {adjustingProduct.unit}</strong>
+        const projectedStock = adjustType === 'set_stock'
+          ? Math.max(0, exactStockTarget)
+          : adjustType === 'purchase'
+          ? currentTargetStock + Math.max(0, adjustQuantity)
+          : Math.max(0, currentTargetStock - Math.max(0, adjustQuantity));
+
+        const diff = projectedStock - currentTargetStock;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {adjustType === 'purchase' && <ArrowDownRight className="w-5 h-5 text-emerald-400" />}
+                  {adjustType === 'set_stock' && <Boxes className="w-5 h-5 text-blue-400" />}
+                  {adjustType === 'adjustment' && <ArrowUpLeft className="w-5 h-5 text-rose-400" />}
+                  <h3 className="font-bold text-sm">
+                    {adjustType === 'purchase'
+                      ? 'ورود کالا به انبار (افزایش موجودی)'
+                      : adjustType === 'set_stock'
+                      ? 'انبارگردانی (شمارش فیزیکی و ثبت موجودی)'
+                      : 'خروج کالا از انبار (کاهش موجودی)'}
+                  </h3>
                 </div>
-              </div>
-
-              {adjustingProduct.hasVariants && adjustingProduct.variants && adjustingProduct.variants.length > 0 && (
-                <div>
-                  <label className="block text-xs font-bold text-purple-900 mb-1.5 flex items-center gap-1">
-                    <Layers className="w-3.5 h-3.5 text-purple-600" />
-                    <span>انتخاب رنگ / تنوع جهت عملیات انبار:</span>
-                  </label>
-                  <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1">
-                    {adjustingProduct.variants.map((v) => (
-                      <button
-                        key={v.id}
-                        type="button"
-                        onClick={() => setSelectedVariantId(v.id)}
-                        className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
-                          selectedVariantId === v.id
-                            ? 'bg-purple-50 border-purple-500 text-purple-950 font-bold ring-2 ring-purple-500/20 shadow-xs'
-                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="text-xs font-bold">{v.name}</div>
-                        <div className="text-[10px] text-slate-500 mt-0.5">
-                          موجودی فعلی: <strong className="font-mono text-purple-700">{toPersianDigits(v.stock)}</strong> {adjustingProduct.unit}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1.5">عملیات انبار:</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAdjustType('purchase')}
-                    className={`py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
-                      adjustType === 'purchase'
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-slate-50 text-slate-700 border-slate-200'
-                    }`}
-                  >
-                    + افزایش موجودی (ورود)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAdjustType('adjustment')}
-                    className={`py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
-                      adjustType === 'adjustment'
-                        ? 'bg-rose-600 text-white border-rose-600'
-                        : 'bg-slate-50 text-slate-700 border-slate-200'
-                    }`}
-                  >
-                    - کاهش موجودی (خروج)
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  تعداد ({adjustingProduct.unit}) *
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  id="stock-adjust-quantity-input"
-                  value={adjustQuantity}
-                  onChange={(e) => setAdjustQuantity(parseInt(e.target.value, 10) || 1)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-center outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">علت و یادداشت تراکنش</label>
-                <input
-                  type="text"
-                  id="stock-adjust-note-input"
-                  value={adjustNote}
-                  onChange={(e) => setAdjustNote(e.target.value)}
-                  placeholder="خرید از تامین‌کننده، ضایعات، مغایرت انبارگردانی و..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setAdjustingProduct(null)}
-                  className="px-4 py-2 text-xs text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 cursor-pointer"
+                  className="text-slate-400 hover:text-white p-1 rounded-lg"
                 >
-                  انصراف
-                </button>
-                <button
-                  type="submit"
-                  id="confirm-stock-adjust-btn"
-                  className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-xs cursor-pointer"
-                >
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>ثبت تغییر در انبار</span>
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-            </form>
+
+              <form onSubmit={handleSubmitStockAdjust} className="p-5 space-y-4">
+                {/* Product Summary Card */}
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs flex items-center justify-between">
+                  <div>
+                    <div className="font-bold text-slate-800 text-sm">{adjustingProduct.name}</div>
+                    <div className="text-slate-500 mt-0.5">کد: {toPersianDigits(adjustingProduct.code)}</div>
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[10px] text-slate-400 block">موجودی کل فعلی</span>
+                    <strong className="text-sm font-bold text-slate-800">
+                      {toPersianDigits(adjustingProduct.stock)} {adjustingProduct.unit}
+                    </strong>
+                  </div>
+                </div>
+
+                {/* Variant Selector (if applicable) */}
+                {hasVars && (
+                  <div>
+                    <label className="block text-xs font-bold text-purple-900 mb-1.5 flex items-center gap-1">
+                      <Layers className="w-3.5 h-3.5 text-purple-600" />
+                      <span>انتخاب تنوع کالا جهت عملیات:</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-1">
+                      {adjustingProduct.variants!.map((v) => {
+                        const isSelected = selectedVariantId === v.id;
+                        return (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedVariantId(v.id);
+                              if (adjustType === 'set_stock') {
+                                setExactStockTarget(Number(v.stock) || 0);
+                              }
+                            }}
+                            className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-purple-50 border-purple-500 text-purple-950 font-bold ring-2 ring-purple-500/20 shadow-xs'
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="text-xs font-bold">{v.name}</div>
+                            <div className="text-[10px] text-slate-500 mt-0.5">
+                              موجودی: <strong className="font-mono text-purple-700">{toPersianDigits(v.stock)}</strong> {adjustingProduct.unit}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Operation Type Switcher */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">نوع عملیات انبار:</label>
+                  <div className="grid grid-cols-3 gap-1.5 bg-slate-100 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAdjustType('purchase');
+                        setAdjustNote('ورود کالای جدید به انبار (خرید)');
+                      }}
+                      className={`py-2 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                        adjustType === 'purchase'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      + ورود کالا
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAdjustType('set_stock');
+                        setExactStockTarget(currentTargetStock);
+                        setAdjustNote('ثبت موجودی واقعی در انبارگردانی');
+                      }}
+                      className={`py-2 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                        adjustType === 'set_stock'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      📋 انبارگردانی
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAdjustType('adjustment');
+                        setAdjustNote('کاهش و خروج از انبار');
+                      }}
+                      className={`py-2 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                        adjustType === 'adjustment'
+                          ? 'bg-rose-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      - خروج / کاهش
+                    </button>
+                  </div>
+                </div>
+
+                {/* Main Input Field */}
+                {adjustType === 'set_stock' ? (
+                  <div className="bg-blue-50/60 p-3 rounded-xl border border-blue-200 space-y-1">
+                    <label className="block text-xs font-bold text-blue-900 mb-1">
+                      موجودی فیزیکی شمارش‌شده در انبار ({adjustingProduct.unit}) *
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      id="stock-adjust-exact-input"
+                      value={exactStockTarget}
+                      onChange={(e) => {
+                        const val = parseInt(toEnglishDigits(e.target.value), 10);
+                        setExactStockTarget(isNaN(val) || val < 0 ? 0 : val);
+                      }}
+                      className="w-full bg-white border border-blue-300 rounded-xl px-3 py-2 text-sm font-bold text-center font-mono outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600"
+                    />
+                    <p className="text-[10px] text-blue-600 text-center mt-1">
+                      موجودی انبار مستقیماً روی این عدد تنظیم خواهد شد.
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      {adjustType === 'purchase' ? 'تعداد ورودی به انبار' : 'تعداد خروجی از انبار'} ({adjustingProduct.unit}) *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      id="stock-adjust-quantity-input"
+                      value={adjustQuantity}
+                      onChange={(e) => {
+                        const val = parseInt(toEnglishDigits(e.target.value), 10);
+                        setAdjustQuantity(isNaN(val) || val < 1 ? 1 : val);
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-center font-mono outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+                )}
+
+                {/* Calculation Preview Box */}
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
+                  <div className="text-center flex-1">
+                    <span className="text-[10px] text-slate-400 block">موجودی فعلی</span>
+                    <strong className="text-slate-700 font-bold font-mono">
+                      {toPersianDigits(currentTargetStock)}
+                    </strong>
+                  </div>
+                  <div className="text-slate-300 font-bold text-lg">➔</div>
+                  <div className="text-center flex-1">
+                    <span className="text-[10px] text-slate-400 block">موجودی جدید نهایی</span>
+                    <strong className="text-slate-900 font-black font-mono text-sm">
+                      {toPersianDigits(projectedStock)} {adjustingProduct.unit}
+                    </strong>
+                  </div>
+                  <div className="text-center flex-1">
+                    <span className="text-[10px] text-slate-400 block">میزان تغییر</span>
+                    <span
+                      className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold font-mono ${
+                        diff > 0
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : diff < 0
+                          ? 'bg-rose-100 text-rose-800'
+                          : 'bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      {diff > 0 ? `+${toPersianDigits(diff)}` : toPersianDigits(diff)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Note */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">علت و یادداشت تراکنش</label>
+                  <input
+                    type="text"
+                    id="stock-adjust-note-input"
+                    value={adjustNote}
+                    onChange={(e) => setAdjustNote(e.target.value)}
+                    placeholder="خرید از تامین‌کننده، ضایعات، مغایرت انبارگردانی و..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setAdjustingProduct(null)}
+                    className="px-4 py-2 text-xs text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 cursor-pointer"
+                  >
+                    انصراف
+                  </button>
+                  <button
+                    type="submit"
+                    id="confirm-stock-adjust-btn"
+                    className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-xs cursor-pointer active:scale-98 transition-all"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>ثبت تغییر در انبار</span>
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Delete Product Confirmation Modal */}
       {productToDelete && (

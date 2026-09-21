@@ -25,30 +25,107 @@ export const exportElementToPdf = async (
   const orientation = options?.orientation || 'portrait';
   const targetWidthPx = 
     paperSize === 'a5'
-      ? (orientation === 'landscape' ? 760 : 540)
-      : (orientation === 'landscape' ? 1060 : 780);
+      ? (orientation === 'landscape' ? 780 : 560)
+      : (orientation === 'landscape' ? 1080 : 820);
 
   try {
-    // 1. Capture element with optimized scale
+    // 1. Capture element with unclipped height and properly aligned coordinates
     const canvas = await html2canvas(element, {
-      scale: 1.5,
+      scale: 2.0,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
-      windowWidth: Math.max(element.scrollWidth, targetWidthPx),
+      windowWidth: Math.max(1280, targetWidthPx + 200),
+      windowHeight: 4000,
       onclone: (clonedDoc, clonedElement) => {
-        clonedElement.style.overflow = 'visible';
-        clonedElement.style.maxWidth = 'none';
-        clonedElement.style.width = `${targetWidthPx}px`;
-        clonedElement.style.margin = '0 auto';
-        clonedElement.style.boxShadow = 'none';
+        // Reset scroll in cloned window
+        if (clonedDoc.defaultView) {
+          clonedDoc.defaultView.scrollTo(0, 0);
+        }
+
+        // Force cloned element itself to have auto height, full specified width, and zero clipping
+        clonedElement.style.setProperty('height', 'auto', 'important');
+        clonedElement.style.setProperty('max-height', 'none', 'important');
+        clonedElement.style.setProperty('min-height', 'auto', 'important');
+        clonedElement.style.setProperty('overflow', 'visible', 'important');
+        clonedElement.style.setProperty('width', `${targetWidthPx}px`, 'important');
+        clonedElement.style.setProperty('max-width', `${targetWidthPx}px`, 'important');
+        clonedElement.style.setProperty('min-width', `${targetWidthPx}px`, 'important');
+        clonedElement.style.setProperty('box-sizing', 'border-box', 'important');
+        clonedElement.style.setProperty('margin', '0 auto', 'important');
+        clonedElement.style.setProperty('box-shadow', 'none', 'important');
+        clonedElement.style.setProperty('direction', 'rtl', 'important');
+
+        // Unconstrain all ancestors up to body/html to prevent modal scroll container clipping
+        let cur: HTMLElement | null = clonedElement.parentElement;
+        while (cur && cur !== clonedDoc.body) {
+          cur.style.setProperty('overflow', 'visible', 'important');
+          cur.style.setProperty('max-height', 'none', 'important');
+          cur.style.setProperty('height', 'auto', 'important');
+          cur.style.setProperty('position', 'static', 'important');
+          cur.style.setProperty('transform', 'none', 'important');
+          cur = cur.parentElement;
+        }
+
+        if (clonedDoc.body) {
+          clonedDoc.body.style.setProperty('overflow', 'visible', 'important');
+          clonedDoc.body.style.setProperty('max-height', 'none', 'important');
+          clonedDoc.body.style.setProperty('height', 'auto', 'important');
+          clonedDoc.body.style.setProperty('position', 'static', 'important');
+          clonedDoc.body.style.setProperty('margin', '0', 'important');
+          clonedDoc.body.style.setProperty('padding', '0', 'important');
+        }
+        if (clonedDoc.documentElement) {
+          clonedDoc.documentElement.style.setProperty('overflow', 'visible', 'important');
+          clonedDoc.documentElement.style.setProperty('max-height', 'none', 'important');
+          clonedDoc.documentElement.style.setProperty('height', 'auto', 'important');
+        }
+
+        // Un-clip any horizontal or vertical scroll/overflow wrappers inside
+        const scrollContainers = clonedElement.querySelectorAll('.overflow-x-auto, .overflow-y-auto, [class*="overflow"]');
+        scrollContainers.forEach((el) => {
+          (el as HTMLElement).style.setProperty('overflow', 'visible', 'important');
+          (el as HTMLElement).style.setProperty('max-height', 'none', 'important');
+          (el as HTMLElement).style.setProperty('height', 'auto', 'important');
+        });
+
+        // Ensure all tables occupy full width without truncation
+        const tables = clonedElement.querySelectorAll('table');
+        tables.forEach((tbl) => {
+          (tbl as HTMLElement).style.setProperty('width', '100%', 'important');
+          (tbl as HTMLElement).style.setProperty('min-width', '100%', 'important');
+          (tbl as HTMLElement).style.setProperty('table-layout', 'auto', 'important');
+        });
+
+        // Ensure 3-column signature boxes render side-by-side
+        const sigs = clonedElement.querySelector('.exit-slip-signatures');
+        if (sigs) {
+          (sigs as HTMLElement).style.setProperty('display', 'grid', 'important');
+          (sigs as HTMLElement).style.setProperty('grid-template-columns', 'repeat(3, minmax(0, 1fr))', 'important');
+          (sigs as HTMLElement).style.setProperty('gap', '10px', 'important');
+        }
+
+        // Ensure 2-column info cards render side-by-side
+        const infoDeck = clonedElement.querySelector('.exit-slip-info-deck');
+        if (infoDeck) {
+          (infoDeck as HTMLElement).style.setProperty('display', 'grid', 'important');
+          (infoDeck as HTMLElement).style.setProperty('grid-template-columns', 'repeat(2, minmax(0, 1fr))', 'important');
+          (infoDeck as HTMLElement).style.setProperty('gap', '10px', 'important');
+        }
+
+        // Ensure terms render 2 columns
+        const termsGrid = clonedElement.querySelector('.exit-slip-terms-grid');
+        if (termsGrid) {
+          (termsGrid as HTMLElement).style.setProperty('display', 'grid', 'important');
+          (termsGrid as HTMLElement).style.setProperty('grid-template-columns', 'repeat(2, minmax(0, 1fr))', 'important');
+        }
       },
     });
 
-    // 2. Ultra-compressed JPEG dataURL
-    const imgData = canvas.toDataURL('image/jpeg', 0.80);
+    // 2. High-quality JPEG dataURL
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
     
-    // 3. Create PDF with Deflate compression enabled and user-chosen format/orientation
+    // 3. Create PDF with Deflate compression enabled and user-chosen format/orientation (default A4 portrait)
     const pdf = new jsPDF({
       orientation: orientation,
       unit: 'mm',
@@ -58,7 +135,7 @@ export const exportElementToPdf = async (
 
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = paperSize === 'a5' ? 4 : 8; // 4mm margin for A5, 8mm for A4
+    const margin = paperSize === 'a5' ? 4 : 7; // Clean margins: 4mm for A5, 7mm for A4
     const usableWidth = pageWidth - margin * 2;
     const usableHeight = pageHeight - margin * 2;
     const contentWidth = usableWidth;
@@ -67,26 +144,49 @@ export const exportElementToPdf = async (
     if (contentHeight <= usableHeight) {
       // Content fits naturally on a single page
       pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, contentHeight, undefined, 'FAST');
-    } else if (paperSize === 'a5' || contentHeight <= usableHeight * 1.35) {
-      // Auto-fit to single page: scale proportionally so ALL data fits on one single sheet
+    } else if (paperSize === 'a5' || contentHeight <= usableHeight * 1.95) {
+      // Auto-fit to single page: scale proportionally so ALL data (header, items, terms, signatures) fits on one single sheet
       const scale = usableHeight / contentHeight;
       const fittedWidth = contentWidth * scale;
       const fittedHeight = usableHeight;
       const offsetX = margin + (usableWidth - fittedWidth) / 2;
       pdf.addImage(imgData, 'JPEG', offsetX, margin, fittedWidth, fittedHeight, undefined, 'FAST');
     } else {
-      // Multi-page handling for extensive documents with many items
-      let heightLeft = contentHeight;
-      let position = margin;
+      // True multi-page canvas slicing (prevents any data clipping or jsPDF drawing bugs)
+      const pxPerMm = canvas.width / contentWidth;
+      const sliceHeightPx = Math.floor(usableHeight * pxPerMm);
+      let yOffsetPx = 0;
+      let isFirstPage = true;
 
-      pdf.addImage(imgData, 'JPEG', margin, position, contentWidth, contentHeight, undefined, 'FAST');
-      heightLeft -= usableHeight;
-
-      while (heightLeft > 0) {
-        position = heightLeft - contentHeight + margin;
-        pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', margin, position, contentWidth, contentHeight, undefined, 'FAST');
-        heightLeft -= usableHeight;
+      while (yOffsetPx < canvas.height) {
+        if (!isFirstPage) {
+          pdf.addPage();
+        }
+        const currentSliceHeightPx = Math.min(sliceHeightPx, canvas.height - yOffsetPx);
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = currentSliceHeightPx;
+        const sliceCtx = sliceCanvas.getContext('2d');
+        if (sliceCtx) {
+          sliceCtx.fillStyle = '#ffffff';
+          sliceCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+          sliceCtx.drawImage(
+            canvas,
+            0,
+            yOffsetPx,
+            canvas.width,
+            currentSliceHeightPx,
+            0,
+            0,
+            canvas.width,
+            currentSliceHeightPx
+          );
+          const sliceImgData = sliceCanvas.toDataURL('image/jpeg', 0.95);
+          const sliceHeightMm = (currentSliceHeightPx * contentWidth) / canvas.width;
+          pdf.addImage(sliceImgData, 'JPEG', margin, margin, contentWidth, sliceHeightMm, undefined, 'FAST');
+        }
+        yOffsetPx += sliceHeightPx;
+        isFirstPage = false;
       }
     }
 
@@ -117,26 +217,95 @@ export const generatePdfBlob = async (
   const orientation = options?.orientation || 'portrait';
   const targetWidthPx = 
     paperSize === 'a5'
-      ? (orientation === 'landscape' ? 760 : 540)
-      : (orientation === 'landscape' ? 1060 : 780);
+      ? (orientation === 'landscape' ? 780 : 560)
+      : (orientation === 'landscape' ? 1080 : 820);
 
   try {
     const canvas = await html2canvas(element, {
-      scale: 1.5,
+      scale: 2.0,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
-      windowWidth: Math.max(element.scrollWidth, targetWidthPx),
+      windowWidth: Math.max(1280, targetWidthPx + 200),
+      windowHeight: 4000,
       onclone: (clonedDoc, clonedElement) => {
-        clonedElement.style.overflow = 'visible';
-        clonedElement.style.maxWidth = 'none';
-        clonedElement.style.width = `${targetWidthPx}px`;
-        clonedElement.style.margin = '0 auto';
+        if (clonedDoc.defaultView) {
+          clonedDoc.defaultView.scrollTo(0, 0);
+        }
+
+        clonedElement.style.setProperty('height', 'auto', 'important');
+        clonedElement.style.setProperty('max-height', 'none', 'important');
+        clonedElement.style.setProperty('min-height', 'auto', 'important');
+        clonedElement.style.setProperty('overflow', 'visible', 'important');
+        clonedElement.style.setProperty('width', `${targetWidthPx}px`, 'important');
+        clonedElement.style.setProperty('max-width', `${targetWidthPx}px`, 'important');
+        clonedElement.style.setProperty('min-width', `${targetWidthPx}px`, 'important');
+        clonedElement.style.setProperty('box-sizing', 'border-box', 'important');
+        clonedElement.style.setProperty('margin', '0 auto', 'important');
         clonedElement.style.boxShadow = 'none';
+        clonedElement.style.setProperty('direction', 'rtl', 'important');
+
+        let cur: HTMLElement | null = clonedElement.parentElement;
+        while (cur && cur !== clonedDoc.body) {
+          cur.style.setProperty('overflow', 'visible', 'important');
+          cur.style.setProperty('max-height', 'none', 'important');
+          cur.style.setProperty('height', 'auto', 'important');
+          cur.style.setProperty('position', 'static', 'important');
+          cur.style.setProperty('transform', 'none', 'important');
+          cur = cur.parentElement;
+        }
+
+        if (clonedDoc.body) {
+          clonedDoc.body.style.setProperty('overflow', 'visible', 'important');
+          clonedDoc.body.style.setProperty('max-height', 'none', 'important');
+          clonedDoc.body.style.setProperty('height', 'auto', 'important');
+          clonedDoc.body.style.setProperty('position', 'static', 'important');
+          clonedDoc.body.style.setProperty('margin', '0', 'important');
+          clonedDoc.body.style.setProperty('padding', '0', 'important');
+        }
+        if (clonedDoc.documentElement) {
+          clonedDoc.documentElement.style.setProperty('overflow', 'visible', 'important');
+          clonedDoc.documentElement.style.setProperty('max-height', 'none', 'important');
+          clonedDoc.documentElement.style.setProperty('height', 'auto', 'important');
+        }
+
+        const scrollContainers = clonedElement.querySelectorAll('.overflow-x-auto, .overflow-y-auto, [class*="overflow"]');
+        scrollContainers.forEach((el) => {
+          (el as HTMLElement).style.setProperty('overflow', 'visible', 'important');
+          (el as HTMLElement).style.setProperty('max-height', 'none', 'important');
+          (el as HTMLElement).style.setProperty('height', 'auto', 'important');
+        });
+
+        const tables = clonedElement.querySelectorAll('table');
+        tables.forEach((tbl) => {
+          (tbl as HTMLElement).style.setProperty('width', '100%', 'important');
+          (tbl as HTMLElement).style.setProperty('min-width', '100%', 'important');
+          (tbl as HTMLElement).style.setProperty('table-layout', 'auto', 'important');
+        });
+
+        const sigs = clonedElement.querySelector('.exit-slip-signatures');
+        if (sigs) {
+          (sigs as HTMLElement).style.setProperty('display', 'grid', 'important');
+          (sigs as HTMLElement).style.setProperty('grid-template-columns', 'repeat(3, minmax(0, 1fr))', 'important');
+          (sigs as HTMLElement).style.setProperty('gap', '10px', 'important');
+        }
+
+        const infoDeck = clonedElement.querySelector('.exit-slip-info-deck');
+        if (infoDeck) {
+          (infoDeck as HTMLElement).style.setProperty('display', 'grid', 'important');
+          (infoDeck as HTMLElement).style.setProperty('grid-template-columns', 'repeat(2, minmax(0, 1fr))', 'important');
+          (infoDeck as HTMLElement).style.setProperty('gap', '10px', 'important');
+        }
+
+        const termsGrid = clonedElement.querySelector('.exit-slip-terms-grid');
+        if (termsGrid) {
+          (termsGrid as HTMLElement).style.setProperty('display', 'grid', 'important');
+          (termsGrid as HTMLElement).style.setProperty('grid-template-columns', 'repeat(2, minmax(0, 1fr))', 'important');
+        }
       },
     });
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.80);
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
     const pdf = new jsPDF({
       orientation: orientation,
       unit: 'mm',
@@ -146,7 +315,7 @@ export const generatePdfBlob = async (
 
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = paperSize === 'a5' ? 4 : 8;
+    const margin = paperSize === 'a5' ? 4 : 7;
     const usableWidth = pageWidth - margin * 2;
     const usableHeight = pageHeight - margin * 2;
     const contentWidth = usableWidth;
@@ -154,25 +323,47 @@ export const generatePdfBlob = async (
 
     if (contentHeight <= usableHeight) {
       pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, contentHeight, undefined, 'FAST');
-    } else if (paperSize === 'a5' || contentHeight <= usableHeight * 1.35) {
-      // Auto-fit to single page
+    } else if (paperSize === 'a5' || contentHeight <= usableHeight * 1.95) {
       const scale = usableHeight / contentHeight;
       const fittedWidth = contentWidth * scale;
       const fittedHeight = usableHeight;
       const offsetX = margin + (usableWidth - fittedWidth) / 2;
       pdf.addImage(imgData, 'JPEG', offsetX, margin, fittedWidth, fittedHeight, undefined, 'FAST');
     } else {
-      let heightLeft = contentHeight;
-      let position = margin;
+      const pxPerMm = canvas.width / contentWidth;
+      const sliceHeightPx = Math.floor(usableHeight * pxPerMm);
+      let yOffsetPx = 0;
+      let isFirstPage = true;
 
-      pdf.addImage(imgData, 'JPEG', margin, position, contentWidth, contentHeight, undefined, 'FAST');
-      heightLeft -= usableHeight;
-
-      while (heightLeft > 0) {
-        position = heightLeft - contentHeight + margin;
-        pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', margin, position, contentWidth, contentHeight, undefined, 'FAST');
-        heightLeft -= usableHeight;
+      while (yOffsetPx < canvas.height) {
+        if (!isFirstPage) {
+          pdf.addPage();
+        }
+        const currentSliceHeightPx = Math.min(sliceHeightPx, canvas.height - yOffsetPx);
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = currentSliceHeightPx;
+        const sliceCtx = sliceCanvas.getContext('2d');
+        if (sliceCtx) {
+          sliceCtx.fillStyle = '#ffffff';
+          sliceCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+          sliceCtx.drawImage(
+            canvas,
+            0,
+            yOffsetPx,
+            canvas.width,
+            currentSliceHeightPx,
+            0,
+            0,
+            canvas.width,
+            currentSliceHeightPx
+          );
+          const sliceImgData = sliceCanvas.toDataURL('image/jpeg', 0.95);
+          const sliceHeightMm = (currentSliceHeightPx * contentWidth) / canvas.width;
+          pdf.addImage(sliceImgData, 'JPEG', margin, margin, contentWidth, sliceHeightMm, undefined, 'FAST');
+        }
+        yOffsetPx += sliceHeightPx;
+        isFirstPage = false;
       }
     }
 

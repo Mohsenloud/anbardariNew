@@ -143,26 +143,27 @@ export default function App() {
         const prodIndex = currentProducts.findIndex((p) => p.id === item.productId);
         if (prodIndex !== -1) {
           const prod = currentProducts[prodIndex];
-          let updatedVariants = prod.variants ? [...prod.variants] : undefined;
+          const hasVariants = !!prod.hasVariants && Array.isArray(prod.variants) && prod.variants.length > 0;
+          let updatedVariants = hasVariants ? [...(prod.variants || [])] : undefined;
           let variantLabel = '';
 
-          if (prod.hasVariants && updatedVariants && item.variantId) {
+          if (hasVariants && updatedVariants && item.variantId) {
             updatedVariants = updatedVariants.map((v) => {
               if (v.id === item.variantId) {
                 variantLabel = ` (${v.name})`;
-                return { ...v, stock: Math.max(0, v.stock - item.quantity) };
+                return { ...v, stock: Math.max(0, (Number(v.stock) || 0) - item.quantity) };
               }
               return v;
             });
           }
 
-          const newStock = updatedVariants
-            ? updatedVariants.reduce((s, v) => s + (v.stock || 0), 0)
-            : Math.max(0, prod.stock - item.quantity);
+          const newStock = hasVariants && updatedVariants && updatedVariants.length > 0
+            ? updatedVariants.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+            : Math.max(0, (Number(prod.stock) || 0) - item.quantity);
 
           currentProducts[prodIndex] = {
             ...prod,
-            variants: updatedVariants,
+            variants: hasVariants ? updatedVariants : undefined,
             stock: newStock,
             updatedAt: today,
           };
@@ -570,7 +571,27 @@ export default function App() {
     const exists = products.some((p) => p.id === product.id);
 
     if (exists) {
+      const oldProd = products.find((p) => p.id === product.id);
       updatedProducts = products.map((p) => (p.id === product.id ? product : p));
+
+      // If user modified stock directly in the edit product modal, log Kardex movement
+      if (oldProd && Number(oldProd.stock) !== Number(product.stock)) {
+        const diff = Number(product.stock) - Number(oldProd.stock);
+        const adjustMov: StockMovement = {
+          id: `mov-${Date.now()}`,
+          productId: product.id,
+          productName: product.name,
+          type: 'adjustment',
+          quantity: diff,
+          remainingStock: product.stock,
+          date: getCurrentJalaliDate(),
+          note: `اصلاح و تغییر موجودی از بخش ویرایش مشخصات کالا (قبلی: ${oldProd.stock}، جدید: ${product.stock})`,
+        };
+        const updatedMovements = [adjustMov, ...movements];
+        setMovements(updatedMovements);
+        StorageService.saveMovements(updatedMovements);
+      }
+
       showToast(`مشخصات کالای "${product.name}" بروزرسانی شد.`);
     } else {
       updatedProducts = [product, ...products];
@@ -620,42 +641,70 @@ export default function App() {
     showToast('کالای مورد نظر از انبار حذف شد.');
   };
 
-  // 6. MANUAL STOCK ADJUSTMENT / INTAKE (با پشتیبانی از تنوع کالا)
+  // 6. MANUAL STOCK ADJUSTMENT / INTAKE (با پشتیبانی از تنوع کالا و انبارگردانی شمارش فیزیکی)
   const handleAdjustStock = (
     productId: string,
-    type: 'purchase' | 'adjustment' | 'return',
+    type: 'purchase' | 'adjustment' | 'return' | 'set_stock',
     quantity: number,
     note: string,
-    variantId?: string
+    variantId?: string,
+    exactStock?: number
   ) => {
     const prodIndex = products.findIndex((p) => p.id === productId);
     if (prodIndex === -1) return;
 
     const prod = products[prodIndex];
-    const isAdding = type === 'purchase' || type === 'return';
-    const delta = isAdding ? quantity : -quantity;
+    const currentStock = Number(prod.stock) || 0;
+    const hasVariants = !!prod.hasVariants && Array.isArray(prod.variants) && prod.variants.length > 0;
 
-    let updatedVariants = prod.variants ? [...prod.variants] : undefined;
+    let updatedVariants = hasVariants ? [...(prod.variants || [])] : undefined;
     let variantLabel = '';
+    let delta = 0;
+    let newStock = 0;
 
-    if (prod.hasVariants && updatedVariants && variantId) {
-      updatedVariants = updatedVariants.map((v) => {
-        if (v.id === variantId) {
-          variantLabel = ` (${v.name})`;
-          const vDelta = isAdding ? quantity : -quantity;
-          return { ...v, stock: Math.max(0, v.stock + vDelta) };
-        }
-        return v;
-      });
+    if (type === 'set_stock' && exactStock !== undefined) {
+      // انبارگردانی شمارش دقیق
+      const targetExact = Math.max(0, Number(exactStock) || 0);
+      if (hasVariants && updatedVariants && variantId) {
+        updatedVariants = updatedVariants.map((v) => {
+          if (v.id === variantId) {
+            variantLabel = ` (${v.name})`;
+            const oldVStock = Number(v.stock) || 0;
+            delta = targetExact - oldVStock;
+            return { ...v, stock: targetExact };
+          }
+          return v;
+        });
+        newStock = updatedVariants.reduce((s, v) => s + (Number(v.stock) || 0), 0);
+      } else {
+        delta = targetExact - currentStock;
+        newStock = targetExact;
+      }
+    } else {
+      // افزایش یا کاهش بر اساس تعداد
+      const isAdding = type === 'purchase' || type === 'return';
+      const cleanQty = Math.max(0, Number(quantity) || 0);
+      delta = isAdding ? cleanQty : -cleanQty;
+
+      if (hasVariants && updatedVariants && variantId) {
+        updatedVariants = updatedVariants.map((v) => {
+          if (v.id === variantId) {
+            variantLabel = ` (${v.name})`;
+            const curVStock = Number(v.stock) || 0;
+            const updatedVStock = Math.max(0, curVStock + delta);
+            return { ...v, stock: updatedVStock };
+          }
+          return v;
+        });
+        newStock = updatedVariants.reduce((s, v) => s + (Number(v.stock) || 0), 0);
+      } else {
+        newStock = Math.max(0, currentStock + delta);
+      }
     }
 
-    const newStock = updatedVariants
-      ? updatedVariants.reduce((s, v) => s + (v.stock || 0), 0)
-      : Math.max(0, prod.stock + delta);
-
-    const updatedProd = {
+    const updatedProd: Product = {
       ...prod,
-      variants: updatedVariants,
+      variants: hasVariants ? updatedVariants : undefined,
       stock: newStock,
       updatedAt: getCurrentJalaliDate(),
     };
@@ -665,15 +714,18 @@ export default function App() {
     setProducts(updatedProducts);
     StorageService.saveProducts(updatedProducts);
 
+    const movementType: 'purchase' | 'adjustment' | 'sale' | 'return' = 
+      type === 'purchase' ? 'purchase' : type === 'return' ? 'return' : 'adjustment';
+
     const newMov: StockMovement = {
       id: `mov-${Date.now()}`,
       productId: prod.id,
       productName: `${prod.name}${variantLabel}`,
-      type,
+      type: movementType,
       quantity: delta,
       remainingStock: newStock,
       date: getCurrentJalaliDate(),
-      note: note ? `${note}${variantLabel ? ` [تنوع: ${variantLabel.replace(/[()]/g, '')}]` : ''}` : (isAdding ? 'ورود به انبار' : 'خروج از انبار'),
+      note: note ? `${note}${variantLabel ? ` [تنوع: ${variantLabel.replace(/[()]/g, '')}]` : ''}` : (delta >= 0 ? 'ورود به انبار' : 'کاهش موجودی انبار'),
     };
 
     const updatedMovements = [newMov, ...movements];
@@ -683,8 +735,8 @@ export default function App() {
     StorageService.logActivity({
       category: 'warehouse',
       actionType: 'adjust_stock',
-      actionTitle: type === 'purchase' ? 'ورود دستی به انبار' : type === 'return' ? 'مرجوعی به انبار' : 'تعدیل دستی موجودی',
-      details: `تغییر موجودی «${prod.name}${variantLabel}» به میزان ${delta > 0 ? `+${delta}` : delta} ${prod.unit} (موجودی جدید: ${newStock})`,
+      actionTitle: type === 'purchase' ? 'ورود دستی به انبار' : type === 'set_stock' ? 'ثبت انبارگردانی واقعی' : type === 'return' ? 'مرجوعی به انبار' : 'تعدیل دستی موجودی',
+      details: `تغییر موجودی «${prod.name}${variantLabel}» به میزان ${delta >= 0 ? `+${delta}` : delta} ${prod.unit} (موجودی جدید: ${newStock})`,
     });
 
     showToast(`موجودی انبار "${prod.name}${variantLabel}" به ${newStock} ${prod.unit} تغییر یافت.`);

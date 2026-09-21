@@ -157,21 +157,9 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
   const [statusNotification, setStatusNotification] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // Paper format & orientation settings (persisted across sessions)
-  const [pageSize, setPageSize] = useState<'a4' | 'a5'>(() => {
-    try {
-      return (localStorage.getItem('exit_slip_paper_size') as 'a4' | 'a5') || 'a4';
-    } catch {
-      return 'a4';
-    }
-  });
-  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>(() => {
-    try {
-      return (localStorage.getItem('exit_slip_orientation') as 'portrait' | 'landscape') || 'portrait';
-    } catch {
-      return 'portrait';
-    }
-  });
+  // Paper format & orientation settings (strictly defaults to A4 portrait for warehouse exit slip)
+  const [pageSize, setPageSize] = useState<'a4' | 'a5'>('a4');
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
 
   useEffect(() => {
     try {
@@ -892,21 +880,72 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             padding: 5px 8px !important;
           }
 
-          /* === A4 FORMATS (Spacious executive proportions) === */
+          /* === A4 FORMATS (Optimized proportions & guaranteed single page A4 portrait fit) === */
           #printable-exit-slip.paper-a4.paper-landscape {
-            padding: 18px 24px !important;
+            padding: 16px 22px !important;
             max-width: 1040px !important;
           }
           #printable-exit-slip.paper-a4.paper-landscape .signature-box {
-            height: 84px !important;
+            height: 76px !important;
+            padding: 5px 8px !important;
           }
 
           #printable-exit-slip.paper-a4.paper-portrait {
-            padding: 24px 32px !important;
-            max-width: 860px !important;
+            padding: 18px 24px !important;
+            max-width: 820px !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-header {
+            padding-bottom: 10px !important;
+            margin-bottom: 10px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-info-deck {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 10px !important;
+            margin-bottom: 10px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-card {
+            padding: 8px 12px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-table-box {
+            margin-bottom: 10px !important;
+            overflow: visible !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-table-box table th,
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-table-box table td {
+            padding: 5px 7px !important;
+            font-size: 11px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-terms {
+            padding: 8px 12px !important;
+            margin-bottom: 10px !important;
+            font-size: 10px !important;
+            line-height: 1.45 !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-signatures {
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 10px !important;
+            padding-top: 8px !important;
           }
           #printable-exit-slip.paper-a4.paper-portrait .signature-box {
-            height: 105px !important;
+            min-height: 92px !important;
+            height: auto !important;
+            padding: 8px 10px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-tracking {
+            padding-top: 6px !important;
+            margin-top: 6px !important;
+            font-size: 9.5px !important;
+          }
+
+          #printable-exit-slip {
+            height: auto !important;
+            min-height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
           }
         `}</style>
 
@@ -914,13 +953,14 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
         <div className="flex-1 overflow-y-auto p-2.5 sm:p-5 md:p-8 bg-slate-100/70 print:p-0 print:bg-white flex justify-center">
           <div 
             id="printable-exit-slip"
+            style={{ height: 'auto', minHeight: 'auto', maxHeight: 'none', overflow: 'visible' }}
             className={`print-container bg-white border border-slate-300 rounded-2xl text-slate-900 shadow-sm print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none w-full transition-all ${
               isA5 ? 'paper-a5' : 'paper-a4'
             } ${isLandscape ? 'paper-landscape' : 'paper-portrait'}`}
           >
             {/* Header: Store details & Exit Voucher Title */}
-            <div className="exit-slip-header border-b-2 border-slate-900 pb-3 sm:pb-4 mb-4">
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4">
+            <div className="exit-slip-header border-b-2 border-slate-900 pb-3 sm:pb-4 mb-3 sm:mb-4">
+              <div className="flex flex-row items-start justify-between gap-3 sm:gap-4">
                 {/* Store Branding */}
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
@@ -951,14 +991,14 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                 </div>
 
                 {/* Slip Badge Title & Serial */}
-                <div className="text-right sm:text-left shrink-0 bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3 print:bg-white print:border-slate-800">
+                <div className="text-left shrink-0 bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3 print:bg-white print:border-slate-800">
                   <div className="exit-slip-badge inline-block border-2 border-slate-900 bg-slate-900 text-white px-3 sm:px-4 py-1 rounded-lg text-xs sm:text-sm font-black shadow-2xs">
                     برگ خروج کالا از انبار
                   </div>
-                  <div className="text-[10px] sm:text-[11px] text-slate-600 font-bold mt-1">
+                  <div className="text-[10px] sm:text-[11px] text-slate-600 font-bold mt-1 text-center sm:text-right">
                     حواله رسمی تحویل قطعی اجناس
                   </div>
-                  <div className="flex flex-wrap items-center justify-between sm:justify-end gap-x-3 gap-y-1 text-[11px] font-['Vazirmatn'] text-slate-700 pt-1.5 mt-1 border-t border-slate-200">
+                  <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] font-['Vazirmatn'] text-slate-700 pt-1.5 mt-1 border-t border-slate-200">
                     <div>
                       <span className="text-slate-400 text-[10px]">شماره حواله: </span>
                       <strong className="text-slate-900 text-xs">{toPersianDigits(invoice.invoiceNumber)}</strong>
@@ -977,7 +1017,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             </div>
 
             {/* Consolidated 2-Column Info Deck */}
-            <div className="exit-slip-info-deck grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 text-xs">
+            <div className="exit-slip-info-deck grid grid-cols-2 gap-3 mb-3 sm:mb-4 text-xs">
               
               {/* Card 1: Origin Warehouse (مشخصات انبار مبدأ و بارگیری) */}
               <div className="exit-slip-card bg-slate-50/90 border border-slate-200/90 rounded-xl p-3 flex flex-col justify-between print:bg-white">
@@ -1070,7 +1110,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                   <div className="space-y-1.5 text-[11px]">
                     <div className="flex items-center justify-between">
                       <div>
-                        <span className="text-slate-500">خریدار / مشتری: </span>
+                        <span className="text-slate-500">خریدار / کارفرما: </span>
                         <strong className="text-slate-900">{invoice.customerName}</strong>
                       </div>
                       {invoice.customerPhone && (
@@ -1079,6 +1119,20 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                         </div>
                       )}
                     </div>
+
+                    {invoice.customerNationalId && (
+                      <div className="pt-0.5 text-[10.5px]">
+                        <span className="text-slate-500">شناسه / کد ملی مشتری: </span>
+                        <span className="font-mono text-slate-800 font-semibold">{toPersianDigits(invoice.customerNationalId)}</span>
+                      </div>
+                    )}
+
+                    {invoice.customerAddress && (
+                      <div className="pt-1 border-t border-slate-200/60 text-slate-700">
+                        <span className="text-slate-500">نشانی تحویل بار: </span>
+                        <span className="font-medium text-slate-900">{invoice.customerAddress}</span>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/60">
                       <div>
@@ -1145,19 +1199,19 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                 </span>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-right border-collapse text-xs min-w-[540px] sm:min-w-full">
+              <div className="overflow-x-visible sm:overflow-x-auto">
+                <table className="w-full text-right border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-50 text-slate-700 border-b border-slate-300 font-bold text-[11px] sm:text-xs">
-                      <th className="py-2.5 px-2 text-center w-10 border-l border-slate-200">ردیف</th>
-                      <th className="py-2.5 px-2 text-center w-20 border-l border-slate-200">کد کالا</th>
-                      <th className="py-2.5 px-3 border-l border-slate-200">شرح کالا و مشخصات فنی</th>
-                      <th className="py-2.5 px-2 text-center w-16 border-l border-slate-200">واحد</th>
-                      <th className="py-2.5 px-2 text-center w-20 border-l border-slate-200 bg-slate-100 font-black">
+                      <th className="py-2 px-1.5 text-center w-9 border-l border-slate-200">ردیف</th>
+                      <th className="py-2 px-1.5 text-center w-20 border-l border-slate-200">کد کالا</th>
+                      <th className="py-2 px-2.5 border-l border-slate-200">شرح کالا و مشخصات فنی</th>
+                      <th className="py-2 px-1.5 text-center w-14 border-l border-slate-200">واحد</th>
+                      <th className="py-2 px-1.5 text-center w-20 border-l border-slate-200 bg-slate-100 font-black">
                         تعداد حواله
                       </th>
-                      <th className="py-2.5 px-2 text-center w-20 border-l border-slate-200">تعداد تحویلی</th>
-                      <th className="py-2.5 px-2 text-center w-16">کنترل سلامت</th>
+                      <th className="py-2 px-1.5 text-center w-20 border-l border-slate-200">تعداد تحویلی</th>
+                      <th className="py-2 px-1.5 text-center w-14">کنترل سلامت</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -1168,28 +1222,33 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                           index % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'
                         } hover:bg-slate-100/60 transition-colors`}
                       >
-                        <td className="py-2.5 px-2 text-center font-['Vazirmatn'] border-l border-slate-200 text-slate-500 font-bold">
+                        <td className="py-2 px-1.5 text-center font-['Vazirmatn'] border-l border-slate-200 text-slate-500 font-bold text-[11px]">
                           {toPersianDigits(index + 1)}
                         </td>
-                        <td className="py-2.5 px-2 text-center font-['Vazirmatn'] text-slate-600 border-l border-slate-200 text-[11px] font-mono">
-                          {toPersianDigits(item.productId.replace('prod-', ''))}
+                        <td className="py-2 px-1.5 text-center font-['Vazirmatn'] text-slate-700 border-l border-slate-200 text-[11px] font-mono">
+                          {toPersianDigits(item.productCode || item.productId.replace('prod-', ''))}
                         </td>
-                        <td className="py-2.5 px-3 font-bold text-slate-900 border-l border-slate-200">
-                          {item.productName}
+                        <td className="py-2 px-2.5 font-bold text-slate-900 border-l border-slate-200 text-xs">
+                          <span>{item.productName}</span>
+                          {item.variantName && (
+                            <span className="text-slate-500 font-normal mr-1.5 text-[10.5px]">
+                              ({item.variantName})
+                            </span>
+                          )}
                         </td>
-                        <td className="py-2.5 px-2 text-center text-slate-600 border-l border-slate-200 text-[11px]">
+                        <td className="py-2 px-1.5 text-center text-slate-600 border-l border-slate-200 text-[11px]">
                           {item.unit || 'عدد'}
                         </td>
-                        <td className="py-2.5 px-2 text-center font-['Vazirmatn'] font-black text-slate-900 text-sm bg-slate-50/60 border-l border-slate-200">
+                        <td className="py-2 px-1.5 text-center font-['Vazirmatn'] font-black text-slate-900 text-xs sm:text-sm bg-slate-50/60 border-l border-slate-200">
                           {toPersianDigits(item.quantity)}
                         </td>
-                        <td className="py-2.5 px-2 text-center border-l border-slate-200">
-                          <span className="font-['Vazirmatn'] font-bold text-slate-800">
+                        <td className="py-2 px-1.5 text-center border-l border-slate-200">
+                          <span className="font-['Vazirmatn'] font-bold text-slate-800 text-xs sm:text-sm">
                             {toPersianDigits(item.quantity)}
                           </span>
                         </td>
-                        <td className="py-2.5 px-2 text-center">
-                          <div className="w-4 h-4 border border-slate-400 rounded-xs mx-auto flex items-center justify-center text-[10px] text-slate-400">
+                        <td className="py-2 px-1.5 text-center">
+                          <div className="w-4 h-4 border border-slate-400 rounded-xs mx-auto flex items-center justify-center text-[10px] text-emerald-600 font-bold">
                             ✓
                           </div>
                         </td>
@@ -1198,13 +1257,13 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                   </tbody>
                   <tfoot>
                     <tr className="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900 text-xs">
-                      <td colSpan={4} className="py-2.5 px-3 text-left border-l border-slate-300">
+                      <td colSpan={4} className="py-2 px-2.5 text-left border-l border-slate-300">
                         مجموع کل اقلام فیزیکی تحویل شده:
                       </td>
-                      <td className="py-2.5 px-2 text-center font-['Vazirmatn'] font-black text-sm sm:text-base text-emerald-800 bg-emerald-50 border-l border-slate-300">
+                      <td className="py-2 px-1.5 text-center font-['Vazirmatn'] font-black text-xs sm:text-sm text-emerald-800 bg-emerald-50 border-l border-slate-300">
                         {toPersianDigits(totalUnits)}
                       </td>
-                      <td colSpan={2} className="py-2.5 px-3 text-slate-600 text-[11px]">
+                      <td colSpan={2} className="py-2 px-2.5 text-slate-600 text-[11px]">
                         ({toPersianDigits(invoice.items.length)} ردیف کالایی)
                       </td>
                     </tr>
@@ -1214,17 +1273,17 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             </div>
 
             {/* Delivery Terms & Notes */}
-            <div className="exit-slip-terms bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3 mb-4 text-xs text-slate-600 space-y-1">
+            <div className="exit-slip-terms bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3 mb-3 sm:mb-4 text-xs text-slate-600 space-y-1">
               <div className="font-bold text-slate-800 flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                 <span>ضوابط و شرایط ترخیص و خروج از انبار:</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[11px] leading-relaxed pt-0.5">
+              <div className="exit-slip-terms-grid grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] leading-relaxed pt-0.5">
                 <p>
-                  ۱. کلیه اقلام فوق از لحاظ تعداد فیزیکی، بسته‌بندی و سلامت ظاهری به رویت و تایید کامل تحویل‌گیرنده رسید.
+                  ۱. کلیه اقلام فوق از لحاظ تعداد فیزیکی، بسته‌بندی و سلامت ظاهری به رویت و تایید کامل رسید.
                 </p>
                 <p>
-                  ۲. خروج هرگونه بار از محوطه انبار منوط به امضای متصدی انبار و برگه تایید گیت نگهبانی می‌باشد.
+                  ۲. خروج هرگونه بار از محوطه انبار منوط به امضای متصدی انبار و تایید سلامت بارگیری خودرو می‌باشد.
                 </p>
               </div>
               {invoice.notes && (
@@ -1235,43 +1294,61 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
               )}
             </div>
 
-            {/* Official Signatures & Approvals Grid */}
-            <div className="exit-slip-signatures grid grid-cols-3 gap-2 sm:gap-4 pt-2 border-t border-slate-300 text-center text-xs">
+            {/* Official Signatures & Approvals Grid (1: انباردار | 2: خودرو یا ماشین | 3: تحویل گیرنده یا کارفرما) */}
+            <div className="exit-slip-signatures grid grid-cols-3 gap-2 sm:gap-3.5 pt-2 border-t border-slate-300 text-center text-xs">
               
-              {/* Box 1: Warehouse keeper */}
-              <div className="signature-box bg-slate-50/70 border border-slate-200 rounded-xl p-2.5 flex flex-col justify-between h-28 sm:h-32">
+              {/* امضای اول: انباردار */}
+              <div className="signature-box bg-slate-50/80 border border-slate-300 rounded-xl p-2.5 flex flex-col justify-between min-h-[96px]">
                 <div>
-                  <span className="signature-box-title font-bold text-slate-800 block text-[11px] sm:text-xs">امضا و مهر انباردار</span>
-                  <span className="signature-box-subtitle text-[10px] text-slate-500 block mt-0.5">
-                    {settings.originWarehouseManager || currentUser?.fullName || 'متصدی انبار'}
+                  <div className="inline-block bg-slate-900 text-white text-[10.5px] font-bold px-2 py-0.5 rounded-md mb-1">
+                    امضای اول: انباردار
+                  </div>
+                  <span className="signature-box-title font-bold text-slate-900 block text-xs">
+                    {settings.originWarehouseManager || currentUser?.fullName || 'متصدی و مسئول انبار'}
                   </span>
                 </div>
-                <div className="signature-box-line border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-400">
-                  محل مهر و تایید خروج
+                <div className="signature-box-line border-t border-dashed border-slate-400 pt-1 text-[9.5px] text-slate-500 font-medium">
+                  امضا، مهر و تایید خروج فیزیکی کالا
                 </div>
               </div>
 
-              {/* Box 2: Receiver / Driver */}
-              <div className="signature-box bg-slate-50/70 border border-slate-200 rounded-xl p-2.5 flex flex-col justify-between h-28 sm:h-32">
+              {/* امضای دوم: خودرو یا ماشین (راننده / حامل بار) */}
+              <div className="signature-box bg-slate-50/80 border border-slate-300 rounded-xl p-2.5 flex flex-col justify-between min-h-[96px]">
                 <div>
-                  <span className="signature-box-title font-bold text-slate-800 block text-[11px] sm:text-xs">امضا و اثر انگشت تحویل‌گیرنده</span>
-                  <span className="signature-box-subtitle text-[10px] text-slate-500 block mt-0.5">
-                    {slipLog.receiverName || invoice.customerName}
+                  <div className="inline-block bg-blue-900 text-white text-[10.5px] font-bold px-2 py-0.5 rounded-md mb-1">
+                    امضای دوم: خودرو یا ماشین
+                  </div>
+                  <span className="signature-box-title font-bold text-slate-900 block text-xs">
+                    {slipLog.receiverName ? `راننده: ${slipLog.receiverName}` : 'راننده و متصدی خودرو'}
                   </span>
+                  {slipLog.vehicleInfo && (
+                    <span className="signature-box-subtitle text-[10px] text-slate-700 block mt-0.5 font-medium">
+                      {slipLog.vehicleInfo}
+                    </span>
+                  )}
                 </div>
-                <div className="signature-box-line border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-400">
-                  محل امضا و اثر انگشت
+                <div className="signature-box-line border-t border-dashed border-slate-400 pt-1 text-[9.5px] text-slate-500 font-medium">
+                  امضا، تایید سلامت بارگیری و تحویل به ماشین
                 </div>
               </div>
 
-              {/* Box 3: Exit Gate & Security */}
-              <div className="signature-box bg-slate-50/70 border border-slate-200 rounded-xl p-2.5 flex flex-col justify-between h-28 sm:h-32">
+              {/* امضای سوم: تحویل‌گیرنده یا کارفرما */}
+              <div className="signature-box bg-slate-50/80 border border-slate-300 rounded-xl p-2.5 flex flex-col justify-between min-h-[96px]">
                 <div>
-                  <span className="signature-box-title font-bold text-slate-800 block text-[11px] sm:text-xs">کنترل نهایی گیت خروج</span>
-                  <span className="signature-box-subtitle text-[10px] text-slate-500 block mt-0.5">نگهبانی و بازرسی درب</span>
+                  <div className="inline-block bg-emerald-900 text-white text-[10.5px] font-bold px-2 py-0.5 rounded-md mb-1">
+                    امضای سوم: تحویل‌گیرنده یا کارفرما
+                  </div>
+                  <span className="signature-box-title font-bold text-slate-900 block text-xs">
+                    {invoice.customerName || 'کارفرما / مشتری محترم'}
+                  </span>
+                  {invoice.customerPhone && (
+                    <span className="signature-box-subtitle text-[10px] text-slate-700 block mt-0.5 font-['Vazirmatn']">
+                      تلفن: {toPersianDigits(invoice.customerPhone)}
+                    </span>
+                  )}
                 </div>
-                <div className="signature-box-line border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-400">
-                  ساعت خروج: ..........
+                <div className="signature-box-line border-t border-dashed border-slate-400 pt-1 text-[9.5px] text-slate-500 font-medium">
+                  امضا، تایید نهایی و دریافت قطعی اجناس
                 </div>
               </div>
 

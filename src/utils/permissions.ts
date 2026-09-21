@@ -148,3 +148,29 @@ export function getRoleBadgeConfig(role: UserRole): {
       };
   }
 }
+
+/**
+ * Checks whether a user holds specific permission(s).
+ * - If user is 'admin', returns true immediately.
+ * - Supports single permission key or array of keys (either ANY or ALL based on requireAll).
+ * - If user lacks permission, returns false so that UI elements can be completely hidden.
+ */
+export function hasPermission(
+  user?: AppUser | null,
+  permission?: keyof AppUser['permissions'] | (keyof AppUser['permissions'])[],
+  requireAll: boolean = false
+): boolean {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (!permission) return true;
+
+  if (Array.isArray(permission)) {
+    if (permission.length === 0) return true;
+    return requireAll
+      ? permission.every((p) => Boolean(user.permissions?.[p]))
+      : permission.some((p) => Boolean(user.permissions?.[p]));
+  }
+
+  return Boolean(user.permissions?.[permission]);
+}
+
