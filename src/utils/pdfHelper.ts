@@ -29,6 +29,15 @@ export const exportElementToPdf = async (
       : (orientation === 'landscape' ? 1080 : 820);
 
   try {
+    // 0. Ensure all web fonts (especially Persian Vazirmatn) are completely loaded before capturing
+    if (document.fonts) {
+      try {
+        await document.fonts.ready;
+      } catch {
+        // Ignore font loading errors if browser API fails
+      }
+    }
+
     // 1. Capture element with unclipped height and properly aligned coordinates
     const canvas = await html2canvas(element, {
       scale: 2.0,
@@ -36,17 +45,35 @@ export const exportElementToPdf = async (
       logging: false,
       backgroundColor: '#ffffff',
       windowWidth: Math.max(1280, targetWidthPx + 200),
-      windowHeight: 4000,
+      windowHeight: Math.max(1200, Math.ceil(element.scrollHeight + 400)),
       onclone: (clonedDoc, clonedElement) => {
         // Reset scroll in cloned window
         if (clonedDoc.defaultView) {
           clonedDoc.defaultView.scrollTo(0, 0);
         }
 
+        // Ensure Vazirmatn font is loaded in the cloned document frame
+        if (!clonedDoc.querySelector('link[href*="Vazirmatn"]')) {
+          const fontLink = clonedDoc.createElement('link');
+          fontLink.rel = 'stylesheet';
+          fontLink.href = 'https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap';
+          clonedDoc.head.appendChild(fontLink);
+        }
+
+        // Hide all buttons, action controls, and .no-print elements in the PDF canvas clone
+        const elementsToHide = clonedElement.querySelectorAll(
+          '.no-print, .no-pdf, button, [data-html2canvas-ignore="true"]'
+        );
+        elementsToHide.forEach((el) => {
+          (el as HTMLElement).style.setProperty('display', 'none', 'important');
+          (el as HTMLElement).style.setProperty('visibility', 'hidden', 'important');
+        });
+
         // Force cloned element itself to have auto height, full specified width, and zero clipping
         clonedElement.style.setProperty('height', 'auto', 'important');
         clonedElement.style.setProperty('max-height', 'none', 'important');
-        clonedElement.style.setProperty('min-height', 'auto', 'important');
+        clonedElement.style.setProperty('min-height', 'fit-content', 'important');
+        clonedElement.style.setProperty('align-self', 'flex-start', 'important');
         clonedElement.style.setProperty('overflow', 'visible', 'important');
         clonedElement.style.setProperty('width', `${targetWidthPx}px`, 'important');
         clonedElement.style.setProperty('max-width', `${targetWidthPx}px`, 'important');
@@ -55,6 +82,40 @@ export const exportElementToPdf = async (
         clonedElement.style.setProperty('margin', '0 auto', 'important');
         clonedElement.style.setProperty('box-shadow', 'none', 'important');
         clonedElement.style.setProperty('direction', 'rtl', 'important');
+
+        // Prevent Persian font glyph disconnects and broken cursive joins
+        clonedElement.style.setProperty('font-family', "'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", 'important');
+        clonedElement.style.setProperty('letter-spacing', 'normal', 'important');
+        clonedElement.style.setProperty('word-spacing', 'normal', 'important');
+        clonedElement.style.setProperty('font-feature-settings', "'liga' 1, 'calt' 1", 'important');
+        clonedElement.style.setProperty('text-rendering', 'optimizeLegibility', 'important');
+
+        // Reset letter-spacing on all descendants so cursive connections do not break
+        const allTextElements = clonedElement.querySelectorAll('*');
+        allTextElements.forEach((node) => {
+          const el = node as HTMLElement;
+          el.style.setProperty('letter-spacing', 'normal', 'important');
+          el.style.setProperty('font-feature-settings', "'liga' 1, 'calt' 1", 'important');
+          if (!el.classList.contains('font-mono') && !el.classList.contains('font-plate')) {
+            el.style.setProperty('font-family', "'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", 'important');
+          }
+        });
+
+        // Ensure header row layout is stable across all modes
+        const headerRow = clonedElement.querySelector('.exit-slip-header-row');
+        if (headerRow) {
+          (headerRow as HTMLElement).style.setProperty('display', 'flex', 'important');
+          (headerRow as HTMLElement).style.setProperty('flex-direction', 'row', 'important');
+          (headerRow as HTMLElement).style.setProperty('align-items', 'flex-start', 'important');
+          (headerRow as HTMLElement).style.setProperty('justify-content', 'space-between', 'important');
+        }
+
+        const metaGrid = clonedElement.querySelector('.exit-slip-meta-grid');
+        if (metaGrid) {
+          (metaGrid as HTMLElement).style.setProperty('display', 'grid', 'important');
+          (metaGrid as HTMLElement).style.setProperty('grid-template-columns', 'repeat(3, minmax(0, auto))', 'important');
+          (metaGrid as HTMLElement).style.setProperty('gap', '4px 10px', 'important');
+        }
 
         // Unconstrain all ancestors up to body/html to prevent modal scroll container clipping
         let cur: HTMLElement | null = clonedElement.parentElement;
@@ -221,21 +282,48 @@ export const generatePdfBlob = async (
       : (orientation === 'landscape' ? 1080 : 820);
 
   try {
+    // Ensure all web fonts (especially Persian Vazirmatn) are completely loaded before capturing
+    if (document.fonts) {
+      try {
+        await document.fonts.ready;
+      } catch {
+        // Ignore font loading errors if browser API fails
+      }
+    }
+
     const canvas = await html2canvas(element, {
       scale: 2.0,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
       windowWidth: Math.max(1280, targetWidthPx + 200),
-      windowHeight: 4000,
+      windowHeight: Math.max(1200, Math.ceil(element.scrollHeight + 400)),
       onclone: (clonedDoc, clonedElement) => {
         if (clonedDoc.defaultView) {
           clonedDoc.defaultView.scrollTo(0, 0);
         }
 
+        // Ensure Vazirmatn font is loaded in the cloned document frame
+        if (!clonedDoc.querySelector('link[href*="Vazirmatn"]')) {
+          const fontLink = clonedDoc.createElement('link');
+          fontLink.rel = 'stylesheet';
+          fontLink.href = 'https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap';
+          clonedDoc.head.appendChild(fontLink);
+        }
+
+        // Hide all buttons, action controls, and .no-print elements in the PDF canvas clone
+        const elementsToHide = clonedElement.querySelectorAll(
+          '.no-print, .no-pdf, button, [data-html2canvas-ignore="true"]'
+        );
+        elementsToHide.forEach((el) => {
+          (el as HTMLElement).style.setProperty('display', 'none', 'important');
+          (el as HTMLElement).style.setProperty('visibility', 'hidden', 'important');
+        });
+
         clonedElement.style.setProperty('height', 'auto', 'important');
         clonedElement.style.setProperty('max-height', 'none', 'important');
-        clonedElement.style.setProperty('min-height', 'auto', 'important');
+        clonedElement.style.setProperty('min-height', 'fit-content', 'important');
+        clonedElement.style.setProperty('align-self', 'flex-start', 'important');
         clonedElement.style.setProperty('overflow', 'visible', 'important');
         clonedElement.style.setProperty('width', `${targetWidthPx}px`, 'important');
         clonedElement.style.setProperty('max-width', `${targetWidthPx}px`, 'important');
@@ -244,6 +332,40 @@ export const generatePdfBlob = async (
         clonedElement.style.setProperty('margin', '0 auto', 'important');
         clonedElement.style.boxShadow = 'none';
         clonedElement.style.setProperty('direction', 'rtl', 'important');
+
+        // Prevent Persian font glyph disconnects and broken cursive joins
+        clonedElement.style.setProperty('font-family', "'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", 'important');
+        clonedElement.style.setProperty('letter-spacing', 'normal', 'important');
+        clonedElement.style.setProperty('word-spacing', 'normal', 'important');
+        clonedElement.style.setProperty('font-feature-settings', "'liga' 1, 'calt' 1", 'important');
+        clonedElement.style.setProperty('text-rendering', 'optimizeLegibility', 'important');
+
+        // Reset letter-spacing on all descendants so cursive connections do not break
+        const allTextElements = clonedElement.querySelectorAll('*');
+        allTextElements.forEach((node) => {
+          const el = node as HTMLElement;
+          el.style.setProperty('letter-spacing', 'normal', 'important');
+          el.style.setProperty('font-feature-settings', "'liga' 1, 'calt' 1", 'important');
+          if (!el.classList.contains('font-mono') && !el.classList.contains('font-plate')) {
+            el.style.setProperty('font-family', "'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", 'important');
+          }
+        });
+
+        // Ensure header row layout is stable across all modes
+        const headerRow = clonedElement.querySelector('.exit-slip-header-row');
+        if (headerRow) {
+          (headerRow as HTMLElement).style.setProperty('display', 'flex', 'important');
+          (headerRow as HTMLElement).style.setProperty('flex-direction', 'row', 'important');
+          (headerRow as HTMLElement).style.setProperty('align-items', 'flex-start', 'important');
+          (headerRow as HTMLElement).style.setProperty('justify-content', 'space-between', 'important');
+        }
+
+        const metaGrid = clonedElement.querySelector('.exit-slip-meta-grid');
+        if (metaGrid) {
+          (metaGrid as HTMLElement).style.setProperty('display', 'grid', 'important');
+          (metaGrid as HTMLElement).style.setProperty('grid-template-columns', 'repeat(3, minmax(0, auto))', 'important');
+          (metaGrid as HTMLElement).style.setProperty('gap', '4px 10px', 'important');
+        }
 
         let cur: HTMLElement | null = clonedElement.parentElement;
         while (cur && cur !== clonedDoc.body) {
@@ -537,7 +659,7 @@ export const printElementInNewWindow = (
               padding: 0 !important;
               margin: 0 !important;
             }
-            .no-print, .top-print-toolbar {
+            .no-print, .no-pdf, .top-print-toolbar, button, [data-html2canvas-ignore="true"] {
               display: none !important;
             }
             .print-wrapper {

@@ -46,6 +46,15 @@ body, button, input, select, textarea, table, th, td, span, div, p {
     body.printing-active-element #printable-invoice * {
       visibility: visible !important;
     }
+    body.printing-active-element #printable-exit-slip .no-print,
+    body.printing-active-element #printable-exit-slip .no-pdf,
+    body.printing-active-element #printable-exit-slip button,
+    body.printing-active-element #printable-invoice .no-print,
+    body.printing-active-element #printable-invoice .no-pdf,
+    body.printing-active-element #printable-invoice button {
+      display: none !important;
+      visibility: hidden !important;
+    }
     body.printing-active-element #printable-exit-slip,
     body.printing-active-element #printable-invoice {
       position: absolute !important;
