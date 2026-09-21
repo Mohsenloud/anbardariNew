@@ -11,7 +11,8 @@ import {
 } from '../types';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate, getCurrentJalaliTime } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
-import { getRoleBadgeConfig } from '../utils/permissions';
+import { getRoleBadgeConfig, isTabPermitted } from '../utils/permissions';
+import { clearAppCacheAndReload, getLastCacheUpdatedTime } from '../utils/appUpdater';
 import { 
   LayoutGrid, 
   BarChart3, 
@@ -45,7 +46,9 @@ import {
   Lock,
   LogOut,
   CreditCard,
-  ArrowLeftRight
+  ArrowLeftRight,
+  RefreshCw,
+  Sparkles
 } from 'lucide-react';
 
 const getAvatarBgClass = (color?: string, role?: string) => {
@@ -119,6 +122,10 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
   const canInventory = Boolean(userPerms.canManageInventory && settings.enableInventory !== false);
   const canCustomers = Boolean(userPerms.canManageCustomers && settings.enableCustomers !== false);
   const canAdmin = Boolean(userPerms.canAccessAdmin || userPerms.canManageUsers);
+  const canPurchases = Boolean(
+    isTabPermitted('purchases', currentUser, settings) ||
+    canInvoice || canInventory || canAdmin
+  );
 
   const roleConfig = useMemo(() => {
     return currentUser ? getRoleBadgeConfig(currentUser.role) : null;
@@ -138,6 +145,24 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
   const [isWarehouseModalOpen, setIsWarehouseModalOpen] = useState(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [activeStatusFilter, setActiveStatusFilter] = useState<'draft' | 'confirmed' | 'cancelled' | null>(null);
+
+  // App Update & Cache Invalidation State
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [isUpdatingApp, setIsUpdatingApp] = useState(false);
+  const [updateProgressMsg, setUpdateProgressMsg] = useState('');
+  const [lastCacheTime, setLastCacheTime] = useState<string | null>(() => getLastCacheUpdatedTime());
+
+  // Role-Based "بیشتر امکانات" Modal State
+  const [isMoreFeaturesModalOpen, setIsMoreFeaturesModalOpen] = useState(false);
+
+  // Trigger app update and clear browser cache
+  const handlePerformAppUpdate = async () => {
+    setIsUpdatingApp(true);
+    setUpdateProgressMsg('در حال پاکسازی حافظه موقت مرورگر...');
+    await clearAppCacheAndReload((prog) => {
+      setUpdateProgressMsg(prog.message);
+    });
+  };
 
   // Warehouse Modal State
   const initialWarehouses: WarehouseInfo[] = useMemo(() => {
@@ -318,8 +343,225 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
       });
     }
 
+    // Always include the "بیشتر امکانات" action button for accessing role-based features
+    list.push({
+      id: 'more-features',
+      label: 'بیشتر امکانات',
+      icon: MoreHorizontal,
+      borderClass: 'border-purple-200',
+      bgClass: 'bg-purple-50',
+      textClass: 'text-purple-600',
+      hoverBgClass: 'group-hover:bg-purple-600',
+      hoverTextClass: 'group-hover:text-white',
+      hoverBorderClass: 'group-hover:border-purple-600',
+      hoverLabelClass: 'group-hover:text-purple-700',
+      onClick: () => setIsMoreFeaturesModalOpen(true),
+    });
+
     return list;
   }, [canInventory, canInvoice, canCustomers, canInvoicesList, onNavigate, onNewInvoice]);
+
+  // Comprehensive features list strictly filtered by user's permitted role
+  const allPermittedFeatures = useMemo(() => {
+    const items: Array<{
+      id: string;
+      title: string;
+      subtitle: string;
+      icon: React.ComponentType<{ className?: string }>;
+      colorClass: string;
+      bgClass: string;
+      badgeText?: string;
+      onClick: () => void;
+    }> = [];
+
+    if (canInvoice) {
+      items.push({
+        id: 'feat-new-invoice',
+        title: 'صدور فاکتور فروش',
+        subtitle: 'صدور سریع فاکتور با بارکدخوان، تخفیف، تسویه نقد و چک',
+        icon: PlusCircle,
+        colorClass: 'text-emerald-600',
+        bgClass: 'bg-emerald-50/80 border-emerald-200 hover:bg-emerald-100/90',
+        badgeText: 'عملیات مالی',
+        onClick: () => {
+          setIsMoreFeaturesModalOpen(false);
+          onNewInvoice();
+        },
+      });
+    }
+
+    if (canInvoicesList) {
+      items.push({
+        id: 'feat-invoices-list',
+        title: 'مدیریت و لیست فاکتورها',
+        subtitle: 'مشاهده سفارشات، جستجو، تسویه، چاپ و فاکتور رسمی',
+        icon: ReceiptText,
+        colorClass: 'text-teal-600',
+        bgClass: 'bg-teal-50/80 border-teal-200 hover:bg-teal-100/90',
+        badgeText: 'فروش',
+        onClick: () => {
+          setIsMoreFeaturesModalOpen(false);
+          onNavigate('invoices');
+        },
+      });
+    }
+
+    if (canPurchases) {
+      items.push({
+        id: 'feat-purchases',
+        title: 'فاکتور خرید و ورود کالا',
+        subtitle: 'ثبت ورود اقلام از تامین‌کنندگان و افزایش موجودی انبار',
+        icon: ShoppingCart,
+        colorClass: 'text-orange-600',
+        bgClass: 'bg-orange-50/80 border-orange-200 hover:bg-orange-100/90',
+        badgeText: 'تامین و انبار',
+        onClick: () => {
+          setIsMoreFeaturesModalOpen(false);
+          onNavigate('purchases');
+        },
+      });
+    }
+
+    if (canInventory) {
+      items.push({
+        id: 'feat-inventory',
+        title: 'انبار و موجودی کالاها',
+        subtitle: 'کنترل نقطه سفارش، موجودی ریالی و کاردکس کالا',
+        icon: Boxes,
+        colorClass: 'text-amber-600',
+        bgClass: 'bg-amber-50/80 border-amber-200 hover:bg-amber-100/90',
+        badgeText: 'انبارداری',
+        onClick: () => {
+          setIsMoreFeaturesModalOpen(false);
+          onNavigate('inventory');
+        },
+      });
+
+      items.push({
+        id: 'feat-direct-transfers',
+        title: 'خروج/ورود بدون فاکتور (تعمیرات و امانی)',
+        subtitle: 'حواله انتقال کالا بین انبارها یا ارسال برای تعمیرات',
+        icon: ArrowLeftRight,
+        colorClass: 'text-cyan-600',
+        bgClass: 'bg-cyan-50/80 border-cyan-200 hover:bg-cyan-100/90',
+        badgeText: 'حواله داخلی',
+        onClick: () => {
+          setIsMoreFeaturesModalOpen(false);
+          onNavigate('direct-transfers');
+        },
+      });
+
+      items.push({
+        id: 'feat-audit',
+        title: 'انبارگردانی و تطبیق موجودی',
+        subtitle: 'شمارش موجودی فیزیکی و ثبت کسری یا مازاد',
+        icon: RotateCw,
+        colorClass: 'text-emerald-700',
+        bgClass: 'bg-emerald-50/80 border-emerald-200 hover:bg-emerald-100/90',
+        badgeText: 'انبارداری',
+        onClick: () => {
+          setIsMoreFeaturesModalOpen(false);
+          setIsAuditModalOpen(true);
+        },
+      });
+    }
+
+    if (canInventory || canAdmin) {
+      items.push({
+        id: 'feat-warehouses',
+        title: 'تنظیمات انبارها و تفکیک موجودی',
+        subtitle: 'مدیریت انبار مرکزی، انبار ضایعات و انبار پیش‌فرض',
+        icon: Warehouse,
+        colorClass: 'text-amber-700',
+        bgClass: 'bg-amber-50/80 border-amber-200 hover:bg-amber-100/90',
+        badgeText: 'پیکربندی',
+        onClick: () => {
+          setIsMoreFeaturesModalOpen(false);
+          setIsWarehouseModalOpen(true);
+        },
+      });
+    }
+
+    if (canCustomers) {
+      items.push({
+        id: 'feat-customers',
+        title: 'مدیریت مشتریان و حساب‌ها',
+        subtitle: 'فهرست خریداران، مانده بدهی، کارت حساب و اطلاعات تماس',
+        icon: Users,
+        colorClass: 'text-blue-600',
+        bgClass: 'bg-blue-50/80 border-blue-200 hover:bg-blue-100/90',
+        badgeText: 'مشتریان',
+        onClick: () => {
+          setIsMoreFeaturesModalOpen(false);
+          onNavigate('customers');
+        },
+      });
+    }
+
+    if (canReports) {
+      items.push({
+        id: 'feat-reports',
+        title: 'گزارشات مالی، فروش و سود',
+        subtitle: 'نمودار فروش روزانه، اقلام پرفروش، سود ناخالص و تراز',
+        icon: BarChart3,
+        colorClass: 'text-purple-600',
+        bgClass: 'bg-purple-50/80 border-purple-200 hover:bg-purple-100/90',
+        badgeText: 'تحلیل مالی',
+        onClick: () => {
+          setIsMoreFeaturesModalOpen(false);
+          setActiveSubTab('charts');
+        },
+      });
+    }
+
+    if (canAdmin) {
+      items.push({
+        id: 'feat-admin',
+        title: 'مدیریت کاربران و دسترسی‌ها',
+        subtitle: 'تعریف پرسنل، نقش‌های صندوق‌دار، انباردار و حسابدار',
+        icon: ShieldCheck,
+        colorClass: 'text-indigo-600',
+        bgClass: 'bg-indigo-50/80 border-indigo-200 hover:bg-indigo-100/90',
+        badgeText: 'امنیت و پرسنل',
+        onClick: () => {
+          setIsMoreFeaturesModalOpen(false);
+          onNavigate('admin');
+        },
+      });
+
+      items.push({
+        id: 'feat-settings',
+        title: 'تنظیمات کلی فروشگاه و چاپ',
+        subtitle: 'نام کسب‌وکار، لوگو، مالیات، الگوی فاکتور و قالب خروج',
+        icon: Store,
+        colorClass: 'text-slate-700',
+        bgClass: 'bg-slate-100 border-slate-300 hover:bg-slate-200',
+        badgeText: 'تنظیمات سیستم',
+        onClick: () => {
+          setIsMoreFeaturesModalOpen(false);
+          if (onOpenSettings) onOpenSettings();
+          else onNavigate('admin');
+        },
+      });
+    }
+
+    // Always available to all user roles: Update App & Clear Browser Cache
+    items.push({
+      id: 'feat-cache-updater',
+      title: 'بروزرسانی برنامه و پاکسازی کش مرورگر',
+      subtitle: 'حذف فایل‌های قدیمی ذخیره شده در مرورگر و بارگذاری نسخه جدید',
+      icon: RefreshCw,
+      colorClass: 'text-sky-600',
+      bgClass: 'bg-sky-50/80 border-sky-200 hover:bg-sky-100/90',
+      badgeText: 'نگهداری سیستم',
+      onClick: () => {
+        setIsMoreFeaturesModalOpen(false);
+        setIsUpdateModalOpen(true);
+      },
+    });
+
+    return items;
+  }, [canInvoice, canInvoicesList, canPurchases, canInventory, canCustomers, canReports, canAdmin, onNavigate, onNewInvoice, onOpenSettings]);
 
   // Handle Save Warehouses
   const handleSaveWarehouses = () => {
@@ -402,6 +644,19 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* APP UPDATE & CLEAR CACHE BUTTON */}
+            <button
+              type="button"
+              id="btn-dashboard-update-cache"
+              onClick={() => setIsUpdateModalOpen(true)}
+              title="بروزرسانی برنامه و نوسازی کش مرورگر"
+              className="text-[11px] sm:text-xs font-bold text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 border border-sky-200 hover:border-sky-300 px-2.5 sm:px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-sky-600 ${isUpdatingApp ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">بروزرسانی برنامه</span>
+              <span className="sm:hidden">آپدیت</span>
+            </button>
+
             {canAdmin && (
               <button
                 type="button"
@@ -428,6 +683,26 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* GUEST / NO MULTI-USER TOP HEADER BANNER */}
+      {!currentUser && (
+        <div className="flex items-center justify-between bg-white px-3.5 py-2.5 sm:px-5 sm:py-3 rounded-2xl border border-slate-200/90 shadow-xs text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-extrabold text-slate-900 text-sm">{settings.storeName || 'سامانه مدیریت و حسابداری سپهر'}</span>
+            <span className="text-slate-400 text-xs hidden sm:inline">• {toPersianDigits(getCurrentJalaliDate())}</span>
+          </div>
+          <button
+            type="button"
+            id="btn-dashboard-update-cache-guest"
+            onClick={() => setIsUpdateModalOpen(true)}
+            title="بروزرسانی برنامه و نوسازی کش مرورگر"
+            className="text-[11px] sm:text-xs font-bold text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 border border-sky-200 hover:border-sky-300 px-2.5 sm:px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-xs"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-sky-600 ${isUpdatingApp ? 'animate-spin' : ''}`} />
+            <span>بروزرسانی برنامه و کش</span>
+          </button>
         </div>
       )}
 
@@ -746,7 +1021,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
 
               {/* Circular Action Buttons */}
               {permittedOperations.length > 0 && (
-                <div className={`grid grid-cols-${Math.min(permittedOperations.length, 3)} gap-2 pt-1`}>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2.5 pt-1">
                   {permittedOperations.map((op) => {
                     const IconComp = op.icon;
                     return (
@@ -899,7 +1174,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
               </div>
 
               {/* Action Buttons Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5 py-2">
                 {permittedOperations.map((op) => {
                   const Icon = op.icon;
                   return (
@@ -1188,7 +1463,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-xs font-extrabold text-slate-300">امکانات و ابزارهای سریع</span>
                 <span className="text-[10px] text-amber-400 font-bold bg-amber-400/15 px-2 py-0.5 rounded-full">
-                  میز کار حسابدار
+                  {currentUser?.roleTitle || roleConfig?.label || 'دسترسی مجاز'}
                 </span>
               </div>
 
@@ -1223,6 +1498,16 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                     <span>انبار و کالاها</span>
                   </button>
                 )}
+                {canPurchases && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('purchases')}
+                    className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-right font-bold text-slate-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                  >
+                    <ShoppingCart className="w-4 h-4 text-orange-400" />
+                    <span>فاکتور خرید</span>
+                  </button>
+                )}
                 {canCustomers && (
                   <button
                     type="button"
@@ -1233,6 +1518,33 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                     <span>مشتریان</span>
                   </button>
                 )}
+
+                {/* More Features Button */}
+                <button
+                  type="button"
+                  id="btn-desktop-more-features"
+                  onClick={() => setIsMoreFeaturesModalOpen(true)}
+                  className="p-2.5 rounded-xl bg-purple-950/50 hover:bg-purple-900/60 border border-purple-800/50 text-right font-bold text-purple-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                >
+                  <MoreHorizontal className="w-4 h-4 text-purple-400" />
+                  <span>بیشتر امکانات...</span>
+                </button>
+
+                {/* Update App & Clear Browser Cache */}
+                <button
+                  type="button"
+                  id="btn-desktop-clear-cache"
+                  onClick={() => setIsUpdateModalOpen(true)}
+                  className="col-span-2 p-2.5 rounded-xl bg-sky-950/60 hover:bg-sky-900/70 border border-sky-800/50 text-right font-bold text-sky-200 hover:text-white transition-colors flex items-center justify-between cursor-pointer"
+                >
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className={`w-4 h-4 text-sky-400 ${isUpdatingApp ? 'animate-spin' : ''}`} />
+                    <span>بروزرسانی برنامه و پاکسازی کش</span>
+                  </div>
+                  <span className="text-[10px] text-sky-300 font-normal bg-sky-900/80 px-2 py-0.5 rounded-md">
+                    نسخه جدید
+                  </span>
+                </button>
               </div>
             </div>
           </div>
@@ -1631,6 +1943,179 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
               {(activeStatusFilter === 'draft' ? draftInvoices : activeStatusFilter === 'confirmed' ? confirmedInvoices : cancelledInvoices).length === 0 && (
                 <p className="text-center text-xs text-slate-400 py-6">موردی در این بخش وجود ندارد.</p>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ROLE-BASED "بیشتر امکانات" MODAL */}
+      {isMoreFeaturesModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-2xl p-5 sm:p-6 shadow-2xl space-y-4 max-h-[88vh] overflow-y-auto border border-slate-200 animate-in zoom-in-95">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold shadow-xs">
+                  <MoreHorizontal className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-extrabold text-slate-900 text-base sm:text-lg">امکانات و بخش‌های سامانه</h3>
+                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">
+                      {currentUser?.roleTitle || roleConfig?.label || 'دسترسی مجاز'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    فهرست ابزارها بر اساس سطح دسترسی و نقش شما فیلتر شده است
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                id="btn-close-more-features-modal"
+                onClick={() => setIsMoreFeaturesModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Permitted Features Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              {allPermittedFeatures.map((feat) => {
+                const Icon = feat.icon;
+                return (
+                  <div
+                    key={feat.id}
+                    id={`feature-card-${feat.id}`}
+                    onClick={feat.onClick}
+                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between group active:scale-98 shadow-xs ${feat.bgClass}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-xs border border-slate-100 shrink-0 group-hover:scale-105 transition-transform ${feat.colorClass}`}>
+                          <Icon className="w-5 h-5 stroke-[2.2]" />
+                        </div>
+                        <div>
+                          <span className="font-extrabold text-slate-900 text-sm block">
+                            {feat.title}
+                          </span>
+                          <span className="text-[11px] text-slate-600 font-medium block mt-0.5 line-clamp-2">
+                            {feat.subtitle}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {feat.badgeText && (
+                      <div className="mt-3 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-slate-500">{feat.badgeText}</span>
+                        <span className="font-extrabold text-slate-700 flex items-center gap-1 group-hover:translate-x-[-2px] transition-transform">
+                          <span>ورود به بخش</span>
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Modal Footer Note */}
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+              <span>تعداد امکانات مجاز برای شما: {toPersianDigits(allPermittedFeatures.length)} مورد</span>
+              <button
+                type="button"
+                onClick={() => setIsMoreFeaturesModalOpen(false)}
+                className="text-slate-600 hover:text-slate-900 font-bold cursor-pointer"
+              >
+                بستن پنجره
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* APP UPDATE & CLEAR BROWSER CACHE MODAL */}
+      {isUpdateModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-md p-5 sm:p-6 shadow-2xl space-y-4 border border-slate-200 animate-in zoom-in-95">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-sky-100 text-sky-700 flex items-center justify-center font-bold shadow-xs">
+                  <RefreshCw className={`w-5 h-5 ${isUpdatingApp ? 'animate-spin' : ''}`} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">بروزرسانی برنامه و پاکسازی کش</h3>
+                  <span className="text-[11px] text-slate-400 font-medium block">بارگذاری سریع آخرین فایل‌ها و امکانات</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isUpdatingApp}
+                onClick={() => setIsUpdateModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Explanation card */}
+            <div className="p-3.5 rounded-2xl bg-sky-50/70 border border-sky-200/80 text-xs text-sky-950 space-y-2">
+              <div className="flex items-center gap-1.5 font-bold text-sky-900">
+                <Sparkles className="w-4 h-4 text-sky-600 shrink-0" />
+                <span>چرا کش مرورگر باید پاکسازی شود؟</span>
+              </div>
+              <p className="text-[12px] leading-relaxed text-slate-600">
+                مرورگر برای افزایش سرعت، کدهای سامانه را ذخیره (کش) می‌کند. زمانی که برنامه به روز می‌شود، ممکن است فایل‌های قدیمی همچنان از حافظه موقت خوانده شوند. با زدن دکمه زیر، فایل‌های قدیمی پاکسازی شده و آخرین نسخه برنامه بارگذاری می‌شود.
+              </p>
+            </div>
+
+            {/* Safety badge */}
+            <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-start gap-2.5 text-xs text-emerald-900">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <span className="font-bold block">اطلاعات شما کاملاً امن است</span>
+                <span className="text-[11px] text-emerald-700 block">
+                  این عملیات فقط کدهای رابط کاربری را نوسازی می‌کند و هیچ‌یک از فاکتورها، اقلام انبار یا مشتریان شما حذف نخواهند شد.
+                </span>
+              </div>
+            </div>
+
+            {lastCacheTime && (
+              <div className="text-[11px] text-slate-400 text-center font-medium">
+                آخرین بروزرسانی ثبت‌شده در مرورگر: {toPersianDigits(lastCacheTime)}
+              </div>
+            )}
+
+            {updateProgressMsg && (
+              <div className="p-2.5 rounded-xl bg-slate-100 text-center text-xs font-bold text-slate-700 animate-pulse">
+                {updateProgressMsg}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="pt-2 flex items-center gap-2.5">
+              <button
+                type="button"
+                id="btn-confirm-app-update"
+                disabled={isUpdatingApp}
+                onClick={handlePerformAppUpdate}
+                className="flex-1 py-3 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 active:scale-98 text-white font-extrabold text-xs shadow-md shadow-sky-600/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-70"
+              >
+                <RefreshCw className={`w-4 h-4 ${isUpdatingApp ? 'animate-spin' : ''}`} />
+                <span>{isUpdatingApp ? 'در حال پاکسازی و بارگذاری...' : 'پاکسازی کش و دریافت آخرین نسخه'}</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isUpdatingApp}
+                onClick={() => setIsUpdateModalOpen(false)}
+                className="py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+              >
+                انصراف
+              </button>
             </div>
           </div>
         </div>
