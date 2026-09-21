@@ -367,7 +367,7 @@ export default function App() {
     const finalNumber = customInvoiceNumber?.trim() || 
       (proformaInvoice.invoiceNumber.startsWith('PF-') 
         ? proformaInvoice.invoiceNumber.replace('PF-', 'INV-') 
-        : `INV-${Math.floor(1000 + Math.random() * 9000)}`);
+        : StorageService.getNextInvoiceNumber(false));
 
     // Check stock warning if negative stock not allowed
     if (settings.autoDeductStock && settings.allowNegativeStock === false) {

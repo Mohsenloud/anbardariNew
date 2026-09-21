@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Product, DirectTransfer, DirectTransferType, DirectTransferItem, StoreSettings } from '../types';
 import { getCurrentJalaliDate, getCurrentJalaliTime } from '../utils/jalali';
+import { StorageService } from '../utils/storage';
 import { IranPlatePicker } from './IranPlatePicker';
 
 interface DirectTransferModalProps {
@@ -43,8 +44,8 @@ export const DirectTransferModal: React.FC<DirectTransferModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  // Header and Type State
-  const [transferNumber, setTransferNumber] = useState<string>(() => `TRF-${Date.now().toString().slice(-4)}`);
+  // Header and Type State (شماره‌گذاری ترتیبی و منظم حواله انتقال و خروج بدون رندوم)
+  const [transferNumber, setTransferNumber] = useState<string>(() => StorageService.getNextTransferNumber());
   const [title, setTitle] = useState<string>('');
   const [type, setType] = useState<DirectTransferType>('repair');
   const [isReturnable, setIsReturnable] = useState<boolean>(true);

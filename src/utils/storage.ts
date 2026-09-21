@@ -27,6 +27,11 @@ import {
   generateProductBarcode,
   generateVariantCode,
   generateVariantBarcode,
+  generateNextInvoiceNumber,
+  generateNextExitSlipNumber,
+  generateNextInboundReceiptNumber,
+  generateNextPurchaseInvoiceNumber,
+  generateNextTransferNumber,
 } from './codeGenerator';
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -1467,6 +1472,57 @@ export const StorageService = {
     this.notifyChange();
   },
 
+  // ----------------------------------------------------
+  // شماره‌گذاری ترتیبی و منظم اسناد و حواله‌ها (بدون رندوم)
+  // ----------------------------------------------------
+
+  getNextInvoiceNumber(isProforma = false): string {
+    const invoices = this.getInvoices();
+    return generateNextInvoiceNumber(invoices, isProforma);
+  },
+
+  getNextExitSlipNumber(): string {
+    const logs = this.getExitSlipLogs();
+    const invoices = this.getInvoices();
+    return generateNextExitSlipNumber(logs, invoices);
+  },
+
+  getOrAssignExitSlipNumber(invoiceId: string, invoiceNumber?: string): string {
+    const logs = this.getExitSlipLogs();
+    const current = logs[invoiceId];
+    if (current?.slipNumber) {
+      return current.slipNumber;
+    }
+    const nextSlipNum = this.getNextExitSlipNumber();
+    const updated: ExitSlipData = {
+      ...(current || {
+        invoiceId,
+        printCount: 0,
+        history: [],
+      }),
+      invoiceId,
+      slipNumber: nextSlipNum,
+    };
+    logs[invoiceId] = updated;
+    this.saveExitSlipLogs(logs);
+    return nextSlipNum;
+  },
+
+  getNextInboundReceiptNumber(): string {
+    const receipts = this.getInboundReceipts();
+    return generateNextInboundReceiptNumber(receipts);
+  },
+
+  getNextPurchaseInvoiceNumber(): string {
+    const purchases = this.getPurchaseInvoices();
+    return generateNextPurchaseInvoiceNumber(purchases);
+  },
+
+  getNextTransferNumber(): string {
+    const transfers = this.getDirectTransfers();
+    return generateNextTransferNumber(transfers);
+  },
+
   getExitSlipLog(invoiceId: string): ExitSlipData {
     const logs = this.getExitSlipLogs();
     return logs[invoiceId] || {
@@ -1497,6 +1553,7 @@ export const StorageService = {
       ...fallbackData,
       ...current,
       invoiceId,
+      slipNumber: current.slipNumber || fallbackData?.slipNumber || this.getNextExitSlipNumber(),
       printCount: (current.printCount || fallbackData?.printCount || 0) + 1,
       lastPrintedAt: timestamp,
       lastPrintedBy: printedBy || 'انباردار',
@@ -1527,6 +1584,7 @@ export const StorageService = {
       receiverPhone?: string;
       vehicleInfo?: string;
       deliveryNotes?: string;
+      slipNumber?: string;
     }
   ): ExitSlipData {
     const logs = this.getExitSlipLogs();
@@ -1538,6 +1596,7 @@ export const StorageService = {
     const updated: ExitSlipData = {
       ...current,
       ...deliveryData,
+      slipNumber: deliveryData.slipNumber || current.slipNumber || this.getNextExitSlipNumber(),
     };
     logs[invoiceId] = updated;
     this.saveExitSlipLogs(logs);

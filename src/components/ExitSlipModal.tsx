@@ -186,6 +186,9 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
     return invoice ? getInvoiceIssueTime(invoice) : getCurrentJalaliTime();
   }, [invoice?.id, invoice?.createdAt]);
 
+  // شماره ترتیبی و منظم حواله خروج انبار
+  const slipNumber = slipLog?.slipNumber || invoice?.invoiceNumber || '';
+
   const originWarehouseName = settings.originWarehouseName || 
     settings.warehouses?.find(w => w.id === settings.defaultWarehouseId)?.name || 
     'انبار مرکزی سپهر';
@@ -298,7 +301,10 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
   const getExitSlipShareText = () => {
     const lines = [
       `📦 *برگ خروج کالا از انبار (حواله تحویل فیزیکی)*`,
-      `شماره حواله / فاکتور: ${toPersianDigits(invoice.invoiceNumber)}`,
+      `شماره حواله انبار: ${toPersianDigits(slipNumber)}`,
+      slipLog?.slipNumber && invoice.invoiceNumber && slipLog.slipNumber !== invoice.invoiceNumber
+        ? `شماره فاکتور متناظر: ${toPersianDigits(invoice.invoiceNumber)}`
+        : '',
       `تاریخ و ساعت صدور: ${toPersianDigits(invoice.date)} - ساعت ${toPersianDigits(issuedTime)}`,
       `قالب سند: ${pageSize.toUpperCase()} (${orientation === 'portrait' ? 'عمودی' : 'افقی'})`,
       `🏭 انبار مبدأ بارگیری: ${originWarehouseName}${settings.originWarehouseCode ? ` (کد: ${toPersianDigits(settings.originWarehouseCode)})` : ''}`,
@@ -451,8 +457,13 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                     برگ خروج کالا از انبار (حواله تحویل)
                   </h3>
                   <span className="text-[10px] sm:text-xs font-['Vazirmatn'] text-emerald-300 bg-emerald-950/80 border border-emerald-600/40 px-2 py-0.5 rounded font-bold">
-                    فاکتور: {toPersianDigits(invoice.invoiceNumber)}
+                    حواله: {toPersianDigits(slipNumber)}
                   </span>
+                  {slipLog?.slipNumber && invoice.invoiceNumber && slipLog.slipNumber !== invoice.invoiceNumber && (
+                    <span className="text-[10px] sm:text-xs font-['Vazirmatn'] text-slate-300 bg-slate-800/80 border border-slate-600/40 px-2 py-0.5 rounded">
+                      فاکتور: {toPersianDigits(invoice.invoiceNumber)}
+                    </span>
+                  )}
                   <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-['Vazirmatn'] text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
                     <Printer className="w-3 h-3 text-emerald-400" />
                     <span>{slipLog.printCount > 0 ? `چاپ نوبت ${toPersianDigits(slipLog.printCount + 1)}` : 'نسخه اول (اصل)'}</span>
@@ -1070,8 +1081,11 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                   </div>
                   <div className="exit-slip-meta-grid grid grid-cols-3 gap-x-2.5 sm:gap-x-3.5 gap-y-1 text-[11px] font-['Vazirmatn'] text-slate-700 pt-1.5 border-t border-slate-200">
                     <div className="text-right">
-                      <span className="text-slate-400 text-[10px] block leading-tight">شماره حواله:</span>
-                      <strong className="text-slate-900 text-xs">{toPersianDigits(invoice.invoiceNumber)}</strong>
+                      <span className="text-slate-400 text-[10px] block leading-tight">شماره حواله خروج:</span>
+                      <strong className="text-slate-900 text-xs font-bold">{toPersianDigits(slipNumber)}</strong>
+                      {slipLog?.slipNumber && invoice.invoiceNumber && slipLog.slipNumber !== invoice.invoiceNumber && (
+                        <span className="text-[9px] text-slate-500 block leading-tight font-normal">فاکتور: {toPersianDigits(invoice.invoiceNumber)}</span>
+                      )}
                     </div>
                     <div className="text-right">
                       <span className="text-slate-400 text-[10px] block leading-tight">تاریخ صدور:</span>
@@ -1430,7 +1444,10 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             <div className="exit-slip-tracking flex items-center justify-between text-[10px] text-slate-400 pt-3 mt-3 border-t border-slate-200 font-['Vazirmatn']">
               <div>
                 <span>شناسه سند: </span>
-                <span className="font-mono text-slate-600 font-bold">OUT-{invoice.invoiceNumber}</span>
+                <span className="font-mono text-slate-600 font-bold">{slipNumber}</span>
+                {slipLog?.slipNumber && invoice.invoiceNumber && slipLog.slipNumber !== invoice.invoiceNumber && (
+                  <span className="text-slate-500 mr-1"> (فاکتور {toPersianDigits(invoice.invoiceNumber)})</span>
+                )}
                 <span className="mx-1.5">•</span>
                 <span>نوبت چاپ: {toPersianDigits(slipLog.printCount + 1)}</span>
                 <span className="mx-1.5">•</span>

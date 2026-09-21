@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Invoice, StoreSettings, AppUser, Product } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { exportInvoicesToCsv } from '../utils/csvExport';
+import { StorageService } from '../utils/storage';
 import { 
   Search, 
   Printer, 
@@ -176,11 +177,15 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   // Conversion Handlers
   const handleOpenConvertModal = (inv: Invoice) => {
     setProformaToConvert(inv);
-    let defaultNum = '';
+    const existingInvoices = StorageService.getInvoices();
+    let defaultNum = StorageService.getNextInvoiceNumber(false);
+    
+    // اگر شماره معادل INV بر اساس دنباله خالی و معتبر بود، پیشنهاد داده شود
     if (inv.invoiceNumber.startsWith('PF-')) {
-      defaultNum = inv.invoiceNumber.replace('PF-', 'INV-');
-    } else {
-      defaultNum = `INV-${Math.floor(1000 + Math.random() * 9000)}`;
+      const candidateSameSeq = inv.invoiceNumber.replace('PF-', 'INV-');
+      if (!existingInvoices.some((i) => i.invoiceNumber === candidateSameSeq)) {
+        defaultNum = candidateSameSeq;
+      }
     }
     setConversionNewNumber(defaultNum);
   };

@@ -220,6 +220,7 @@ export interface ExitSlipPrintRecord {
 
 export interface ExitSlipData {
   invoiceId: string;
+  slipNumber?: string; // شماره ترتیبی و اختصاصی حواله خروج انبار مثلاً EXT-1001
   printCount: number; // تعداد دفعات چاپ
   lastPrintedAt?: string; // تاریخ و زمان آخرین چاپ
   lastPrintedBy?: string; // نام انباردار یا کاربر آخرین چاپ

@@ -10,7 +10,7 @@ import {
   AppUser 
 } from '../types';
 import { toPersianDigits, formatPrice, getCurrentJalaliDate } from '../utils/jalali';
-import { PAYMENT_METHOD_LABELS } from '../utils/storage';
+import { PAYMENT_METHOD_LABELS, StorageService } from '../utils/storage';
 import { generateNextProductCode } from '../utils/codeGenerator';
 import { 
   Plus, 
@@ -55,15 +55,13 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
   onClose,
   onSavePurchase,
 }) => {
-  // Generate invoice number
+  // شماره‌گذاری ترتیبی و منظم فاکتور خرید و رسید انبار (بدون رندوم)
   const generateNextNumber = () => {
-    const timestamp = Date.now().toString().slice(-4);
-    return `PUR-${timestamp}`;
+    return StorageService.getNextPurchaseInvoiceNumber();
   };
 
   const generateReceiptNumber = () => {
-    const timestamp = Date.now().toString().slice(-4);
-    return `REC-${timestamp}`;
+    return StorageService.getNextInboundReceiptNumber();
   };
 
   const [invoiceNumber, setInvoiceNumber] = useState(generateNextNumber());

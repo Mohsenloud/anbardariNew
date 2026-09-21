@@ -82,17 +82,24 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     return initialIsProforma;
   });
 
-  // Invoice Number & Date & Type
+  // Invoice Number & Date & Type (شماره‌گذاری ترتیبی و منظم بر اساس سوابق فاکتورها)
   const initialInvoiceNum = useMemo(() => {
-    return initialIsProforma
-      ? `PF-${Math.floor(1000 + Math.random() * 9000)}`
-      : `INV-${Math.floor(1000 + Math.random() * 9000)}`;
+    return StorageService.getNextInvoiceNumber(initialIsProforma);
   }, [initialIsProforma]);
 
   const [invoiceNumber, setInvoiceNumber] = useState<string>(() => {
     if (editingInvoice) return editingInvoice.invoiceNumber;
     return initialInvoiceNum;
   });
+
+  const handleToggleProforma = (proformaVal: boolean) => {
+    setIsProforma(proformaVal);
+    if (!isEditing) {
+      if (!invoiceNumber || invoiceNumber.startsWith('PF-') || invoiceNumber.startsWith('INV-')) {
+        setInvoiceNumber(StorageService.getNextInvoiceNumber(proformaVal));
+      }
+    }
+  };
 
   const [invoiceType, setInvoiceType] = useState<'standard' | 'official' | 'thermal'>(() => {
     if (editingInvoice) return editingInvoice.type || 'standard';
@@ -612,7 +619,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
     const newInvoice: Invoice = {
       id: editingInvoice ? editingInvoice.id : `inv-${Date.now()}`,
-      invoiceNumber: invoiceNumber.trim() || (isProforma ? `PF-${Date.now().toString().slice(-4)}` : `INV-${Date.now().toString().slice(-4)}`),
+      invoiceNumber: invoiceNumber.trim() || StorageService.getNextInvoiceNumber(isProforma),
       type: invoiceType,
       isProforma,
       customerId: selectedCustomerId || 'guest',
@@ -785,7 +792,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             <button
               type="button"
               id="btn-mobile-type-invoice"
-              onClick={() => setIsProforma(false)}
+              onClick={() => handleToggleProforma(false)}
               className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
                 !isProforma
                   ? 'bg-white text-emerald-700 shadow-xs font-black'
@@ -797,7 +804,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             <button
               type="button"
               id="btn-mobile-type-proforma"
-              onClick={() => setIsProforma(true)}
+              onClick={() => handleToggleProforma(true)}
               className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
                 isProforma
                   ? 'bg-indigo-600 text-white shadow-xs font-black'
@@ -1153,7 +1160,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               <button
                 type="button"
                 id="btn-desktop-type-invoice"
-                onClick={() => setIsProforma(false)}
+                onClick={() => handleToggleProforma(false)}
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                   !isProforma
                     ? 'bg-white text-emerald-700 shadow-xs font-black'
@@ -1166,7 +1173,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               <button
                 type="button"
                 id="btn-desktop-type-proforma"
-                onClick={() => setIsProforma(true)}
+                onClick={() => handleToggleProforma(true)}
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                   isProforma
                     ? 'bg-indigo-600 text-white shadow-xs font-black'
@@ -3232,7 +3239,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsProforma(!isProforma)}
+                  onClick={() => handleToggleProforma(!isProforma)}
                   className={`px-3 py-1.5 rounded-xl font-extrabold text-xs transition-colors ${
                     isProforma
                       ? 'bg-indigo-600 text-white'

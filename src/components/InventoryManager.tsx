@@ -439,6 +439,23 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     (r) => r.status === 'pending_verification'
   ).length;
 
+  const handleOpenExitSlip = (inv: Invoice) => {
+    // اطمینان از تخصیص شماره ترتیبی و منظم به حواله خروج انبار
+    let currentLog = exitSlipLogs[inv.id];
+    if (!currentLog?.slipNumber) {
+      const assignedSlipNum = StorageService.getOrAssignExitSlipNumber(inv.id, inv.invoiceNumber);
+      currentLog = {
+        ...(currentLog || { invoiceId: inv.id, printCount: 0, history: [] }),
+        slipNumber: assignedSlipNum,
+      };
+      setExitSlipLogs((prev) => ({
+        ...prev,
+        [inv.id]: currentLog,
+      }));
+    }
+    setSelectedExitSlipInvoice(inv);
+  };
+
   const handleRecordExitSlipPrint = (invoiceId: string, currentSlipLog?: ExitSlipData) => {
     const currentInMemory = currentSlipLog || exitSlipLogs[invoiceId];
     const updated = StorageService.recordExitSlipPrint(
@@ -520,7 +537,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
     if (exitSlipSearch.trim()) {
       const q = exitSlipSearch.toLowerCase();
-      const matchesNum = inv.invoiceNumber.toLowerCase().includes(q);
+      const matchesSlipNum = (log.slipNumber || '').toLowerCase().includes(q);
+      const matchesNum = inv.invoiceNumber.toLowerCase().includes(q) || matchesSlipNum;
       const matchesCust = inv.customerName.toLowerCase().includes(q);
       const matchesItem = inv.items.some((it) => it.productName.toLowerCase().includes(q));
       const matchesReceiver = (log.receiverName || '').toLowerCase().includes(q);
@@ -1567,10 +1585,15 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     return (
                       <div key={inv.id} className={`p-4 space-y-3 ${index % 2 === 1 ? 'bg-slate-50/85' : 'bg-white'} hover:bg-slate-100/60 transition-colors`}>
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="font-['Vazirmatn'] font-bold text-slate-900 text-sm bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200">
-                              {toPersianDigits(inv.invoiceNumber)}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-['Vazirmatn'] font-bold text-slate-900 text-sm bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200" title="شماره حواله خروج انبار">
+                              {toPersianDigits(slipLog.slipNumber || inv.invoiceNumber)}
                             </span>
+                            {slipLog.slipNumber && slipLog.slipNumber !== inv.invoiceNumber && (
+                              <span className="text-[10px] text-slate-500 font-['Vazirmatn']">
+                                (فاکتور: {toPersianDigits(inv.invoiceNumber)})
+                              </span>
+                            )}
                             <span className="text-xs text-slate-500 font-['Vazirmatn']">{toPersianDigits(inv.date)}</span>
                           </div>
 
@@ -1693,7 +1716,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
                           <button
                             type="button"
-                            onClick={() => setSelectedExitSlipInvoice(inv)}
+                            onClick={() => handleOpenExitSlip(inv)}
                             className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
                           >
                             <Printer className="w-4 h-4" />
@@ -1742,9 +1765,16 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                         return (
                           <tr key={inv.id} className={`${index % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'} hover:bg-slate-100/70 transition-colors`}>
                             <td className="p-3.5">
-                              <span className="font-['Vazirmatn'] font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
-                                {toPersianDigits(inv.invoiceNumber)}
-                              </span>
+                              <div className="flex flex-col gap-0.5 items-start">
+                                <span className="font-['Vazirmatn'] font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200" title="شماره ترتیبی حواله خروج انبار">
+                                  {toPersianDigits(slipLog.slipNumber || inv.invoiceNumber)}
+                                </span>
+                                {slipLog.slipNumber && slipLog.slipNumber !== inv.invoiceNumber && (
+                                  <span className="text-[10px] text-slate-500 font-['Vazirmatn']">
+                                    فاکتور: {toPersianDigits(inv.invoiceNumber)}
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="p-3.5 font-['Vazirmatn'] text-slate-700">{toPersianDigits(inv.date)}</td>
                             <td className="p-3.5">
@@ -1870,7 +1900,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
                                 <button
                                   type="button"
-                                  onClick={() => setSelectedExitSlipInvoice(inv)}
+                                  onClick={() => handleOpenExitSlip(inv)}
                                   className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
                                   title="پرینت برگه خروج از انبار"
                                 >
@@ -2777,7 +2807,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             handleSaveExitSlipDelivery(deliveryModalInvoice.id, deliveryData);
             const targetInv = deliveryModalInvoice;
             setDeliveryModalInvoice(null);
-            setSelectedExitSlipInvoice(targetInv);
+            handleOpenExitSlip(targetInv);
           }}
         />
       )}
@@ -2857,7 +2887,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     onClick={() => {
                       const targetInv = historyModalInvoice;
                       setHistoryModalInvoice(null);
-                      setSelectedExitSlipInvoice(targetInv);
+                      handleOpenExitSlip(targetInv);
                     }}
                     className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold cursor-pointer"
                   >

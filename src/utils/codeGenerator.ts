@@ -328,3 +328,185 @@ export function ensureProductCodesAndBarcodes(products: Product[]): {
 
   return { products: updatedProducts, changed };
 }
+
+/**
+ * تبدیل ارقام فارسی و عربی به انگلیسی برای پردازش و استخراج ریاضی
+ */
+export function normalizeDigitsToEnglish(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+}
+
+/**
+ * استخراج شماره ترتیبی عددی از کد، فاکتور یا حواله
+ * پشتیبانی از فرمت‌های متنوع: INV-1001, EXT-1001, REC-1001, TRF-1001, PUR-1001, ۱۴۰۳-۱۰۰۱
+ */
+export function extractSequenceNumber(code: string): number {
+  if (!code) return 0;
+  const normalized = normalizeDigitsToEnglish(code.trim());
+
+  // اگر شامل خط تیره باشد، آخرین بخش معمولاً شماره ترتیبی است
+  if (normalized.includes('-')) {
+    const parts = normalized.split('-');
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const match = parts[i].match(/\d+/);
+      if (match) {
+        const parsed = parseInt(match[0], 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          return parsed;
+        }
+      }
+    }
+  }
+
+  const allMatches = normalized.match(/\d+/g);
+  if (allMatches && allMatches.length > 0) {
+    const lastMatch = allMatches[allMatches.length - 1];
+    const parsed = parseInt(lastMatch, 10);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
+/**
+ * تولید شماره ترتیبی و منظم برای فاکتور فروش و پیش‌فاکتور (بدون استفاده از رندوم)
+ * الگو: INV-1001, INV-1002, INV-1003 ... (پیش‌فاکتور: PF-1001, PF-1002 ...)
+ */
+export function generateNextInvoiceNumber(
+  existingInvoices: { invoiceNumber?: string; isProforma?: boolean }[] = [],
+  isProforma = false
+): string {
+  const prefix = isProforma ? 'PF' : 'INV';
+  let maxSeq = 1000;
+
+  existingInvoices.forEach((inv) => {
+    if (!inv.invoiceNumber) return;
+    const numStr = inv.invoiceNumber.trim();
+    const isProformaCode = numStr.toUpperCase().startsWith('PF') || !!inv.isProforma;
+
+    if (isProforma && isProformaCode) {
+      const seq = extractSequenceNumber(numStr);
+      if (seq > maxSeq && seq < 9999999) {
+        maxSeq = seq;
+      }
+    } else if (!isProforma && !isProformaCode) {
+      const seq = extractSequenceNumber(numStr);
+      if (seq > maxSeq && seq < 9999999) {
+        maxSeq = seq;
+      }
+    }
+  });
+
+  const nextSeq = maxSeq + 1;
+  return `${prefix}-${nextSeq}`;
+}
+
+/**
+ * تولید شماره ترتیبی و منظم برای حواله خروج انبار (Exit Slip)
+ * الگو: EXT-1001, EXT-1002, EXT-1003 ...
+ */
+export function generateNextExitSlipNumber(
+  existingLogs: Record<string, { slipNumber?: string }> | { slipNumber?: string }[] = {},
+  existingInvoices: { invoiceNumber?: string }[] = []
+): string {
+  const prefix = 'EXT';
+  let maxSeq = 1000;
+
+  // ۱. بررسی لاگ‌های موجود حواله خروج
+  const logsList = Array.isArray(existingLogs) ? existingLogs : Object.values(existingLogs);
+  logsList.forEach((log) => {
+    if (log?.slipNumber) {
+      const seq = extractSequenceNumber(log.slipNumber);
+      if (seq > maxSeq && seq < 9999999) {
+        maxSeq = seq;
+      }
+    }
+  });
+
+  // ۲. اگر هنوز حواله‌ای صادر نشده باشد، می‌توان از شماره فاکتورها نیز به عنوان مبنا استفاده کرد
+  if (maxSeq === 1000 && existingInvoices.length > 0) {
+    existingInvoices.forEach((inv) => {
+      if (inv.invoiceNumber) {
+        const seq = extractSequenceNumber(inv.invoiceNumber);
+        if (seq > maxSeq && seq < 9999999) {
+          maxSeq = seq;
+        }
+      }
+    });
+  }
+
+  const nextSeq = maxSeq + 1;
+  return `${prefix}-${nextSeq}`;
+}
+
+/**
+ * تولید شماره ترتیبی و منظم برای رسید و حواله ورود کالا به انبار
+ * الگو: REC-1001, REC-1002, REC-1003 ...
+ */
+export function generateNextInboundReceiptNumber(
+  existingReceipts: { receiptNumber?: string }[] = []
+): string {
+  const prefix = 'REC';
+  let maxSeq = 1000;
+
+  existingReceipts.forEach((r) => {
+    if (r?.receiptNumber) {
+      const seq = extractSequenceNumber(r.receiptNumber);
+      if (seq > maxSeq && seq < 9999999) {
+        maxSeq = seq;
+      }
+    }
+  });
+
+  const nextSeq = maxSeq + 1;
+  return `${prefix}-${nextSeq}`;
+}
+
+/**
+ * تولید شماره ترتیبی و منظم برای فاکتور خرید
+ * الگو: PUR-1001, PUR-1002, PUR-1003 ...
+ */
+export function generateNextPurchaseInvoiceNumber(
+  existingPurchases: { invoiceNumber?: string }[] = []
+): string {
+  const prefix = 'PUR';
+  let maxSeq = 1000;
+
+  existingPurchases.forEach((p) => {
+    if (p?.invoiceNumber) {
+      const seq = extractSequenceNumber(p.invoiceNumber);
+      if (seq > maxSeq && seq < 9999999) {
+        maxSeq = seq;
+      }
+    }
+  });
+
+  const nextSeq = maxSeq + 1;
+  return `${prefix}-${nextSeq}`;
+}
+
+/**
+ * تولید شماره ترتیبی و منظم برای حواله انتقال مستقیم / امانی انبار
+ * الگو: TRF-1001, TRF-1002, TRF-1003 ...
+ */
+export function generateNextTransferNumber(
+  existingTransfers: { transferNumber?: string }[] = []
+): string {
+  const prefix = 'TRF';
+  let maxSeq = 1000;
+
+  existingTransfers.forEach((t) => {
+    if (t?.transferNumber) {
+      const seq = extractSequenceNumber(t.transferNumber);
+      if (seq > maxSeq && seq < 9999999) {
+        maxSeq = seq;
+      }
+    }
+  });
+
+  const nextSeq = maxSeq + 1;
+  return `${prefix}-${nextSeq}`;
+}
+
