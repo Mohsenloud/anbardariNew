@@ -1310,7 +1310,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {/* Template 1: Standard */}
                   <div className={`p-4 rounded-xl border-2 transition-all flex flex-col justify-between ${
                     formData.enableStandardTemplate ? 'border-emerald-500 bg-emerald-50/20' : 'border-slate-200 opacity-60'
@@ -1335,7 +1335,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   </div>
 
-                  {/* Template 2: Official */}
+                  {/* Template 2: Simple & Clean */}
+                  <div className={`p-4 rounded-xl border-2 transition-all flex flex-col justify-between ${
+                    formData.enableSimpleTemplate !== false ? 'border-emerald-500 bg-emerald-50/20' : 'border-slate-200 opacity-60'
+                  }`}>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
+                        <button
+                          type="button"
+                          onClick={() => handleToggle('enableSimpleTemplate')}
+                          className={`text-xs font-bold px-2 py-0.5 rounded cursor-pointer ${
+                            formData.enableSimpleTemplate !== false ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          {formData.enableSimpleTemplate !== false ? 'فعال' : 'غیرفعال'}
+                        </button>
+                      </div>
+                      <h4 className="font-bold text-xs text-slate-800">قالب ساده و خوانا (جدول منظم)</h4>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        چیدمان منظم با جدول ساده و وضوح و خوانایی بسیار بالا برای PDF و پرینت.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Template 3: Official */}
                   <div className={`p-4 rounded-xl border-2 transition-all flex flex-col justify-between ${
                     formData.enableOfficialTemplate ? 'border-emerald-500 bg-emerald-50/20' : 'border-slate-200 opacity-60'
                   }`}>
@@ -1359,7 +1383,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   </div>
 
-                  {/* Template 3: Thermal */}
+                  {/* Template 4: Thermal */}
                   <div className={`p-4 rounded-xl border-2 transition-all flex flex-col justify-between ${
                     formData.enableThermalTemplate ? 'border-emerald-500 bg-emerald-50/20' : 'border-slate-200 opacity-60'
                   }`}>
@@ -1394,8 +1418,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500"
                   >
                     <option value="standard">فاکتور استاندارد (A4 / A5)</option>
+                    <option value="simple">فاکتور ساده و خوانا (جدول منظم و مقادیر شفاف)</option>
                     <option value="official">فاکتور رسمی دارایی</option>
                     <option value="thermal">رسید حرارتی ۸۰ میلی‌متری</option>
+                  </select>
+                </div>
+
+                {/* Exit Slip Template Choice */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-bold text-slate-700 block">قالب پیش‌فرض حواله خروج کالا از انبار:</span>
+                    <span className="text-[11px] text-slate-500">طرح‌بندی پیش‌فرض هنگام مشاهده، چاپ و صدور PDF حواله خروج</span>
+                  </div>
+                  <select
+                    name="defaultExitSlipTemplate"
+                    value={formData.defaultExitSlipTemplate || 'standard'}
+                    onChange={handleInputChange}
+                    className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500"
+                  >
+                    <option value="standard">حواله استاندارد انبارداری</option>
+                    <option value="simple">حواله ساده و خوانا (جدول منظم و خوانایی بالا)</option>
                   </select>
                 </div>
               </div>

@@ -61,7 +61,7 @@ export type PaymentMethod = 'cheque' | 'cash' | 'transfer' | 'pos' | 'credit';
 export interface Invoice {
   id: string;
   invoiceNumber: string;
-  type: 'standard' | 'official' | 'thermal'; // استاندارد، رسمی، فیش پرینتر
+  type: 'standard' | 'official' | 'thermal' | 'simple'; // استاندارد، رسمی، فیش پرینتر، ساده و خوانا
   customerId: string;
   customerName: string;
   customerPhone?: string;
@@ -157,7 +157,10 @@ export interface StoreSettings {
   enableStandardTemplate: boolean; // قالب استاندارد A4/A5
   enableOfficialTemplate: boolean; // قالب رسمی دارایی
   enableThermalTemplate: boolean; // قالب فیش پرینتر حرارتی ۸۰ میلی‌متری
-  defaultTemplate: 'standard' | 'official' | 'thermal'; // قالب پیش‌فرض
+  enableSimpleTemplate?: boolean; // قالب ساده با جدول مقادیر و چیدمان منظم خوانا
+  defaultTemplate: 'standard' | 'official' | 'thermal' | 'simple'; // قالب پیش‌فرض
+  enableSimpleExitSlipTemplate?: boolean; // فعال‌بودن قالب ساده و خوانا برای حواله خروج
+  defaultExitSlipTemplate?: 'standard' | 'simple'; // قالب پیش‌فرض حواله خروج انبار
 
   // روش‌های مجاز دریافت وجه
   enableChequePayment?: boolean; // چک (با ثبت شماره چک، تاریخ سررسید و نام چک)

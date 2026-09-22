@@ -570,7 +570,10 @@ const initialSettings: StoreSettings = {
   enableStandardTemplate: true,
   enableOfficialTemplate: true,
   enableThermalTemplate: true,
+  enableSimpleTemplate: true,
   defaultTemplate: 'standard',
+  enableSimpleExitSlipTemplate: true,
+  defaultExitSlipTemplate: 'standard',
 
   // روش‌های پرداخت
   enableChequePayment: true,
@@ -1413,6 +1416,12 @@ export const StorageService = {
       }
       if (!merged.pdfExitSlipQuality) {
         merged.pdfExitSlipQuality = 'high';
+      }
+      if (merged.enableSimpleExitSlipTemplate === undefined) {
+        merged.enableSimpleExitSlipTemplate = true;
+      }
+      if (!merged.defaultExitSlipTemplate) {
+        merged.defaultExitSlipTemplate = 'standard';
       }
       return merged;
     } catch {

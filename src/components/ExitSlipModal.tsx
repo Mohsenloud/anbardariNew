@@ -33,6 +33,7 @@ import {
   Building2
 } from 'lucide-react';
 import { ExitSlipDeliveryModal } from './ExitSlipDeliveryModal';
+import { SimpleExitSlipLayout } from './SimpleExitSlipLayout';
 import { parseVehicleInfo } from './IranPlatePicker';
 
 // Mini graphic Iranian license plate for clean display in delivery slip
@@ -161,6 +162,21 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
   const [pageSize, setPageSize] = useState<'a4' | 'a5'>('a4');
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
 
+  // Exit Slip Template: 'standard' or 'simple'
+  const [template, setTemplate] = useState<'standard' | 'simple'>(() => {
+    try {
+      const saved = localStorage.getItem('exit_slip_template');
+      if (saved === 'simple' || saved === 'standard') return saved;
+    } catch {}
+    return settings.defaultExitSlipTemplate || 'standard';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('exit_slip_template', template);
+    } catch {}
+  }, [template]);
+
   useEffect(() => {
     try {
       localStorage.setItem('exit_slip_paper_size', pageSize);
@@ -281,11 +297,12 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
       setIsExportingPdf(true);
       onRecordPrint(slipLog);
       
-      const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}_${pageSize}_${orientation}`;
+      const tplPrefix = template === 'simple' ? 'ساده_' : '';
+      const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}_${tplPrefix}${pageSize}_${orientation}`;
       const result = await exportElementToPdf('printable-exit-slip', filename, { pageSize, orientation, documentType: 'exit_slip' });
       
       if (result.success) {
-        showNotification(`فایل PDF برگه خروج در اندازه ${pageSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'} با موفقیت تولید و دانلود شد.`);
+        showNotification(`فایل PDF برگه خروج (${template === 'simple' ? 'قالب ساده و خوانا' : 'قالب استاندارد'}) در اندازه ${pageSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'} با موفقیت تولید و دانلود شد.`);
       } else {
         showNotification(result.error || 'خطا در تبدیل به PDF');
       }
@@ -646,10 +663,41 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
         <div className="no-print bg-slate-800 text-slate-200 px-3.5 sm:px-6 py-2 border-b border-slate-700/80 flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs">
           <div className="flex items-center gap-1.5 text-slate-300">
             <Settings className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="font-bold text-slate-200 text-xs">تنظیمات قطع و جهت چاپ:</span>
+            <span className="font-bold text-slate-200 text-xs">تنظیمات و قالب چاپ حواله:</span>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            {/* Template Selector: ساده و خوانا / استاندارد */}
+            <div className="inline-flex items-center bg-slate-900/90 rounded-lg p-0.5 border border-slate-700">
+              <span className="text-[10px] text-slate-400 px-2 select-none">طرح قالب:</span>
+              <button
+                type="button"
+                id="exit-slip-tpl-simple-btn"
+                onClick={() => setTemplate('simple')}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                  template === 'simple'
+                    ? 'bg-emerald-500 text-slate-950 shadow-xs'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                }`}
+                title="قالب جدید ساده و خوانا: جدول مقادیر و چیدمان منظم با خوانایی بسیار بالا"
+              >
+                ساده و خوانا (جدید)
+              </button>
+              <button
+                type="button"
+                id="exit-slip-tpl-standard-btn"
+                onClick={() => setTemplate('standard')}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                  template === 'standard'
+                    ? 'bg-amber-500 text-slate-950 shadow-xs'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                }`}
+                title="قالب استاندارد انبارداری"
+              >
+                استاندارد
+              </button>
+            </div>
+
             {/* Paper Size selector: A4 / A5 */}
             <div className="inline-flex items-center bg-slate-900/90 rounded-lg p-0.5 border border-slate-700">
               <span className="text-[10px] text-slate-400 px-2 select-none">اندازه کاغذ:</span>
@@ -711,7 +759,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             {/* Current Active Label Badge */}
             <span className="bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 px-2 py-0.5 rounded text-[11px] font-bold hidden sm:inline-flex items-center gap-1 font-['Vazirmatn']">
               <span>قالب:</span>
-              <strong>{pageSize.toUpperCase()} {orientation === 'portrait' ? 'عمودی' : 'افقی'}</strong>
+              <strong>{template === 'simple' ? 'ساده و خوانا' : 'استاندارد'} ({pageSize.toUpperCase()} {orientation === 'portrait' ? 'عمودی' : 'افقی'})</strong>
             </span>
           </div>
         </div>
@@ -783,28 +831,205 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
           @media print {
             @page {
               size: ${pageSize.toUpperCase()} ${orientation} !important;
-              margin: ${isA5Landscape ? '3mm' : isA5Portrait ? '4mm' : '8mm'} !important;
+              margin: ${isA5Landscape ? '4mm' : isA5Portrait ? '5mm' : '8mm'} !important;
             }
             body {
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
             }
+            #printable-exit-slip {
+              border: none !important;
+              box-shadow: none !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              width: 100% !important;
+              max-width: none !important;
+              min-height: calc(100vh - ${isA5Landscape ? '8mm' : isA5Portrait ? '10mm' : '16mm'}) !important;
+              height: calc(100vh - ${isA5Landscape ? '8mm' : isA5Portrait ? '10mm' : '16mm'}) !important;
+              display: flex !important;
+              flex-direction: column !important;
+              justify-content: space-between !important;
+              page-break-inside: avoid !important;
+              page-break-after: avoid !important;
+            }
+            #printable-exit-slip button,
+            #printable-exit-slip .no-print,
+            #printable-exit-slip .no-pdf {
+              display: none !important;
+              visibility: hidden !important;
+            }
           }
 
-          /* === A5 GENERAL COMPACTING (All info fits on single sheet) === */
-          #printable-exit-slip.paper-a5 {
-            font-size: 10px;
+          /* Universal #printable-exit-slip Full-Page Layout Distribution */
+          #printable-exit-slip {
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+            box-sizing: border-box !important;
+            margin: 0 auto !important;
+            overflow: visible !important;
           }
-          #printable-exit-slip.paper-a5 table th,
-          #printable-exit-slip.paper-a5 table td {
-            padding: 3px 5px !important;
+
+          /* === A4 PORTRAIT (210mm x 297mm - Ratio 1 : 1.414) === */
+          #printable-exit-slip.paper-a4.paper-portrait {
+            width: 100% !important;
+            max-width: 840px !important;
+            min-height: 1140px !important;
+            padding: 22px 28px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-header {
+            padding-bottom: 12px !important;
+            margin-bottom: 12px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-title {
+            font-size: 20px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-badge {
+            font-size: 13px !important;
+            padding: 4px 14px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-badge-box {
+            padding: 8px 12px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-info-deck {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 12px !important;
+            margin-bottom: 12px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-card {
+            padding: 10px 14px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-table-box {
+            margin-bottom: 12px !important;
+            flex: 1 1 auto !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-table-box table th,
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-table-box table td {
+            padding: 7px 10px !important;
+            font-size: 12px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-terms {
+            padding: 10px 14px !important;
+            margin-bottom: 12px !important;
+            font-size: 11px !important;
+            line-height: 1.5 !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-signatures {
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 12px !important;
+            padding-top: 10px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .signature-box {
+            min-height: 88px !important;
+            height: auto !important;
+            padding: 8px 12px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-tracking {
+            padding-top: 8px !important;
+            margin-top: 8px !important;
             font-size: 10px !important;
           }
 
-          /* A5 Landscape - Specifically optimized for 148mm paper height */
+          /* === A4 LANDSCAPE (297mm x 210mm - Ratio 1.414 : 1) === */
+          #printable-exit-slip.paper-a4.paper-landscape {
+            width: 100% !important;
+            max-width: 1060px !important;
+            min-height: 740px !important;
+            padding: 18px 24px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-landscape .exit-slip-header {
+            padding-bottom: 10px !important;
+            margin-bottom: 10px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-landscape .exit-slip-title {
+            font-size: 18px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-landscape .exit-slip-badge {
+            font-size: 12px !important;
+            padding: 3px 12px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-landscape .exit-slip-badge-box {
+            padding: 6px 10px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-landscape .exit-slip-table-box {
+            margin-bottom: 10px !important;
+            flex: 1 1 auto !important;
+          }
+          #printable-exit-slip.paper-a4.paper-landscape .exit-slip-table-box table th,
+          #printable-exit-slip.paper-a4.paper-landscape .exit-slip-table-box table td {
+            padding: 6px 8px !important;
+            font-size: 11.5px !important;
+          }
+          #printable-exit-slip.paper-a4.paper-landscape .signature-box {
+            min-height: 72px !important;
+            height: auto !important;
+            padding: 6px 10px !important;
+          }
+
+          /* === A5 PORTRAIT (148mm x 210mm - Ratio 1 : 1.414) === */
+          #printable-exit-slip.paper-a5.paper-portrait {
+            width: 100% !important;
+            max-width: 580px !important;
+            min-height: 800px !important;
+            padding: 14px 18px !important;
+            font-size: 10.5px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-header {
+            padding-bottom: 8px !important;
+            margin-bottom: 8px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-title {
+            font-size: 15px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-badge {
+            font-size: 11px !important;
+            padding: 2px 8px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-badge-box {
+            padding: 5px 8px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-meta-grid {
+            gap: 3px 8px !important;
+            font-size: 9.5px !important;
+            padding-top: 4px !important;
+            margin-top: 4px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-info-deck {
+            gap: 8px !important;
+            margin-bottom: 8px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-card {
+            padding: 6px 10px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-table-box {
+            margin-bottom: 8px !important;
+            flex: 1 1 auto !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-table-box table th,
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-table-box table td {
+            padding: 4px 6px !important;
+            font-size: 10.5px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-terms {
+            padding: 6px 10px !important;
+            margin-bottom: 8px !important;
+            font-size: 9.5px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-portrait .signature-box {
+            min-height: 64px !important;
+            height: auto !important;
+            padding: 4px 8px !important;
+          }
+
+          /* === A5 LANDSCAPE (210mm x 148mm - Ratio 1.414 : 1) === */
           #printable-exit-slip.paper-a5.paper-landscape {
+            width: 100% !important;
+            max-width: 780px !important;
+            min-height: 530px !important;
             padding: 10px 14px !important;
-            max-width: 760px !important;
+            font-size: 9.5px !important;
           }
           #printable-exit-slip.paper-a5.paper-landscape .exit-slip-header {
             padding-bottom: 4px !important;
@@ -838,9 +1063,15 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
           #printable-exit-slip.paper-a5.paper-landscape .exit-slip-table-box {
             margin-bottom: 6px !important;
             border-radius: 8px !important;
+            flex: 1 1 auto !important;
           }
           #printable-exit-slip.paper-a5.paper-landscape .exit-slip-table-header {
             padding: 3px 8px !important;
+            font-size: 9.5px !important;
+          }
+          #printable-exit-slip.paper-a5.paper-landscape .exit-slip-table-box table th,
+          #printable-exit-slip.paper-a5.paper-landscape .exit-slip-table-box table td {
+            padding: 2.5px 5px !important;
             font-size: 9.5px !important;
           }
           #printable-exit-slip.paper-a5.paper-landscape .exit-slip-terms {
@@ -853,7 +1084,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
           #printable-exit-slip.paper-a5.paper-landscape .signature-box {
             min-height: 48px !important;
             height: auto !important;
-            padding: 3px 5px !important;
+            padding: 3px 6px !important;
             border-radius: 8px !important;
           }
           #printable-exit-slip.paper-a5.paper-landscape .signature-box-title {
@@ -872,159 +1103,10 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             font-size: 8.5px !important;
           }
 
-          /* A5 Portrait */
-          #printable-exit-slip.paper-a5.paper-portrait {
-            padding: 12px 14px !important;
-            max-width: 540px !important;
-          }
-          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-header {
-            padding-bottom: 6px !important;
-            margin-bottom: 6px !important;
-          }
-          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-title {
-            font-size: 14px !important;
-          }
-          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-badge {
-            font-size: 11px !important;
-            padding: 2px 8px !important;
-          }
-          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-badge-box {
-            padding: 5px 8px !important;
-          }
-          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-meta-grid {
-            gap: 2px 6px !important;
-            font-size: 9.5px !important;
-            padding-top: 4px !important;
-            margin-top: 4px !important;
-          }
-          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-info-deck {
-            gap: 8px !important;
-            margin-bottom: 8px !important;
-          }
-          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-card {
-            padding: 6px 10px !important;
-          }
-          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-table-box {
-            margin-bottom: 8px !important;
-          }
-          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-terms {
-            padding: 6px 10px !important;
-            margin-bottom: 8px !important;
-            font-size: 9px !important;
-          }
-          #printable-exit-slip.paper-a5.paper-portrait .signature-box {
-            min-height: 60px !important;
-            height: auto !important;
-            padding: 4px 6px !important;
-          }
-
-          /* === A4 FORMATS (Optimized proportions & guaranteed single page A4 portrait fit) === */
-          #printable-exit-slip.paper-a4.paper-landscape {
-            padding: 16px 22px !important;
-            max-width: 1040px !important;
-          }
-          #printable-exit-slip.paper-a4.paper-landscape .exit-slip-header {
-            padding-bottom: 12px !important;
-            margin-bottom: 12px !important;
-          }
-          #printable-exit-slip.paper-a4.paper-landscape .exit-slip-title {
-            font-size: 20px !important;
-          }
-          #printable-exit-slip.paper-a4.paper-landscape .exit-slip-badge {
-            font-size: 13px !important;
-            padding: 4px 14px !important;
-          }
-          #printable-exit-slip.paper-a4.paper-landscape .exit-slip-badge-box {
-            padding: 8px 12px !important;
-          }
-          #printable-exit-slip.paper-a4.paper-landscape .signature-box {
-            min-height: 72px !important;
-            height: auto !important;
-            padding: 6px 8px !important;
-          }
-
-          #printable-exit-slip.paper-a4.paper-portrait {
-            padding: 18px 24px !important;
-            max-width: 820px !important;
-            width: 100% !important;
-            box-sizing: border-box !important;
-          }
-          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-header {
-            padding-bottom: 10px !important;
-            margin-bottom: 10px !important;
-          }
-          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-title {
-            font-size: 18px !important;
-          }
-          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-badge {
-            font-size: 12.5px !important;
-            padding: 3px 12px !important;
-          }
-          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-badge-box {
-            padding: 8px 12px !important;
-          }
-          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-info-deck {
-            display: grid !important;
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            gap: 10px !important;
-            margin-bottom: 10px !important;
-          }
-          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-card {
-            padding: 8px 12px !important;
-          }
-          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-table-box {
-            margin-bottom: 10px !important;
-            overflow: visible !important;
-          }
-          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-table-box table th,
-          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-table-box table td {
-            padding: 5px 7px !important;
-            font-size: 11px !important;
-          }
-          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-terms {
-            padding: 8px 12px !important;
-            margin-bottom: 10px !important;
-            font-size: 10px !important;
-            line-height: 1.45 !important;
-          }
-          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-signatures {
-            display: grid !important;
-            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-            gap: 10px !important;
-            padding-top: 8px !important;
-          }
-          #printable-exit-slip.paper-a4.paper-portrait .signature-box {
-            min-height: 76px !important;
-            height: auto !important;
-            padding: 8px 10px !important;
-          }
-          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-tracking {
-            padding-top: 6px !important;
-            margin-top: 6px !important;
-            font-size: 9.5px !important;
-          }
-
-          #printable-exit-slip {
-            height: auto !important;
-            min-height: fit-content !important;
-            max-height: none !important;
-            align-self: flex-start !important;
-            overflow: visible !important;
-          }
-
           /* Ensure proper Persian text rendering without disjointed cursive glyphs */
           #printable-exit-slip * {
             letter-spacing: normal !important;
             word-spacing: normal !important;
-          }
-
-          @media print {
-            #printable-exit-slip button,
-            #printable-exit-slip .no-print,
-            #printable-exit-slip .no-pdf {
-              display: none !important;
-              visibility: hidden !important;
-            }
           }
         `}</style>
 
@@ -1032,13 +1114,27 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
         <div className="flex-1 overflow-y-auto p-2.5 sm:p-5 md:p-8 bg-slate-100/70 print:p-0 print:bg-white flex justify-center items-start">
           <div 
             id="printable-exit-slip"
-            style={{ height: 'auto', minHeight: 'fit-content', maxHeight: 'none', alignSelf: 'flex-start', overflow: 'visible' }}
-            className={`print-container bg-white border border-slate-300 rounded-2xl text-slate-900 shadow-sm print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none w-full transition-all h-fit self-start ${
+            className={`print-container bg-white border border-slate-300 rounded-2xl text-slate-900 shadow-sm print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none w-full transition-all flex flex-col justify-between ${
               isA5 ? 'paper-a5' : 'paper-a4'
             } ${isLandscape ? 'paper-landscape' : 'paper-portrait'}`}
           >
-            {/* Header: Store details & Exit Voucher Title */}
-            <div className="exit-slip-header border-b-2 border-slate-900 pb-3 sm:pb-4 mb-3 sm:mb-4">
+            {template === 'simple' ? (
+              <SimpleExitSlipLayout
+                invoice={invoice}
+                settings={settings}
+                slipLog={slipLog}
+                currentUser={currentUser}
+                slipNumber={slipNumber}
+                issuedTime={issuedTime}
+                originWarehouseName={originWarehouseName}
+                totalUnits={totalUnits}
+                pageSize={pageSize}
+                orientation={orientation}
+              />
+            ) : (
+              <div className="standard-exit-slip-layout h-full flex-1 flex flex-col justify-between w-full">
+                {/* Header: Store details & Exit Voucher Title */}
+                <div className="exit-slip-header border-b-2 border-slate-900 pb-3 sm:pb-4 mb-3 sm:mb-4">
               <div className="exit-slip-header-row flex flex-row items-start justify-between gap-2.5 sm:gap-4">
                 {/* Store Branding */}
                 <div className="space-y-1">
@@ -1462,6 +1558,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                 <span>صادرکننده: {currentUser?.fullName || 'انباردار'}</span>
               </div>
             </div>
+            </div>
+          )}
 
           </div>
         </div>
@@ -1571,6 +1669,38 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                 <p className="text-[11px] text-sky-800 leading-relaxed">
                   فایل PDF کم‌حجم تولید شده و از طریق منوی اشتراک‌گذاری سیستم یا پیام‌رسان‌ها به عنوان سند رسمی ارسال می‌گردد:
                 </p>
+
+                {/* Template Selector inside Social/PDF Modal */}
+                <div className="flex items-center justify-between bg-white/90 p-2 rounded-xl border border-sky-200 text-xs">
+                  <span className="text-[11px] font-bold text-sky-950">طرح و قالب خروجی PDF:</span>
+                  <div className="inline-flex rounded-lg p-0.5 bg-slate-100 border border-slate-200">
+                    <button
+                      type="button"
+                      id="exit-slip-social-tpl-simple-btn"
+                      onClick={() => setTemplate('simple')}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                        template === 'simple'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      ساده و خوانا (جدید)
+                    </button>
+                    <button
+                      type="button"
+                      id="exit-slip-social-tpl-standard-btn"
+                      onClick={() => setTemplate('standard')}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                        template === 'standard'
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      استاندارد
+                    </button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button
                     type="button"

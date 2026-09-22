@@ -643,7 +643,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                         </span>
                       ) : (
                         <span className="text-[10px] text-slate-600 bg-white border border-slate-200 px-1.5 py-0.5 rounded-md font-medium">
-                          {inv.type === 'official' ? 'فاکتور رسمی' : inv.type === 'thermal' ? 'رسید حرارتی' : 'فروشگاهی'}
+                          {inv.type === 'official' ? 'فاکتور رسمی' : inv.type === 'thermal' ? 'رسید حرارتی' : inv.type === 'simple' ? 'ساده و خوانا' : 'فروشگاهی'}
                         </span>
                       )}
                       {inv.convertedFromProforma && (
@@ -912,6 +912,8 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                               ? 'فاکتور رسمی'
                               : inv.type === 'thermal'
                               ? 'رسید حرارتی'
+                              : inv.type === 'simple'
+                              ? 'ساده و خوانا'
                               : 'فروشگاهی'}
                           </span>
                           {inv.convertedFromProforma && (

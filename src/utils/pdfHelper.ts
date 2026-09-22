@@ -158,10 +158,22 @@ export const exportElementToPdf = async (
           (el as HTMLElement).style.setProperty('visibility', 'hidden', 'important');
         });
 
-        // Force cloned element itself to have auto height, full specified width, and zero clipping
-        clonedElement.style.setProperty('height', 'auto', 'important');
+        // Force cloned element itself to have proper dimensions according to document type
+        const isLandscape = orientation === 'landscape';
+        const targetAspectRatio = isLandscape ? (297 / 210) : (210 / 297);
+        const targetMinHeightPx = Math.round(targetWidthPx / targetAspectRatio);
+
+        if (options?.documentType === 'exit_slip') {
+          clonedElement.style.setProperty('min-height', `${targetMinHeightPx}px`, 'important');
+          clonedElement.style.setProperty('height', `${targetMinHeightPx}px`, 'important');
+          clonedElement.style.setProperty('display', 'flex', 'important');
+          clonedElement.style.setProperty('flex-direction', 'column', 'important');
+          clonedElement.style.setProperty('justify-content', 'space-between', 'important');
+        } else {
+          clonedElement.style.setProperty('height', 'auto', 'important');
+          clonedElement.style.setProperty('min-height', 'fit-content', 'important');
+        }
         clonedElement.style.setProperty('max-height', 'none', 'important');
-        clonedElement.style.setProperty('min-height', 'fit-content', 'important');
         clonedElement.style.setProperty('align-self', 'flex-start', 'important');
         clonedElement.style.setProperty('overflow', 'visible', 'important');
         clonedElement.style.setProperty('width', `${targetWidthPx}px`, 'important');
@@ -291,7 +303,10 @@ export const exportElementToPdf = async (
     const contentWidth = usableWidth;
     const contentHeight = (canvas.height * contentWidth) / canvas.width;
 
-    if (contentHeight <= usableHeight) {
+    if (options?.documentType === 'exit_slip' && contentHeight <= usableHeight * 1.08) {
+      // Exit slip fills the entire single page gracefully with balanced margins
+      pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, usableHeight, undefined, 'FAST');
+    } else if (contentHeight <= usableHeight) {
       // Content fits naturally on a single page
       pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, contentHeight, undefined, 'FAST');
     } else if (paperSize === 'a5' || contentHeight <= usableHeight * 1.95) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Invoice, StoreSettings } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { exportElementToPdf, printElementDirectly, printElementInNewWindow, generatePdfBlob } from '../utils/pdfHelper';
@@ -21,8 +21,10 @@ import {
   Send,
   ExternalLink,
   Smartphone,
-  Download
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
+import { SimpleInvoiceLayout } from './SimpleInvoiceLayout';
 
 interface InvoiceViewModalProps {
   invoice: Invoice | null;
@@ -40,23 +42,58 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   onEditInvoice,
 }) => {
   const defaultTpl = invoice?.type || settings.defaultTemplate || 'standard';
-  const [template, setTemplate] = useState<'standard' | 'official' | 'thermal'>(defaultTpl);
+  const [template, setTemplate] = useState<'standard' | 'official' | 'thermal' | 'simple'>(defaultTpl);
   const [copied, setCopied] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [showSocialModal, setShowSocialModal] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
+  // Paper format & orientation settings (persisted in localStorage)
+  const [pageSize, setPageSize] = useState<'a4' | 'a5'>(() => {
+    try {
+      return (localStorage.getItem('invoice_paper_size') as 'a4' | 'a5') || 'a4';
+    } catch {
+      return 'a4';
+    }
+  });
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>(() => {
+    try {
+      return (localStorage.getItem('invoice_orientation') as 'portrait' | 'landscape') || 'portrait';
+    } catch {
+      return 'portrait';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('invoice_paper_size', pageSize);
+    } catch {}
+  }, [pageSize]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('invoice_orientation', orientation);
+    } catch {}
+  }, [orientation]);
+
   if (!invoice) return null;
 
   const currentTemplate = template;
+  const isA5 = pageSize === 'a5';
+  const isLandscape = orientation === 'landscape';
+  const isA5Landscape = isA5 && isLandscape;
+  const isA5Portrait = isA5 && !isLandscape;
+  const isA4Landscape = !isA5 && isLandscape;
+  const isA4Portrait = !isA5 && !isLandscape;
 
   const handlePrint = () => {
     const docTitle = invoice.isProforma
-      ? `پیش‌فاکتور فروش شماره ${invoice.invoiceNumber}`
-      : `فاکتور فروش شماره ${invoice.invoiceNumber}`;
-    const opened = printElementInNewWindow('printable-invoice', docTitle);
+      ? `پیش‌فاکتور فروش شماره ${invoice.invoiceNumber} (${pageSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'})`
+      : `فاکتور فروش شماره ${invoice.invoiceNumber} (${pageSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'})`;
+    const printOptions = { pageSize, orientation, documentType: 'invoice' as const };
+    const opened = printElementInNewWindow('printable-invoice', docTitle, printOptions);
     if (!opened) {
-      printElementDirectly('printable-invoice');
+      printElementDirectly('printable-invoice', printOptions);
     }
   };
 
@@ -64,9 +101,9 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
     try {
       setIsExportingPdf(true);
       const filename = invoice.isProforma
-        ? `پیش_فاکتور_${invoice.invoiceNumber}`
-        : `فاکتور_فروش_${invoice.invoiceNumber}`;
-      await exportElementToPdf('printable-invoice', filename, { documentType: 'invoice' });
+        ? `پیش_فاکتور_${invoice.invoiceNumber}_${pageSize}_${orientation}`
+        : `فاکتور_فروش_${invoice.invoiceNumber}_${pageSize}_${orientation}`;
+      await exportElementToPdf('printable-invoice', filename, { pageSize, orientation, documentType: 'invoice' });
     } finally {
       setIsExportingPdf(false);
     }
@@ -124,9 +161,9 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
     setIsExportingPdf(true);
     try {
       const filename = invoice.isProforma
-        ? `پیش_فاکتور_${invoice.invoiceNumber}.pdf`
-        : `فاکتور_فروش_${invoice.invoiceNumber}.pdf`;
-      const { success, blob, file, error } = await generatePdfBlob('printable-invoice', filename, { documentType: 'invoice' });
+        ? `پیش_فاکتور_${invoice.invoiceNumber}_${pageSize}_${orientation}.pdf`
+        : `فاکتور_فروش_${invoice.invoiceNumber}_${pageSize}_${orientation}.pdf`;
+      const { success, blob, file, error } = await generatePdfBlob('printable-invoice', filename, { pageSize, orientation, documentType: 'invoice' });
       if (!success || (!file && !blob)) {
         showToast(error || 'خطا در تولید فایل PDF');
         return;
@@ -290,6 +327,18 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                   فروشگاهی
                 </button>
               )}
+              {settings.enableSimpleTemplate !== false && (
+                <button
+                  id="modal-tpl-simple"
+                  onClick={() => setTemplate('simple')}
+                  className={`px-2 py-1 rounded-md transition-all cursor-pointer text-[11px] ${
+                    currentTemplate === 'simple' ? 'bg-emerald-600 text-white font-bold' : 'text-slate-300 hover:text-white'
+                  }`}
+                  title="قالب ساده، جدول مقادیر و چیدمان منظم با خوانایی بسیار بالا"
+                >
+                  ساده و خوانا
+                </button>
+              )}
               {settings.enableOfficialTemplate !== false && (
                 <button
                   id="modal-tpl-official"
@@ -313,6 +362,69 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                 </button>
               )}
             </div>
+
+            {/* Paper Size & Orientation Controls (for non-thermal templates) */}
+            {currentTemplate !== 'thermal' && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {/* Paper Size: A4 / A5 */}
+                <div className="inline-flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-xs">
+                  <span className="text-[10px] text-slate-400 px-1.5 select-none hidden sm:inline">ابعاد:</span>
+                  <button
+                    type="button"
+                    id="invoice-size-a4-btn"
+                    onClick={() => setPageSize('a4')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                      pageSize === 'a4'
+                        ? 'bg-amber-500 text-slate-950 shadow-xs'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-700'
+                    }`}
+                  >
+                    A4
+                  </button>
+                  <button
+                    type="button"
+                    id="invoice-size-a5-btn"
+                    onClick={() => setPageSize('a5')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                      pageSize === 'a5'
+                        ? 'bg-amber-500 text-slate-950 shadow-xs'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-700'
+                    }`}
+                  >
+                    A5
+                  </button>
+                </div>
+
+                {/* Orientation: عمودی (portrait) / افقی (landscape) */}
+                <div className="inline-flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-xs">
+                  <span className="text-[10px] text-slate-400 px-1.5 select-none hidden sm:inline">جهت:</span>
+                  <button
+                    type="button"
+                    id="invoice-orientation-portrait-btn"
+                    onClick={() => setOrientation('portrait')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                      orientation === 'portrait'
+                        ? 'bg-amber-500 text-slate-950 shadow-xs'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-700'
+                    }`}
+                  >
+                    عمودی
+                  </button>
+                  <button
+                    type="button"
+                    id="invoice-orientation-landscape-btn"
+                    onClick={() => setOrientation('landscape')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                      orientation === 'landscape'
+                        ? 'bg-amber-500 text-slate-950 shadow-xs'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-700'
+                    }`}
+                  >
+                    افقی
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Action Buttons: Share, WhatsApp, Print */}
             <div className="flex items-center gap-1.5">
@@ -396,22 +508,184 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
           </div>
         </div>
 
+        {/* Dynamic Paper Format & Orientation Styles for Invoices */}
+        {currentTemplate !== 'thermal' && (
+          <style>{`
+            @media print {
+              @page {
+                size: ${pageSize.toUpperCase()} ${orientation} !important;
+                margin: ${isA5Landscape ? '4mm' : isA5Portrait ? '5mm' : '8mm'} !important;
+              }
+              body {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              #printable-invoice {
+                border: none !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                max-width: none !important;
+                background: white !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: space-between !important;
+                page-break-inside: avoid !important;
+                page-break-after: avoid !important;
+              }
+              #printable-invoice button,
+              #printable-invoice .no-print,
+              #printable-invoice .no-pdf {
+                display: none !important;
+                visibility: hidden !important;
+              }
+            }
+
+            #printable-invoice {
+              box-sizing: border-box !important;
+              margin: 0 auto;
+            }
+
+            /* === A4 PORTRAIT === */
+            #printable-invoice.paper-a4.paper-portrait {
+              width: 100% !important;
+              max-width: 840px !important;
+              padding: 24px 32px !important;
+              font-size: 13px !important;
+            }
+            #printable-invoice.paper-a4.paper-portrait table th,
+            #printable-invoice.paper-a4.paper-portrait table td {
+              padding: 6px 10px !important;
+              font-size: 12px !important;
+            }
+
+            /* === A4 LANDSCAPE === */
+            #printable-invoice.paper-a4.paper-landscape {
+              width: 100% !important;
+              max-width: 1060px !important;
+              padding: 18px 26px !important;
+              font-size: 12px !important;
+            }
+            #printable-invoice.paper-a4.paper-landscape table th,
+            #printable-invoice.paper-a4.paper-landscape table td {
+              padding: 5px 8px !important;
+              font-size: 11.5px !important;
+            }
+            #printable-invoice.paper-a4.paper-landscape .invoice-signatures {
+              padding-top: 14px !important;
+            }
+
+            /* === A5 PORTRAIT === */
+            #printable-invoice.paper-a5.paper-portrait {
+              width: 100% !important;
+              max-width: 580px !important;
+              padding: 12px 16px !important;
+              font-size: 10.5px !important;
+              line-height: 1.35 !important;
+            }
+            #printable-invoice.paper-a5.paper-portrait h1 {
+              font-size: 14px !important;
+            }
+            #printable-invoice.paper-a5.paper-portrait h2 {
+              font-size: 15px !important;
+            }
+            #printable-invoice.paper-a5.paper-portrait table th,
+            #printable-invoice.paper-a5.paper-portrait table td {
+              padding: 3px 5px !important;
+              font-size: 10px !important;
+            }
+            #printable-invoice.paper-a5.paper-portrait .invoice-header {
+              padding-bottom: 8px !important;
+              margin-bottom: 6px !important;
+            }
+            #printable-invoice.paper-a5.paper-portrait .space-y-5 {
+              gap: 8px !important;
+            }
+            #printable-invoice.paper-a5.paper-portrait .space-y-4 {
+              gap: 8px !important;
+            }
+            #printable-invoice.paper-a5.paper-portrait .space-y-12 {
+              gap: 16px !important;
+            }
+            #printable-invoice.paper-a5.paper-portrait .invoice-signatures {
+              padding-top: 8px !important;
+              padding-bottom: 2px !important;
+            }
+
+            /* === A5 LANDSCAPE === */
+            #printable-invoice.paper-a5.paper-landscape {
+              width: 100% !important;
+              max-width: 780px !important;
+              padding: 10px 14px !important;
+              font-size: 9.5px !important;
+              line-height: 1.3 !important;
+            }
+            #printable-invoice.paper-a5.paper-landscape h1 {
+              font-size: 13px !important;
+            }
+            #printable-invoice.paper-a5.paper-landscape h2 {
+              font-size: 14px !important;
+            }
+            #printable-invoice.paper-a5.paper-landscape table th,
+            #printable-invoice.paper-a5.paper-landscape table td {
+              padding: 2.5px 4.5px !important;
+              font-size: 9.5px !important;
+            }
+            #printable-invoice.paper-a5.paper-landscape .invoice-header {
+              padding-bottom: 6px !important;
+              margin-bottom: 4px !important;
+            }
+            #printable-invoice.paper-a5.paper-landscape .space-y-5 {
+              gap: 6px !important;
+            }
+            #printable-invoice.paper-a5.paper-landscape .space-y-4 {
+              gap: 6px !important;
+            }
+            #printable-invoice.paper-a5.paper-landscape .space-y-12 {
+              gap: 12px !important;
+            }
+            #printable-invoice.paper-a5.paper-landscape .invoice-signatures {
+              padding-top: 6px !important;
+              padding-bottom: 2px !important;
+            }
+
+            /* Universal Persian typography fixes */
+            #printable-invoice * {
+              letter-spacing: normal !important;
+              word-spacing: normal !important;
+              font-variant-ligatures: normal !important;
+              text-rendering: geometricPrecision !important;
+            }
+          `}</style>
+        )}
+
         {/* Printable Paper Area */}
         <div className="overflow-x-auto overflow-y-auto p-2 sm:p-8 bg-slate-100/60 print:p-0 print:bg-white flex justify-center">
           {/* Paper Container */}
           <div
             id="printable-invoice"
-            className={`bg-white shadow-md print:shadow-none print:border-none border border-slate-200 transition-all ${
+            className={`print-container bg-white shadow-md print:shadow-none print:border-none border border-slate-200 transition-all flex flex-col justify-between ${
               currentTemplate === 'thermal'
                 ? 'w-full max-w-[340px] p-4 text-[12px]'
-                : 'w-full max-w-[800px] p-6 sm:p-8 text-[13px]'
+                : `w-full transition-all ${isA5 ? 'paper-a5' : 'paper-a4'} ${
+                    isLandscape ? 'paper-landscape' : 'paper-portrait'
+                  }`
             }`}
           >
-            {/* TEMPLATE 1 & 2: STANDARD OR OFFICIAL */}
-            {currentTemplate !== 'thermal' ? (
-              <div className="space-y-5">
+            {/* TEMPLATE: SIMPLE & HIGH READABILITY */}
+            {currentTemplate === 'simple' ? (
+              <SimpleInvoiceLayout 
+                invoice={invoice} 
+                settings={settings} 
+                pageSize={pageSize}
+                orientation={orientation}
+              />
+            ) : currentTemplate !== 'thermal' ? (
+              /* TEMPLATE: STANDARD OR OFFICIAL */
+              <div className={isA5 ? 'space-y-3' : 'space-y-5'}>
                 {/* Header: Seller Brand + Invoice Title & Meta */}
-                <div className="border-b-2 border-slate-900 pb-4">
+                <div className={`invoice-header border-b-2 border-slate-900 ${isA5 ? 'pb-2' : 'pb-4'}`}>
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
                       <h2 className="text-xl font-extrabold text-slate-900">
@@ -646,12 +920,14 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                 </div>
 
                 {/* Signatures & Stamps */}
-                <div className="grid grid-cols-2 pt-8 pb-4 text-center text-xs text-slate-600 border-t border-slate-200">
-                  <div className="space-y-12">
+                <div className={`invoice-signatures grid grid-cols-2 text-center text-slate-600 border-t border-slate-200 ${
+                  isA5 ? 'pt-3 pb-1 text-[10px]' : 'pt-8 pb-4 text-xs'
+                }`}>
+                  <div className={isA5 ? (isLandscape ? 'space-y-3' : 'space-y-4') : 'space-y-12'}>
                     <span className="font-bold text-slate-700">مهر و امضای خریدار</span>
                     <div className="text-[11px] text-slate-400">کالا صحیح و سالم تحویل گردید</div>
                   </div>
-                  <div className="space-y-12">
+                  <div className={isA5 ? (isLandscape ? 'space-y-3' : 'space-y-4') : 'space-y-12'}>
                     <span className="font-bold text-slate-700">مهر و امضای فروشنده</span>
                     <div className="text-[11px] text-slate-400">{settings.storeName}</div>
                   </div>
@@ -802,9 +1078,45 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                     سند رسمی دیجیتال
                   </span>
                 </div>
-                <p className="text-[11px] text-sky-800 leading-relaxed">
-                  فایل PDF رسمی و کم‌حجم فاکتور تولید شده و از طریق منوی اشتراک‌گذاری سیستم یا پیام‌رسان‌ها به عنوان سند رسمی ارسال می‌گردد:
-                </p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 bg-white/90 p-2 rounded-lg border border-sky-200 text-[11px]">
+                  <span className="text-slate-700 font-medium">قالب اعمال شده روی فایل PDF:</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setTemplate('simple')}
+                      className={`px-2 py-0.5 rounded text-[11px] font-bold cursor-pointer transition-all ${
+                        template === 'simple'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      ساده و خوانا
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTemplate('standard')}
+                      className={`px-2 py-0.5 rounded text-[11px] font-bold cursor-pointer transition-all ${
+                        template === 'standard'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      فروشگاهی
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTemplate('official')}
+                      className={`px-2 py-0.5 rounded text-[11px] font-bold cursor-pointer transition-all ${
+                        template === 'official'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      رسمی
+                    </button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button
                     type="button"

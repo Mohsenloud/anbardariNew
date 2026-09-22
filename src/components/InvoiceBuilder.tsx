@@ -101,7 +101,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     }
   };
 
-  const [invoiceType, setInvoiceType] = useState<'standard' | 'official' | 'thermal'>(() => {
+  const [invoiceType, setInvoiceType] = useState<'standard' | 'official' | 'thermal' | 'simple'>(() => {
     if (editingInvoice) return editingInvoice.type || 'standard';
     return settings.defaultTemplate || 'standard';
   });
@@ -1371,7 +1371,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <span>•</span>
                 <span>تاریخ: <b className="text-slate-800 font-bold">{invoiceDate}</b></span>
                 <span>•</span>
-                <span>قالب چاپ: <b className="text-slate-800 font-bold">{invoiceType === 'standard' ? 'استاندارد A4/A5' : invoiceType === 'official' ? 'رسمی دارایی' : 'حرارتی ۸ سانتی'}</b></span>
+                <span>قالب چاپ: <b className="text-slate-800 font-bold">{invoiceType === 'standard' ? 'استاندارد A4/A5' : invoiceType === 'official' ? 'رسمی دارایی' : invoiceType === 'simple' ? 'ساده و خوانا' : 'حرارتی ۸ سانتی'}</b></span>
               </div>
             </div>
           </div>
@@ -3504,7 +3504,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   قالب چاپ فاکتور:
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
                     type="button"
                     onClick={() => setInvoiceType('standard')}
@@ -3526,6 +3526,17 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     }`}
                   >
                     رسمی دارایی
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceType('simple')}
+                    className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors ${
+                      invoiceType === 'simple'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                        : 'border-slate-200 bg-white text-slate-600'
+                    }`}
+                  >
+                    ساده و خوانا
                   </button>
                   <button
                     type="button"
