@@ -182,7 +182,16 @@ export interface StoreSettings {
   originWarehouseAddress?: string; // نشانی و آدرس دقیق انبار مبدأ
   originWarehousePhone?: string; // شماره تلفن / داخلی انبار مبدأ
   originWarehouseManager?: string; // نام مدیر، سرپرست یا انباردار انبار مبدأ
+
+  // کیفیت و وضوح فایل‌های خروجی PDF (فاکتور و حواله خروج انبار)
+  pdfInvoiceQuality?: 'economy' | 'standard' | 'high' | 'ultra'; // کیفیت فایل PDF فاکتور
+  pdfExitSlipQuality?: 'economy' | 'standard' | 'high' | 'ultra'; // کیفیت فایل PDF حواله خروج انبار
+  pdfSyncQuality?: boolean; // اعمال کیفیت یکسان برای هر دو بخش
+  pdfCustomScale?: number; // مقیاس رندر سفارشی (اختیاری)
+  pdfCustomCompression?: number; // کیفیت فشرده‌سازی تصویر سفارشی (اختیاری)
 }
+
+export type PdfQualityPreset = 'economy' | 'standard' | 'high' | 'ultra';
 
 export type UserRole = 'admin' | 'cashier' | 'warehouse' | 'accountant' | 'custom';
 

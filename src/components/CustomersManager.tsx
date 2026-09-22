@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { Customer, Invoice, StoreSettings, AppUser } from '../types';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
-import { exportCustomersToExcel } from '../utils/excelHelper';
+import { exportCustomersToExcel, exportPersonInvoicesAndExitSlipsToExcel } from '../utils/excelHelper';
 import { ExcelImportModal } from './ExcelImportModal';
+import { CustomerExportModal } from './CustomerExportModal';
 import { 
   Users, 
   Search, 
@@ -47,6 +48,8 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportModalCustomer, setExportModalCustomer] = useState<Customer | null>(null);
 
   // Filter customers
   const filteredCustomers = customers.filter((c) => {
@@ -112,7 +115,21 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 flex-wrap">
+          <button
+            type="button"
+            id="export-person-invoices-slips-btn"
+            onClick={() => {
+              setExportModalCustomer(null);
+              setIsExportModalOpen(true);
+            }}
+            title="خروجی فاکتورها و حواله‌های خروج یک شخص با جزییات کامل اکسل"
+            className="flex items-center gap-1.5 bg-purple-50 hover:bg-purple-100 active:scale-95 text-purple-800 border border-purple-300 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600" />
+            <span>اکسپورت اسناد و حواله‌های شخص</span>
+          </button>
+
           <button
             type="button"
             id="export-customers-excel-btn"
@@ -121,7 +138,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
             className="flex items-center gap-1.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 border border-slate-300 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
           >
             <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span className="hidden sm:inline">خروجی اکسل</span>
+            <span className="hidden sm:inline">خروجی اکسل مشتریان</span>
           </button>
 
           <button
@@ -247,7 +264,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                   </div>
 
                   {/* Summary & Quick Invoice Button */}
-                  <div className="pt-3 border-t border-slate-200/80 flex items-center justify-between">
+                  <div className="pt-3 border-t border-slate-200/80 flex items-center justify-between gap-2 flex-wrap">
                     <div>
                       <div className="text-[10px] text-slate-400">سفارشات:</div>
                       <div className="text-xs font-bold text-slate-800">
@@ -255,15 +272,31 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                       </div>
                     </div>
 
-                    {(!currentUser || currentUser.permissions.canCreateInvoice) && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <button
-                        onClick={() => onSelectCustomerForInvoice(cust)}
-                        className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer"
+                        type="button"
+                        id={`export-customer-excel-${cust.id}`}
+                        onClick={() => {
+                          setExportModalCustomer(cust);
+                          setIsExportModalOpen(true);
+                        }}
+                        title="خروجی اکسل فاکتورها و حواله‌های خروج این شخص با جزییات کامل"
+                        className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 transition-colors cursor-pointer"
                       >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>فاکتور جدید</span>
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600" />
+                        <span>اکسپورت اسناد</span>
                       </button>
-                    )}
+
+                      {(!currentUser || currentUser.permissions.canCreateInvoice) && (
+                        <button
+                          onClick={() => onSelectCustomerForInvoice(cust)}
+                          className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>فاکتور جدید</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -443,6 +476,19 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
           }}
         />
       )}
+
+      {/* CUSTOMER INVOICES & EXIT SLIPS EXCEL EXPORT MODAL */}
+      <CustomerExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => {
+          setIsExportModalOpen(false);
+          setExportModalCustomer(null);
+        }}
+        initialCustomerId={exportModalCustomer?.id}
+        customers={customers}
+        invoices={invoices}
+        settings={settings}
+      />
     </div>
   );
 };

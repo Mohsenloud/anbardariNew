@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Product, ProductVariant, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData, InboundReceipt, InboundReceiptItem, DirectTransfer } from '../types';
+import { Product, ProductVariant, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData, InboundReceipt, InboundReceiptItem, DirectTransfer, Customer } from '../types';
 import { toPersianDigits, toEnglishDigits, getCurrentJalaliDate, getCurrentJalaliTime, formatPrice } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
 import { exportProductsToExcel } from '../utils/excelHelper';
 import { ExcelImportModal } from './ExcelImportModal';
 import { ExitSlipModal } from './ExitSlipModal';
 import { ExitSlipDeliveryModal } from './ExitSlipDeliveryModal';
+import { CustomerExportModal } from './CustomerExportModal';
 import { InboundReceiptsList } from './InboundReceiptsList';
 import { DirectTransfersList } from './DirectTransfersList';
 import { 
@@ -117,12 +118,16 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   const [deliveryModalInvoice, setDeliveryModalInvoice] = useState<Invoice | null>(null);
   const [exitSlipSearch, setExitSlipSearch] = useState('');
   const [exitSlipFilter, setExitSlipFilter] = useState<'all' | 'pending_delivery' | 'delivered' | 'unprinted' | 'printed'>('all');
+  const [isCustomerExportModalOpen, setIsCustomerExportModalOpen] = useState(false);
+  const [customerExportSelected, setCustomerExportSelected] = useState<Customer | null>(null);
+  const [customersList, setCustomersList] = useState<Customer[]>(() => StorageService.getCustomers());
 
   // Keep storage in sync with updates
   useEffect(() => {
     const unsub = StorageService.subscribe(() => {
       setExitSlipLogs(StorageService.getExitSlipLogs());
       setDirectTransfers(StorageService.getDirectTransfers());
+      setCustomersList(StorageService.getCustomers());
     });
     return () => unsub();
   }, []);
@@ -1550,15 +1555,30 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
           {/* Slips Content Container */}
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-200/80 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="p-4 border-b border-slate-200/80 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="font-bold text-slate-800 text-sm">لیست برگه‌های خروج کالای انبار (کنترل فیزیکی و تحویل بار)</h3>
                 <p className="text-xs text-slate-500">
                   ثبت تاییدیه تحویل بار توسط انباردار، ثبت مشخصات ماشین و شماره تماس راننده، به همراه چاپ فیزیکی و سوابق
                 </p>
               </div>
-              <div className="text-xs text-slate-500 font-mono">
-                نمایش {toPersianDigits(filteredExitSlips.length)} از {toPersianDigits(invoices.length)} حواله
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <button
+                  type="button"
+                  id="export-customer-slips-from-inventory-btn"
+                  onClick={() => {
+                    setCustomerExportSelected(null);
+                    setIsCustomerExportModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                  title="خروجی اکسل فاکتورها و حواله‌های خروج انبار یک شخص با تمام جزییات"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600" />
+                  <span>اکسپورت اسناد و حواله‌های شخص</span>
+                </button>
+                <div className="text-xs text-slate-500 font-mono">
+                  نمایش {toPersianDigits(filteredExitSlips.length)} از {toPersianDigits(invoices.length)} حواله
+                </div>
               </div>
             </div>
 
@@ -1733,6 +1753,24 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                               <History className="w-4 h-4" />
                             </button>
                           )}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const found = customersList.find((c) => c.id === inv.customerId || c.name.trim().toLowerCase() === inv.customerName.trim().toLowerCase());
+                              setCustomerExportSelected(found || {
+                                id: inv.customerId || `cust-${inv.customerName}`,
+                                name: inv.customerName,
+                                phone: inv.customerPhone || '',
+                                createdAt: inv.date,
+                              });
+                              setIsCustomerExportModalOpen(true);
+                            }}
+                            className="p-2 text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-xl border border-purple-200 transition-colors cursor-pointer"
+                            title="خروجی اکسل فاکتورها و حواله‌های این شخص با تمام جزییات"
+                          >
+                            <FileSpreadsheet className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
                     );
@@ -1915,6 +1953,24 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                                   title="مشاهده سوابق و دفعات چاپ با زمان و تاریخ"
                                 >
                                   <History className="w-4 h-4" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const found = customersList.find((c) => c.id === inv.customerId || c.name.trim().toLowerCase() === inv.customerName.trim().toLowerCase());
+                                    setCustomerExportSelected(found || {
+                                      id: inv.customerId || `cust-${inv.customerName}`,
+                                      name: inv.customerName,
+                                      phone: inv.customerPhone || '',
+                                      createdAt: inv.date,
+                                    });
+                                    setIsCustomerExportModalOpen(true);
+                                  }}
+                                  className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg border border-purple-200 transition-colors cursor-pointer"
+                                  title="خروجی اکسل فاکتورها و حواله‌های این شخص با تمام جزییات"
+                                >
+                                  <FileSpreadsheet className="w-4 h-4" />
                                 </button>
                               </div>
                             </td>
@@ -2933,6 +2989,19 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           }}
         />
       )}
+
+      {/* CUSTOMER INVOICES & EXIT SLIPS EXCEL EXPORT MODAL */}
+      <CustomerExportModal
+        isOpen={isCustomerExportModalOpen}
+        onClose={() => {
+          setIsCustomerExportModalOpen(false);
+          setCustomerExportSelected(null);
+        }}
+        initialCustomerId={customerExportSelected?.id}
+        customers={customersList}
+        invoices={invoices || []}
+        settings={settings}
+      />
     </div>
   );
 };

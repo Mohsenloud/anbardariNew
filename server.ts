@@ -70,7 +70,7 @@ app.use('/api/', apiGeneralLimiter);
 // 2. Strict limiter for database writes & mutations (protects against flood attacks)
 const dbWriteLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 60, // max 60 writes per minute per IP
+  max: 300, // max 300 writes per minute per IP to prevent throttling legitimate multi-register actions
   standardHeaders: true,
   legacyHeaders: false,
   validate: false,
@@ -827,35 +827,71 @@ app.post('/api/database/snapshot', async (req, res) => {
   }
 });
 
-// 2. Fetch all shared data (Central synchronization with PostgreSQL support)
+// -------------------------------------------------------------
+// DUAL PERSISTENCE CONVERGENCE & WRITE SERIALIZATION (ZERO LOSS ENGINE)
+// -------------------------------------------------------------
+
+// Sequential promise chain to serialize all database writes and eliminate race conditions
+let dbWriteQueue: Promise<any> = Promise.resolve();
+
+function enqueueDbWrite<T>(task: () => Promise<T>): Promise<T> {
+  const next = dbWriteQueue.then(() => task(), () => task());
+  dbWriteQueue = next.catch(() => {});
+  return next;
+}
+
+// Bi-directional state convergence: always resolve to the highest revision between PostgreSQL and local file
+async function getLatestConvergedDatabase(): Promise<{ data: any; source: 'postgresql' | 'local-file' }> {
+  const localData = readDatabase();
+  const localRev = typeof localData.revision === 'number' ? localData.revision : 1;
+  const localUpdated = localData.updatedAt ? new Date(localData.updatedAt).getTime() : 0;
+
+  let pgData: any = null;
+  if (getPostgresStatus().connected) {
+    try {
+      pgData = await loadStateFromPostgres();
+    } catch (e: any) {
+      console.warn('[Postgres Read Warning]:', e.message);
+    }
+  }
+
+  if (pgData && typeof pgData === 'object' && Array.isArray(pgData.products)) {
+    const pgRev = typeof pgData.revision === 'number' ? pgData.revision : 1;
+    const pgUpdated = pgData.updatedAt ? new Date(pgData.updatedAt).getTime() : 0;
+
+    // Compare revisions and timestamps
+    if (localRev > pgRev || (localRev === pgRev && localUpdated > pgUpdated)) {
+      // Local snapshot is newer than PostgreSQL (e.g. Postgres experienced transient lag or downtime during previous save)
+      console.log(`[State Convergence] Local file (rev ${localRev}) is newer than PostgreSQL (rev ${pgRev}). Auto-healing PostgreSQL...`);
+      saveStateToPostgres(localData).catch((err) => console.warn('[Auto-Heal PG Warning]:', err.message));
+      return { data: localData, source: 'local-file' };
+    } else if (pgRev > localRev || (pgRev === localRev && pgUpdated > localUpdated)) {
+      // PostgreSQL is newer than local file
+      writeDatabase(pgData, false);
+      return { data: pgData, source: 'postgresql' };
+    } else {
+      // Both match
+      return { data: pgData, source: 'postgresql' };
+    }
+  }
+
+  // If Postgres is connected but tables were just initialized empty, seed from localData
+  if (getPostgresStatus().connected && (!pgData || !Array.isArray(pgData.products) || pgData.products.length === 0)) {
+    saveStateToPostgres(localData).catch((e) => console.warn('[Initial PG Seed Warning]:', e.message));
+  }
+
+  return { data: localData, source: 'local-file' };
+}
+
+// 2. Fetch all shared data (Central synchronization with dual persistence & auto-convergence)
 app.get('/api/db', async (req, res) => {
   try {
-    // 1. First attempt to fetch persistent data from PostgreSQL (mana_db)
-    const pgData = await loadStateFromPostgres();
-    if (pgData && typeof pgData === 'object' && Array.isArray(pgData.products)) {
-      return res.json({
-        success: true,
-        data: pgData,
-        source: 'postgresql',
-        database: 'mana_db',
-        serverTime: new Date().toISOString(),
-      });
-    }
-
-    // 2. Fallback to local hardened JSON file
-    const data = readDatabase();
-
-    // If PostgreSQL is connected but table was just created empty, seed initial data to mana_db
-    if (getPostgresStatus().connected) {
-      saveStateToPostgres(data).catch((e) => {
-        console.warn('[PostgreSQL Initial Sync Warning]:', e.message);
-      });
-    }
-
+    const { data, source } = await getLatestConvergedDatabase();
     res.json({
       success: true,
       data,
-      source: 'local-file',
+      source,
+      database: 'mana_db',
       serverTime: new Date().toISOString(),
     });
   } catch (error: any) {
@@ -863,7 +899,7 @@ app.get('/api/db', async (req, res) => {
   }
 });
 
-// 3. Save or update database (Dual persistence: PostgreSQL mana_db + Local Snapshot)
+// 3. Save or update database (Dual persistence: PostgreSQL mana_db + Local Snapshot with Serialized Queue & Zero Data Loss)
 app.post('/api/db', dbWriteLimiter, async (req, res) => {
   try {
     const incomingData = req.body;
@@ -883,59 +919,79 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
       }
     }
 
-    const currentDb = (await loadStateFromPostgres()) || readDatabase();
-    const currentRev = typeof currentDb.revision === 'number' ? currentDb.revision : 1;
-    const nowIso = new Date().toISOString();
-    
-    // Deep merge settings if provided so partial updates don't destroy existing settings
-    let mergedSettings = currentDb.settings;
-    if (incomingData.settings && typeof incomingData.settings === 'object') {
-      mergedSettings = {
-        ...(currentDb.settings || {}),
-        ...incomingData.settings,
-      };
-      if (Array.isArray(incomingData.settings.warehouses)) {
-        mergedSettings.warehouses = incomingData.settings.warehouses;
+    // Execute save operation inside the serialized write queue to prevent concurrent race conditions
+    const result = await enqueueDbWrite(async () => {
+      const { data: currentDb } = await getLatestConvergedDatabase();
+      const currentRev = typeof currentDb.revision === 'number' ? currentDb.revision : 1;
+      const nowIso = new Date().toISOString();
+      
+      // Deep merge settings if provided so partial updates don't destroy existing settings
+      let mergedSettings = currentDb.settings;
+      if (incomingData.settings && typeof incomingData.settings === 'object') {
+        mergedSettings = {
+          ...(currentDb.settings || {}),
+          ...incomingData.settings,
+        };
+        if (Array.isArray(incomingData.settings.warehouses)) {
+          mergedSettings.warehouses = incomingData.settings.warehouses;
+        }
       }
-    }
 
-    const updatedDb = {
-      ...currentDb,
-      ...incomingData,
-      ...(mergedSettings ? { settings: mergedSettings } : {}),
-      revision: currentRev + 1,
-      updatedAt: nowIso,
-    };
+      // Safe invoice handling: if incomingData contains invoices, apply deleted invoice exclusion if provided
+      let finalInvoices = currentDb.invoices || [];
+      if (Array.isArray(incomingData.invoices)) {
+        finalInvoices = incomingData.invoices;
+        if (Array.isArray(incomingData.deletedInvoiceIds) && incomingData.deletedInvoiceIds.length > 0) {
+          const delSet = new Set(incomingData.deletedInvoiceIds);
+          finalInvoices = finalInvoices.filter((inv: any) => !delSet.has(inv.id));
+        }
+      }
 
-    // Calculate checksum
-    const rawContent = JSON.stringify(updatedDb, null, 2);
-    updatedDb.checksum = crypto.createHash('sha256').update(rawContent).digest('hex');
+      const updatedDb = {
+        ...currentDb,
+        ...incomingData,
+        invoices: finalInvoices,
+        ...(mergedSettings ? { settings: mergedSettings } : {}),
+        revision: currentRev + 1,
+        updatedAt: nowIso,
+      };
 
-    // Dual-write: write to local file snapshot
-    const successLocal = writeDatabase(updatedDb, true);
+      // Calculate checksum
+      const rawContent = JSON.stringify(updatedDb, null, 2);
+      updatedDb.checksum = crypto.createHash('sha256').update(rawContent).digest('hex');
 
-    // Write to PostgreSQL mana_db
-    let pgSaved = false;
-    if (getPostgresStatus().connected) {
-      pgSaved = await saveStateToPostgres(updatedDb);
-    }
+      // Dual-write: write to local file snapshot first
+      const successLocal = writeDatabase(updatedDb, true);
 
-    if (!successLocal && !pgSaved) {
-      return res.status(500).json({ success: false, message: 'خطا در ذخیره‌سازی داده‌ها در سرور' });
-    }
+      // Write to PostgreSQL mana_db
+      let pgSaved = false;
+      if (getPostgresStatus().connected) {
+        try {
+          pgSaved = await saveStateToPostgres(updatedDb);
+        } catch (err: any) {
+          console.warn('[Postgres Save In Queue Warning]:', err.message);
+        }
+      }
 
-    res.json({
-      success: true,
-      revision: updatedDb.revision,
-      checksum: updatedDb.checksum,
-      updatedAt: updatedDb.updatedAt,
-      storage: {
-        local: successLocal,
-        postgresql: pgSaved,
-        database: 'mana_db',
-      },
-      message: 'داده‌ها با موفقیت در پایگاه‌داده ذخیره شدند.',
+      if (!successLocal && !pgSaved) {
+        throw new Error('خطا در ذخیره‌سازی داده‌ها در سرور (هارد دیسک و دیتابیس در دسترس نیستند)');
+      }
+
+      return {
+        success: true,
+        revision: updatedDb.revision,
+        checksum: updatedDb.checksum,
+        updatedAt: updatedDb.updatedAt,
+        storage: {
+          local: successLocal,
+          postgresql: pgSaved,
+          database: 'mana_db',
+        },
+        message: 'داده‌ها با موفقیت در پایگاه‌داده ذخیره شدند.',
+      };
     });
+
+    res.json(result);
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

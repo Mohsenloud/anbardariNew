@@ -131,14 +131,14 @@ export default function App() {
     // 1. Update Invoices list
     const updatedInvoices = [newInvoice, ...invoices];
     setInvoices(updatedInvoices);
-    StorageService.saveInvoices(updatedInvoices);
+
+    let currentProducts = [...products];
+    let updatedMovements = [...movements];
+    const newMovements: StockMovement[] = [];
+    const today = getCurrentJalaliDate();
 
     // 2. If auto-deduct is enabled and NOT a proforma, decrement inventory stock and record movements
     if (settings.autoDeductStock && !newInvoice.isProforma) {
-      let currentProducts = [...products];
-      const newMovements: StockMovement[] = [];
-      const today = getCurrentJalaliDate();
-
       newInvoice.items.forEach((item) => {
         const prodIndex = currentProducts.findIndex((p) => p.id === item.productId);
         if (prodIndex !== -1) {
@@ -185,12 +185,16 @@ export default function App() {
       });
 
       setProducts(currentProducts);
-      StorageService.saveProducts(currentProducts);
-
-      const updatedMovements = [...newMovements, ...movements];
+      updatedMovements = [...newMovements, ...movements];
       setMovements(updatedMovements);
-      StorageService.saveMovements(updatedMovements);
     }
+
+    // Atomic transaction save (invoices + products + movements in ONE unified payload)
+    StorageService.saveInvoiceTransaction({
+      invoices: updatedInvoices,
+      products: settings.autoDeductStock && !newInvoice.isProforma ? currentProducts : undefined,
+      movements: settings.autoDeductStock && !newInvoice.isProforma && newMovements.length > 0 ? updatedMovements : undefined,
+    });
 
     if (newInvoice.isProforma) {
       showToast(`پیش‌فاکتور شماره ${newInvoice.invoiceNumber} با موفقیت ثبت شد (بدون کسر از موجودی انبار).`);
@@ -330,18 +334,28 @@ export default function App() {
         });
       }
 
+      let updatedMovements = [...movements];
       if (newMovements.length > 0) {
         setProducts(currentProducts);
-        StorageService.saveProducts(currentProducts);
-        const updatedMovements = [...newMovements, ...movements];
+        updatedMovements = [...newMovements, ...movements];
         setMovements(updatedMovements);
-        StorageService.saveMovements(updatedMovements);
       }
-    }
 
-    const updatedInvoices = invoices.map((inv) => (inv.id === updatedInvoice.id ? updatedInvoice : inv));
-    setInvoices(updatedInvoices);
-    StorageService.saveInvoices(updatedInvoices);
+      const updatedInvoices = invoices.map((inv) => (inv.id === updatedInvoice.id ? updatedInvoice : inv));
+      setInvoices(updatedInvoices);
+
+      StorageService.saveInvoiceTransaction({
+        invoices: updatedInvoices,
+        products: newMovements.length > 0 ? currentProducts : undefined,
+        movements: newMovements.length > 0 ? updatedMovements : undefined,
+      });
+    } else {
+      const updatedInvoices = invoices.map((inv) => (inv.id === updatedInvoice.id ? updatedInvoice : inv));
+      setInvoices(updatedInvoices);
+      StorageService.saveInvoiceTransaction({
+        invoices: updatedInvoices,
+      });
+    }
 
     setEditingInvoice(null);
 
@@ -418,36 +432,62 @@ export default function App() {
         }
       });
 
-      setProducts(currentProducts);
-      StorageService.saveProducts(currentProducts);
-
+      let updatedMovements = [...movements];
       if (newMovements.length > 0) {
-        const updatedMovements = [...newMovements, ...movements];
+        setProducts(currentProducts);
+        updatedMovements = [...newMovements, ...movements];
         setMovements(updatedMovements);
-        StorageService.saveMovements(updatedMovements);
       }
-    }
 
-    // Update invoice record: change isProforma to false, new number, convertedAt, convertedFromProforma
-    const convertedInvoice: Invoice = {
-      ...proformaInvoice,
-      isProforma: false,
-      invoiceNumber: finalNumber,
-      date: today,
-      convertedAt: today,
-      convertedFromProforma: proformaInvoice.invoiceNumber,
-      notes: proformaInvoice.notes 
-        ? `${proformaInvoice.notes} (تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today})` 
-        : `تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today}`,
-    };
+      // Update invoice record: change isProforma to false, new number, convertedAt, convertedFromProforma
+      const convertedInvoice: Invoice = {
+        ...proformaInvoice,
+        isProforma: false,
+        invoiceNumber: finalNumber,
+        date: today,
+        convertedAt: today,
+        convertedFromProforma: proformaInvoice.invoiceNumber,
+        notes: proformaInvoice.notes 
+          ? `${proformaInvoice.notes} (تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today})` 
+          : `تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today}`,
+      };
 
-    const updatedInvoices = invoices.map((inv) => inv.id === proformaInvoice.id ? convertedInvoice : inv);
-    setInvoices(updatedInvoices);
-    StorageService.saveInvoices(updatedInvoices);
+      const updatedInvoices = invoices.map((inv) => inv.id === proformaInvoice.id ? convertedInvoice : inv);
+      setInvoices(updatedInvoices);
 
-    // If modal was open viewing this invoice, update it
-    if (viewingInvoice && viewingInvoice.id === proformaInvoice.id) {
-      setViewingInvoice(convertedInvoice);
+      StorageService.saveInvoiceTransaction({
+        invoices: updatedInvoices,
+        products: currentProducts,
+        movements: newMovements.length > 0 ? updatedMovements : undefined,
+      });
+
+      // If modal was open viewing this invoice, update it
+      if (viewingInvoice && viewingInvoice.id === proformaInvoice.id) {
+        setViewingInvoice(convertedInvoice);
+      }
+    } else {
+      const convertedInvoice: Invoice = {
+        ...proformaInvoice,
+        isProforma: false,
+        invoiceNumber: finalNumber,
+        date: today,
+        convertedAt: today,
+        convertedFromProforma: proformaInvoice.invoiceNumber,
+        notes: proformaInvoice.notes 
+          ? `${proformaInvoice.notes} (تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today})` 
+          : `تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today}`,
+      };
+
+      const updatedInvoices = invoices.map((inv) => inv.id === proformaInvoice.id ? convertedInvoice : inv);
+      setInvoices(updatedInvoices);
+
+      StorageService.saveInvoiceTransaction({
+        invoices: updatedInvoices,
+      });
+
+      if (viewingInvoice && viewingInvoice.id === proformaInvoice.id) {
+        setViewingInvoice(convertedInvoice);
+      }
     }
 
     // Log user activity
@@ -495,17 +535,22 @@ export default function App() {
       }
     });
 
-    setProducts(currentProducts);
-    StorageService.saveProducts(currentProducts);
+    // Mark invoice as deleted so background sync never resurrects it
+    StorageService.markInvoiceDeleted(invoice.id);
 
+    setProducts(currentProducts);
     const updatedMovements = [...returnMovements, ...movements];
     setMovements(updatedMovements);
-    StorageService.saveMovements(updatedMovements);
 
-    // Remove or cancel invoice
+    // Remove invoice
     const updatedInvoices = invoices.filter((i) => i.id !== invoice.id);
     setInvoices(updatedInvoices);
-    StorageService.saveInvoices(updatedInvoices);
+
+    StorageService.saveInvoiceTransaction({
+      invoices: updatedInvoices,
+      products: currentProducts,
+      movements: updatedMovements,
+    });
 
     StorageService.logActivity({
       category: 'warehouse',
@@ -520,6 +565,8 @@ export default function App() {
   // 3. DELETE INVOICE (بدون بازگردانی کالا)
   const handleDeleteInvoice = (invoiceId: string) => {
     const inv = invoices.find((i) => i.id === invoiceId);
+    StorageService.markInvoiceDeleted(invoiceId);
+
     const updatedInvoices = invoices.filter((i) => i.id !== invoiceId);
     setInvoices(updatedInvoices);
     StorageService.saveInvoices(updatedInvoices);

@@ -282,7 +282,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
       onRecordPrint(slipLog);
       
       const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}_${pageSize}_${orientation}`;
-      const result = await exportElementToPdf('printable-exit-slip', filename, { pageSize, orientation });
+      const result = await exportElementToPdf('printable-exit-slip', filename, { pageSize, orientation, documentType: 'exit_slip' });
       
       if (result.success) {
         showNotification(`فایل PDF برگه خروج در اندازه ${pageSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'} با موفقیت تولید و دانلود شد.`);
@@ -353,7 +353,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
     setIsExportingPdf(true);
     try {
       const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}_${pageSize}_${orientation}.pdf`;
-      const { success, blob, file, error } = await generatePdfBlob('printable-exit-slip', filename, { pageSize, orientation });
+      const { success, blob, file, error } = await generatePdfBlob('printable-exit-slip', filename, { pageSize, orientation, documentType: 'exit_slip' });
       if (!success || (!file && !blob)) {
         showNotification(error || 'خطا در تولید فایل PDF');
         return;

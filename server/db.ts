@@ -22,8 +22,8 @@ export function getPostgresPool(): pg.Pool | null {
         password: process.env.PGPASSWORD || '',
         database: process.env.PGDATABASE || 'mana_db',
         max: 10,
-        idleTimeoutMillis: 10000,
-        connectionTimeoutMillis: 1500,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 6000,
       });
 
       pool.on('error', (err) => {

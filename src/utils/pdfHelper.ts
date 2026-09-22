@@ -1,15 +1,102 @@
 import html2canvas from 'html2canvas-pro';
 import jsPDF from 'jspdf';
+import { StorageService } from './storage';
+import { PdfQualityPreset } from '../types';
+
+export interface PdfQualityProfile {
+  preset: PdfQualityPreset;
+  scale: number;
+  compression: number; // 0.1 to 1.0 (for canvas.toDataURL)
+  label: string;
+  badge: string;
+  approxSize: string;
+  description: string;
+}
+
+export const PDF_QUALITY_PRESETS: Record<PdfQualityPreset, PdfQualityProfile> = {
+  economy: {
+    preset: 'economy',
+    scale: 1.3,
+    compression: 0.72,
+    label: 'اقتصادی و کم‌حجم (فوق‌العاده سریع)',
+    badge: 'کم‌حجم ترین',
+    approxSize: '~۶۰ تا ۹۵ کیلوبایت',
+    description: 'کمترین حجم فایل، ایده‌آل برای ارسال با پیام‌رسان‌ها (ایتا، بله، واتساپ) و اینترنت ضعیف همراه',
+  },
+  standard: {
+    preset: 'standard',
+    scale: 1.85,
+    compression: 0.86,
+    label: 'استاندارد متعادل (پیشنهادی)',
+    badge: 'تعادل هوشمند',
+    approxSize: '~۱۲۰ تا ۱۸۰ کیلوبایت',
+    description: 'تعادل هوشمند بین وضوح عالی نوشته‌ها و بارکدها با حجم بهینه و مناسب برای بایگانی و اشتراک‌گذاری',
+  },
+  high: {
+    preset: 'high',
+    scale: 2.3,
+    compression: 0.94,
+    label: 'کیفیت بالا (شفاف و شارپ)',
+    badge: 'تفکیک بالا',
+    approxSize: '~۲۵۰ تا ۴۰۰ کیلوبایت',
+    description: 'تفکیک تصویر بسیار بالا و فونت‌های بدون تارشدگی، مناسب نمایش در مانیتور و کامپیوتر مشتری',
+  },
+  ultra: {
+    preset: 'ultra',
+    scale: 3.0,
+    compression: 0.98,
+    label: 'کیفیت فوق‌العاده چاپ (Ultra HD)',
+    badge: 'حداکثر رزولوشن',
+    approxSize: '~۴۵۰ تا ۷۵۰ کیلوبایت',
+    description: 'بیشترین وضوح خطوط و حروف جهت چاپ با پرینترهای لیزری صنعتی یا بایگانی اسناد رسمی دارایی',
+  },
+};
 
 export interface PdfExportOptions {
   pageSize?: 'a4' | 'a5';
   orientation?: 'portrait' | 'landscape';
+  documentType?: 'invoice' | 'exit_slip' | 'generic';
+  quality?: PdfQualityPreset;
+  scale?: number;
+  compression?: number;
 }
 
 /**
- * Exports a DOM element to an ultra-compact, high-speed, minimal-filesize PDF.
+ * Resolves render scale and JPEG compression according to user settings or caller overrides
+ */
+export function resolvePdfQuality(options?: PdfExportOptions): {
+  scale: number;
+  compression: number;
+  preset: PdfQualityPreset;
+  profile: PdfQualityProfile;
+} {
+  let preset: PdfQualityPreset = 'standard';
+
+  if (options?.quality) {
+    preset = options.quality;
+  } else {
+    try {
+      const settings = StorageService.getSettings();
+      if (options?.documentType === 'exit_slip') {
+        preset = settings?.pdfExitSlipQuality || 'high';
+      } else {
+        preset = settings?.pdfInvoiceQuality || 'standard';
+      }
+    } catch {
+      preset = options?.documentType === 'exit_slip' ? 'high' : 'standard';
+    }
+  }
+
+  const profile = PDF_QUALITY_PRESETS[preset] || PDF_QUALITY_PRESETS.standard;
+  const scale = options?.scale ?? profile.scale;
+  const compression = options?.compression ?? profile.compression;
+
+  return { scale, compression, preset, profile };
+}
+
+/**
+ * Exports a DOM element to a PDF configured with user quality settings.
  * Supports configurable page format (A4 or A5) and orientation (portrait or landscape).
- * Uses JPEG compression at 0.80 and internal stream compression to keep file size under ~120KB.
  */
 export const exportElementToPdf = async (
   elementId: string,
@@ -28,6 +115,8 @@ export const exportElementToPdf = async (
       ? (orientation === 'landscape' ? 780 : 560)
       : (orientation === 'landscape' ? 1080 : 820);
 
+  const { scale: renderScale, compression: jpegCompression } = resolvePdfQuality(options);
+
   try {
     // 0. Ensure all web fonts (especially Persian Vazirmatn) are completely loaded before capturing
     if (document.fonts) {
@@ -40,7 +129,7 @@ export const exportElementToPdf = async (
 
     // 1. Capture element with unclipped height and properly aligned coordinates
     const canvas = await html2canvas(element, {
-      scale: 2.0,
+      scale: renderScale,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
@@ -183,8 +272,8 @@ export const exportElementToPdf = async (
       },
     });
 
-    // 2. High-quality JPEG dataURL
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    // 2. High-quality JPEG dataURL with configured compression
+    const imgData = canvas.toDataURL('image/jpeg', jpegCompression);
     
     // 3. Create PDF with Deflate compression enabled and user-chosen format/orientation (default A4 portrait)
     const pdf = new jsPDF({
@@ -242,7 +331,7 @@ export const exportElementToPdf = async (
             canvas.width,
             currentSliceHeightPx
           );
-          const sliceImgData = sliceCanvas.toDataURL('image/jpeg', 0.95);
+          const sliceImgData = sliceCanvas.toDataURL('image/jpeg', jpegCompression);
           const sliceHeightMm = (currentSliceHeightPx * contentWidth) / canvas.width;
           pdf.addImage(sliceImgData, 'JPEG', margin, margin, contentWidth, sliceHeightMm, undefined, 'FAST');
         }
@@ -281,6 +370,8 @@ export const generatePdfBlob = async (
       ? (orientation === 'landscape' ? 780 : 560)
       : (orientation === 'landscape' ? 1080 : 820);
 
+  const { scale: renderScale, compression: jpegCompression } = resolvePdfQuality(options);
+
   try {
     // Ensure all web fonts (especially Persian Vazirmatn) are completely loaded before capturing
     if (document.fonts) {
@@ -292,7 +383,7 @@ export const generatePdfBlob = async (
     }
 
     const canvas = await html2canvas(element, {
-      scale: 2.0,
+      scale: renderScale,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
@@ -427,7 +518,7 @@ export const generatePdfBlob = async (
       },
     });
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const imgData = canvas.toDataURL('image/jpeg', jpegCompression);
     const pdf = new jsPDF({
       orientation: orientation,
       unit: 'mm',
@@ -480,7 +571,7 @@ export const generatePdfBlob = async (
             canvas.width,
             currentSliceHeightPx
           );
-          const sliceImgData = sliceCanvas.toDataURL('image/jpeg', 0.95);
+          const sliceImgData = sliceCanvas.toDataURL('image/jpeg', jpegCompression);
           const sliceHeightMm = (currentSliceHeightPx * contentWidth) / canvas.width;
           pdf.addImage(sliceImgData, 'JPEG', margin, margin, contentWidth, sliceHeightMm, undefined, 'FAST');
         }

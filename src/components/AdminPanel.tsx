@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StoreSettings, Product, Customer, Invoice, StockMovement, AppUser } from '../types';
+import { StoreSettings, Product, Customer, Invoice, StockMovement, AppUser, PdfQualityPreset } from '../types';
 import { StorageService } from '../utils/storage';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { exportInvoicesToCsv } from '../utils/csvExport';
+import { PDF_QUALITY_PRESETS } from '../utils/pdfHelper';
 import { UsersManager } from './UsersManager';
 import { ActivityLogsViewer } from './ActivityLogsViewer';
 import { BackupManager } from './BackupManager';
@@ -43,7 +44,9 @@ import {
   Filter,
   History,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FileDown,
+  Sparkles
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -216,7 +219,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           { id: 'logs', label: 'لاگ فعالیت و ردگیری رویدادها', icon: History },
           { id: 'modules', label: 'کنترل ماژول‌های سیستم', icon: SlidersHorizontal },
           { id: 'invoice', label: 'قوانین و رفتار فاکتورساز', icon: ReceiptText },
-          { id: 'templates', label: 'قالب‌های چاپ و پرداخت', icon: Printer },
+          { id: 'templates', label: 'قالب‌های چاپ و کیفیت PDF', icon: Printer },
           { id: 'store', label: 'مشخصات فروشگاه و برند', icon: Building2 },
         ]
       : []),
@@ -1484,6 +1487,229 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       readOnly
                       className="w-4 h-4 text-emerald-600 rounded"
                     />
+                  </div>
+                </div>
+              </div>
+
+              {/* Part C: PDF Quality Settings for Invoices & Exit Slips */}
+              <div className="space-y-6 pt-6 border-t border-slate-100">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                      <FileDown className="w-5 h-5 text-indigo-600" />
+                      تنظیمات کیفیت فایل خروجی PDF (فاکتورها و حواله خروج انبار)
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1">
+                      میزان کیفیت تصویر، وضوح چاپ متون و حجم نهایی فایل‌های PDF را با توجه به سرعت اینترنت و نوع استفاده خود تنظیم نمایید.
+                    </p>
+                  </div>
+
+                  {/* Sync Toggle */}
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 px-3 py-2 rounded-xl border border-slate-200 cursor-pointer select-none transition-colors shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={!!formData.pdfSyncQuality}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setFormData((prev) => ({
+                          ...prev,
+                          pdfSyncQuality: checked,
+                          ...(checked && prev.pdfInvoiceQuality
+                            ? { pdfExitSlipQuality: prev.pdfInvoiceQuality }
+                            : {}),
+                        }));
+                      }}
+                      className="w-4 h-4 text-emerald-600 rounded"
+                    />
+                    <span>اعمال کیفیت یکسان برای هر دو بخش</span>
+                  </label>
+                </div>
+
+                {/* Sub-section 1: Invoice PDF Quality */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-emerald-600" />
+                      <span className="text-xs font-black text-slate-800">
+                        کیفیت خروجی PDF فاکتورهای فروش و پیش‌فاکتور
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">
+                      کیفیت فعلی: {PDF_QUALITY_PRESETS[formData.pdfInvoiceQuality || 'standard']?.label}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {(Object.keys(PDF_QUALITY_PRESETS) as PdfQualityPreset[]).map((key) => {
+                      const preset = PDF_QUALITY_PRESETS[key];
+                      const isSelected = (formData.pdfInvoiceQuality || 'standard') === key;
+                      return (
+                        <div
+                          key={key}
+                          onClick={() => {
+                            setFormData((prev) => ({
+                              ...prev,
+                              pdfInvoiceQuality: key,
+                              ...(prev.pdfSyncQuality ? { pdfExitSlipQuality: key } : {}),
+                            }));
+                          }}
+                          className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between relative select-none active:scale-[0.99] ${
+                            isSelected
+                              ? 'border-emerald-600 bg-emerald-50/40 ring-2 ring-emerald-500/20 shadow-xs'
+                              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60'
+                          }`}
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span
+                                className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                  key === 'economy'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : key === 'standard'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : key === 'high'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : 'bg-purple-100 text-purple-800'
+                                }`}
+                              >
+                                {preset.badge}
+                              </span>
+                              <div
+                                className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                                  isSelected
+                                    ? 'border-emerald-600 bg-emerald-600 text-white'
+                                    : 'border-slate-300'
+                                }`}
+                              >
+                                {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                              </div>
+                            </div>
+                            <h4 className="font-bold text-xs text-slate-900 leading-snug">
+                              {preset.label}
+                            </h4>
+                            <p className="text-[11px] text-slate-500 leading-relaxed">
+                              {preset.description}
+                            </p>
+                          </div>
+
+                          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                            <span className="text-slate-400">حجم تقریبی:</span>
+                            <span className="font-bold font-mono text-slate-700 dir-ltr">
+                              {preset.approxSize}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Sub-section 2: Exit Slip PDF Quality */}
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Warehouse className="w-4 h-4 text-amber-600" />
+                      <span className="text-xs font-black text-slate-800">
+                        کیفیت خروجی PDF حواله خروج انبار و بارگیری
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">
+                      کیفیت فعلی: {PDF_QUALITY_PRESETS[formData.pdfExitSlipQuality || 'high']?.label}
+                    </span>
+                  </div>
+
+                  {formData.pdfSyncQuality ? (
+                    <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 flex items-center justify-between text-xs text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>
+                          کیفیت حواله خروج انبار بر اساس گزینه «اعمال کیفیت یکسان»، با فاکتور فروش هماهنگ است ({PDF_QUALITY_PRESETS[formData.pdfInvoiceQuality || 'standard']?.label}).
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFormData((prev) => ({ ...prev, pdfSyncQuality: false }))}
+                        className="text-[11px] text-indigo-600 font-bold hover:underline cursor-pointer"
+                      >
+                        تنظیم مستقل
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {(Object.keys(PDF_QUALITY_PRESETS) as PdfQualityPreset[]).map((key) => {
+                        const preset = PDF_QUALITY_PRESETS[key];
+                        const isSelected = (formData.pdfExitSlipQuality || 'high') === key;
+                        return (
+                          <div
+                            key={key}
+                            onClick={() => {
+                              setFormData((prev) => ({
+                                ...prev,
+                                pdfExitSlipQuality: key,
+                              }));
+                            }}
+                            className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between relative select-none active:scale-[0.99] ${
+                              isSelected
+                                ? 'border-amber-600 bg-amber-50/40 ring-2 ring-amber-500/20 shadow-xs'
+                                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60'
+                            }`}
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span
+                                  className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                    key === 'economy'
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : key === 'standard'
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : key === 'high'
+                                      ? 'bg-blue-100 text-blue-800'
+                                      : 'bg-purple-100 text-purple-800'
+                                  }`}
+                                >
+                                  {preset.badge}
+                                </span>
+                                <div
+                                  className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                                    isSelected
+                                      ? 'border-amber-600 bg-amber-600 text-white'
+                                      : 'border-slate-300'
+                                  }`}
+                                >
+                                  {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                </div>
+                              </div>
+                              <h4 className="font-bold text-xs text-slate-900 leading-snug">
+                                {preset.label}
+                              </h4>
+                              <p className="text-[11px] text-slate-500 leading-relaxed">
+                                {preset.description}
+                              </p>
+                            </div>
+
+                            <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                              <span className="text-slate-400">حجم تقریبی:</span>
+                              <span className="font-bold font-mono text-slate-700 dir-ltr">
+                                {preset.approxSize}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Practical Advice Banner */}
+                <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 flex items-start gap-3 text-xs text-indigo-950">
+                  <Sparkles className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <span className="font-bold block">راهنمای بهینه‌سازی حجم و کیفیت:</span>
+                    <p className="text-[11px] text-indigo-800/90 leading-relaxed">
+                      • اگر فاکتورها را به مشتریان از طریق پیام‌رسان‌ها مانند ایتا، بله یا واتساپ ارسال می‌کنید، گزینه <strong>«اقتصادی»</strong> یا <strong>«استاندارد»</strong> بیشترین سرعت دانلود و کمترین مصرف اینترنت را فراهم می‌کند.
+                      <br />
+                      • اگر فاکتورها یا حواله‌های خروج انبار را مستقیماً برای بایگانی سازمانی و پرینت با چاپگرهای لیزری نیاز دارید، گزینه <strong>«کیفیت بالا»</strong> یا <strong>«Ultra HD»</strong> شفاف‌ترین خطوط و بارکدها را ایجاد می‌کند.
+                    </p>
                   </div>
                 </div>
               </div>

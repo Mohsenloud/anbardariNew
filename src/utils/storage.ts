@@ -55,6 +55,7 @@ const STORAGE_KEYS = {
   EXIT_SLIP_LOGS: 'factor_app_exit_slip_logs_v1',
   ACTIVITY_LOGS: 'factor_app_activity_logs_v1',
   DIRECT_TRANSFERS: 'factor_app_direct_transfers_v1',
+  DELETED_INVOICES: 'factor_app_deleted_invoices_v1',
 };
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
@@ -596,6 +597,11 @@ const initialSettings: StoreSettings = {
   originWarehouseAddress: 'تهران، جاده مخصوص، کیلومتر ۱۲، خیابان بهار، سوله شماره ۴',
   originWarehousePhone: '۰۲۱-۵۵۴۴۳۳۲۲',
   originWarehouseManager: 'مرتضی اکبری (انباردار مرکزی)',
+
+  // کیفیت و وضوح فایل‌های خروجی PDF (فاکتور و حواله خروج انبار)
+  pdfInvoiceQuality: 'standard',
+  pdfExitSlipQuality: 'high',
+  pdfSyncQuality: false,
 };
 
 const initialActivityLogs: ActivityLog[] = [
@@ -698,6 +704,8 @@ export const StorageService = {
   _lastServerRevision: 0,
   _lastServerChecksum: '',
   _lastLocalSettingsSaveTime: 0,
+  _pendingPushPayload: {} as Record<string, any>,
+  _pushTimer: null as any,
 
   subscribe(fn: () => void) {
     this._listeners.push(fn);
@@ -716,22 +724,115 @@ export const StorageService = {
     });
   },
 
+  // Track deleted invoices to prevent zombie rebirth during sync
+  getDeletedInvoiceIds(): Set<string> {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.DELETED_INVOICES);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) return new Set(arr);
+      }
+    } catch {}
+    return new Set<string>();
+  },
+
+  markInvoiceDeleted(invoiceIds: string | string[]) {
+    try {
+      const ids = Array.isArray(invoiceIds) ? invoiceIds : [invoiceIds];
+      const current = this.getDeletedInvoiceIds();
+      ids.forEach((id) => current.add(id));
+      const arr = Array.from(current).slice(-1000);
+      localStorage.setItem(STORAGE_KEYS.DELETED_INVOICES, JSON.stringify(arr));
+      this.pushToServer({ deletedInvoiceIds: arr });
+    } catch {}
+  },
+
+  // Coalesced / debounced push to server for rapid sequential updates
+  queuePushToServer(partialPayload?: Record<string, any>) {
+    if (partialPayload) {
+      this._pendingPushPayload = {
+        ...this._pendingPushPayload,
+        ...partialPayload,
+      };
+    }
+    if (this._pushTimer) {
+      clearTimeout(this._pushTimer);
+    }
+    this._pushTimer = setTimeout(() => {
+      this._pushTimer = null;
+      const toSend = { ...this._pendingPushPayload };
+      this._pendingPushPayload = {};
+      this.pushToServer(toSend);
+    }, 60);
+  },
+
+  // Atomic multi-entity save for invoice workflows (Invoice + Stock deduction + Kardex movements + Logs)
+  saveInvoiceTransaction(params: {
+    invoices: Invoice[];
+    products?: Product[];
+    movements?: StockMovement[];
+    customers?: Customer[];
+    activityLogs?: ActivityLog[];
+  }) {
+    if (params.invoices) {
+      localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(params.invoices));
+    }
+    if (params.products) {
+      const { products: ensuredProducts } = ensureProductCodesAndBarcodes(params.products);
+      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(ensuredProducts));
+      params.products = ensuredProducts;
+    }
+    if (params.movements) {
+      localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(params.movements));
+    }
+    if (params.customers) {
+      localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(params.customers));
+    }
+    if (params.activityLogs) {
+      localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(params.activityLogs));
+    }
+
+    // Cancel any debounced partial pushes and perform one consolidated atomic push
+    if (this._pushTimer) {
+      clearTimeout(this._pushTimer);
+      this._pushTimer = null;
+    }
+    const deletedArr = Array.from(this.getDeletedInvoiceIds());
+    const payload: Record<string, any> = {
+      invoices: params.invoices,
+      deletedInvoiceIds: deletedArr,
+      ...this._pendingPushPayload,
+    };
+    if (params.products) payload.products = params.products;
+    if (params.movements) payload.movements = params.movements;
+    if (params.customers) payload.customers = params.customers;
+    if (params.activityLogs) payload.activityLogs = params.activityLogs;
+    this._pendingPushPayload = {};
+
+    this.pushToServer(payload);
+    this.notifyChange();
+  },
+
   // Asynchronously sync local changes to centralized server database
   async pushToServer(customPayload?: any): Promise<boolean> {
     try {
-      const payload = customPayload || {
-        products: this.getProducts(),
-        customers: this.getCustomers(),
-        invoices: this.getInvoices(),
-        purchaseInvoices: this.getPurchaseInvoices(),
-        inboundReceipts: this.getInboundReceipts(),
-        movements: this.getMovements(),
-        settings: this.getSettings(),
-        users: this.getUsers(),
-        exitSlipLogs: this.getExitSlipLogs(),
-        activityLogs: this.getActivityLogs(),
-        directTransfers: this.getDirectTransfers(),
-      };
+      const deletedArr = Array.from(this.getDeletedInvoiceIds());
+      const payload = customPayload
+        ? { deletedInvoiceIds: deletedArr, ...customPayload }
+        : {
+            products: this.getProducts(),
+            customers: this.getCustomers(),
+            invoices: this.getInvoices(),
+            purchaseInvoices: this.getPurchaseInvoices(),
+            inboundReceipts: this.getInboundReceipts(),
+            movements: this.getMovements(),
+            settings: this.getSettings(),
+            users: this.getUsers(),
+            exitSlipLogs: this.getExitSlipLogs(),
+            activityLogs: this.getActivityLogs(),
+            directTransfers: this.getDirectTransfers(),
+            deletedInvoiceIds: deletedArr,
+          };
       const res = await fetch('/api/db', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -752,7 +853,7 @@ export const StorageService = {
     }
   },
 
-  // Fetch updated records from server and sync into local storage
+  // Fetch updated records from server and sync into local storage with Zero-Loss Protection
   async syncFromServer(): Promise<boolean> {
     try {
       const res = await fetch('/api/db');
@@ -786,10 +887,36 @@ export const StorageService = {
           localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(d.customers));
           hasAnyUpdate = true;
         }
+        
+        // Zero-Loss Invoice Synchronization
         if (Array.isArray(d.invoices)) {
-          localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(d.invoices));
+          const localInvoices = this.getInvoices();
+          const deletedSet = this.getDeletedInvoiceIds();
+          const serverInvoiceMap = new Map(d.invoices.map((inv: Invoice) => [inv.id, inv]));
+
+          // Find local invoices not on server and NOT intentionally deleted by user
+          const unsyncedLocals = localInvoices.filter(
+            (inv) => !serverInvoiceMap.has(inv.id) && !deletedSet.has(inv.id)
+          );
+
+          let finalInvoices: Invoice[];
+          if (unsyncedLocals.length > 0) {
+            console.warn(
+              `[Data Safety] Preserving ${unsyncedLocals.length} local invoices not yet reflected on server:`,
+              unsyncedLocals.map((i) => i.invoiceNumber)
+            );
+            // Merge server invoices with local ones, placing unsynced ones first
+            finalInvoices = [...unsyncedLocals, ...d.invoices.filter((inv: Invoice) => !deletedSet.has(inv.id))];
+            // Immediately sync back to server so server records them!
+            this.pushToServer({ invoices: finalInvoices });
+          } else {
+            finalInvoices = d.invoices.filter((inv: Invoice) => !deletedSet.has(inv.id));
+          }
+
+          localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(finalInvoices));
           hasAnyUpdate = true;
         }
+
         if (Array.isArray(d.purchaseInvoices)) {
           localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(d.purchaseInvoices));
           hasAnyUpdate = true;
@@ -1058,7 +1185,7 @@ export const StorageService = {
     // پیش از ذخیره‌سازی، اطمینان از تکمیل بودن کد و بارکد تمام اقلام توسط سیستم
     const { products: ensuredProducts } = ensureProductCodesAndBarcodes(products);
     localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(ensuredProducts));
-    this.pushToServer({ products: ensuredProducts });
+    this.queuePushToServer({ products: ensuredProducts });
   },
 
   getCustomers(): Customer[] {
@@ -1076,7 +1203,7 @@ export const StorageService = {
 
   saveCustomers(customers: Customer[]) {
     localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
-    this.pushToServer({ customers });
+    this.queuePushToServer({ customers });
   },
 
   getInvoices(): Invoice[] {
@@ -1094,7 +1221,7 @@ export const StorageService = {
 
   saveInvoices(invoices: Invoice[]) {
     localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoices));
-    this.pushToServer({ invoices });
+    this.queuePushToServer({ invoices });
   },
 
   getPurchaseInvoices(): PurchaseInvoice[] {
@@ -1112,7 +1239,7 @@ export const StorageService = {
 
   savePurchaseInvoices(purchaseInvoices: PurchaseInvoice[]) {
     localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(purchaseInvoices));
-    this.pushToServer({ purchaseInvoices });
+    this.queuePushToServer({ purchaseInvoices });
   },
 
   savePurchaseInvoice(invoice: PurchaseInvoice) {
@@ -1146,7 +1273,7 @@ export const StorageService = {
 
   saveInboundReceipts(inboundReceipts: InboundReceipt[]) {
     localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(inboundReceipts));
-    this.pushToServer({ inboundReceipts });
+    this.queuePushToServer({ inboundReceipts });
   },
 
   saveInboundReceipt(receipt: InboundReceipt) {
@@ -1250,7 +1377,7 @@ export const StorageService = {
 
   saveMovements(movements: StockMovement[]) {
     localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(movements));
-    this.pushToServer({ movements });
+    this.queuePushToServer({ movements });
   },
 
   getSettings(): StoreSettings {
@@ -1281,6 +1408,12 @@ export const StorageService = {
       if (!merged.originWarehouseManager) {
         merged.originWarehouseManager = initialSettings.originWarehouseManager || 'مرتضی اکبری (انباردار مرکزی)';
       }
+      if (!merged.pdfInvoiceQuality) {
+        merged.pdfInvoiceQuality = 'standard';
+      }
+      if (!merged.pdfExitSlipQuality) {
+        merged.pdfExitSlipQuality = 'high';
+      }
       return merged;
     } catch {
       return initialSettings;
@@ -1294,6 +1427,9 @@ export const StorageService = {
       ...existing,
       ...settings,
     };
+    if (merged.pdfSyncQuality && merged.pdfInvoiceQuality) {
+      merged.pdfExitSlipQuality = merged.pdfInvoiceQuality;
+    }
     if (Array.isArray(settings.warehouses)) {
       merged.warehouses = settings.warehouses;
     }

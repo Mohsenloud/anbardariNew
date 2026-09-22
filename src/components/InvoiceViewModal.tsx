@@ -66,7 +66,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
       const filename = invoice.isProforma
         ? `پیش_فاکتور_${invoice.invoiceNumber}`
         : `فاکتور_فروش_${invoice.invoiceNumber}`;
-      await exportElementToPdf('printable-invoice', filename);
+      await exportElementToPdf('printable-invoice', filename, { documentType: 'invoice' });
     } finally {
       setIsExportingPdf(false);
     }
@@ -126,7 +126,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
       const filename = invoice.isProforma
         ? `پیش_فاکتور_${invoice.invoiceNumber}.pdf`
         : `فاکتور_فروش_${invoice.invoiceNumber}.pdf`;
-      const { success, blob, file, error } = await generatePdfBlob('printable-invoice', filename);
+      const { success, blob, file, error } = await generatePdfBlob('printable-invoice', filename, { documentType: 'invoice' });
       if (!success || (!file && !blob)) {
         showToast(error || 'خطا در تولید فایل PDF');
         return;

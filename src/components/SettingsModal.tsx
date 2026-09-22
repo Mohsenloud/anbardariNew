@@ -23,8 +23,14 @@ import {
   MapPin,
   Phone,
   UserCheck,
-  Hash
+  Hash,
+  FileDown,
+  Sparkles,
+  Check,
+  FileText
 } from 'lucide-react';
+import { PdfQualityPreset } from '../types';
+import { PDF_QUALITY_PRESETS } from '../utils/pdfHelper';
 
 interface SettingsModalProps {
   settings: StoreSettings;
@@ -570,6 +576,109 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 dir-ltr text-right"
                 />
               </div>
+            </div>
+
+            {/* Section 2.8: PDF Quality Settings */}
+            <div className="space-y-4 pt-4 border-t border-slate-200">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                  <FileDown className="w-4 h-4 text-indigo-600" />
+                  <span>کیفیت فایل خروجی PDF فاکتور و حواله خروج</span>
+                </h4>
+                <label className="flex items-center gap-2 text-[11px] font-bold text-slate-700 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!formData.pdfSyncQuality}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setFormData((prev) => ({
+                        ...prev,
+                        pdfSyncQuality: checked,
+                        ...(checked && prev.pdfInvoiceQuality
+                          ? { pdfExitSlipQuality: prev.pdfInvoiceQuality }
+                          : {}),
+                      }));
+                    }}
+                    className="w-3.5 h-3.5 text-emerald-600 rounded"
+                  />
+                  <span>یکسان‌سازی کیفیت هر دو</span>
+                </label>
+              </div>
+
+              {/* Invoice Quality */}
+              <div className="space-y-2">
+                <label className="block font-medium text-slate-700 text-xs">
+                  کیفیت PDF فاکتور فروش:
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {(Object.keys(PDF_QUALITY_PRESETS) as PdfQualityPreset[]).map((key) => {
+                    const preset = PDF_QUALITY_PRESETS[key];
+                    const isSelected = (formData.pdfInvoiceQuality || 'standard') === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => {
+                          setFormData((prev) => ({
+                            ...prev,
+                            pdfInvoiceQuality: key,
+                            ...(prev.pdfSyncQuality ? { pdfExitSlipQuality: key } : {}),
+                          }));
+                        }}
+                        className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-500 font-bold'
+                            : 'border-slate-200 bg-white hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-[11px] mb-1">
+                          <span className="font-bold text-slate-900">{preset.badge}</span>
+                          {isSelected && <Check className="w-3 h-3 text-emerald-600" />}
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate">{preset.approxSize}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Exit Slip Quality */}
+              {!formData.pdfSyncQuality && (
+                <div className="space-y-2 pt-2">
+                  <label className="block font-medium text-slate-700 text-xs">
+                    کیفیت PDF حواله خروج انبار:
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {(Object.keys(PDF_QUALITY_PRESETS) as PdfQualityPreset[]).map((key) => {
+                      const preset = PDF_QUALITY_PRESETS[key];
+                      const isSelected = (formData.pdfExitSlipQuality || 'high') === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            setFormData((prev) => ({
+                              ...prev,
+                              pdfExitSlipQuality: key,
+                            }));
+                          }}
+                          className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
+                            isSelected
+                              ? 'border-amber-600 bg-amber-50/50 ring-1 ring-amber-500 font-bold'
+                              : 'border-slate-200 bg-white hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between text-[11px] mb-1">
+                            <span className="font-bold text-slate-900">{preset.badge}</span>
+                            {isSelected && <Check className="w-3 h-3 text-amber-600" />}
+                          </div>
+                          <div className="text-[10px] text-slate-500 truncate">{preset.approxSize}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </form>
 

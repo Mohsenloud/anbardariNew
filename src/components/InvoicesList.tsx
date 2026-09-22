@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
-import { Invoice, StoreSettings, AppUser, Product } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Invoice, StoreSettings, AppUser, Product, Customer } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { exportInvoicesToCsv } from '../utils/csvExport';
 import { StorageService } from '../utils/storage';
+import { CustomerExportModal } from './CustomerExportModal';
 import { 
   Search, 
   Printer, 
@@ -78,6 +79,18 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
   const [paymentNewStatus, setPaymentNewStatus] = useState<'paid' | 'unpaid' | 'partial'>('paid');
   const [paymentNewAmount, setPaymentNewAmount] = useState<number>(0);
+
+  // Customer Excel Export Modal
+  const [isCustomerExportModalOpen, setIsCustomerExportModalOpen] = useState(false);
+  const [customerExportSelected, setCustomerExportSelected] = useState<Customer | null>(null);
+  const [customersList, setCustomersList] = useState<Customer[]>(() => StorageService.getCustomers());
+
+  useEffect(() => {
+    const unsub = StorageService.subscribe(() => {
+      setCustomersList(StorageService.getCustomers());
+    });
+    return () => unsub();
+  }, []);
 
   // Counts for document types
   const regularInvoicesCount = useMemo(() => invoices.filter((i) => !i.isProforma).length, [invoices]);
@@ -272,20 +285,36 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           )}
 
           {canAccessAdmin && (
-            <button
-              type="button"
-              id="export-filtered-invoices-csv-btn"
-              onClick={() => {
-                const filterLabel = statusFilter === 'all' ? 'همه' : statusFilter === 'paid' ? 'تسویه_شده' : statusFilter === 'partial' ? 'اقساطی' : 'نسیه';
-                exportInvoicesToCsv(filteredInvoices, settings, `گزارش_فاکتورها_${filterLabel}_${filteredInvoices.length}_فقره`);
-              }}
-              disabled={filteredInvoices.length === 0}
-              className="min-h-[44px] flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 border border-slate-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-              title="خروجی فایل اکسل و CSV فاکتورها جهت بارگذاری در نرم‌افزارهای حسابداری"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-              <span className="hidden sm:inline">خروجی اکسل</span>
-            </button>
+            <>
+              <button
+                type="button"
+                id="export-person-slips-invoices-list-btn"
+                onClick={() => {
+                  setCustomerExportSelected(null);
+                  setIsCustomerExportModalOpen(true);
+                }}
+                className="min-h-[44px] flex items-center justify-center gap-1.5 bg-purple-50 hover:bg-purple-100 active:bg-purple-200 text-purple-700 border border-purple-200 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0"
+                title="خروجی فایل اکسل فاکتورها و حواله‌های خروج یک شخص با جزییات کامل"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-purple-600" />
+                <span className="hidden sm:inline">اکسپورت اسناد شخص</span>
+              </button>
+
+              <button
+                type="button"
+                id="export-filtered-invoices-csv-btn"
+                onClick={() => {
+                  const filterLabel = statusFilter === 'all' ? 'همه' : statusFilter === 'paid' ? 'تسویه_شده' : statusFilter === 'partial' ? 'اقساطی' : 'نسیه';
+                  exportInvoicesToCsv(filteredInvoices, settings, `گزارش_فاکتورها_${filterLabel}_${filteredInvoices.length}_فقره`);
+                }}
+                disabled={filteredInvoices.length === 0}
+                className="min-h-[44px] flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 border border-slate-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                title="خروجی فایل اکسل و CSV فاکتورها جهت بارگذاری در نرم‌افزارهای حسابداری"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <span className="hidden sm:inline">خروجی اکسل</span>
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1515,6 +1544,19 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           </div>
         </div>
       )}
+
+      {/* CUSTOMER INVOICES & EXIT SLIPS EXCEL EXPORT MODAL */}
+      <CustomerExportModal
+        isOpen={isCustomerExportModalOpen}
+        onClose={() => {
+          setIsCustomerExportModalOpen(false);
+          setCustomerExportSelected(null);
+        }}
+        initialCustomerId={customerExportSelected?.id}
+        customers={customersList}
+        invoices={invoices}
+        settings={settings}
+      />
     </div>
   );
 };
