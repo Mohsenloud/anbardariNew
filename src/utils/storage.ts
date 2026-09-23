@@ -359,182 +359,13 @@ const initialCustomers: Customer[] = [
   },
 ];
 
-const initialInvoices: Invoice[] = [
-  {
-    id: 'inv-1',
-    invoiceNumber: '۱۴۰۳-۱۰۰۱',
-    type: 'standard',
-    customerId: 'cust-1',
-    customerName: 'شرکت فناوران داده‌پرداز پایتخت',
-    customerPhone: '۰۲۱-۸۸۹۹۰۰۱۱',
-    customerAddress: 'تهران، خیابان میرداماد، برج آرین، طبقه ۷ واحد ۱۴',
-    customerNationalId: '۱۰۱۰۴۵۶۷۸۹۰',
-    date: getCurrentJalaliDate(),
-    items: [
-      {
-        id: 'item-1',
-        productId: 'prod-1',
-        productName: 'لپ‌تاپ ایسوس Vivobook 15 (Core i5/16GB/512SSD)',
-        productCode: '1001',
-        unit: 'دستگاه',
-        quantity: 1,
-        unitPrice: 33200000,
-        buyPrice: 28500000,
-        discount: 700000,
-        total: 32500000,
-      },
-      {
-        id: 'item-2',
-        productId: 'prod-2',
-        productName: 'ماوس بی‌سیم لاجیتک مدل M185',
-        productCode: '1002',
-        unit: 'عدد',
-        quantity: 2,
-        unitPrice: 590000,
-        buyPrice: 430000,
-        discount: 0,
-        total: 1180000,
-      },
-    ],
-    subtotal: 34380000,
-    totalDiscount: 700000,
-    taxRate: 0,
-    taxAmount: 0,
-    finalTotal: 33680000,
-    paymentStatus: 'paid',
-    paymentMethod: 'pos',
-    paidAmount: 33680000,
-    notes: 'تسویه کامل از طریق کارتخوان فروشگاه انجام شد.',
-    createdAt: new Date().toISOString(),
-  },
-];
+const initialInvoices: Invoice[] = [];
 
-const initialPurchaseInvoices: PurchaseInvoice[] = [
-  {
-    id: 'pur-1',
-    invoiceNumber: 'PUR-1001',
-    supplierName: 'شرکت بازرگانی آوا تجارت پیشرو',
-    supplierPhone: '۰۲۱-۶۶۷۷۸۸۹۹',
-    supplierAddress: 'تهران، خیابان جمهوری، تقاطع حافظ، مجتمع تجاری امجد',
-    date: getCurrentJalaliDate(),
-    items: [
-      {
-        id: 'pur-item-1',
-        productId: 'prod-6',
-        productName: 'فلش مموری سن‌دیسک Ultra Flair 64GB',
-        productCode: '1006',
-        unit: 'عدد',
-        quantity: 15,
-        buyPrice: 310000,
-        discount: 0,
-        total: 4650000,
-      },
-      {
-        id: 'pur-item-2',
-        productId: 'prod-3',
-        productName: 'کیبورد مکانیکی گیمینگ تسکو GK 8128',
-        productCode: '1003',
-        unit: 'عدد',
-        quantity: 5,
-        buyPrice: 1350000,
-        discount: 150000,
-        total: 6600000,
-      },
-    ],
-    subtotal: 11400000,
-    totalDiscount: 150000,
-    taxRate: 0,
-    taxAmount: 0,
-    shippingCost: 80000,
-    finalTotal: 11330000,
-    paymentStatus: 'paid',
-    paymentMethod: 'transfer',
-    paidAmount: 11330000,
-    transferDescription: 'واریز از حساب بانک ملت شماره پیگیری ۷۸۴۵۱۲',
-    notes: 'تحویل باربری مرکزی با هماهنگی انباردار',
-    status: 'pending_receipt',
-    inboundReceiptId: 'rec-1',
-    createdAt: new Date().toISOString(),
-  },
-];
+const initialPurchaseInvoices: PurchaseInvoice[] = [];
 
-const initialInboundReceipts: InboundReceipt[] = [
-  {
-    id: 'rec-1',
-    receiptNumber: 'REC-1001',
-    purchaseInvoiceId: 'pur-1',
-    purchaseInvoiceNumber: 'PUR-1001',
-    supplierName: 'شرکت بازرگانی آوا تجارت پیشرو',
-    date: getCurrentJalaliDate(),
-    status: 'pending_verification',
-    items: [
-      {
-        id: 'rec-item-1',
-        productId: 'prod-6',
-        productName: 'فلش مموری سن‌دیسک Ultra Flair 64GB',
-        productCode: '1006',
-        unit: 'عدد',
-        expectedQuantity: 15,
-        receivedQuantity: 0,
-        discrepancy: -15,
-        buyPrice: 310000,
-      },
-      {
-        id: 'rec-item-2',
-        productId: 'prod-3',
-        productName: 'کیبورد مکانیکی گیمینگ تسکو GK 8128',
-        productCode: '1003',
-        unit: 'عدد',
-        expectedQuantity: 5,
-        receivedQuantity: 0,
-        discrepancy: -5,
-        buyPrice: 1350000,
-      },
-    ],
-    totalExpectedQuantity: 20,
-    totalReceivedQuantity: 0,
-    totalDiscrepancy: -20,
-    notes: 'حواله ورود صادر شده از فاکتور خرید PUR-1001 — در انتظار شمارش و تایید اقلام توسط انباردار',
-    createdAt: new Date().toISOString(),
-  },
-];
+const initialInboundReceipts: InboundReceipt[] = [];
 
-const initialMovements: StockMovement[] = [
-  {
-    id: 'mov-1',
-    productId: 'prod-1',
-    productName: 'لپ‌تاپ ایسوس Vivobook 15 (Core i5/16GB/512SSD)',
-    type: 'purchase',
-    quantity: 7,
-    remainingStock: 7,
-    date: getCurrentJalaliDate(),
-    note: 'ورود اولیه کالا به انبار مرکزی',
-  },
-  {
-    id: 'mov-2',
-    productId: 'prod-1',
-    productName: 'لپ‌تاپ ایسوس Vivobook 15 (Core i5/16GB/512SSD)',
-    type: 'sale',
-    quantity: -1,
-    remainingStock: 6,
-    invoiceId: 'inv-1',
-    invoiceNumber: '۱۴۰۳-۱۰۰۱',
-    date: getCurrentJalaliDate(),
-    note: 'کسر موجودی بابت صدور فاکتور فروش',
-  },
-  {
-    id: 'mov-3',
-    productId: 'prod-2',
-    productName: 'ماوس بی‌سیم لاجیتک مدل M185',
-    type: 'sale',
-    quantity: -2,
-    remainingStock: 18,
-    invoiceId: 'inv-1',
-    invoiceNumber: '۱۴۰۳-۱۰۰۱',
-    date: getCurrentJalaliDate(),
-    note: 'کسر موجودی بابت صدور فاکتور فروش',
-  },
-];
+const initialMovements: StockMovement[] = [];
 
 const initialSettings: StoreSettings = {
   appName: 'سیستم فاکتور و انبارداری',
@@ -669,41 +500,7 @@ const initialActivityLogs: ActivityLog[] = [
   },
 ];
 
-const initialDirectTransfers: DirectTransfer[] = [
-  {
-    id: 'trf-sample-1',
-    transferNumber: 'TRF-1001',
-    title: 'اعزام دستگاه جوشکاری اینورتر صنعتی به تعمیرگاه نوین',
-    type: 'repair',
-    status: 'dispatched',
-    isReturnable: true,
-    expectedReturnDate: '۱۴۰۳/۰۶/۲۸',
-    items: [
-      {
-        id: 'item-1',
-        productId: 'prod-hardener-1',
-        productName: 'رزین و هاردنر اپوکسی شفاف صنعتی',
-        productCode: '1001',
-        unit: 'کیلوگرم',
-        quantity: 1,
-        returnedQuantity: 0,
-        serialNumber: 'SN-98234-A',
-        notes: 'جهت عیب‌یابی برد تغذیه و سرویس دوره‌ای',
-      },
-    ],
-    warehouseId: 'wh-1',
-    warehouseName: 'انبار مرکزی سپهر',
-    dispatchedAt: '۱۴۰۳/۰۶/۲۰ - ۱۰:۳۰',
-    dispatchedBy: 'مرتضی اکبری',
-    receiverName: 'مهندس حسینی (تعمیرگاه نوین صنعت)',
-    receiverPhone: '۰۹۱۲۳۴۵۶۷۸۹',
-    dispatchVehicleInfo: 'وانت پیکان سفید - پلاک ۳۴ ب ۶۵۴ ایران ۴۴',
-    destination: 'تهران، شادآباد، بازار آهن، بلوک ۵',
-    dispatchNotes: 'دستگاه دچار نوسان ولتاژ شده است. همراه با کابل اتصال تحویل شد.',
-    returnRecords: [],
-    createdAt: '۱۴۰۳/۰۶/۲۰',
-  },
-];
+const initialDirectTransfers: DirectTransfer[] = [];
 
 export const initialSavedVehicles: SavedVehicle[] = [
   {
@@ -780,12 +577,35 @@ export const StorageService = {
 
   markInvoiceDeleted(invoiceIds: string | string[]) {
     try {
-      const ids = Array.isArray(invoiceIds) ? invoiceIds : [invoiceIds];
+      const ids = (Array.isArray(invoiceIds) ? invoiceIds : [invoiceIds]).filter(Boolean);
       const current = this.getDeletedInvoiceIds();
       ids.forEach((id) => current.add(id));
-      const arr = Array.from(current).slice(-1000);
+      const arr = Array.from(current).slice(-2000);
       localStorage.setItem(STORAGE_KEYS.DELETED_INVOICES, JSON.stringify(arr));
-      this.pushToServer({ deletedInvoiceIds: arr });
+
+      const delSet = new Set(arr);
+      const remaining = this.getInvoices().filter((inv) => !delSet.has(inv.id));
+      localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(remaining));
+
+      // Also clean up local exit slips
+      const logs = this.getExitSlipLogs();
+      let logsChanged = false;
+      ids.forEach((id) => {
+        if (logs[id]) {
+          delete logs[id];
+          logsChanged = true;
+        }
+      });
+      if (logsChanged) {
+        localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(logs));
+      }
+
+      this.pushToServer({
+        deletedInvoiceIds: arr,
+        invoices: remaining,
+        ...(logsChanged ? { exitSlipLogs: logs } : {}),
+      });
+      this.notifyChange();
     } catch {}
   },
 
@@ -931,31 +751,26 @@ export const StorageService = {
           hasAnyUpdate = true;
         }
         
-        // Zero-Loss Invoice Synchronization
-        if (Array.isArray(d.invoices)) {
-          const localInvoices = this.getInvoices();
-          const deletedSet = this.getDeletedInvoiceIds();
-          const serverInvoiceMap = new Map(d.invoices.map((inv: Invoice) => [inv.id, inv]));
-
-          // Find local invoices not on server and NOT intentionally deleted by user
-          const unsyncedLocals = localInvoices.filter(
-            (inv) => !serverInvoiceMap.has(inv.id) && !deletedSet.has(inv.id)
-          );
-
-          let finalInvoices: Invoice[];
-          if (unsyncedLocals.length > 0) {
-            console.warn(
-              `[Data Safety] Preserving ${unsyncedLocals.length} local invoices not yet reflected on server:`,
-              unsyncedLocals.map((i) => i.invoiceNumber)
-            );
-            // Merge server invoices with local ones, placing unsynced ones first
-            finalInvoices = [...unsyncedLocals, ...d.invoices.filter((inv: Invoice) => !deletedSet.has(inv.id))];
-            // Immediately sync back to server so server records them!
-            this.pushToServer({ invoices: finalInvoices });
-          } else {
-            finalInvoices = d.invoices.filter((inv: Invoice) => !deletedSet.has(inv.id));
+        // 1. Synchronize server-wide deleted invoice IDs
+        if (Array.isArray(d.deletedInvoiceIds)) {
+          const currentDeleted = this.getDeletedInvoiceIds();
+          let addedAny = false;
+          d.deletedInvoiceIds.forEach((id: string) => {
+            if (typeof id === 'string' && id && !currentDeleted.has(id)) {
+              currentDeleted.add(id);
+              addedAny = true;
+            }
+          });
+          if (addedAny) {
+            const arr = Array.from(currentDeleted).slice(-2000);
+            localStorage.setItem(STORAGE_KEYS.DELETED_INVOICES, JSON.stringify(arr));
           }
+        }
+        const deletedSet = this.getDeletedInvoiceIds();
 
+        // 2. Authoritative Invoice Synchronization (Server is Single Source of Truth)
+        if (Array.isArray(d.invoices)) {
+          const finalInvoices = d.invoices.filter((inv: Invoice) => !deletedSet.has(inv.id));
           localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(finalInvoices));
           hasAnyUpdate = true;
         }
@@ -1004,28 +819,15 @@ export const StorageService = {
         }
 
         if (d.exitSlipLogs && typeof d.exitSlipLogs === 'object' && !Array.isArray(d.exitSlipLogs)) {
-          const localLogs = this.getExitSlipLogs();
           const remoteLogs = (d.exitSlipLogs || {}) as Record<string, ExitSlipData>;
-          const merged: Record<string, ExitSlipData> = { ...remoteLogs };
-          for (const invId of Object.keys(localLogs)) {
-            const localSlip: ExitSlipData = localLogs[invId];
-            const existingRemote = merged[invId];
-            if (!existingRemote) {
-              merged[invId] = localSlip;
-            } else {
-              merged[invId] = {
-                ...existingRemote,
-                receiverName: existingRemote.receiverName || localSlip.receiverName,
-                receiverPhone: existingRemote.receiverPhone || localSlip.receiverPhone,
-                vehicleInfo: existingRemote.vehicleInfo || localSlip.vehicleInfo,
-                deliveryNotes: existingRemote.deliveryNotes || localSlip.deliveryNotes,
-                isDelivered: existingRemote.isDelivered !== undefined ? existingRemote.isDelivered : localSlip.isDelivered,
-                deliveredAt: existingRemote.deliveredAt || localSlip.deliveredAt,
-                deliveredBy: existingRemote.deliveredBy || localSlip.deliveredBy,
-              };
+          const cleaned: Record<string, ExitSlipData> = {};
+          // Only keep exit slips that belong to non-deleted invoices
+          for (const [invId, slip] of Object.entries(remoteLogs)) {
+            if (!deletedSet.has(invId)) {
+              cleaned[invId] = slip;
             }
           }
-          localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(merged));
+          localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(cleaned));
           hasAnyUpdate = true;
         }
 
@@ -1369,20 +1171,26 @@ export const StorageService = {
 
   getInvoices(): Invoice[] {
     const data = localStorage.getItem(STORAGE_KEYS.INVOICES);
+    const deletedSet = this.getDeletedInvoiceIds();
     if (!data) {
-      localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(initialInvoices));
-      return initialInvoices;
+      return [];
     }
     try {
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((inv: Invoice) => !deletedSet.has(inv.id));
+      }
+      return [];
     } catch {
-      return initialInvoices;
+      return [];
     }
   },
 
   saveInvoices(invoices: Invoice[]) {
-    localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoices));
-    this.queuePushToServer({ invoices });
+    const deletedSet = this.getDeletedInvoiceIds();
+    const clean = invoices.filter((inv) => !deletedSet.has(inv.id));
+    localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(clean));
+    this.queuePushToServer({ invoices: clean, deletedInvoiceIds: Array.from(deletedSet) });
   },
 
   getPurchaseInvoices(): PurchaseInvoice[] {

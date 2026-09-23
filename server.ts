@@ -204,6 +204,7 @@ const DEFAULT_INITIAL_DATA = {
   invoices: [],
   movements: [],
   exitSlipLogs: {},
+  deletedInvoiceIds: [],
   settings: {
     storeName: 'فروشگاه و توزیع سپهر',
     storePhone: '۰۲۱-۵۵۴۴۳۳۲۲',
@@ -939,20 +940,39 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         }
       }
 
-      // Safe invoice handling: if incomingData contains invoices, apply deleted invoice exclusion if provided
+      // Global deleted invoice tracking across all client devices
+      const serverDeletedIds = new Set<string>(
+        Array.isArray(currentDb.deletedInvoiceIds) ? currentDb.deletedInvoiceIds : []
+      );
+      if (Array.isArray(incomingData.deletedInvoiceIds)) {
+        incomingData.deletedInvoiceIds.forEach((id: string) => {
+          if (typeof id === 'string' && id.trim()) serverDeletedIds.add(id.trim());
+        });
+      }
+      const combinedDeletedIds = Array.from(serverDeletedIds).slice(-2000);
+      const delSet = new Set(combinedDeletedIds);
+
+      // Safe invoice handling: if incomingData contains invoices, apply deleted invoice exclusion
       let finalInvoices = currentDb.invoices || [];
       if (Array.isArray(incomingData.invoices)) {
         finalInvoices = incomingData.invoices;
-        if (Array.isArray(incomingData.deletedInvoiceIds) && incomingData.deletedInvoiceIds.length > 0) {
-          const delSet = new Set(incomingData.deletedInvoiceIds);
-          finalInvoices = finalInvoices.filter((inv: any) => !delSet.has(inv.id));
-        }
       }
+      if (delSet.size > 0) {
+        finalInvoices = finalInvoices.filter((inv: any) => !delSet.has(inv.id));
+      }
+
+      // Also clean up exitSlipLogs so deleted invoices do not leave ghost slips
+      const currentExitLogs = { ...(currentDb.exitSlipLogs || {}), ...(incomingData.exitSlipLogs || {}) };
+      delSet.forEach((delId) => {
+        delete currentExitLogs[delId];
+      });
 
       const updatedDb = {
         ...currentDb,
         ...incomingData,
         invoices: finalInvoices,
+        exitSlipLogs: currentExitLogs,
+        deletedInvoiceIds: combinedDeletedIds,
         ...(mergedSettings ? { settings: mergedSettings } : {}),
         revision: currentRev + 1,
         updatedAt: nowIso,
