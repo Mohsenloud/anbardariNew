@@ -6,10 +6,12 @@ import { exportProductsToExcel } from '../utils/excelHelper';
 import { ExcelImportModal } from './ExcelImportModal';
 import { ExitSlipModal } from './ExitSlipModal';
 import { ExitSlipDeliveryModal } from './ExitSlipDeliveryModal';
+import { ExitSlipDetailsModal } from './ExitSlipDetailsModal';
 import { CustomerExportModal } from './CustomerExportModal';
 import { InboundReceiptsList } from './InboundReceiptsList';
 import { DirectTransfersList } from './DirectTransfersList';
 import { CategoryManagerModal } from './CategoryManagerModal';
+import { ProductDetailsModal } from './ProductDetailsModal';
 import { 
   Plus, 
   Search, 
@@ -119,6 +121,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   const [selectedExitSlipInvoice, setSelectedExitSlipInvoice] = useState<Invoice | null>(null);
   const [historyModalInvoice, setHistoryModalInvoice] = useState<Invoice | null>(null);
   const [deliveryModalInvoice, setDeliveryModalInvoice] = useState<Invoice | null>(null);
+  const [detailSlipInvoice, setDetailSlipInvoice] = useState<Invoice | null>(null);
   const [exitSlipSearch, setExitSlipSearch] = useState('');
   const [exitSlipFilter, setExitSlipFilter] = useState<'all' | 'pending_delivery' | 'delivered' | 'unprinted' | 'printed'>('all');
   const [isCustomerExportModalOpen, setIsCustomerExportModalOpen] = useState(false);
@@ -158,6 +161,9 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
   // Delete Confirmation Modal
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+
+  // Detail Modal for Clean 1-Row / 2-Row List View
+  const [detailProduct, setDetailProduct] = useState<Product | null>(null);
 
   // Combined & Deduped Categories list
   const categories = useMemo(() => {
@@ -1228,7 +1234,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             </div>
           )}
 
-          {/* Mobile View: Product Cards (Hidden on Desktop) */}
+          {/* Mobile View: Product Cards (2-Row Streamlined Cards) */}
           <div className="block sm:hidden divide-y divide-slate-100">
             {filteredProducts.length === 0 ? (
               <div className="text-center py-10 text-slate-400 p-4">
@@ -1240,117 +1246,66 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                 const isLow = prod.stock > 0 && prod.stock <= prod.minStockAlert;
 
                 return (
-                  <div key={prod.id} className={`p-4 space-y-3 ${index % 2 === 1 ? 'bg-slate-50/85' : 'bg-white'} hover:bg-slate-100/60 transition-colors`}>
-                    {/* Header: Name + Code + Stock badge */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h4 className="font-bold text-slate-900 text-sm leading-tight">{prod.name}</h4>
-                        <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px] text-slate-500">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedCategory(prod.category)}
-                            className="bg-indigo-50 active:bg-indigo-100 text-indigo-700 hover:text-indigo-900 border border-indigo-200/80 px-2 py-0.5 rounded-md font-bold text-[10px] cursor-pointer transition-colors"
-                            title={`فیلتر سریع بر اساس دسته‌بندی «${prod.category}»`}
-                          >
-                            {prod.category}
-                          </button>
-                          <span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded font-semibold">کد: {toPersianDigits(prod.code)}</span>
-                        </div>
+                  <div
+                    key={prod.id}
+                    onClick={() => setDetailProduct(prod)}
+                    className={`p-3 space-y-2 cursor-pointer transition-colors active:bg-slate-100 ${
+                      index % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'
+                    }`}
+                  >
+                    {/* Row 1: Product Name, Code, and Stock Badge */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-bold text-slate-900 text-xs truncate">
+                          {prod.name}
+                        </span>
+                        <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 shrink-0">
+                          {toPersianDigits(prod.code)}
+                        </span>
                       </div>
 
                       {/* Stock badge */}
                       <span
-                        className={`px-2.5 py-1 rounded-full font-bold text-xs flex items-center gap-1.5 shrink-0 ${
+                        className={`px-2 py-0.5 rounded-full font-bold text-[10px] flex items-center gap-1 border shrink-0 ${
                           isOut
-                            ? 'bg-rose-100 text-rose-800'
+                            ? 'bg-rose-100 text-rose-800 border-rose-300'
                             : isLow
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-emerald-100 text-emerald-800'
+                            ? 'bg-amber-100 text-amber-800 border-amber-300'
+                            : 'bg-emerald-100 text-emerald-800 border-emerald-300'
                         }`}
                       >
                         {isOut && <span className="w-1.5 h-1.5 rounded-full bg-rose-600"></span>}
-                        {isLow && <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />}
+                        {isLow && <AlertTriangle className="w-3 h-3 text-amber-600" />}
                         <span>
                           {toPersianDigits(prod.stock)} {prod.unit}
                         </span>
                       </span>
                     </div>
 
-                    {/* Variant Breakdown (Mobile) */}
-                    {prod.hasVariants && prod.variants && prod.variants.length > 0 && (
-                      <div className="bg-purple-50/70 border border-purple-200/80 rounded-xl p-2.5 space-y-1.5">
-                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-purple-900">
-                          <Layers className="w-3.5 h-3.5 text-purple-600" />
-                          <span>تنوع‌های رنگ و مدل ({toPersianDigits(prod.variants.length)} قلم):</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {prod.variants.map((v) => (
-                            <span
-                              key={v.id}
-                              className="inline-flex items-center gap-1 bg-white text-purple-950 border border-purple-200 px-2 py-0.5 rounded-lg text-[10px] font-medium shadow-2xs"
-                            >
-                              <span>{v.name}:</span>
-                              <strong className="text-purple-700 font-bold font-mono">{toPersianDigits(v.stock)} {prod.unit}</strong>
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Stock Details & Specifications (No Prices) */}
-                    <div className="flex items-center justify-between bg-slate-50/80 p-2.5 rounded-xl text-xs border border-slate-100">
-                      <div className="text-slate-600 text-[11px] flex items-center gap-1">
-                        <span className="text-slate-400">نقطه سفارش:</span>
-                        <span className="font-bold text-slate-700">{toPersianDigits(prod.minStockAlert)} {prod.unit}</span>
-                      </div>
-                      {prod.description ? (
-                        <span className="text-[11px] text-slate-500 truncate max-w-[55%]">
-                          {prod.description}
+                    {/* Row 2: Category, Unit, and Details Button */}
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-slate-400 text-[11px]">دسته‌بندی:</span>
+                        <span className="bg-indigo-50 text-indigo-700 border border-indigo-200/80 px-2 py-0.5 rounded-md font-bold text-[10px] truncate max-w-[140px]">
+                          {prod.category}
                         </span>
-                      ) : (
-                        <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-                          موجودی فیزیکی
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Mobile Action Buttons */}
-                    <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenAdjustStock(prod, 'purchase')}
-                        className="flex-1 py-2 px-2.5 bg-emerald-50 active:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <ArrowDownRight className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>ورود کالا</span>
-                      </button>
+                        {prod.hasVariants && prod.variants && prod.variants.length > 0 && (
+                          <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
+                            {toPersianDigits(prod.variants.length)} تنوع
+                          </span>
+                        )}
+                      </div>
 
                       <button
                         type="button"
-                        onClick={() => handleOpenAdjustStock(prod, 'set_stock')}
-                        className="flex-1 py-2 px-2.5 bg-blue-50 active:bg-blue-100 text-blue-800 border border-blue-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDetailProduct(prod);
+                        }}
+                        className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
                       >
-                        <ArrowUpLeft className="w-3.5 h-3.5 text-blue-600" />
-                        <span>انبارگردانی</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEditProduct(prod)}
-                        title="ویرایش مشخصات"
-                        className="p-2 text-slate-600 bg-slate-100 active:bg-slate-200 rounded-xl border border-slate-200 cursor-pointer"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        type="button"
-                        id={`mobile-delete-prod-btn-${prod.id}`}
-                        onClick={() => setProductToDelete(prod)}
-                        title="حذف کالا"
-                        className="p-2 text-rose-600 bg-rose-50 active:bg-rose-100 rounded-xl border border-rose-200 cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
+                        <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>جزئیات</span>
                       </button>
                     </div>
                   </div>
@@ -1359,22 +1314,23 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             )}
           </div>
 
-          {/* Desktop View: Table (Hidden on Mobile) */}
+          {/* Desktop View: Clean 1-Row Table (Hidden on Mobile) */}
           <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-right border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-100/70 text-slate-700 border-b border-slate-200">
-                  <th className="p-3.5 font-bold">کد کالا</th>
-                  <th className="p-3.5 font-bold">نام کالا و دسته‌بندی</th>
-                  <th className="p-3.5 font-bold text-center">وضعیت و موجودی انبار</th>
-                  <th className="p-3.5 font-bold">توضیحات و مشخصات</th>
-                  <th className="p-3.5 font-bold text-center">عملیات انبار و ویرایش</th>
+                  <th className="p-3.5 font-bold w-16 text-center">ردیف</th>
+                  <th className="p-3.5 font-bold w-24">کد کالا</th>
+                  <th className="p-3.5 font-bold">نام کالا</th>
+                  <th className="p-3.5 font-bold">دسته‌بندی</th>
+                  <th className="p-3.5 font-bold text-center">موجودی انبار</th>
+                  <th className="p-3.5 font-bold text-center w-28">عملیات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredProducts.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-10 text-slate-400">
+                    <td colSpan={6} className="text-center py-10 text-slate-400">
                       هیچ کالایی با معیارهای جستجو یافت نشد.
                     </td>
                   </tr>
@@ -1384,115 +1340,84 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     const isLow = prod.stock > 0 && prod.stock <= prod.minStockAlert;
 
                     return (
-                      <tr key={prod.id} className={`${index % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'} hover:bg-slate-100/70 transition-colors`}>
-                        <td className="p-3.5">
-                          <div className="font-mono text-slate-800 font-bold text-xs">{toPersianDigits(prod.code)}</div>
+                      <tr
+                        key={prod.id}
+                        onClick={() => setDetailProduct(prod)}
+                        className={`cursor-pointer transition-colors ${
+                          index % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'
+                        } hover:bg-emerald-50/40`}
+                      >
+                        {/* Index */}
+                        <td className="p-3.5 text-center text-slate-400 font-mono text-xs">
+                          {toPersianDigits(index + 1)}
                         </td>
+
+                        {/* Code */}
                         <td className="p-3.5">
-                          <div className="font-bold text-slate-900">{prod.name}</div>
-                          <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedCategory(prod.category)}
-                              className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-900 border border-indigo-200/80 px-2 py-0.5 rounded-md font-bold transition-colors cursor-pointer"
-                              title={`فیلتر سریع بر اساس دسته‌بندی «${prod.category}»`}
-                            >
-                              {prod.category}
-                            </button>
-                            <span>واحد: {prod.unit}</span>
-                          </div>
-                          {prod.hasVariants && prod.variants && prod.variants.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                              <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-md border border-purple-200">
-                                <Layers className="w-3 h-3 text-purple-600" />
-                                <span>{toPersianDigits(prod.variants.length)} تنوع:</span>
+                          <span className="font-mono text-slate-800 font-bold text-xs bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                            {toPersianDigits(prod.code)}
+                          </span>
+                        </td>
+
+                        {/* Name */}
+                        <td className="p-3.5">
+                          <div className="font-bold text-slate-900 text-xs flex items-center gap-2">
+                            <span>{prod.name}</span>
+                            {prod.hasVariants && prod.variants && prod.variants.length > 0 && (
+                              <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
+                                {toPersianDigits(prod.variants.length)} تنوع
                               </span>
-                              {prod.variants.map((v) => (
-                                <span
-                                  key={v.id}
-                                  className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-medium px-1.5 py-0.5 rounded"
-                                >
-                                  <span>{v.name}:</span>
-                                  <strong className="text-purple-900 font-bold font-mono">{toPersianDigits(v.stock)}</strong>
-                                </span>
-                              ))}
-                            </div>
-                          )}
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Category */}
+                        <td className="p-3.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedCategory(prod.category);
+                            }}
+                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 px-2.5 py-1 rounded-lg font-bold text-xs transition-colors cursor-pointer"
+                            title={`فیلتر سریع بر اساس «${prod.category}»`}
+                          >
+                            {prod.category}
+                          </button>
                         </td>
 
                         {/* Stock Badge */}
                         <td className="p-3.5 text-center">
-                          <div className="inline-flex flex-col items-center">
-                            <span
-                              className={`px-3 py-1 rounded-full font-bold text-xs flex items-center gap-1.5 ${
-                                isOut
-                                  ? 'bg-rose-100 text-rose-800'
-                                  : isLow
-                                  ? 'bg-amber-100 text-amber-800'
-                                  : 'bg-emerald-100 text-emerald-800'
-                              }`}
-                            >
-                              {isOut && <span className="w-1.5 h-1.5 rounded-full bg-rose-600"></span>}
-                              {isLow && <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />}
-                              <span>
-                                {toPersianDigits(prod.stock)} {prod.unit}
-                              </span>
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-bold text-xs border ${
+                              isOut
+                                ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                : isLow
+                                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                            }`}
+                          >
+                            {isOut && <span className="w-1.5 h-1.5 rounded-full bg-rose-600"></span>}
+                            {isLow && <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />}
+                            <span>
+                              {toPersianDigits(prod.stock)} {prod.unit}
                             </span>
-                            <span className="text-[10px] text-slate-400 mt-1">
-                              حداقل: {toPersianDigits(prod.minStockAlert)}
-                            </span>
-                          </div>
+                          </span>
                         </td>
 
-                        {/* Description / Notes Column (No Prices) */}
-                        <td className="p-3.5 text-slate-500 max-w-xs truncate text-[11px]">
-                          {prod.description || '—'}
-                        </td>
-
-                        {/* Actions */}
+                        {/* Details Action */}
                         <td className="p-3.5 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            {/* Stock In button */}
-                            <button
-                              id={`stock-in-btn-${prod.id}`}
-                              onClick={() => handleOpenAdjustStock(prod, 'purchase')}
-                              title="ورود کالا به انبار (خرید جدید)"
-                              className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
-                            >
-                              <ArrowDownRight className="w-4 h-4" />
-                            </button>
-
-                            {/* Stock Out/Adjust / Inventory Count */}
-                            <button
-                              id={`stock-adjust-btn-${prod.id}`}
-                              onClick={() => handleOpenAdjustStock(prod, 'set_stock')}
-                              title="انبارگردانی و ثبت موجودی واقعی"
-                              className="p-1.5 text-blue-700 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                            >
-                              <ArrowUpLeft className="w-4 h-4" />
-                            </button>
-
-                            {/* Edit */}
-                            <button
-                              id={`edit-prod-btn-${prod.id}`}
-                              onClick={() => handleOpenEditProduct(prod)}
-                              title="ویرایش مشخصات کالا"
-                              className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-
-                            {/* Delete */}
-                            <button
-                              id={`delete-prod-btn-${prod.id}`}
-                              type="button"
-                              onClick={() => setProductToDelete(prod)}
-                              title="حذف کالا"
-                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDetailProduct(prod);
+                            }}
+                            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>جزئیات</span>
+                          </button>
                         </td>
                       </tr>
                     );
@@ -1790,383 +1715,192 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
               </div>
             ) : (
               <>
-                {/* Mobile View: Exit Slip Cards */}
+                {/* Mobile View: Ultra-Clean 2-Row Cards */}
                 <div className="block sm:hidden divide-y divide-slate-100">
-                  {filteredExitSlips.map((inv, index) => {
+                  {filteredExitSlips.map((inv) => {
                     const slipLog = exitSlipLogs[inv.id] || { invoiceId: inv.id, printCount: 0, history: [] };
-                    const isPrinted = slipLog.printCount > 0;
                     const isDelivered = Boolean(slipLog.isDelivered);
-                    const totalQty = inv.items.reduce((s, it) => s + it.quantity, 0);
+                    const slipNumber = slipLog.slipNumber || inv.invoiceNumber;
 
                     return (
-                      <div key={inv.id} className={`p-4 space-y-3 ${index % 2 === 1 ? 'bg-slate-50/85' : 'bg-white'} hover:bg-slate-100/60 transition-colors`}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-['Vazirmatn'] font-bold text-slate-900 text-sm bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200" title="شماره حواله خروج انبار">
-                              {toPersianDigits(slipLog.slipNumber || inv.invoiceNumber)}
+                      <div 
+                        key={inv.id} 
+                        onClick={() => setDetailSlipInvoice(inv)}
+                        className="p-3.5 space-y-2.5 bg-white hover:bg-slate-50 transition-colors cursor-pointer active:bg-slate-100"
+                      >
+                        {/* Row 1: Number, Date, and Delivery Status */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-black text-slate-900 text-sm bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200" title="شماره حواله">
+                              {toPersianDigits(slipNumber)}
                             </span>
                             {slipLog.slipNumber && slipLog.slipNumber !== inv.invoiceNumber && (
-                              <span className="text-[10px] text-slate-500 font-['Vazirmatn']">
+                              <span className="text-[10px] text-slate-400 font-mono">
                                 (فاکتور: {toPersianDigits(inv.invoiceNumber)})
                               </span>
                             )}
-                            <span className="text-xs text-slate-500 font-['Vazirmatn']">{toPersianDigits(inv.date)}</span>
-                          </div>
-
-                          <div className="flex items-center gap-1.5">
-                            {/* Delivery Status Badge */}
-                            <span
-                              className={`px-2 py-0.5 rounded-md font-bold text-[11px] flex items-center gap-1 border ${
-                                isDelivered
-                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                  : 'bg-amber-100 text-amber-800 border-amber-300'
-                              }`}
-                            >
-                              {isDelivered ? (
-                                <>
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                  <span>بار تحویل شد</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Clock className="w-3 h-3 text-amber-600" />
-                                  <span>در انتظار تحویل</span>
-                                </>
-                              )}
-                            </span>
-
-                            {/* Print Badge */}
-                            <span
-                              className={`px-2 py-0.5 rounded-md font-semibold text-[11px] flex items-center gap-1 ${
-                                isPrinted
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-slate-100 text-slate-600'
-                              }`}
-                            >
-                              {isPrinted ? (
-                                <>
-                                  <Check className="w-3 h-3 text-blue-600" />
-                                  <span>چاپ شده ({toPersianDigits(slipLog.printCount)})</span>
-                                </>
-                              ) : (
-                                <span>منتظر چاپ</span>
-                              )}
+                            <span className="text-xs text-slate-500 font-mono">
+                              {toPersianDigits(inv.date)}
                             </span>
                           </div>
-                        </div>
 
-                        <div>
-                          <div className="text-xs font-bold text-slate-900">{inv.customerName}</div>
-                          <div className="text-[11px] text-slate-500 mt-0.5">
-                            اقلام حواله: {toPersianDigits(inv.items.length)} قلم کالا ({toPersianDigits(totalQty)} واحد فیزیکی)
-                          </div>
-                        </div>
-
-                        {/* Delivery & Vehicle info box */}
-                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/90 text-xs space-y-1.5">
-                          <div className="flex items-center justify-between pb-1 border-b border-slate-200">
-                            <div className="flex items-center gap-1.5 font-bold text-slate-800">
-                              <Truck className="w-3.5 h-3.5 text-blue-600" />
-                              <span>مشخصات تحویل و بارگیری:</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setDeliveryModalInvoice(inv)}
-                              className="text-[11px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer"
-                            >
-                              <Edit3 className="w-3 h-3" />
-                              <span>{isDelivered ? 'ویرایش مشخصات' : 'ثبت تحویل بار'}</span>
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-1.5 text-[11px] pt-0.5">
-                            <div>
-                              <span className="text-slate-500">راننده / تحویل‌گیرنده: </span>
-                              <span className="font-bold text-slate-800">{slipLog.receiverName || inv.customerName || 'ثبت نشده'}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-500">تلفن: </span>
-                              <span className="font-['Vazirmatn'] text-slate-800">{slipLog.receiverPhone ? toPersianDigits(slipLog.receiverPhone) : (inv.customerPhone ? toPersianDigits(inv.customerPhone) : 'ثبت نشده')}</span>
-                            </div>
-                            <div className="col-span-2">
-                              <span className="text-slate-500">مشخصات خودرو و پلاک: </span>
-                              <span className="font-bold text-slate-800">{slipLog.vehicleInfo || 'ثبت نشده'}</span>
-                            </div>
-                            {slipLog.deliveredAt && (
-                              <div className="col-span-2 text-slate-500 text-[10px]">
-                                تایید خروج: {toPersianDigits(slipLog.deliveredAt)} {slipLog.deliveredBy ? `(توسط: ${slipLog.deliveredBy})` : ''}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Print details */}
-                        <div className="bg-slate-50/70 p-2 rounded-xl border border-slate-100 text-[11px] space-y-1">
-                          <div className="flex items-center justify-between text-slate-600">
-                            <span>تعداد دفعات چاپ:</span>
-                            <span className="font-['Vazirmatn'] font-bold text-slate-800">{toPersianDigits(slipLog.printCount)} بار</span>
-                          </div>
-                          <div className="flex items-center justify-between text-slate-600">
-                            <span>آخرین چاپ:</span>
-                            <span className="font-['Vazirmatn'] text-slate-700">
-                              {slipLog.lastPrintedAt ? toPersianDigits(slipLog.lastPrintedAt) : 'هنوز چاپ نشده'}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Action buttons */}
-                        <div className="flex items-center gap-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => setDeliveryModalInvoice(inv)}
-                            className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
-                              isDelivered 
-                                ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200' 
-                                : 'bg-amber-600 text-white hover:bg-amber-700'
+                          <span
+                            className={`px-2 py-0.5 rounded-full font-bold text-[10px] flex items-center gap-1 border shrink-0 ${
+                              isDelivered
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : 'bg-amber-100 text-amber-800 border-amber-300'
                             }`}
-                            title="ثبت یا ویرایش مشخصات ماشین، شماره تماس راننده و تایید تحویل"
                           >
-                            <Truck className="w-4 h-4" />
-                            <span>{isDelivered ? 'مشخصات ماشین' : 'ثبت تحویل بار'}</span>
-                          </button>
+                            {isDelivered ? (
+                              <>
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                <span>تحویل شد</span>
+                              </>
+                            ) : (
+                              <>
+                                <Clock className="w-3 h-3 text-amber-600" />
+                                <span>در انتظار تحویل</span>
+                              </>
+                            )}
+                          </span>
+                        </div>
 
-                          <button
-                            type="button"
-                            onClick={() => handleOpenExitSlip(inv)}
-                            className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-                          >
-                            <Printer className="w-4 h-4" />
-                            <span>چاپ برگه خروج</span>
-                          </button>
+                        {/* Row 2: Customer Name and Details Button */}
+                        <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs">
+                          <div className="font-bold text-slate-900 truncate max-w-[200px]" title={inv.customerName}>
+                            {inv.customerName}
+                          </div>
 
-                          {slipLog.history && slipLog.history.length > 0 && (
+                          <div className="flex items-center gap-1.5 shrink-0">
                             <button
                               type="button"
-                              onClick={() => setHistoryModalInvoice(inv)}
-                              className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl border border-blue-200 transition-colors cursor-pointer"
-                              title="مشاهده سوابق، تاریخ و زمان چاپ‌ها"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDetailSlipInvoice(inv);
+                              }}
+                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
                             >
-                              <History className="w-4 h-4" />
+                              <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>جزئیات</span>
                             </button>
-                          )}
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const found = customersList.find((c) => c.id === inv.customerId || c.name.trim().toLowerCase() === inv.customerName.trim().toLowerCase());
-                              setCustomerExportSelected(found || {
-                                id: inv.customerId || `cust-${inv.customerName}`,
-                                name: inv.customerName,
-                                phone: inv.customerPhone || '',
-                                createdAt: inv.date,
-                              });
-                              setIsCustomerExportModalOpen(true);
-                            }}
-                            className="p-2 text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-xl border border-purple-200 transition-colors cursor-pointer"
-                            title="خروجی اکسل فاکتورها و حواله‌های این شخص با تمام جزییات"
-                          >
-                            <FileSpreadsheet className="w-4 h-4" />
-                          </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenExitSlip(inv);
+                              }}
+                              title="چاپ برگه خروج"
+                              className="p-1 text-slate-500 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
 
-                {/* Desktop View: Table */}
+                {/* Desktop View: Ultra-Clean Single-Row Table */}
                 <div className="hidden sm:block overflow-x-auto">
                   <table className="w-full text-right border-collapse text-xs">
                     <thead>
-                      <tr className="bg-slate-100/70 text-slate-700 border-b border-slate-200">
-                        <th className="p-3.5 font-bold">شماره حواله / فاکتور</th>
-                        <th className="p-3.5 font-bold">تاریخ صدور</th>
-                        <th className="p-3.5 font-bold">خریدار / مشتری</th>
-                        <th className="p-3.5 font-bold text-center">تنوع اقلام</th>
-                        <th className="p-3.5 font-bold text-center">تعداد کل</th>
-                        <th className="p-3.5 font-bold">وضعیت تحویل و مشخصات خودرو / راننده</th>
-                        <th className="p-3.5 font-bold text-center">وضعیت و دفعات چاپ</th>
-                        <th className="p-3.5 font-bold">آخرین چاپ</th>
-                        <th className="p-3.5 font-bold text-center">عملیات انبارداری</th>
+                      <tr className="bg-slate-100/70 text-slate-700 border-b border-slate-200 select-none">
+                        <th className="py-3.5 px-3 font-bold text-center w-12">#</th>
+                        <th className="py-3.5 px-3 font-bold">شماره حواله</th>
+                        <th className="py-3.5 px-3 font-bold">خریدار / تحویل‌گیرنده</th>
+                        <th className="py-3.5 px-3 font-bold">تاریخ صدور</th>
+                        <th className="py-3.5 px-3 font-bold text-center">وضعیت تحویل بار</th>
+                        <th className="py-3.5 px-3 font-bold text-center w-36">عملیات</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filteredExitSlips.map((inv, index) => {
                         const slipLog = exitSlipLogs[inv.id] || { invoiceId: inv.id, printCount: 0, history: [] };
-                        const isPrinted = slipLog.printCount > 0;
                         const isDelivered = Boolean(slipLog.isDelivered);
-                        const totalQty = inv.items.reduce((s, it) => s + it.quantity, 0);
+                        const slipNumber = slipLog.slipNumber || inv.invoiceNumber;
 
                         return (
-                          <tr key={inv.id} className={`${index % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'} hover:bg-slate-100/70 transition-colors`}>
-                            <td className="p-3.5">
-                              <div className="flex flex-col gap-0.5 items-start">
-                                <span className="font-['Vazirmatn'] font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200" title="شماره ترتیبی حواله خروج انبار">
-                                  {toPersianDigits(slipLog.slipNumber || inv.invoiceNumber)}
+                          <tr 
+                            key={inv.id} 
+                            onClick={() => setDetailSlipInvoice(inv)}
+                            className={`${index % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'} hover:bg-emerald-50/40 transition-colors cursor-pointer group`}
+                          >
+                            {/* Row index */}
+                            <td className="py-3.5 px-3 text-center text-slate-400 font-mono font-bold text-[11px]">
+                              {toPersianDigits(index + 1)}
+                            </td>
+
+                            {/* Slip Number */}
+                            <td className="py-3.5 px-3">
+                              <div className="flex items-center gap-1.5 font-mono font-black text-slate-900 text-xs">
+                                <span className="bg-slate-100 group-hover:bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                                  {toPersianDigits(slipNumber)}
                                 </span>
                                 {slipLog.slipNumber && slipLog.slipNumber !== inv.invoiceNumber && (
-                                  <span className="text-[10px] text-slate-500 font-['Vazirmatn']">
-                                    فاکتور: {toPersianDigits(inv.invoiceNumber)}
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    (فاکتور: {toPersianDigits(inv.invoiceNumber)})
                                   </span>
                                 )}
                               </div>
                             </td>
-                            <td className="p-3.5 font-['Vazirmatn'] text-slate-700">{toPersianDigits(inv.date)}</td>
-                            <td className="p-3.5">
-                              <div className="font-bold text-slate-900">{inv.customerName}</div>
-                              {inv.customerPhone && (
-                                <div className="text-[11px] text-slate-500 font-['Vazirmatn']">{toPersianDigits(inv.customerPhone)}</div>
-                              )}
-                            </td>
-                            <td className="p-3.5 text-center font-['Vazirmatn'] font-semibold text-slate-700">
-                              {toPersianDigits(inv.items.length)} قلم
-                            </td>
-                            <td className="p-3.5 text-center font-['Vazirmatn'] font-black text-slate-900 text-sm">
-                              {toPersianDigits(totalQty)}
+
+                            {/* Customer Name */}
+                            <td className="py-3.5 px-3">
+                              <div className="font-bold text-slate-900 truncate max-w-xs" title={inv.customerName}>
+                                {inv.customerName}
+                              </div>
                             </td>
 
-                            {/* Delivery Status & Vehicle Column */}
-                            <td className="p-3.5">
-                              <div className="space-y-1.5 min-w-[220px]">
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => handleQuickToggleDelivery(inv.id, e)}
-                                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${
-                                      isDelivered
-                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
-                                        : 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200'
-                                    }`}
-                                    title="کلیک جهت تایید یا تغییر سریع وضعیت تحویل بار"
-                                  >
-                                    {isDelivered ? (
-                                      <>
-                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                        <span>بار تحویل شد</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Clock className="w-3.5 h-3.5 text-amber-600" />
-                                        <span>در انتظار تحویل</span>
-                                      </>
-                                    )}
-                                  </button>
+                            {/* Issue Date */}
+                            <td className="py-3.5 px-3 font-mono text-slate-600 whitespace-nowrap text-xs">
+                              {toPersianDigits(inv.date)}
+                            </td>
 
-                                  <button
-                                    type="button"
-                                    onClick={() => setDeliveryModalInvoice(inv)}
-                                    className="text-[11px] text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer font-medium"
-                                    title="ثبت یا ویرایش نام راننده، شماره تماس و مشخصات وسیله نقلیه"
-                                  >
-                                    <Edit3 className="w-3 h-3" />
-                                    <span>{isDelivered ? 'ویرایش مشخصات' : 'ثبت خودرو'}</span>
-                                  </button>
-                                </div>
-
-                                {(slipLog.receiverName || slipLog.vehicleInfo || slipLog.receiverPhone) ? (
-                                  <div className="bg-slate-50 p-2 rounded-lg border border-slate-200/70 text-[11px] space-y-0.5">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-slate-500">راننده / گیرنده:</span>
-                                      <span className="font-bold text-slate-800">{slipLog.receiverName || inv.customerName}</span>
-                                    </div>
-                                    {slipLog.vehicleInfo && (
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-slate-500">ماشین و پلاک:</span>
-                                        <span className="font-semibold text-slate-900">{slipLog.vehicleInfo}</span>
-                                      </div>
-                                    )}
-                                    {slipLog.receiverPhone && (
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-slate-500">تلفن:</span>
-                                        <span className="font-['Vazirmatn'] text-slate-700">{toPersianDigits(slipLog.receiverPhone)}</span>
-                                      </div>
-                                    )}
-                                  </div>
+                            {/* Delivery Status */}
+                            <td className="py-3.5 px-3 text-center whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[11px] border ${
+                                  isDelivered
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                    : 'bg-amber-100 text-amber-800 border-amber-300'
+                                }`}
+                              >
+                                {isDelivered ? (
+                                  <>
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>تحویل شد</span>
+                                  </>
                                 ) : (
-                                  <span className="text-[11px] text-slate-400 italic block">
-                                    مشخصات خودرو/راننده ثبت نشده
-                                  </span>
+                                  <>
+                                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                    <span>در انتظار تحویل</span>
+                                  </>
                                 )}
-                              </div>
+                              </span>
                             </td>
 
-                            <td className="p-3.5 text-center">
-                              {isPrinted ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                  <span>چاپ شده ({toPersianDigits(slipLog.printCount)} بار)</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                                  <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-                                  <span>منتظر چاپ</span>
-                                </span>
-                              )}
-                            </td>
-                            <td className="p-3.5">
-                              {slipLog.lastPrintedAt ? (
-                                <div className="space-y-0.5">
-                                  <div className="font-['Vazirmatn'] text-slate-800 text-xs font-medium">
-                                    {toPersianDigits(slipLog.lastPrintedAt)}
-                                  </div>
-                                  <div className="text-[10px] text-slate-400">
-                                    انباردار: {slipLog.lastPrintedBy || 'انباردار'}
-                                  </div>
-                                </div>
-                              ) : (
-                                <span className="text-slate-400 text-xs italic">هنوز پرینت گرفته نشده</span>
-                              )}
-                            </td>
-                            <td className="p-3.5 text-center">
-                              <div className="flex items-center justify-center gap-1.5">
+                            {/* Actions */}
+                            <td className="py-3.5 px-3 text-center whitespace-nowrap">
+                              <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                                 <button
                                   type="button"
-                                  onClick={() => setDeliveryModalInvoice(inv)}
-                                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer ${
-                                    isDelivered
-                                      ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200'
-                                      : 'bg-amber-600 hover:bg-amber-500 text-white'
-                                  }`}
-                                  title="ثبت یا ویرایش مشخصات وسیله نقلیه، نام راننده و شماره تماس تحویل‌گیرنده"
+                                  onClick={() => setDetailSlipInvoice(inv)}
+                                  className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                                  title="مشاهده جزئیات کامل، خودرو و اقلام حواله خروج"
                                 >
-                                  <Truck className="w-3.5 h-3.5" />
-                                  <span>{isDelivered ? 'خودرو' : 'تحویل بار'}</span>
+                                  <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>مشاهده جزئیات</span>
                                 </button>
 
                                 <button
                                   type="button"
                                   onClick={() => handleOpenExitSlip(inv)}
-                                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-                                  title="پرینت برگه خروج از انبار"
+                                  className="p-2 text-slate-600 hover:text-emerald-700 hover:bg-slate-100 active:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                                  title="چاپ برگه خروج"
                                 >
-                                  <Printer className="w-3.5 h-3.5" />
-                                  <span>چاپ برگه خروج</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => setHistoryModalInvoice(inv)}
-                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 transition-colors cursor-pointer"
-                                  title="مشاهده سوابق و دفعات چاپ با زمان و تاریخ"
-                                >
-                                  <History className="w-4 h-4" />
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const found = customersList.find((c) => c.id === inv.customerId || c.name.trim().toLowerCase() === inv.customerName.trim().toLowerCase());
-                                    setCustomerExportSelected(found || {
-                                      id: inv.customerId || `cust-${inv.customerName}`,
-                                      name: inv.customerName,
-                                      phone: inv.customerPhone || '',
-                                      createdAt: inv.date,
-                                    });
-                                    setIsCustomerExportModalOpen(true);
-                                  }}
-                                  className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg border border-purple-200 transition-colors cursor-pointer"
-                                  title="خروجی اکسل فاکتورها و حواله‌های این شخص با تمام جزییات"
-                                >
-                                  <FileSpreadsheet className="w-4 h-4" />
+                                  <Printer className="w-4 h-4" />
                                 </button>
                               </div>
                             </td>
@@ -3068,6 +2802,44 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
         </div>
       )}
 
+      {/* EXIT SLIP DETAILS MODAL */}
+      {detailSlipInvoice && (
+        <ExitSlipDetailsModal
+          isOpen={Boolean(detailSlipInvoice)}
+          invoice={detailSlipInvoice}
+          slipLog={exitSlipLogs[detailSlipInvoice.id] || { invoiceId: detailSlipInvoice.id, printCount: 0, history: [] }}
+          settings={settings}
+          currentUser={currentUser}
+          onClose={() => setDetailSlipInvoice(null)}
+          onPrint={(inv) => {
+            setDetailSlipInvoice(null);
+            handleOpenExitSlip(inv);
+          }}
+          onOpenDeliveryModal={(inv) => {
+            setDetailSlipInvoice(null);
+            setDeliveryModalInvoice(inv);
+          }}
+          onOpenHistoryModal={(inv) => {
+            setDetailSlipInvoice(null);
+            setHistoryModalInvoice(inv);
+          }}
+          onExportCustomer={(inv) => {
+            setDetailSlipInvoice(null);
+            const found = customersList.find((c) => c.id === inv.customerId || c.name.trim().toLowerCase() === inv.customerName.trim().toLowerCase());
+            setCustomerExportSelected(found || {
+              id: inv.customerId || `cust-${inv.customerName}`,
+              name: inv.customerName,
+              phone: inv.customerPhone || '',
+              createdAt: inv.date,
+            });
+            setIsCustomerExportModalOpen(true);
+          }}
+          onToggleDelivery={(invId) => {
+            handleQuickToggleDelivery(invId);
+          }}
+        />
+      )}
+
       {/* EXIT SLIP PRINT MODAL */}
       {selectedExitSlipInvoice && (
         <ExitSlipModal
@@ -3246,6 +3018,33 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           onDeleteCategory={handleDeleteCategory}
           onSelectCategory={(cat) => setSelectedCategory(cat)}
           onClose={() => setIsCategoryModalOpen(false)}
+        />
+      )}
+
+      {/* PRODUCT DETAILS MODAL (صفحه جداگانه / مودال مشخصات کامل کالا) */}
+      {detailProduct && (
+        <ProductDetailsModal
+          isOpen={Boolean(detailProduct)}
+          product={detailProduct}
+          settings={settings}
+          currentUser={currentUser}
+          onClose={() => setDetailProduct(null)}
+          onOpenEdit={(prod) => {
+            setDetailProduct(null);
+            handleOpenEditProduct(prod);
+          }}
+          onOpenStockIn={(prod) => {
+            setDetailProduct(null);
+            handleOpenAdjustStock(prod, 'purchase');
+          }}
+          onOpenInventoryCount={(prod) => {
+            setDetailProduct(null);
+            handleOpenAdjustStock(prod, 'set_stock');
+          }}
+          onDelete={(prod) => {
+            setDetailProduct(null);
+            setProductToDelete(prod);
+          }}
         />
       )}
     </div>

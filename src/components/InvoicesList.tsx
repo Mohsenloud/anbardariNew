@@ -4,6 +4,7 @@ import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { exportInvoicesToCsv } from '../utils/csvExport';
 import { StorageService } from '../utils/storage';
 import { CustomerExportModal } from './CustomerExportModal';
+import { InvoiceQuickDetailsModal } from './InvoiceQuickDetailsModal';
 import { 
   Search, 
   Printer, 
@@ -12,25 +13,26 @@ import {
   ReceiptText, 
   CheckCircle, 
   Clock, 
-  AlertCircle,
-  Plus,
-  FileSpreadsheet,
-  ArrowRightLeft,
-  FileClock,
-  CheckCircle2,
-  X,
-  PackageCheck,
-  Pencil,
-  Calendar,
-  User,
-  Phone,
-  ArrowUpDown,
-  CreditCard,
-  Banknote,
-  Coins,
-  ChevronDown,
-  Filter,
-  Check
+  AlertCircle, 
+  Plus, 
+  FileSpreadsheet, 
+  ArrowRightLeft, 
+  FileClock, 
+  CheckCircle2, 
+  X, 
+  PackageCheck, 
+  Pencil, 
+  Calendar, 
+  User, 
+  Phone, 
+  ArrowUpDown, 
+  CreditCard, 
+  Banknote, 
+  Coins, 
+  ChevronDown, 
+  Filter, 
+  Check,
+  Eye
 } from 'lucide-react';
 
 interface InvoicesListProps {
@@ -70,6 +72,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   const [sortBy, setSortBy] = useState<SortOption>('date-desc');
   
   // Modals state
+  const [quickDetailsInvoice, setQuickDetailsInvoice] = useState<Invoice | null>(null);
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const [invoiceToReturn, setInvoiceToReturn] = useState<Invoice | null>(null);
   const [proformaToConvert, setProformaToConvert] = useState<Invoice | null>(null);
@@ -617,233 +620,68 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
               )}
             </div>
           ) : (
-            filteredInvoices.map((inv, index) => {
-              const itemCount = inv.items.reduce((s, i) => s + i.quantity, 0);
-              const remainingDebt = Math.max(0, inv.finalTotal - (inv.paymentStatus === 'paid' ? inv.finalTotal : (inv.paidAmount || 0)));
+            filteredInvoices.map((inv) => {
+              const isPaid = inv.paymentStatus === 'paid';
+              const isPartial = inv.paymentStatus === 'partial';
 
               return (
                 <div
                   key={inv.id}
                   id={`mobile-invoice-card-${inv.id}`}
-                  className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden transition-all"
+                  onClick={() => setQuickDetailsInvoice(inv)}
+                  className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition-all cursor-pointer active:bg-slate-50 space-y-2.5"
                 >
-                  {/* Card Header Strip */}
-                  <div className="p-3.5 pb-2.5 bg-slate-50/80 border-b border-slate-200/80 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-200 text-slate-700 font-mono shrink-0">
-                        #{toPersianDigits(index + 1)}
-                      </span>
-                      <span className="font-mono font-black text-slate-900 text-sm">
+                  {/* Row 1: Number, Date, and Status */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-black text-slate-900 text-sm bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
                         {toPersianDigits(inv.invoiceNumber)}
                       </span>
-                      {inv.isProforma ? (
-                        <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded-md font-bold flex items-center gap-1">
-                          <FileClock className="w-3 h-3 text-indigo-600" />
+                      {inv.isProforma && (
+                        <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded-md font-bold">
                           پیش‌فاکتور
                         </span>
-                      ) : (
-                        <span className="text-[10px] text-slate-600 bg-white border border-slate-200 px-1.5 py-0.5 rounded-md font-medium">
-                          {inv.type === 'official' ? 'فاکتور رسمی' : inv.type === 'thermal' ? 'رسید حرارتی' : inv.type === 'simple' ? 'ساده و خوانا' : 'فروشگاهی'}
-                        </span>
                       )}
-                      {inv.convertedFromProforma && (
-                        <span className="text-[9.5px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-semibold">
-                          تبدیل از {inv.convertedFromProforma}
-                        </span>
-                      )}
+                      <span className="text-xs text-slate-500 font-mono">
+                        {toPersianDigits(inv.date)}
+                      </span>
                     </div>
 
-                    {/* Status Badge */}
                     <span
-                      className={`px-2.5 py-1 rounded-full font-bold text-[11px] flex items-center gap-1 shrink-0 ${
-                        inv.paymentStatus === 'paid'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : inv.paymentStatus === 'partial'
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-rose-100 text-rose-800'
+                      className={`px-2 py-0.5 rounded-full font-bold text-[10px] flex items-center gap-1 border shrink-0 ${
+                        isPaid
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          : isPartial
+                          ? 'bg-amber-100 text-amber-800 border-amber-300'
+                          : 'bg-rose-100 text-rose-800 border-rose-300'
                       }`}
                     >
-                      {inv.paymentStatus === 'paid' && <CheckCircle className="w-3 h-3" />}
-                      {inv.paymentStatus === 'partial' && <Clock className="w-3 h-3" />}
-                      {inv.paymentStatus === 'unpaid' && <AlertCircle className="w-3 h-3" />}
-                      <span>
-                        {inv.paymentStatus === 'paid'
-                          ? 'تسویه کامل'
-                          : inv.paymentStatus === 'partial'
-                          ? 'بیعانه'
-                          : 'نسیه'}
-                      </span>
+                      {isPaid ? 'تسویه' : isPartial ? 'بیعانه' : 'نسیه'}
                     </span>
                   </div>
 
-                  {/* Card Body */}
-                  <div className="p-3.5 space-y-3">
-                    {/* Customer & Date Info */}
-                    <div className="flex items-center justify-between gap-2 text-xs">
-                      <div className="flex items-center gap-1.5 truncate">
-                        <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="font-bold text-slate-900 truncate">{inv.customerName}</span>
-                        {inv.customerPhone && (
-                          <a
-                            href={`tel:${inv.customerPhone}`}
-                            className="text-emerald-700 font-mono text-[11px] hover:underline shrink-0 mr-1 flex items-center gap-0.5 bg-emerald-50 px-1.5 py-0.5 rounded"
-                          >
-                            <Phone className="w-3 h-3" />
-                            <span>{toPersianDigits(inv.customerPhone)}</span>
-                          </a>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1 text-[11px] text-slate-500 font-mono shrink-0">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{inv.date}</span>
-                      </div>
+                  {/* Row 2: Customer Name, Amount, and View Details Button */}
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs">
+                    <div className="font-bold text-slate-900 truncate max-w-[170px]" title={inv.customerName}>
+                      {inv.customerName}
                     </div>
 
-                    {/* Financial Inset Box */}
-                    <div className="bg-slate-50/90 rounded-xl p-3 border border-slate-200/80 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-[10.5px] text-slate-500 block">اقلام فاکتور:</span>
-                          <span className="text-xs font-bold text-slate-700">
-                            {toPersianDigits(itemCount)} قلم ({toPersianDigits(inv.items.length)} ردیف)
-                          </span>
-                        </div>
-                        <div className="text-left">
-                          <span className="text-[10.5px] text-slate-500 block">مبلغ کل قابل پرداخت:</span>
-                          <span className="text-sm font-black text-slate-900 font-mono font-['Vazirmatn']">
-                            {formatPrice(inv.finalTotal, settings.currency)}
-                          </span>
-                        </div>
-                      </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-black font-mono text-slate-800 text-xs">
+                        {formatPrice(inv.finalTotal, settings.currency)}
+                      </span>
 
-                      {/* Remaining Debt notice if not fully paid */}
-                      {inv.paymentStatus !== 'paid' && (
-                        <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[11px]">
-                          <span className="text-slate-500">
-                            پرداخت شده: <strong className="text-emerald-700 font-mono">{formatPrice(inv.paidAmount || 0, settings.currency)}</strong>
-                          </span>
-                          <span className="text-rose-700 font-bold">
-                            مانده طلب: <strong className="font-mono">{formatPrice(remainingDebt, settings.currency)}</strong>
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Payment Method & Cheque/Transfer details */}
-                    <div className="flex items-center justify-between text-[11px] text-slate-600 pt-0.5">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-slate-400">روش پرداخت:</span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          inv.paymentMethod === 'cheque'
-                            ? 'bg-sky-100 text-sky-800'
-                            : inv.paymentMethod === 'cash'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : inv.paymentMethod === 'transfer'
-                            ? 'bg-indigo-100 text-indigo-800'
-                            : inv.paymentMethod === 'pos'
-                            ? 'bg-teal-100 text-teal-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {inv.paymentMethod === 'cheque'
-                            ? 'چک بانکی'
-                            : inv.paymentMethod === 'cash'
-                            ? 'وجه نقد'
-                            : inv.paymentMethod === 'transfer'
-                            ? 'واریز به حساب'
-                            : inv.paymentMethod === 'pos'
-                            ? 'دستگاه پوز'
-                            : 'دفتری'}
-                        </span>
-                      </div>
-
-                      {/* Quick settle button */}
-                      {inv.paymentStatus !== 'paid' && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenPaymentModal(inv)}
-                          className="min-h-[32px] px-2 text-emerald-700 hover:text-emerald-900 font-bold flex items-center gap-1 text-[11px] cursor-pointer"
-                        >
-                          <CheckCircle className="w-3.5 h-3.5" />
-                          <span>ثبت دریافت / تسویه</span>
-                        </button>
-                      )}
-                    </div>
-
-                    {inv.paymentMethod === 'cheque' && (inv.chequeNumber || inv.chequeDueDate) && (
-                      <div className="text-[10px] text-sky-800 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-100">
-                        {inv.chequeNumber && <span>شماره چک: {toPersianDigits(inv.chequeNumber)} </span>}
-                        {inv.chequeDueDate && <span>(سررسید: {toPersianDigits(inv.chequeDueDate)}) </span>}
-                        {inv.chequeName && <span>- {inv.chequeName}</span>}
-                      </div>
-                    )}
-
-                    {/* Touch-Friendly Action Buttons for Mobile (min 44px height) */}
-                    <div className="space-y-2 pt-2 border-t border-slate-100">
-                      {/* Convert Proforma full button if proforma */}
-                      {inv.isProforma && onConvertProforma && (
-                        <button
-                          type="button"
-                          id={`mobile-convert-proforma-btn-${inv.id}`}
-                          onClick={() => handleOpenConvertModal(inv)}
-                          className="w-full min-h-[44px] py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
-                        >
-                          <ArrowRightLeft className="w-4 h-4" />
-                          <span>تبدیل به فاکتور رسمی (با کسر از انبار)</span>
-                        </button>
-                      )}
-
-                      <div className="flex items-center gap-2">
-                        {/* View / Print Button */}
-                        <button
-                          type="button"
-                          onClick={() => onViewInvoice(inv)}
-                          className="flex-1 min-h-[44px] py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                        >
-                          <Printer className="w-4 h-4" />
-                          <span>مشاهده و چاپ</span>
-                        </button>
-
-                        {/* Edit Button */}
-                        {onEditInvoice && (
-                          <button
-                            type="button"
-                            id={`mobile-edit-invoice-btn-${inv.id}`}
-                            onClick={() => onEditInvoice(inv)}
-                            className="min-h-[44px] px-3.5 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0"
-                            title="ویرایش فاکتور"
-                          >
-                            <Pencil className="w-4 h-4" />
-                            <span>ویرایش</span>
-                          </button>
-                        )}
-
-                        {canDelete && (
-                          <>
-                            {/* Return to stock */}
-                            <button
-                              type="button"
-                              id={`mobile-return-invoice-btn-${inv.id}`}
-                              onClick={() => setInvoiceToReturn(inv)}
-                              title={inv.isProforma ? 'لغو و حذف پیش‌فاکتور' : 'مرجوعی به انبار'}
-                              className="w-[44px] h-[44px] flex items-center justify-center text-amber-700 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 rounded-xl border border-amber-200 cursor-pointer shrink-0"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </button>
-
-                            {/* Delete */}
-                            <button
-                              type="button"
-                              id={`mobile-delete-invoice-btn-${inv.id}`}
-                              onClick={() => setInvoiceToDelete(inv)}
-                              title="حذف سند"
-                              className="w-[44px] h-[44px] flex items-center justify-center text-rose-600 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 rounded-xl border border-rose-200 cursor-pointer shrink-0"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setQuickDetailsInvoice(inv);
+                        }}
+                        className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>جزئیات</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -852,26 +690,23 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           )}
         </div>
 
-        {/* 5. Desktop View: High-Density Table (Hidden on Mobile, Visible on sm:) */}
+        {/* 5. Desktop View: Ultra-Clean Single-Row Table */}
         <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-right border-collapse text-xs">
             <thead>
               <tr className="bg-slate-100/80 text-slate-700 border-b border-slate-200 select-none">
                 <th className="py-3.5 px-3 font-bold text-center w-12">#</th>
-                <th className="py-3.5 px-3 font-bold">شماره و نوع سند</th>
-                <th className="py-3.5 px-3 font-bold">تاریخ صدور</th>
+                <th className="py-3.5 px-3 font-bold">شماره فاکتور</th>
                 <th className="py-3.5 px-3 font-bold">خریدار / مشتری</th>
-                <th className="py-3.5 px-3 font-bold text-center">اقلام</th>
+                <th className="py-3.5 px-3 font-bold">تاریخ صدور</th>
                 <th className="py-3.5 px-3 font-bold text-left">مبلغ کل و وضعیت مالی</th>
-                <th className="py-3.5 px-3 font-bold text-center">وضعیت تسویه</th>
-                <th className="py-3.5 px-3 font-bold text-center">روش دریافت</th>
-                <th className="py-3.5 px-3 font-bold text-center min-w-[160px]">عملیات</th>
+                <th className="py-3.5 px-3 font-bold text-center w-36">عملیات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredInvoices.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-16 text-slate-400 bg-white">
+                  <td colSpan={6} className="text-center py-16 text-slate-400 bg-white">
                     <ReceiptText className="w-10 h-10 mx-auto mb-2 text-slate-300" />
                     <div className="text-sm font-bold text-slate-600">هیچ فاکتوری با مشخصات انتخابی یافت نشد</div>
                     <p className="text-xs text-slate-400 mt-1">
@@ -881,234 +716,91 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                 </tr>
               ) : (
                 filteredInvoices.map((inv, index) => {
-                  const itemCount = inv.items.reduce((s, i) => s + i.quantity, 0);
-                  const remainingDebt = Math.max(0, inv.finalTotal - (inv.paymentStatus === 'paid' ? inv.finalTotal : (inv.paidAmount || 0)));
+                  const isPaid = inv.paymentStatus === 'paid';
+                  const isPartial = inv.paymentStatus === 'partial';
 
                   return (
                     <tr 
                       key={inv.id} 
-                      className={`${index % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'} hover:bg-emerald-50/30 transition-colors`}
+                      onClick={() => setQuickDetailsInvoice(inv)}
+                      className={`${index % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'} hover:bg-emerald-50/40 transition-colors cursor-pointer group`}
                     >
                       {/* Row index */}
-                      <td className="py-3 px-3 text-center text-slate-400 font-mono font-bold text-[11px]">
+                      <td className="py-3.5 px-3 text-center text-slate-400 font-mono font-bold text-[11px]">
                         {toPersianDigits(index + 1)}
                       </td>
 
-                      {/* Invoice Number & Type */}
-                      <td className="py-3 px-3">
-                        <div className="font-black text-slate-900 font-mono text-xs flex items-center gap-1.5">
-                          <span>{toPersianDigits(inv.invoiceNumber)}</span>
+                      {/* Invoice Number */}
+                      <td className="py-3.5 px-3">
+                        <div className="font-mono font-black text-slate-900 text-xs flex items-center gap-1.5">
+                          <span className="bg-slate-100 group-hover:bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                            {toPersianDigits(inv.invoiceNumber)}
+                          </span>
                           {inv.isProforma && (
-                            <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-200 px-1.5 py-0.2 rounded font-bold">
+                            <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-200 px-1.5 py-0.5 rounded font-bold">
                               پیش‌فاکتور
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-1.5 mt-0.5 text-[10.5px]">
-                          <span className="text-slate-500">
-                            {inv.isProforma
-                              ? 'غیرقطعی (بدون کسر انبار)'
-                              : inv.type === 'official'
-                              ? 'فاکتور رسمی'
-                              : inv.type === 'thermal'
-                              ? 'رسید حرارتی'
-                              : inv.type === 'simple'
-                              ? 'ساده و خوانا'
-                              : 'فروشگاهی'}
-                          </span>
-                          {inv.convertedFromProforma && (
-                            <span className="text-emerald-700 font-semibold">
-                              (از {inv.convertedFromProforma})
-                            </span>
-                          )}
+                      </td>
+
+                      {/* Customer Name */}
+                      <td className="py-3.5 px-3">
+                        <div className="font-bold text-slate-900 truncate max-w-xs" title={inv.customerName}>
+                          {inv.customerName}
                         </div>
                       </td>
 
                       {/* Issue Date */}
-                      <td className="py-3 px-3 text-slate-600 font-mono text-xs whitespace-nowrap">
+                      <td className="py-3.5 px-3 text-slate-600 font-mono text-xs whitespace-nowrap">
                         <div className="flex items-center gap-1">
                           <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{inv.date}</span>
+                          <span>{toPersianDigits(inv.date)}</span>
                         </div>
                       </td>
 
-                      {/* Customer Info */}
-                      <td className="py-3 px-3 max-w-[200px]">
-                        <div className="font-bold text-slate-900 truncate" title={inv.customerName}>
-                          {inv.customerName}
+                      {/* Amount & Status */}
+                      <td className="py-3.5 px-3 text-left whitespace-nowrap font-['Vazirmatn']">
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="font-black text-slate-900 text-xs sm:text-sm font-mono">
+                            {formatPrice(inv.finalTotal, settings.currency)}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full font-bold text-[10px] border ${
+                              isPaid
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : isPartial
+                                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                : 'bg-rose-100 text-rose-800 border-rose-300'
+                            }`}
+                          >
+                            {isPaid ? 'تسویه' : isPartial ? 'بیعانه' : 'نسیه'}
+                          </span>
                         </div>
-                        {inv.customerPhone && (
-                          <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                            <a 
-                              href={`tel:${inv.customerPhone}`}
-                              className="hover:text-emerald-700 hover:underline"
-                            >
-                              {toPersianDigits(inv.customerPhone)}
-                            </a>
-                          </div>
-                        )}
                       </td>
 
-                      {/* Items Count */}
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
-                        <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-bold text-[11px]">
-                          {toPersianDigits(itemCount)} قلم
-                        </span>
-                        <span className="text-[10px] text-slate-400 block mt-0.5">
-                          ({toPersianDigits(inv.items.length)} ردیف)
-                        </span>
-                      </td>
-
-                      {/* Financial Amount & Remaining Debt */}
-                      <td className="py-3 px-3 text-left whitespace-nowrap font-['Vazirmatn']">
-                        <div className="font-black text-slate-900 text-sm font-mono">
-                          {formatPrice(inv.finalTotal, settings.currency)}
-                        </div>
-                        {inv.paymentStatus !== 'paid' && remainingDebt > 0 && (
-                          <div className="text-[10.5px] text-rose-700 font-bold mt-0.5">
-                            مانده: {formatPrice(remainingDebt, settings.currency)}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Payment Status Pill with Quick Update trigger */}
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
-                        <div className="inline-flex flex-col items-center">
+                      {/* Actions */}
+                      <td className="py-3.5 px-3 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
-                            onClick={() => handleOpenPaymentModal(inv)}
-                            className={`px-2.5 py-1 rounded-full font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-transform hover:scale-102 ${
-                              inv.paymentStatus === 'paid'
-                                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                                : inv.paymentStatus === 'partial'
-                                ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                                : 'bg-rose-100 text-rose-800 hover:bg-rose-200'
-                            }`}
-                            title="کلیک جهت ویرایش و ثبت دریافتی"
+                            onClick={() => setQuickDetailsInvoice(inv)}
+                            className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                            title="مشاهده اطلاعات کامل، اقلام و عملیات فاکتور"
                           >
-                            {inv.paymentStatus === 'paid' && <CheckCircle className="w-3 h-3" />}
-                            {inv.paymentStatus === 'partial' && <Clock className="w-3 h-3" />}
-                            {inv.paymentStatus === 'unpaid' && <AlertCircle className="w-3 h-3" />}
-                            <span>
-                              {inv.paymentStatus === 'paid'
-                                ? 'تسویه کامل'
-                                : inv.paymentStatus === 'partial'
-                                ? 'بیعانه'
-                                : 'نسیه'}
-                            </span>
+                            <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>مشاهده جزئیات</span>
                           </button>
 
-                          {inv.paymentStatus !== 'paid' && (
-                            <button
-                              id={`mark-paid-btn-${inv.id}`}
-                              type="button"
-                              onClick={() => onUpdatePaymentStatus(inv.id, 'paid')}
-                              className="text-[10px] text-emerald-700 hover:underline mt-1 cursor-pointer font-semibold"
-                              title="تسویه آنی کل مبلغ فاکتور"
-                            >
-                              تسویه کامل؟
-                            </button>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Payment Method Details */}
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
-                        <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
-                          inv.paymentMethod === 'cheque'
-                            ? 'bg-sky-100 text-sky-800'
-                            : inv.paymentMethod === 'cash'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : inv.paymentMethod === 'transfer'
-                            ? 'bg-indigo-100 text-indigo-800'
-                            : inv.paymentMethod === 'pos'
-                            ? 'bg-teal-100 text-teal-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {inv.paymentMethod === 'cheque'
-                            ? 'چک بانکی'
-                            : inv.paymentMethod === 'cash'
-                            ? 'وجه نقد'
-                            : inv.paymentMethod === 'transfer'
-                            ? 'واریز به حساب'
-                            : inv.paymentMethod === 'pos'
-                            ? 'کارتخوان'
-                            : 'دفتری'}
-                        </span>
-                        {inv.paymentMethod === 'cheque' && (inv.chequeNumber || inv.chequeDueDate) && (
-                          <div className="text-[10px] text-sky-700 mt-0.5 font-medium">
-                            {inv.chequeNumber && <div>چک: {toPersianDigits(inv.chequeNumber)}</div>}
-                            {inv.chequeDueDate && <div>سررسید: {toPersianDigits(inv.chequeDueDate)}</div>}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Operations / Actions */}
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1">
-                          {/* Convert Proforma to Official Invoice */}
-                          {inv.isProforma && onConvertProforma && (
-                            <button
-                              id={`convert-proforma-btn-${inv.id}`}
-                              type="button"
-                              onClick={() => handleOpenConvertModal(inv)}
-                              title="تبدیل به فاکتور رسمی فروش و کسر از انبار"
-                              className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs"
-                            >
-                              <ArrowRightLeft className="w-3.5 h-3.5" />
-                              <span>تبدیل</span>
-                            </button>
-                          )}
-
-                          {/* Print / View */}
                           <button
                             id={`view-invoice-btn-${inv.id}`}
                             type="button"
                             onClick={() => onViewInvoice(inv)}
-                            title={inv.isProforma ? 'مشاهده و چاپ پیش‌فاکتور' : 'مشاهده و چاپ فاکتور'}
-                            className="p-2 text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100 rounded-lg transition-colors cursor-pointer"
+                            title="مشاهده و چاپ مستقیم"
+                            className="p-2 text-slate-600 hover:text-emerald-700 hover:bg-slate-100 active:bg-slate-200 rounded-xl transition-colors cursor-pointer"
                           >
                             <Printer className="w-4 h-4" />
                           </button>
-
-                          {/* Edit Invoice / Proforma */}
-                          {onEditInvoice && (
-                            <button
-                              id={`edit-invoice-btn-${inv.id}`}
-                              type="button"
-                              onClick={() => onEditInvoice(inv)}
-                              title={inv.isProforma ? 'ویرایش پیش‌فاکتور' : 'ویرایش فاکتور فروش'}
-                              className="p-2 text-blue-600 hover:bg-blue-50 active:bg-blue-100 rounded-lg transition-colors cursor-pointer"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                          )}
-
-                          {/* Return products to stock or cancel proforma */}
-                          {canDelete && (
-                            <>
-                              <button
-                                id={`return-invoice-btn-${inv.id}`}
-                                type="button"
-                                onClick={() => setInvoiceToReturn(inv)}
-                                title={inv.isProforma ? 'لغو و حذف پیش‌فاکتور' : 'مرجوعی کالاها به انبار و لغو فاکتور'}
-                                className="p-2 text-amber-600 hover:bg-amber-50 active:bg-amber-100 rounded-lg transition-colors cursor-pointer"
-                              >
-                                <RotateCcw className="w-4 h-4" />
-                              </button>
-
-                              {/* Delete without returning */}
-                              <button
-                                id={`delete-invoice-btn-${inv.id}`}
-                                type="button"
-                                onClick={() => setInvoiceToDelete(inv)}
-                                title="حذف رکورد فاکتور"
-                                className="p-2 text-rose-500 hover:bg-rose-50 active:bg-rose-100 rounded-lg transition-colors cursor-pointer"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -1546,6 +1238,51 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           </div>
         </div>
       )}
+
+      {/* INVOICE QUICK DETAILS MODAL */}
+      <InvoiceQuickDetailsModal
+        isOpen={Boolean(quickDetailsInvoice)}
+        invoice={quickDetailsInvoice}
+        settings={settings}
+        currentUser={currentUser}
+        onClose={() => setQuickDetailsInvoice(null)}
+        onViewInvoice={(inv) => {
+          setQuickDetailsInvoice(null);
+          onViewInvoice(inv);
+        }}
+        onEditInvoice={onEditInvoice ? (inv) => {
+          setQuickDetailsInvoice(null);
+          onEditInvoice(inv);
+        } : undefined}
+        onOpenPaymentModal={(inv) => {
+          setQuickDetailsInvoice(null);
+          handleOpenPaymentModal(inv);
+        }}
+        onConvertProforma={onConvertProforma ? (inv) => {
+          setQuickDetailsInvoice(null);
+          handleOpenConvertModal(inv);
+        } : undefined}
+        onReturnInvoiceToStock={onReturnInvoiceToStock ? (inv) => {
+          setQuickDetailsInvoice(null);
+          setInvoiceToReturn(inv);
+        } : undefined}
+        onDeleteInvoice={onDeleteInvoice ? (invId) => {
+          const inv = invoices.find((i) => i.id === invId);
+          setQuickDetailsInvoice(null);
+          if (inv) setInvoiceToDelete(inv);
+        } : undefined}
+        onExportCustomer={(inv) => {
+          setQuickDetailsInvoice(null);
+          const found = customersList.find((c) => c.id === inv.customerId || c.name.trim().toLowerCase() === inv.customerName.trim().toLowerCase());
+          setCustomerExportSelected(found || {
+            id: inv.customerId || `cust-${inv.customerName}`,
+            name: inv.customerName,
+            phone: inv.customerPhone || '',
+            createdAt: inv.date,
+          });
+          setIsCustomerExportModalOpen(true);
+        }}
+      />
 
       {/* CUSTOMER INVOICES & EXIT SLIPS EXCEL EXPORT MODAL */}
       <CustomerExportModal

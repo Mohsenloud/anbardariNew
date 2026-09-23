@@ -84,28 +84,41 @@ export default function App() {
     // Initial app opening: restore authenticated user session if present
     loadData(true);
 
-    // Initial server sync
-    StorageService.syncFromServer().then((updated) => {
-      if (updated) loadData(true);
+    // Subscribe to all local/sync changes
+    const unsubStorage = StorageService.subscribe(() => {
+      loadData(true);
     });
 
-    // Periodic background synchronization every 12 seconds for multi-user collaboration across devices
-    const syncInterval = setInterval(() => {
-      StorageService.syncFromServer().then((updated) => {
-        if (updated) loadData(true);
-      });
-    }, 12000);
-
-    const onFocus = () => {
+    const triggerSync = () => {
       StorageService.syncFromServer().then((updated) => {
         if (updated) loadData(true);
       });
     };
+
+    // Initial server sync
+    triggerSync();
+
+    // Fast background synchronization every 4 seconds for instant multi-device collaboration
+    const syncInterval = setInterval(triggerSync, 4000);
+
+    const onFocus = () => triggerSync();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        triggerSync();
+      }
+    };
+    const onOnline = () => triggerSync();
+
     window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('online', onOnline);
 
     return () => {
+      unsubStorage();
       clearInterval(syncInterval);
       window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('online', onOnline);
     };
   }, []);
 

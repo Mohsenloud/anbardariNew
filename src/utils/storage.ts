@@ -1041,6 +1041,9 @@ export const StorageService = {
 
         this._lastServerRevision = serverRevision;
         this._lastServerChecksum = serverChecksum;
+        if (hasAnyUpdate) {
+          this.notifyChange();
+        }
         return hasAnyUpdate;
       }
       return false;
