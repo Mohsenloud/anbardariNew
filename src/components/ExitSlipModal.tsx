@@ -248,6 +248,30 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
 
   if (!invoice) return null;
 
+  // پیش‌فاکتورها به هیچ عنوان حواله خروج انبار ندارند!
+  if (invoice.isProforma) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs font-['Vazirmatn']">
+        <div className="bg-white rounded-2xl p-6 max-w-md w-full text-center shadow-2xl border border-slate-200 animate-scaleUp">
+          <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <h3 className="font-bold text-base text-slate-900 mb-2">امکان صدور حواله خروج برای پیش‌فاکتور وجود ندارد</h3>
+          <p className="text-xs text-slate-600 leading-relaxed mb-6">
+            سند شماره <b className="text-slate-800 font-mono">{toPersianDigits(invoice.invoiceNumber)}</b> در وضعیت پیش‌فاکتور است. حواله خروج انبار صرفاً زمانی که سند به فاکتور قطعی و رسمی فروش تبدیل گردد صادر خواهد شد.
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+          >
+            متوجه شدم و بازگشت
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const totalUnits = invoice.items.reduce((sum, item) => sum + item.quantity, 0);
 
   const showNotification = (text: string) => {
@@ -460,114 +484,56 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
       {/* Container Dialog */}
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden my-auto print:max-h-none print:shadow-none print:border-none print:w-full print:rounded-none">
         
-        {/* MODAL HEADER (No Print) */}
-        <div className="no-print bg-slate-900 text-white px-3.5 sm:px-6 py-3 border-b border-slate-800 shrink-0">
-          {/* Top Line: Title & Core Badges + Actions & Close Button */}
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <span className="p-1.5 sm:p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
-                <PackageCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+        {/* MODAL HEADER (No Print - Unified Decluttered Toolbar) */}
+        <div className="no-print shrink-0 flex flex-col">
+          {/* Tier 1: Main Header Bar (Title, Slip Badges, Delivery Button, PDF, Print, Close) */}
+          <div className="bg-slate-900 text-white px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2 border-b border-slate-800">
+            {/* Title & Slip Badges */}
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
+                <PackageCheck className="w-4 h-4" />
               </span>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                  <h3 className="text-xs sm:text-base font-bold text-white truncate">
-                    برگ خروج کالا از انبار (حواله تحویل)
-                  </h3>
-                  <span className="text-[10px] sm:text-xs font-['Vazirmatn'] text-emerald-300 bg-emerald-950/80 border border-emerald-600/40 px-2 py-0.5 rounded font-bold">
-                    حواله: {toPersianDigits(slipNumber)}
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                <h3 className="font-bold text-xs sm:text-sm text-white truncate">
+                  برگ خروج کالا
+                </h3>
+                <span className="text-[11px] font-['Vazirmatn'] text-emerald-300 bg-emerald-950/80 border border-emerald-600/40 px-1.5 py-0.5 rounded font-bold whitespace-nowrap">
+                  حواله: {toPersianDigits(slipNumber)}
+                </span>
+                {slipLog?.slipNumber && invoice.invoiceNumber && slipLog.slipNumber !== invoice.invoiceNumber && (
+                  <span className="text-[10px] font-['Vazirmatn'] text-slate-300 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 whitespace-nowrap hidden sm:inline-block">
+                    فاکتور: {toPersianDigits(invoice.invoiceNumber)}
                   </span>
-                  {slipLog?.slipNumber && invoice.invoiceNumber && slipLog.slipNumber !== invoice.invoiceNumber && (
-                    <span className="text-[10px] sm:text-xs font-['Vazirmatn'] text-slate-300 bg-slate-800/80 border border-slate-600/40 px-2 py-0.5 rounded">
-                      فاکتور: {toPersianDigits(invoice.invoiceNumber)}
-                    </span>
-                  )}
-                  <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-['Vazirmatn'] text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
-                    <Printer className="w-3 h-3 text-emerald-400" />
-                    <span>{slipLog.printCount > 0 ? `چاپ نوبت ${toPersianDigits(slipLog.printCount + 1)}` : 'نسخه اول (اصل)'}</span>
-                  </span>
-                </div>
-                <p className="hidden sm:block text-[11px] text-slate-400 truncate">
-                  حواله رسمی تحویل فیزیکی اقلام انبار بدون مبالغ مالی
-                </p>
+                )}
               </div>
             </div>
 
-            {/* Header Action Badges & Buttons */}
-            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              {/* Delivery & Vehicle Specs Button (Desktop) */}
+            {/* Essential Action Tools: Delivery Status, PDF, Print, Close */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Delivery Status / Register Button */}
               <button
                 type="button"
                 id="exit-slip-header-delivery-btn"
                 onClick={() => setShowDeliveryModal(true)}
-                className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer ${
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 shrink-0 ${
                   slipLog.isDelivered 
                     ? 'bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-500/50' 
                     : 'bg-amber-600 hover:bg-amber-500 text-white'
                 }`}
-                title="ثبت یا ویرایش نام راننده، مشخصات ماشین و تایید تحویل بار"
+                title="ثبت مشخصات خودرو، راننده و وضعیت تحویل"
               >
                 <Truck className="w-3.5 h-3.5" />
-                <span>{slipLog.isDelivered ? 'بار تحویل شد' : 'ثبت تحویل بار'}</span>
+                <span className="whitespace-nowrap">{slipLog.isDelivered ? 'تحویل شد' : 'ثبت تحویل'}</span>
               </button>
 
-              {/* Origin Warehouse Settings Button (Desktop) */}
-              <button
-                type="button"
-                id="exit-slip-header-warehouse-settings-btn"
-                onClick={() => {
-                  setOriginWarehouseFormData({
-                    originWarehouseName: settings.originWarehouseName || 'انبار مرکزی سپهر',
-                    originWarehouseCode: settings.originWarehouseCode || 'WH-01',
-                    originWarehouseAddress: settings.originWarehouseAddress || '',
-                    originWarehousePhone: settings.originWarehousePhone || '',
-                    originWarehouseManager: settings.originWarehouseManager || '',
-                  });
-                  setShowWarehouseConfigModal(true);
-                }}
-                className="hidden md:flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
-                title="تنظیم نام و مشخصات انبار مبدأ"
-              >
-                <Warehouse className="w-3.5 h-3.5 text-amber-400" />
-                <span>انبار مبدأ</span>
-              </button>
-
-              {/* History Toggle Button */}
-              <button
-                type="button"
-                id="exit-slip-history-toggle-btn"
-                onClick={() => setShowHistoryModal(!showHistoryModal)}
-                className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
-                title="مشاهده تاریخچه دفعات چاپ"
-              >
-                <History className="w-3.5 h-3.5 text-blue-400" />
-                <span className="hidden lg:inline">تاریخچه</span>
-                {slipLog.printCount > 0 && (
-                  <span className="font-['Vazirmatn'] font-bold text-blue-300 text-[10px] bg-blue-900/60 px-1.5 py-0.2 rounded-full border border-blue-500/30">
-                    {toPersianDigits(slipLog.printCount)}
-                  </span>
-                )}
-              </button>
-
-              {/* Social Media Share Button (Desktop) */}
-              <button
-                type="button"
-                id="exit-slip-header-social-btn"
-                onClick={() => setShowSocialModal(true)}
-                className="hidden sm:flex items-center gap-1 bg-sky-600 hover:bg-sky-500 active:scale-95 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-                title="ارسال به شبکه‌های اجتماعی"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-                <span>اشتراک</span>
-              </button>
-
-              {/* PDF Export Button (Desktop) */}
+              {/* PDF Button */}
               <button
                 type="button"
                 id="exit-slip-header-pdf-btn"
                 onClick={handleExportPdf}
                 disabled={isExportingPdf}
-                className="hidden sm:flex items-center gap-1 bg-rose-600 hover:bg-rose-500 active:scale-95 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-                title="تبدیل به PDF"
+                className="flex items-center gap-1 bg-rose-700 hover:bg-rose-600 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+                title="دانلود فایل PDF حواله خروج"
               >
                 {isExportingPdf ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -582,8 +548,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                 type="button"
                 id="exit-slip-print-action-btn"
                 onClick={() => handlePrint('new-window')}
-                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-                title="چاپ برگه خروج"
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
+                title="چاپ برگه خروج انبار"
               >
                 <Printer className="w-4 h-4" />
                 <span>چاپ</span>
@@ -594,173 +560,169 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                 type="button"
                 id="exit-slip-close-modal-btn"
                 onClick={onClose}
-                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer shrink-0"
+                title="بستن پنجره"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* Mobile Secondary Action Toolbar */}
-          <div className="flex sm:hidden items-center justify-between gap-1.5 pt-2 mt-2 border-t border-slate-800/80 text-xs">
-            {/* Delivery status button on mobile */}
-            <button
-              type="button"
-              onClick={() => setShowDeliveryModal(true)}
-              className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold ${
-                slipLog.isDelivered
-                  ? 'bg-emerald-700 text-white border border-emerald-500/50'
-                  : 'bg-amber-600 text-white'
-              }`}
-            >
-              <Truck className="w-3.5 h-3.5" />
-              <span>{slipLog.isDelivered ? 'تحویل شد' : 'ثبت تحویل'}</span>
-            </button>
+          {/* Tier 2: Controls & Options Bar (Horizontal Scrolling on Mobile, Clean Visual Separation) */}
+          <div className="bg-slate-800/95 border-b border-slate-700/80 px-2.5 sm:px-4 py-1.5 text-slate-200">
+            <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto no-scrollbar py-0.5">
+              
+              {/* Group 1: Template Selection (ساده / استاندارد) */}
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-[10px] text-slate-400 font-bold ml-0.5 hidden md:inline">طرح:</span>
+                <div className="inline-flex items-center bg-slate-900 rounded-lg p-0.5 border border-slate-700/80 text-xs shrink-0">
+                  <button
+                    type="button"
+                    id="exit-slip-tpl-simple-btn"
+                    onClick={() => setTemplate('simple')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                      template === 'simple'
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                    title="قالب ساده و خوانا"
+                  >
+                    ساده
+                  </button>
+                  <button
+                    type="button"
+                    id="exit-slip-tpl-standard-btn"
+                    onClick={() => setTemplate('standard')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                      template === 'standard'
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                    title="قالب استاندارد انبارداری"
+                  >
+                    استاندارد
+                  </button>
+                </div>
+              </div>
 
-            {/* Warehouse settings on mobile */}
-            <button
-              type="button"
-              onClick={() => {
-                setOriginWarehouseFormData({
-                  originWarehouseName: settings.originWarehouseName || 'انبار مرکزی سپهر',
-                  originWarehouseCode: settings.originWarehouseCode || 'WH-01',
-                  originWarehouseAddress: settings.originWarehouseAddress || '',
-                  originWarehousePhone: settings.originWarehousePhone || '',
-                  originWarehouseManager: settings.originWarehouseManager || '',
-                });
-                setShowWarehouseConfigModal(true);
-              }}
-              className="flex items-center gap-1 bg-slate-800 text-slate-300 px-2.5 py-1.5 rounded-lg text-[11px] border border-slate-700"
-            >
-              <Warehouse className="w-3.5 h-3.5 text-amber-400" />
-              <span>انبار</span>
-            </button>
+              {/* Divider */}
+              <div className="h-4 w-px bg-slate-700 shrink-0" />
 
-            {/* Share on mobile */}
-            <button
-              type="button"
-              onClick={() => setShowSocialModal(true)}
-              className="flex items-center gap-1 bg-sky-600 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-              <span>اشتراک</span>
-            </button>
+              {/* Group 2: Paper Size: A4 / A5 */}
+              <div className="inline-flex items-center bg-slate-900 rounded-lg p-0.5 border border-slate-700/80 text-xs shrink-0">
+                <button
+                  type="button"
+                  id="exit-slip-size-a4-btn"
+                  onClick={() => setPageSize('a4')}
+                  className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    pageSize === 'a4'
+                      ? 'bg-blue-600 text-white shadow-2xs'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  A4
+                </button>
+                <button
+                  type="button"
+                  id="exit-slip-size-a5-btn"
+                  onClick={() => setPageSize('a5')}
+                  className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    pageSize === 'a5'
+                      ? 'bg-blue-600 text-white shadow-2xs'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  A5
+                </button>
+              </div>
 
-            {/* PDF on mobile */}
-            <button
-              type="button"
-              onClick={handleExportPdf}
-              disabled={isExportingPdf}
-              className="flex items-center gap-1 bg-rose-600 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold"
-            >
-              {isExportingPdf ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
-              <span>PDF</span>
-            </button>
-          </div>
-        </div>
+              {/* Orientation: عمودی / افقی */}
+              <div className="inline-flex items-center bg-slate-900 rounded-lg p-0.5 border border-slate-700/80 text-xs shrink-0">
+                <button
+                  type="button"
+                  id="exit-slip-orientation-portrait-btn"
+                  onClick={() => setOrientation('portrait')}
+                  className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    orientation === 'portrait'
+                      ? 'bg-blue-600 text-white shadow-2xs'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                  title="چاپ عمودی"
+                >
+                  عمودی
+                </button>
+                <button
+                  type="button"
+                  id="exit-slip-orientation-landscape-btn"
+                  onClick={() => setOrientation('landscape')}
+                  className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    orientation === 'landscape'
+                      ? 'bg-blue-600 text-white shadow-2xs'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                  title="چاپ افقی"
+                >
+                  افقی
+                </button>
+              </div>
 
-        {/* PAPER SETTINGS TOOLBAR (No Print - User paper format selection) */}
-        <div className="no-print bg-slate-800 text-slate-200 px-3.5 sm:px-6 py-2 border-b border-slate-700/80 flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs">
-          <div className="flex items-center gap-1.5 text-slate-300">
-            <Settings className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="font-bold text-slate-200 text-xs">تنظیمات و قالب چاپ حواله:</span>
-          </div>
+              {/* Divider */}
+              <div className="h-4 w-px bg-slate-700 shrink-0" />
 
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-            {/* Template Selector: ساده و خوانا / استاندارد */}
-            <div className="inline-flex items-center bg-slate-900/90 rounded-lg p-0.5 border border-slate-700">
-              <span className="text-[10px] text-slate-400 px-2 select-none">طرح قالب:</span>
-              <button
-                type="button"
-                id="exit-slip-tpl-simple-btn"
-                onClick={() => setTemplate('simple')}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
-                  template === 'simple'
-                    ? 'bg-emerald-500 text-slate-950 shadow-xs'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                }`}
-                title="قالب جدید ساده و خوانا: جدول مقادیر و چیدمان منظم با خوانایی بسیار بالا"
-              >
-                ساده و خوانا (جدید)
-              </button>
-              <button
-                type="button"
-                id="exit-slip-tpl-standard-btn"
-                onClick={() => setTemplate('standard')}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
-                  template === 'standard'
-                    ? 'bg-amber-500 text-slate-950 shadow-xs'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                }`}
-                title="قالب استاندارد انبارداری"
-              >
-                استاندارد
-              </button>
+              {/* Group 3: Warehouse & Auxiliary Actions */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* Origin Warehouse Button */}
+                <button
+                  type="button"
+                  id="exit-slip-header-warehouse-settings-btn"
+                  onClick={() => {
+                    setOriginWarehouseFormData({
+                      originWarehouseName: settings.originWarehouseName || 'انبار مرکزی سپهر',
+                      originWarehouseCode: settings.originWarehouseCode || 'WH-01',
+                      originWarehouseAddress: settings.originWarehouseAddress || '',
+                      originWarehousePhone: settings.originWarehousePhone || '',
+                      originWarehouseManager: settings.originWarehouseManager || '',
+                    });
+                    setShowWarehouseConfigModal(true);
+                  }}
+                  className="flex items-center gap-1 bg-slate-700 hover:bg-slate-600 text-slate-200 hover:text-white px-2 py-1 rounded-lg border border-slate-600 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  title="تنظیمات انبار مبدأ"
+                >
+                  <Warehouse className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden xs:inline">انبار مبدأ</span>
+                </button>
+
+                {/* History Button */}
+                <button
+                  type="button"
+                  id="exit-slip-history-toggle-btn"
+                  onClick={() => setShowHistoryModal(!showHistoryModal)}
+                  className="flex items-center gap-1 bg-slate-700 hover:bg-slate-600 text-slate-200 hover:text-white px-2 py-1 rounded-lg border border-slate-600 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  title="تاریخچه دفعات چاپ حواله"
+                >
+                  <History className="w-3.5 h-3.5 text-blue-400" />
+                  <span className="hidden xs:inline">تاریخچه</span>
+                  {slipLog.printCount > 0 && (
+                    <span className="font-['Vazirmatn'] font-bold text-blue-300 text-[10px] bg-blue-950 px-1.5 py-0.2 rounded-full border border-blue-500/40">
+                      {toPersianDigits(slipLog.printCount)}
+                    </span>
+                  )}
+                </button>
+
+                {/* Social Share Button */}
+                <button
+                  type="button"
+                  id="exit-slip-header-social-btn"
+                  onClick={() => setShowSocialModal(true)}
+                  className="flex items-center gap-1 bg-sky-950/70 hover:bg-sky-900 text-sky-300 hover:text-white px-2 py-1 rounded-lg border border-sky-600/40 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  title="ارسال حواله به پیام‌رسان‌ها و شبکه‌های اجتماعی"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-sky-400" />
+                  <span className="hidden xs:inline">ارسال</span>
+                </button>
+              </div>
+
             </div>
-
-            {/* Paper Size selector: A4 / A5 */}
-            <div className="inline-flex items-center bg-slate-900/90 rounded-lg p-0.5 border border-slate-700">
-              <span className="text-[10px] text-slate-400 px-2 select-none">اندازه کاغذ:</span>
-              <button
-                type="button"
-                id="exit-slip-size-a4-btn"
-                onClick={() => setPageSize('a4')}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
-                  pageSize === 'a4'
-                    ? 'bg-amber-500 text-slate-950 shadow-xs'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                }`}
-              >
-                A4
-              </button>
-              <button
-                type="button"
-                id="exit-slip-size-a5-btn"
-                onClick={() => setPageSize('a5')}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
-                  pageSize === 'a5'
-                    ? 'bg-amber-500 text-slate-950 shadow-xs'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                }`}
-              >
-                A5
-              </button>
-            </div>
-
-            {/* Orientation selector: عمودی (portrait) / افقی (landscape) */}
-            <div className="inline-flex items-center bg-slate-900/90 rounded-lg p-0.5 border border-slate-700">
-              <span className="text-[10px] text-slate-400 px-2 select-none">جهت کاغذ:</span>
-              <button
-                type="button"
-                id="exit-slip-orientation-portrait-btn"
-                onClick={() => setOrientation('portrait')}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
-                  orientation === 'portrait'
-                    ? 'bg-amber-500 text-slate-950 shadow-xs'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                }`}
-              >
-                عمودی
-              </button>
-              <button
-                type="button"
-                id="exit-slip-orientation-landscape-btn"
-                onClick={() => setOrientation('landscape')}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
-                  orientation === 'landscape'
-                    ? 'bg-amber-500 text-slate-950 shadow-xs'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                }`}
-              >
-                افقی
-              </button>
-            </div>
-
-            {/* Current Active Label Badge */}
-            <span className="bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 px-2 py-0.5 rounded text-[11px] font-bold hidden sm:inline-flex items-center gap-1 font-['Vazirmatn']">
-              <span>قالب:</span>
-              <strong>{template === 'simple' ? 'ساده و خوانا' : 'استاندارد'} ({pageSize.toUpperCase()} {orientation === 'portrait' ? 'عمودی' : 'افقی'})</strong>
-            </span>
           </div>
         </div>
 
@@ -831,7 +793,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
           @media print {
             @page {
               size: ${pageSize.toUpperCase()} ${orientation} !important;
-              margin: ${isA5Landscape ? '4mm' : isA5Portrait ? '5mm' : '8mm'} !important;
+              margin: ${isA5 ? '4mm' : '6mm'} !important;
             }
             body {
               -webkit-print-color-adjust: exact !important;
@@ -844,8 +806,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
               margin: 0 !important;
               width: 100% !important;
               max-width: none !important;
-              min-height: calc(100vh - ${isA5Landscape ? '8mm' : isA5Portrait ? '10mm' : '16mm'}) !important;
-              height: calc(100vh - ${isA5Landscape ? '8mm' : isA5Portrait ? '10mm' : '16mm'}) !important;
+              min-height: calc(100vh - ${isA5 ? '8mm' : '12mm'}) !important;
+              height: calc(100vh - ${isA5 ? '8mm' : '12mm'}) !important;
               display: flex !important;
               flex-direction: column !important;
               justify-content: space-between !important;
@@ -874,7 +836,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
           #printable-exit-slip.paper-a4.paper-portrait {
             width: 100% !important;
             max-width: 840px !important;
-            min-height: 1140px !important;
+            min-height: 1188px !important;
             padding: 22px 28px !important;
           }
           #printable-exit-slip.paper-a4.paper-portrait .exit-slip-header {
@@ -935,8 +897,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
           /* === A4 LANDSCAPE (297mm x 210mm - Ratio 1.414 : 1) === */
           #printable-exit-slip.paper-a4.paper-landscape {
             width: 100% !important;
-            max-width: 1060px !important;
-            min-height: 740px !important;
+            max-width: 1140px !important;
+            min-height: 806px !important;
             padding: 18px 24px !important;
           }
           #printable-exit-slip.paper-a4.paper-landscape .exit-slip-header {
@@ -971,8 +933,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
           /* === A5 PORTRAIT (148mm x 210mm - Ratio 1 : 1.414) === */
           #printable-exit-slip.paper-a5.paper-portrait {
             width: 100% !important;
-            max-width: 580px !important;
-            min-height: 800px !important;
+            max-width: 600px !important;
+            min-height: 850px !important;
             padding: 14px 18px !important;
             font-size: 10.5px !important;
           }
@@ -1026,8 +988,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
           /* === A5 LANDSCAPE (210mm x 148mm - Ratio 1.414 : 1) === */
           #printable-exit-slip.paper-a5.paper-landscape {
             width: 100% !important;
-            max-width: 780px !important;
-            min-height: 530px !important;
+            max-width: 850px !important;
+            min-height: 600px !important;
             padding: 10px 14px !important;
             font-size: 9.5px !important;
           }

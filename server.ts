@@ -340,6 +340,7 @@ const DEFAULT_INITIAL_DATA = {
   purchaseInvoices: [],
   inboundReceipts: [],
   activityLogs: [],
+  savedVehicles: [],
 };
 
 // -------------------------------------------------------------
@@ -369,6 +370,7 @@ function validateDatabaseSchema(data: any): { valid: boolean; error?: string } {
     'inboundReceipts',
     'activityLogs',
     'directTransfers',
+    'savedVehicles',
   ];
   for (const key of arrayKeys) {
     if (data[key] !== undefined && !Array.isArray(data[key])) {

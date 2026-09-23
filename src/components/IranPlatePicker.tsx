@@ -342,17 +342,17 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
   const isYellowPlate = letter === 'ع' || letter === 'ت';
 
   return (
-    <div className="bg-slate-50/90 border border-slate-200/90 rounded-2xl p-2.5 sm:p-3 space-y-2.5 transition-all shadow-2xs">
+    <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-2 sm:p-2.5 space-y-2 transition-all">
       {/* 1. TOP COMPACT BAR: Vehicle Type + Color + Mode Switcher */}
-      <div className="flex flex-wrap items-center justify-between gap-1.5 pb-2 border-b border-slate-200/80">
+      <div className="flex flex-wrap items-center justify-between gap-1.5 pb-1.5 border-b border-slate-200/60">
         <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-[200px]">
           {/* Vehicle Type Dropdown */}
-          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1 shadow-2xs">
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-0.5 shadow-2xs">
             <Truck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
             <select
               value={vehicleType}
               onChange={(e) => handleVehicleTypeSelect(e.target.value)}
-              className="text-xs font-bold text-slate-800 bg-transparent border-0 focus:outline-none cursor-pointer pr-1"
+              className="text-xs font-bold text-slate-800 bg-transparent border-0 focus:outline-hidden cursor-pointer pr-0.5"
             >
               {VEHICLE_TYPES.map((vt) => (
                 <option key={vt} value={vt}>{vt}</option>
@@ -370,19 +370,19 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
                 setCustomVehicleType(e.target.value);
                 emitFormattedValue(vehicleType, part1, letter, part2, iranCode, colorDesc, e.target.value);
               }}
-              className="text-xs font-semibold bg-white border border-slate-200 rounded-xl px-2.5 py-1 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 w-36"
+              className="text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-blue-500 w-32"
             />
           )}
 
           {/* Color Selector Dropdown */}
-          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1 shadow-2xs">
-            <Palette className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-0.5 shadow-2xs">
+            <Palette className="w-3 h-3 text-slate-400 shrink-0" />
             <select
               value={colorDesc}
               onChange={(e) => handleColorToggle(e.target.value)}
-              className="text-xs font-medium text-slate-700 bg-transparent border-0 focus:outline-none cursor-pointer pr-1"
+              className="text-xs text-slate-700 bg-transparent border-0 focus:outline-hidden cursor-pointer pr-0.5"
             >
-              <option value="">رنگ: انتخابی</option>
+              <option value="">رنگ...</option>
               {COLOR_PRESETS.map((col) => (
                 <option key={col} value={col}>{col}</option>
               ))}
@@ -402,17 +402,17 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
               emitFormattedValue(vehicleType, part1, letter, part2, iranCode, colorDesc, customVehicleType);
             }
           }}
-          className="text-xs text-slate-600 hover:text-blue-700 font-semibold flex items-center gap-1 cursor-pointer bg-white px-2.5 py-1 rounded-xl border border-slate-200 hover:border-blue-300 transition-all shadow-2xs shrink-0"
+          className="text-[11px] text-slate-600 hover:text-blue-700 font-medium flex items-center gap-1 cursor-pointer bg-white px-2 py-0.5 rounded-lg border border-slate-200 hover:border-blue-300 transition-all shadow-2xs shrink-0"
         >
           {isFreeText ? (
             <>
-              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+              <Sparkles className="w-3 h-3 text-blue-600" />
               <span>پلاک‌ساز گرافیکی</span>
             </>
           ) : (
             <>
-              <Edit3 className="w-3.5 h-3.5 text-slate-500" />
-              <span>تایپ آزاد / دستی</span>
+              <Edit3 className="w-3 h-3 text-slate-400" />
+              <span>تایپ دستی</span>
             </>
           )}
         </button>
@@ -420,7 +420,7 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
 
       {isFreeText ? (
         /* Manual Free Text Mode (Compact & Clean) */
-        <div className="space-y-1.5">
+        <div>
           <input
             type="text"
             value={freeTextValue}
@@ -429,37 +429,34 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
               onChange(e.target.value);
             }}
             placeholder={placeholder || "مثال: وانت نیسان آبی - پلاک ۲۴ ع ۵۶۷ ایران ۶۸"}
-            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-xs sm:text-sm font-medium text-slate-900 shadow-2xs"
+            className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-blue-500 text-xs font-medium text-slate-900 shadow-2xs"
           />
-          <p className="text-[11px] text-slate-500">
-            می‌توانید مدل ماشین یا پلاک‌های متفرقه را مستقیماً به صورت دلخواه بنویسید.
-          </p>
         </div>
       ) : (
         /* 2. COMPACT & HIGH-LEGIBILITY REALISTIC IRANIAN PLATE */
-        <div className="space-y-2">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5">
+        <div className="space-y-1.5">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
             {/* The Authentic Iranian Plate Box */}
             <div 
-              className={`w-full max-w-[340px] sm:max-w-[360px] h-[48px] rounded-xl border-2 border-slate-900 shadow-sm flex items-stretch select-none transition-all ${
+              className={`w-full max-w-[320px] sm:max-w-[340px] h-[44px] rounded-lg border-2 border-slate-900 shadow-2xs flex items-stretch select-none transition-all ${
                 isYellowPlate 
-                  ? 'bg-amber-400 text-slate-950 ring-1 ring-amber-500/50' 
+                  ? 'bg-amber-400 text-slate-950 ring-1 ring-amber-500/40' 
                   : 'bg-white text-slate-900'
               }`}
               dir="ltr"
             >
               {/* Left Blue Flag Strip (IRAN Standard) */}
-              <div className="bg-blue-900 text-white w-8 sm:w-9 rounded-l-[10px] flex flex-col items-center justify-between py-1 px-0.5 shrink-0 select-none">
+              <div className="bg-blue-900 text-white w-7 sm:w-8 rounded-l-[6px] flex flex-col items-center justify-between py-1 px-0.5 shrink-0 select-none">
                 {/* Miniature Iranian Flag */}
-                <div className="w-5 h-3 rounded-[2px] overflow-hidden flex flex-col border border-white/50 shadow-2xs">
+                <div className="w-4 h-2.5 rounded-[1px] overflow-hidden flex flex-col border border-white/50 shadow-2xs">
                   <div className="bg-emerald-600 h-1/3 w-full" />
                   <div className="bg-white h-1/3 w-full flex items-center justify-center">
-                    <div className="w-1 h-1 bg-red-600 rounded-full" />
+                    <div className="w-0.5 h-0.5 bg-red-600 rounded-full" />
                   </div>
                   <div className="bg-rose-600 h-1/3 w-full" />
                 </div>
 
-                <div className="text-[6.5px] font-black tracking-tighter text-center leading-none text-white/95">
+                <div className="text-[6px] font-black tracking-tighter text-center leading-none text-white/95">
                   <div>I.R.</div>
                   <div>IRAN</div>
                 </div>
@@ -476,7 +473,7 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
                   placeholder="۲۴"
                   value={toPersianDigits(part1)}
                   onChange={(e) => handlePart1Change(e.target.value)}
-                  className={`w-9 sm:w-11 h-8 rounded-lg text-center font-['Vazirmatn'] font-black text-lg sm:text-xl border focus:outline-none focus:ring-2 focus:ring-blue-600 shadow-inner ${
+                  className={`w-8 sm:w-9 h-7 rounded text-center font-['Vazirmatn'] font-black text-base sm:text-lg border focus:outline-hidden focus:ring-1 focus:ring-blue-600 shadow-inner ${
                     isYellowPlate 
                       ? 'bg-amber-300/80 border-amber-600/80 text-slate-950 placeholder:text-amber-700/40' 
                       : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-300'
@@ -489,7 +486,7 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
                   <select
                     value={letter}
                     onChange={(e) => handleLetterChange(e.target.value)}
-                    className={`h-8 px-2 rounded-lg text-center font-['Vazirmatn'] font-black text-base sm:text-lg border focus:outline-none focus:ring-2 focus:ring-blue-600 shadow-inner cursor-pointer appearance-none ${
+                    className={`h-7 px-1.5 rounded text-center font-['Vazirmatn'] font-black text-sm sm:text-base border focus:outline-hidden focus:ring-1 focus:ring-blue-600 shadow-inner cursor-pointer appearance-none ${
                       isYellowPlate 
                         ? 'bg-amber-300/90 border-amber-600/90 text-slate-950' 
                         : 'bg-slate-50 border-slate-300 text-slate-900'
@@ -514,7 +511,7 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
                   placeholder="۵۶۷"
                   value={toPersianDigits(part2)}
                   onChange={(e) => handlePart2Change(e.target.value)}
-                  className={`w-12 sm:w-14 h-8 rounded-lg text-center font-['Vazirmatn'] font-black text-lg sm:text-xl border focus:outline-none focus:ring-2 focus:ring-blue-600 shadow-inner ${
+                  className={`w-11 sm:w-12 h-7 rounded text-center font-['Vazirmatn'] font-black text-base sm:text-lg border focus:outline-hidden focus:ring-1 focus:ring-blue-600 shadow-inner ${
                     isYellowPlate 
                       ? 'bg-amber-300/80 border-amber-600/80 text-slate-950 placeholder:text-amber-700/40' 
                       : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-300'
@@ -527,8 +524,8 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
               <div className="w-[1.5px] bg-slate-500 self-stretch my-1 shrink-0" />
 
               {/* Right Side: IRAN Code Section */}
-              <div className="w-12 sm:w-14 rounded-r-[10px] flex flex-col items-center justify-center py-0.5 px-0.5 shrink-0 select-none" dir="rtl">
-                <span className="text-[9px] font-black text-slate-800 leading-none mb-0.5">
+              <div className="w-11 sm:w-12 rounded-r-[6px] flex flex-col items-center justify-center py-0.5 px-0.5 shrink-0 select-none" dir="rtl">
+                <span className="text-[8px] font-black text-slate-800 leading-none mb-0.5">
                   ایران
                 </span>
                 <input
@@ -539,7 +536,7 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
                   placeholder="۶۸"
                   value={toPersianDigits(iranCode)}
                   onChange={(e) => handleIranCodeChange(e.target.value)}
-                  className={`w-9 sm:w-10 h-7 rounded-md text-center font-['Vazirmatn'] font-black text-sm sm:text-base border focus:outline-none focus:ring-2 focus:ring-blue-600 shadow-inner ${
+                  className={`w-8 sm:w-9 h-6 rounded text-center font-['Vazirmatn'] font-black text-xs sm:text-sm border focus:outline-hidden focus:ring-1 focus:ring-blue-600 shadow-inner ${
                     isYellowPlate 
                       ? 'bg-amber-300/80 border-amber-600/80 text-slate-950 placeholder:text-amber-700/40' 
                       : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-300'
@@ -550,19 +547,19 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
             </div>
 
             {/* Quick helper controls next to plate */}
-            <div className="flex flex-wrap items-center gap-1.5 justify-end w-full sm:w-auto">
+            <div className="flex items-center gap-1 sm:gap-1.5 justify-end w-full sm:w-auto">
               {/* Common Cargo Letter Shortcut */}
               <button
                 type="button"
                 onClick={() => handleLetterChange('ع')}
-                className={`text-[11px] px-2 py-1 rounded-lg border font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                className={`text-[10px] px-2 py-1 rounded-lg border font-bold transition-all cursor-pointer ${
                   letter === 'ع' 
-                    ? 'bg-amber-400 text-slate-950 border-amber-500 shadow-2xs font-black' 
+                    ? 'bg-amber-400 text-slate-950 border-amber-500 font-black' 
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                 }`}
-                title="تنظیم حرف 'ع' ویژه پلاک باربری و عمومی"
+                title="پلاک باری و عمومی"
               >
-                <span>پلاک باری (ع)</span>
+                باری (ع)
               </button>
 
               {/* City Quick Picker Button & Dropdown */}
@@ -570,30 +567,30 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowCityPicker(!showCityPicker)}
-                  className={`text-[11px] px-2 py-1 rounded-lg border font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                  className={`text-[10px] px-2 py-1 rounded-lg border font-semibold transition-all cursor-pointer flex items-center gap-0.5 ${
                     showCityPicker
                       ? 'bg-blue-600 text-white border-blue-600'
                       : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
-                  <MapPin className="w-3 h-3 text-blue-500" />
-                  <span>استان ({toPersianDigits(iranCode)})</span>
+                  <MapPin className="w-2.5 h-2.5 text-blue-500" />
+                  <span>استان {toPersianDigits(iranCode)}</span>
                 </button>
 
                 {/* Popover of Quick Cities */}
                 {showCityPicker && (
-                  <div className="absolute left-0 sm:right-0 sm:left-auto top-full mt-1 w-64 bg-white border border-slate-300 rounded-2xl shadow-xl z-30 p-2 space-y-1.5 animate-in fade-in zoom-in-95">
+                  <div className="absolute left-0 sm:right-0 sm:left-auto top-full mt-1 w-60 bg-white border border-slate-300 rounded-xl shadow-xl z-30 p-2 space-y-1.5 animate-fadeIn">
                     <div className="flex items-center justify-between pb-1 border-b border-slate-100">
-                      <span className="text-[11px] font-bold text-slate-700">کدهای پرکاربرد استان:</span>
+                      <span className="text-[10px] font-bold text-slate-700">کدهای پرکاربرد:</span>
                       <button
                         type="button"
                         onClick={() => setShowCityPicker(false)}
-                        className="text-slate-400 hover:text-slate-700 p-0.5"
+                        className="text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <X className="w-3 h-3" />
                       </button>
                     </div>
-                    <div className="grid grid-cols-2 gap-1 max-h-48 overflow-y-auto pr-0.5">
+                    <div className="grid grid-cols-2 gap-1 max-h-44 overflow-y-auto pr-0.5">
                       {POPULAR_IRAN_CODES.map((pic) => (
                         <button
                           key={pic.code}
@@ -602,7 +599,7 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
                             handleIranCodeChange(pic.code);
                             setShowCityPicker(false);
                           }}
-                          className={`text-right px-2 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+                          className={`text-right px-1.5 py-0.5 rounded text-[10px] font-medium transition-all cursor-pointer ${
                             iranCode === pic.code
                               ? 'bg-blue-600 text-white font-bold'
                               : 'hover:bg-slate-100 text-slate-700'
@@ -619,9 +616,9 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
                           handleIranCodeChange(e.target.value);
                           setShowCityPicker(false);
                         }}
-                        className="w-full text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-1"
+                        className="w-full text-[10px] font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded p-1"
                       >
-                        <option value="">سایر شهرستان‌ها...</option>
+                        <option value="">سایر شهرها...</option>
                         {ALL_IRAN_CODES.map((c) => (
                           <option key={c.code} value={c.code}>{c.label}</option>
                         ))}
@@ -636,28 +633,13 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
                 <button
                   type="button"
                   onClick={handleReset}
-                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                  title="پاکسازی و تنظیم مجدد"
+                  className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
+                  title="تنظیم مجدد"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
+                  <RotateCcw className="w-3 h-3" />
                 </button>
               )}
             </div>
-          </div>
-
-          {/* 3. Output Summary Pill (Compact & Elegant) */}
-          <div className="flex items-center justify-between text-[11px] text-slate-600 bg-white/80 border border-slate-200/70 rounded-xl px-2.5 py-1">
-            <div className="flex items-center gap-1.5 truncate">
-              <span className="text-slate-400 font-medium">خروجی ثبت:</span>
-              <span className="font-bold text-slate-900 font-['Vazirmatn'] truncate">
-                {value || 'در حال تکمیل...'}
-              </span>
-            </div>
-            {isYellowPlate && (
-              <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded-md shrink-0">
-                پلاک عمومی باری
-              </span>
-            )}
           </div>
         </div>
       )}

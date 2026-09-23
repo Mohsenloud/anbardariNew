@@ -267,243 +267,261 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
       {/* Modal Dialog Card */}
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl my-auto overflow-hidden flex flex-col max-h-[95vh]">
         {/* Modal Top Control Bar (Hidden on Print) */}
-        <div className="no-print bg-slate-900 text-white p-3 sm:px-5 sm:py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0">
-          <div className="flex items-center justify-between sm:justify-start gap-2.5">
-            <div className="flex items-center gap-2">
-              <Receipt className={`w-5 h-5 ${invoice.isProforma ? 'text-indigo-400' : 'text-emerald-400'} shrink-0`} />
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-xs sm:text-sm">
-                    {invoice.isProforma ? 'پیش‌فاکتور شماره' : 'فاکتور شماره'} {toPersianDigits(invoice.invoiceNumber)}
-                  </h3>
-                  {invoice.isProforma && (
-                    <span className="text-[10px] bg-indigo-500/30 text-indigo-300 font-bold px-2 py-0.5 rounded border border-indigo-400/40">
-                      غیرقطعی - بدون کسر انبار
-                    </span>
-                  )}
-                  {invoice.convertedFromProforma && (
-                    <span className="text-[10px] bg-emerald-500/30 text-emerald-300 font-bold px-2 py-0.5 rounded border border-emerald-400/40">
-                      تبدیل‌شده از پیش‌فاکتور
-                    </span>
-                  )}
-                </div>
+        <div className="no-print shrink-0 flex flex-col">
+          {/* Tier 1: Main Document Header Bar (Title, Number & Essential Action Tools) */}
+          <div className="bg-slate-900 text-white px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2 border-b border-slate-800">
+            {/* Title & Document Badges */}
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`p-1.5 rounded-lg ${invoice.isProforma ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'} shrink-0`}>
+                <Receipt className="w-4 h-4" />
+              </span>
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                <h3 className="font-bold text-xs sm:text-sm text-white truncate">
+                  {invoice.isProforma ? 'پیش‌فاکتور شماره' : 'فاکتور شماره'} {toPersianDigits(invoice.invoiceNumber)}
+                </h3>
+                {invoice.isProforma && (
+                  <span className="text-[10px] bg-indigo-500/25 text-indigo-300 font-bold px-1.5 py-0.5 rounded border border-indigo-400/30 whitespace-nowrap">
+                    غیرقطعی - بدون کسر انبار
+                  </span>
+                )}
+                {invoice.convertedFromProforma && (
+                  <span className="text-[10px] bg-emerald-500/25 text-emerald-300 font-bold px-1.5 py-0.5 rounded border border-emerald-400/30 whitespace-nowrap">
+                    تبدیل‌شده از پیش‌فاکتور
+                  </span>
+                )}
               </div>
             </div>
 
-            {/* Mobile close button on top right */}
-            <button
-              id="modal-close-mobile-btn"
-              onClick={onClose}
-              className="sm:hidden p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2">
-            {/* Convert Proforma to Official Invoice button */}
-            {invoice.isProforma && onConvertProforma && (
-              <button
-                type="button"
-                id="modal-convert-proforma-btn"
-                onClick={() => onConvertProforma(invoice)}
-                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
-              >
-                <ArrowRightLeft className="w-3.5 h-3.5" />
-                <span>تبدیل به فاکتور اصلی</span>
-              </button>
-            )}
-
-            {/* Template Selector */}
-            <div className="flex bg-slate-800 p-0.5 rounded-lg text-xs">
-              {settings.enableStandardTemplate !== false && (
-                <button
-                  id="modal-tpl-standard"
-                  onClick={() => setTemplate('standard')}
-                  className={`px-2 py-1 rounded-md transition-all cursor-pointer text-[11px] ${
-                    currentTemplate === 'standard' ? 'bg-emerald-600 text-white font-bold' : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  فروشگاهی
-                </button>
-              )}
-              {settings.enableSimpleTemplate !== false && (
-                <button
-                  id="modal-tpl-simple"
-                  onClick={() => setTemplate('simple')}
-                  className={`px-2 py-1 rounded-md transition-all cursor-pointer text-[11px] ${
-                    currentTemplate === 'simple' ? 'bg-emerald-600 text-white font-bold' : 'text-slate-300 hover:text-white'
-                  }`}
-                  title="قالب ساده، جدول مقادیر و چیدمان منظم با خوانایی بسیار بالا"
-                >
-                  ساده و خوانا
-                </button>
-              )}
-              {settings.enableOfficialTemplate !== false && (
-                <button
-                  id="modal-tpl-official"
-                  onClick={() => setTemplate('official')}
-                  className={`px-2 py-1 rounded-md transition-all cursor-pointer text-[11px] ${
-                    currentTemplate === 'official' ? 'bg-emerald-600 text-white font-bold' : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  رسمی
-                </button>
-              )}
-              {settings.enableThermalTemplate !== false && (
-                <button
-                  id="modal-tpl-thermal"
-                  onClick={() => setTemplate('thermal')}
-                  className={`px-2 py-1 rounded-md transition-all cursor-pointer text-[11px] ${
-                    currentTemplate === 'thermal' ? 'bg-emerald-600 text-white font-bold' : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  حرارتی
-                </button>
-              )}
-            </div>
-
-            {/* Paper Size & Orientation Controls (for non-thermal templates) */}
-            {currentTemplate !== 'thermal' && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                {/* Paper Size: A4 / A5 */}
-                <div className="inline-flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-xs">
-                  <span className="text-[10px] text-slate-400 px-1.5 select-none hidden sm:inline">ابعاد:</span>
-                  <button
-                    type="button"
-                    id="invoice-size-a4-btn"
-                    onClick={() => setPageSize('a4')}
-                    className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
-                      pageSize === 'a4'
-                        ? 'bg-amber-500 text-slate-950 shadow-xs'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-700'
-                    }`}
-                  >
-                    A4
-                  </button>
-                  <button
-                    type="button"
-                    id="invoice-size-a5-btn"
-                    onClick={() => setPageSize('a5')}
-                    className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
-                      pageSize === 'a5'
-                        ? 'bg-amber-500 text-slate-950 shadow-xs'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-700'
-                    }`}
-                  >
-                    A5
-                  </button>
-                </div>
-
-                {/* Orientation: عمودی (portrait) / افقی (landscape) */}
-                <div className="inline-flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-xs">
-                  <span className="text-[10px] text-slate-400 px-1.5 select-none hidden sm:inline">جهت:</span>
-                  <button
-                    type="button"
-                    id="invoice-orientation-portrait-btn"
-                    onClick={() => setOrientation('portrait')}
-                    className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
-                      orientation === 'portrait'
-                        ? 'bg-amber-500 text-slate-950 shadow-xs'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-700'
-                    }`}
-                  >
-                    عمودی
-                  </button>
-                  <button
-                    type="button"
-                    id="invoice-orientation-landscape-btn"
-                    onClick={() => setOrientation('landscape')}
-                    className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
-                      orientation === 'landscape'
-                        ? 'bg-amber-500 text-slate-950 shadow-xs'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-700'
-                    }`}
-                  >
-                    افقی
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Action Buttons: Share, WhatsApp, Print */}
-            <div className="flex items-center gap-1.5">
-              {/* Social Media & Messengers Modal Trigger */}
-              <button
-                type="button"
-                id="invoice-header-social-btn"
-                onClick={() => setShowSocialModal(true)}
-                title="ارسال به شبکه‌های اجتماعی و پیام‌رسان‌ها"
-                className="flex items-center gap-1 bg-sky-600 hover:bg-sky-500 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">ارسال و پیام‌رسان‌ها</span>
-              </button>
-
-              {/* WhatsApp Quick Share (Text only) */}
-              <button
-                type="button"
-                id="invoice-header-whatsapp-btn"
-                onClick={handleSendWhatsApp}
-                title="ارسال متنی فاکتور به واتساپ"
-                className="flex items-center gap-1 bg-[#25D366] hover:bg-[#1EBE5D] text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
-              >
-                <MessageCircle className="w-3.5 h-3.5" />
-                <span className="hidden xs:inline">واتساپ</span>
-              </button>
-
-              {/* PDF Export Button (Remains as PDF file) */}
+            {/* Top Essential Action Buttons (PDF, Print, Close) - Always visible & Never clipped on mobile */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* PDF Export Button */}
               <button
                 type="button"
                 id="modal-pdf-btn"
                 onClick={handleExportPdf}
                 disabled={isExportingPdf}
-                title="دانلود نسخه PDF فاکتور"
-                className="flex items-center gap-1 bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
+                title="دانلود فایل PDF فاکتور"
+                className="flex items-center gap-1 bg-rose-700 hover:bg-rose-600 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
               >
                 {isExportingPdf ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
                   <FileDown className="w-3.5 h-3.5" />
                 )}
-                <span className="hidden xs:inline">{isExportingPdf ? 'تولید PDF...' : 'PDF'}</span>
+                <span>PDF</span>
               </button>
 
-              {/* Edit Invoice Button */}
-              {onEditInvoice && (
-                <button
-                  type="button"
-                  id="modal-edit-invoice-btn"
-                  onClick={() => {
-                    onClose();
-                    onEditInvoice(invoice);
-                  }}
-                  title={invoice.isProforma ? 'ویرایش پیش‌فاکتور' : 'ویرایش فاکتور فروش'}
-                  className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                  <span className="hidden xs:inline">{invoice.isProforma ? 'ویرایش پیش‌فاکتور' : 'ویرایش'}</span>
-                </button>
-              )}
-
-              {/* Print Button */}
+              {/* Print Button (High priority) */}
               <button
+                type="button"
                 id="modal-print-btn"
                 onClick={handlePrint}
-                className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 active:scale-98 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs shrink-0"
+                title="چاپ فاکتور"
               >
-                <Printer className="w-3.5 h-3.5" />
+                <Printer className="w-4 h-4" />
                 <span>چاپ</span>
               </button>
 
-              {/* Desktop Close Button */}
+              {/* Close Button */}
               <button
+                type="button"
                 id="modal-close-btn"
                 onClick={onClose}
-                className="hidden sm:block p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer shrink-0"
+                title="بستن پنجره"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
+            </div>
+          </div>
+
+          {/* Tier 2: Controls & Customization Bar (Visual Separation, Touch-friendly & Horizontal Scrolling on Mobile) */}
+          <div className="bg-slate-800/95 border-b border-slate-700/80 px-2.5 sm:px-4 py-1.5 text-slate-200">
+            <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto no-scrollbar py-0.5">
+              
+              {/* Group 1: Templates (فروشگاهی، ساده، رسمی، حرارتی) */}
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-[10px] text-slate-400 font-bold ml-0.5 hidden md:inline">قالب:</span>
+                <div className="inline-flex items-center bg-slate-900 rounded-lg p-0.5 border border-slate-700/80 text-xs shrink-0">
+                  {settings.enableStandardTemplate !== false && (
+                    <button
+                      id="modal-tpl-standard"
+                      type="button"
+                      onClick={() => setTemplate('standard')}
+                      className={`px-2 py-1 rounded-md transition-all cursor-pointer text-[11px] whitespace-nowrap ${
+                        currentTemplate === 'standard' ? 'bg-emerald-600 text-white font-bold shadow-2xs' : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      فروشگاهی
+                    </button>
+                  )}
+                  {settings.enableSimpleTemplate !== false && (
+                    <button
+                      id="modal-tpl-simple"
+                      type="button"
+                      onClick={() => setTemplate('simple')}
+                      className={`px-2 py-1 rounded-md transition-all cursor-pointer text-[11px] whitespace-nowrap ${
+                        currentTemplate === 'simple' ? 'bg-emerald-600 text-white font-bold shadow-2xs' : 'text-slate-300 hover:text-white'
+                      }`}
+                      title="قالب ساده و خوانا با حاشیه‌ها و فونت منظم"
+                    >
+                      ساده
+                    </button>
+                  )}
+                  {settings.enableOfficialTemplate !== false && (
+                    <button
+                      id="modal-tpl-official"
+                      type="button"
+                      onClick={() => setTemplate('official')}
+                      className={`px-2 py-1 rounded-md transition-all cursor-pointer text-[11px] whitespace-nowrap ${
+                        currentTemplate === 'official' ? 'bg-emerald-600 text-white font-bold shadow-2xs' : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      رسمی
+                    </button>
+                  )}
+                  {settings.enableThermalTemplate !== false && (
+                    <button
+                      id="modal-tpl-thermal"
+                      type="button"
+                      onClick={() => setTemplate('thermal')}
+                      className={`px-2 py-1 rounded-md transition-all cursor-pointer text-[11px] whitespace-nowrap ${
+                        currentTemplate === 'thermal' ? 'bg-emerald-600 text-white font-bold shadow-2xs' : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      حرارتی
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Group 2: Paper Size & Orientation (for non-thermal templates) */}
+              {currentTemplate !== 'thermal' && (
+                <>
+                  <div className="h-4 w-px bg-slate-700 shrink-0" />
+                  
+                  {/* Paper Size: A4 / A5 */}
+                  <div className="inline-flex items-center bg-slate-900 rounded-lg p-0.5 border border-slate-700/80 text-xs shrink-0">
+                    <button
+                      type="button"
+                      id="invoice-size-a4-btn"
+                      onClick={() => setPageSize('a4')}
+                      className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        pageSize === 'a4'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      A4
+                    </button>
+                    <button
+                      type="button"
+                      id="invoice-size-a5-btn"
+                      onClick={() => setPageSize('a5')}
+                      className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        pageSize === 'a5'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      A5
+                    </button>
+                  </div>
+
+                  {/* Orientation: عمودی / افقی */}
+                  <div className="inline-flex items-center bg-slate-900 rounded-lg p-0.5 border border-slate-700/80 text-xs shrink-0">
+                    <button
+                      type="button"
+                      id="invoice-orientation-portrait-btn"
+                      onClick={() => setOrientation('portrait')}
+                      className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        orientation === 'portrait'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-slate-300 hover:text-white'
+                      }`}
+                      title="چاپ عمودی"
+                    >
+                      عمودی
+                    </button>
+                    <button
+                      type="button"
+                      id="invoice-orientation-landscape-btn"
+                      onClick={() => setOrientation('landscape')}
+                      className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        orientation === 'landscape'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-slate-300 hover:text-white'
+                      }`}
+                      title="چاپ افقی"
+                    >
+                      افقی
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Divider before auxiliary tools */}
+              <div className="h-4 w-px bg-slate-700 shrink-0" />
+
+              {/* Group 3: Auxiliary Actions (Convert Proforma, Edit, WhatsApp, Share) */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* Convert Proforma to Official Invoice button */}
+                {invoice.isProforma && onConvertProforma && (
+                  <button
+                    type="button"
+                    id="modal-convert-proforma-btn"
+                    onClick={() => onConvertProforma(invoice)}
+                    className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs whitespace-nowrap shrink-0"
+                    title="تبدیل به فاکتور رسمی و کسر از انبار"
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    <span>تبدیل به فاکتور</span>
+                  </button>
+                )}
+
+                {/* Edit Invoice Button */}
+                {onEditInvoice && (
+                  <button
+                    type="button"
+                    id="modal-edit-invoice-btn"
+                    onClick={() => {
+                      onClose();
+                      onEditInvoice(invoice);
+                    }}
+                    title={invoice.isProforma ? 'ویرایش پیش‌فاکتور' : 'ویرایش فاکتور'}
+                    className="flex items-center gap-1 bg-slate-700 hover:bg-slate-600 text-slate-200 hover:text-white px-2.5 py-1 rounded-lg text-xs font-bold border border-slate-600 transition-all cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <Pencil className="w-3 h-3 text-blue-400" />
+                    <span>ویرایش</span>
+                  </button>
+                )}
+
+                {/* WhatsApp Quick Share */}
+                <button
+                  type="button"
+                  id="invoice-header-whatsapp-btn"
+                  onClick={handleSendWhatsApp}
+                  title="ارسال فاکتور به واتساپ"
+                  className="flex items-center gap-1 bg-emerald-950/70 hover:bg-emerald-900 text-emerald-300 hover:text-white px-2 py-1 rounded-lg border border-emerald-600/40 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden xs:inline">واتساپ</span>
+                </button>
+
+                {/* Social Media & Messengers Modal Trigger */}
+                <button
+                  type="button"
+                  id="invoice-header-social-btn"
+                  onClick={() => setShowSocialModal(true)}
+                  title="ارسال به پیام‌رسان‌ها و شبکه‌های اجتماعی"
+                  className="flex items-center gap-1 bg-sky-950/70 hover:bg-sky-900 text-sky-300 hover:text-white px-2 py-1 rounded-lg border border-sky-600/40 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-sky-400" />
+                  <span className="hidden xs:inline">ارسال</span>
+                </button>
+              </div>
+
             </div>
           </div>
         </div>
@@ -514,7 +532,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             @media print {
               @page {
                 size: ${pageSize.toUpperCase()} ${orientation} !important;
-                margin: ${isA5Landscape ? '4mm' : isA5Portrait ? '5mm' : '8mm'} !important;
+                margin: ${isA5 ? '4mm' : '6mm'} !important;
               }
               body {
                 -webkit-print-color-adjust: exact !important;
@@ -527,6 +545,8 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                 margin: 0 !important;
                 width: 100% !important;
                 max-width: none !important;
+                min-height: calc(100vh - ${isA5 ? '8mm' : '12mm'}) !important;
+                height: calc(100vh - ${isA5 ? '8mm' : '12mm'}) !important;
                 background: white !important;
                 display: flex !important;
                 flex-direction: column !important;
@@ -545,13 +565,18 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             #printable-invoice {
               box-sizing: border-box !important;
               margin: 0 auto;
+              min-height: 100%;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
             }
 
             /* === A4 PORTRAIT === */
             #printable-invoice.paper-a4.paper-portrait {
               width: 100% !important;
               max-width: 840px !important;
-              padding: 24px 32px !important;
+              min-height: 1188px !important;
+              padding: 24px 30px !important;
               font-size: 13px !important;
             }
             #printable-invoice.paper-a4.paper-portrait table th,
@@ -563,7 +588,8 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             /* === A4 LANDSCAPE === */
             #printable-invoice.paper-a4.paper-landscape {
               width: 100% !important;
-              max-width: 1060px !important;
+              max-width: 1140px !important;
+              min-height: 806px !important;
               padding: 18px 26px !important;
               font-size: 12px !important;
             }
@@ -573,13 +599,14 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
               font-size: 11.5px !important;
             }
             #printable-invoice.paper-a4.paper-landscape .invoice-signatures {
-              padding-top: 14px !important;
+              padding-top: 12px !important;
             }
 
             /* === A5 PORTRAIT === */
             #printable-invoice.paper-a5.paper-portrait {
               width: 100% !important;
-              max-width: 580px !important;
+              max-width: 600px !important;
+              min-height: 852px !important;
               padding: 12px 16px !important;
               font-size: 10.5px !important;
               line-height: 1.35 !important;
@@ -616,7 +643,8 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             /* === A5 LANDSCAPE === */
             #printable-invoice.paper-a5.paper-landscape {
               width: 100% !important;
-              max-width: 780px !important;
+              max-width: 850px !important;
+              min-height: 600px !important;
               padding: 10px 14px !important;
               font-size: 9.5px !important;
               line-height: 1.3 !important;
@@ -683,103 +711,106 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
               />
             ) : currentTemplate !== 'thermal' ? (
               /* TEMPLATE: STANDARD OR OFFICIAL */
-              <div className={isA5 ? 'space-y-3' : 'space-y-5'}>
-                {/* Header: Seller Brand + Invoice Title & Meta */}
-                <div className={`invoice-header border-b-2 border-slate-900 ${isA5 ? 'pb-2' : 'pb-4'}`}>
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div>
-                      <h2 className="text-xl font-extrabold text-slate-900">
-                        {settings.storeName || 'فروشگاه سپهر'}
-                      </h2>
-                      <p className="text-xs text-slate-600 mt-0.5">
-                        {settings.tagline || 'عرضه انواع کالا و خدمات معتبر'}
-                      </p>
-                    </div>
+              <div className={`standard-invoice-layout h-full flex-1 flex flex-col justify-between w-full ${isA5 ? 'space-y-2.5' : 'space-y-4'}`}>
+                {/* ZONE 1: TOP (Header, Seller & Buyer details) */}
+                <div className={`shrink-0 ${isA5 ? 'space-y-2' : 'space-y-3'}`}>
+                  {/* Header: Seller Brand + Invoice Title & Meta */}
+                  <div className={`invoice-header border-b-2 border-slate-900 ${isA5 ? 'pb-2' : 'pb-3'}`}>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                      <div>
+                        <h2 className={`font-extrabold text-slate-900 ${isA5 ? 'text-base' : 'text-xl'}`}>
+                          {settings.storeName || 'فروشگاه سپهر'}
+                        </h2>
+                        <p className={`text-slate-600 mt-0.5 ${isA5 ? 'text-[10px]' : 'text-xs'}`}>
+                          {settings.tagline || 'عرضه انواع کالا و خدمات معتبر'}
+                        </p>
+                      </div>
 
-                    {/* Badge / Title */}
-                    <div className="text-center sm:text-left self-center sm:self-auto">
-                      <h1 className="text-lg font-black text-slate-900 tracking-wide border-b-2 border-slate-800 pb-1">
-                        {invoice.isProforma
-                          ? currentTemplate === 'official'
-                            ? 'پیش‌فاکتور فروش کالا و خدمات'
-                            : 'پیش‌فاکتور فروش کالا'
-                          : currentTemplate === 'official'
-                          ? 'صورتحساب فروش کالا و خدمات'
-                          : 'فاکتور فروش کالا'}
-                      </h1>
-                      <div className="flex items-center gap-4 mt-1.5 text-xs text-slate-600">
-                        <span>
-                          {invoice.isProforma ? 'شماره پیش‌فاکتور:' : 'شماره فاکتور:'}{' '}
-                          <strong className="text-slate-900">{toPersianDigits(invoice.invoiceNumber)}</strong>
-                        </span>
-                        <span>تاریخ: <strong className="text-slate-900">{invoice.date}</strong></span>
+                      {/* Badge / Title */}
+                      <div className="text-center sm:text-left self-center sm:self-auto">
+                        <h1 className={`font-black text-slate-900 tracking-wide border-b-2 border-slate-800 pb-0.5 ${isA5 ? 'text-sm' : 'text-lg'}`}>
+                          {invoice.isProforma
+                            ? currentTemplate === 'official'
+                              ? 'پیش‌فاکتور فروش کالا و خدمات'
+                              : 'پیش‌فاکتور فروش کالا'
+                            : currentTemplate === 'official'
+                            ? 'صورتحساب فروش کالا و خدمات'
+                            : 'فاکتور فروش کالا'}
+                        </h1>
+                        <div className={`flex items-center gap-3 mt-1 text-slate-600 ${isA5 ? 'text-[10px]' : 'text-xs'}`}>
+                          <span>
+                            {invoice.isProforma ? 'شماره پیش‌فاکتور:' : 'شماره فاکتور:'}{' '}
+                            <strong className="text-slate-900">{toPersianDigits(invoice.invoiceNumber)}</strong>
+                          </span>
+                          <span>تاریخ: <strong className="text-slate-900">{invoice.date}</strong></span>
+                        </div>
                       </div>
                     </div>
                   </div>
+
+                  {invoice.isProforma && (
+                    <div className={`bg-indigo-50/90 border border-indigo-200 text-indigo-900 rounded-lg text-center font-semibold ${isA5 ? 'p-1.5 text-[10px]' : 'p-2.5 text-xs'}`}>
+                      این سند صرفاً «پیش‌فاکتور» است و فاقد اثر مالیاتی یا کسر قطعی از انبار می‌باشد. (برای نهایی شدن باید به فاکتور اصلی تبدیل شود)
+                    </div>
+                  )}
+                  {invoice.convertedFromProforma && (
+                    <div className={`bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-lg text-center font-medium ${isA5 ? 'p-1.5 text-[10px]' : 'p-2 text-xs'}`}>
+                      این فاکتور رسمی بر اساس پیش‌فاکتور شماره <strong>{toPersianDigits(invoice.convertedFromProforma)}</strong> صادر و نهایی شده است.
+                    </div>
+                  )}
+
+                  {/* Seller & Buyer Info Blocks */}
+                  {currentTemplate === 'official' ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      {/* Seller Box */}
+                      <div className="border border-slate-300 rounded-lg p-2.5 bg-slate-50/50">
+                        <div className="font-bold text-slate-800 pb-1 mb-1 border-b border-slate-200 flex items-center gap-1">
+                          <Building2 className="w-3.5 h-3.5 text-slate-700" />
+                          <span>مشخصات فروشنده:</span>
+                        </div>
+                        <div className="space-y-0.5 text-slate-700">
+                          <p><strong>نام فروشگاه / شخص:</strong> {settings.storeName} ({settings.sellerName})</p>
+                          <p><strong>شناسه ملی / کد اقتصادی:</strong> {toPersianDigits(settings.economicCode || settings.nationalCode || '---')}</p>
+                          <p><strong>نشانی:</strong> {settings.address}</p>
+                          <p><strong>تلفن تماس:</strong> {toPersianDigits(settings.phone || settings.mobile)}</p>
+                        </div>
+                      </div>
+
+                      {/* Buyer Box */}
+                      <div className="border border-slate-300 rounded-lg p-2.5 bg-slate-50/50">
+                        <div className="font-bold text-slate-800 pb-1 mb-1 border-b border-slate-200">
+                          مشخصات خریدار:
+                        </div>
+                        <div className="space-y-0.5 text-slate-700">
+                          <p><strong>نام خریدار / شرکت:</strong> {invoice.customerName || 'مشتری محترم'}</p>
+                          <p><strong>شناسه ملی / کد اقتصادی:</strong> {toPersianDigits(invoice.customerNationalId || '---')}</p>
+                          <p><strong>نشانی خریدار:</strong> {invoice.customerAddress || '---'}</p>
+                          <p><strong>تلفن همراه:</strong> {toPersianDigits(invoice.customerPhone || '---')}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Standard customer info bar */
+                    <div className={`bg-slate-50 border border-slate-200 rounded-lg flex flex-wrap justify-between gap-2 text-slate-700 ${isA5 ? 'p-2 text-[10px]' : 'p-2.5 text-xs'}`}>
+                      <div><strong>خریدار:</strong> {invoice.customerName || 'مشتری محترم'}</div>
+                      {invoice.customerPhone && <div><strong>تلفن:</strong> {toPersianDigits(invoice.customerPhone)}</div>}
+                      {invoice.customerAddress && <div><strong>آدرس:</strong> {invoice.customerAddress}</div>}
+                      <div>
+                        <strong>وضعیت پرداخت:</strong>{' '}
+                        <span className="font-semibold text-slate-900">
+                          {invoice.paymentStatus === 'paid'
+                            ? 'تسویه کامل'
+                            : invoice.paymentStatus === 'partial'
+                            ? 'بیعانه'
+                            : 'نسیه / بدهکار'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {invoice.isProforma && (
-                  <div className="bg-indigo-50/90 border border-indigo-200 text-indigo-900 rounded-xl p-3 text-center text-xs font-semibold">
-                    این سند صرفاً «پیش‌فاکتور» است و فاقد اثر مالیاتی یا کسر قطعی از انبار می‌باشد. (برای نهایی شدن باید به فاکتور اصلی تبدیل شود)
-                  </div>
-                )}
-                {invoice.convertedFromProforma && (
-                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl p-2.5 text-center text-xs font-medium">
-                    این فاکتور رسمی بر اساس پیش‌فاکتور شماره <strong>{toPersianDigits(invoice.convertedFromProforma)}</strong> صادر و نهایی شده است.
-                  </div>
-                )}
-
-                {/* Seller & Buyer Info Blocks */}
-                {currentTemplate === 'official' ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    {/* Seller Box */}
-                    <div className="border border-slate-300 rounded-lg p-3 bg-slate-50/50">
-                      <div className="font-bold text-slate-800 pb-1.5 mb-1.5 border-b border-slate-200 flex items-center gap-1.5">
-                        <Building2 className="w-3.5 h-3.5 text-slate-700" />
-                        <span>مشخصات فروشنده:</span>
-                      </div>
-                      <div className="space-y-1 text-slate-700">
-                        <p><strong>نام فروشگاه / شخص:</strong> {settings.storeName} ({settings.sellerName})</p>
-                        <p><strong>شناسه ملی / کد اقتصادی:</strong> {toPersianDigits(settings.economicCode || settings.nationalCode || '---')}</p>
-                        <p><strong>نشانی:</strong> {settings.address}</p>
-                        <p><strong>تلفن تماس:</strong> {toPersianDigits(settings.phone || settings.mobile)}</p>
-                      </div>
-                    </div>
-
-                    {/* Buyer Box */}
-                    <div className="border border-slate-300 rounded-lg p-3 bg-slate-50/50">
-                      <div className="font-bold text-slate-800 pb-1.5 mb-1.5 border-b border-slate-200">
-                        مشخصات خریدار:
-                      </div>
-                      <div className="space-y-1 text-slate-700">
-                        <p><strong>نام خریدار / شرکت:</strong> {invoice.customerName || 'مشتری محترم'}</p>
-                        <p><strong>شناسه ملی / کد اقتصادی:</strong> {toPersianDigits(invoice.customerNationalId || '---')}</p>
-                        <p><strong>نشانی خریدار:</strong> {invoice.customerAddress || '---'}</p>
-                        <p><strong>تلفن همراه:</strong> {toPersianDigits(invoice.customerPhone || '---')}</p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  /* Standard customer info bar */
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs flex flex-wrap justify-between gap-3 text-slate-700">
-                    <div><strong>خریدار:</strong> {invoice.customerName || 'مشتری محترم'}</div>
-                    {invoice.customerPhone && <div><strong>تلفن:</strong> {toPersianDigits(invoice.customerPhone)}</div>}
-                    {invoice.customerAddress && <div><strong>آدرس:</strong> {invoice.customerAddress}</div>}
-                    <div>
-                      <strong>وضعیت پرداخت:</strong>{' '}
-                      <span className="font-semibold text-slate-900">
-                        {invoice.paymentStatus === 'paid'
-                          ? 'تسویه کامل'
-                          : invoice.paymentStatus === 'partial'
-                          ? 'بیعانه'
-                          : 'نسیه / بدهکار'}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Items Table */}
-                <div className="overflow-x-auto">
+                {/* ZONE 2: MIDDLE (Items Table - Flexible to fill available vertical space) */}
+                <div className="invoice-table-box overflow-x-auto flex-1 flex flex-col justify-start my-auto">
                   <table className="w-full text-right border-collapse text-xs border border-slate-300">
                     <thead>
                       <tr className="bg-slate-100 text-slate-800 border-b border-slate-300">
@@ -819,117 +850,120 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                   </table>
                 </div>
 
-                {/* Totals and Payment Summary Box */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start pt-2">
-                  {/* Notes, Payment Details & Cheque/Transfer Info */}
-                  <div className="border border-slate-200 rounded-xl p-3 bg-slate-50/70 text-xs text-slate-700 space-y-2.5">
-                    {/* مشخصات و روش دریافت وجه */}
-                    <div className="space-y-1.5 pb-2 border-b border-slate-200">
-                      <div className="flex items-center justify-between font-bold text-slate-800">
-                        <span>روش دریافت وجه:</span>
-                        <span className="text-sky-800 bg-sky-100/80 px-2 py-0.5 rounded text-[11px]">
-                          {invoice.paymentMethod === 'cheque' 
-                            ? 'چک بانکی' 
-                            : invoice.paymentMethod === 'cash' 
-                            ? 'نقدی' 
-                            : invoice.paymentMethod === 'transfer' 
-                            ? 'واریز به حساب' 
-                            : invoice.paymentMethod === 'pos' 
-                            ? 'کارتخوان (POS)' 
-                            : 'حساب دفتری / نسیه'}
-                        </span>
-                      </div>
+                {/* ZONE 3: BOTTOM (Totals, Payments & Signatures anchored at sheet bottom) */}
+                <div className={`shrink-0 ${isA5 ? 'space-y-2' : 'space-y-3'}`}>
+                  {/* Totals and Payment Summary Box */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start pt-1">
+                    {/* Notes, Payment Details & Cheque/Transfer Info */}
+                    <div className="border border-slate-200 rounded-xl p-2.5 bg-slate-50/70 text-xs text-slate-700 space-y-2">
+                      {/* مشخصات و روش دریافت وجه */}
+                      <div className="space-y-1 pb-1.5 border-b border-slate-200">
+                        <div className="flex items-center justify-between font-bold text-slate-800">
+                          <span>روش دریافت وجه:</span>
+                          <span className="text-sky-800 bg-sky-100/80 px-2 py-0.5 rounded text-[11px]">
+                            {invoice.paymentMethod === 'cheque' 
+                              ? 'چک بانکی' 
+                              : invoice.paymentMethod === 'cash' 
+                              ? 'نقدی' 
+                              : invoice.paymentMethod === 'transfer' 
+                              ? 'واریز به حساب' 
+                              : invoice.paymentMethod === 'pos' 
+                              ? 'کارتخوان (POS)' 
+                              : 'حساب دفتری / نسیه'}
+                          </span>
+                        </div>
 
-                      {/* اطلاعات چک در صورت وجود */}
-                      {invoice.paymentMethod === 'cheque' && (
-                        <div className="bg-sky-50/80 border border-sky-200/80 rounded-lg p-2 text-[11px] space-y-1 text-slate-800">
-                          <div className="font-bold text-sky-900 flex items-center gap-1">
-                            <span>📑 مشخصات چک:</span>
+                        {/* اطلاعات چک در صورت وجود */}
+                        {invoice.paymentMethod === 'cheque' && (
+                          <div className="bg-sky-50/80 border border-sky-200/80 rounded-lg p-1.5 text-[11px] space-y-1 text-slate-800">
+                            <div className="font-bold text-sky-900 flex items-center gap-1">
+                              <span>📑 مشخصات چک:</span>
+                            </div>
+                            {invoice.chequeNumber && (
+                              <div>شماره چک / صیادی: <strong>{toPersianDigits(invoice.chequeNumber)}</strong></div>
+                            )}
+                            {invoice.chequeDueDate && (
+                              <div>تاریخ سررسید چک: <strong>{toPersianDigits(invoice.chequeDueDate)}</strong></div>
+                            )}
+                            {invoice.chequeName && (
+                              <div>نام چک (صاحب حساب/بانک): <strong>{invoice.chequeName}</strong></div>
+                            )}
                           </div>
-                          {invoice.chequeNumber && (
-                            <div>شماره چک / صیادی: <strong>{toPersianDigits(invoice.chequeNumber)}</strong></div>
-                          )}
-                          {invoice.chequeDueDate && (
-                            <div>تاریخ سررسید چک: <strong>{toPersianDigits(invoice.chequeDueDate)}</strong></div>
-                          )}
-                          {invoice.chequeName && (
-                            <div>نام چک (صاحب حساب/بانک): <strong>{invoice.chequeName}</strong></div>
-                          )}
-                        </div>
-                      )}
+                        )}
 
-                      {/* اطلاعات واریز به حساب در صورت وجود */}
-                      {invoice.paymentMethod === 'transfer' && (
-                        <div className="bg-indigo-50/80 border border-indigo-200/80 rounded-lg p-2 text-[11px] space-y-1 text-slate-800">
-                          <div className="font-bold text-indigo-900 flex items-center gap-1">
-                            <span>🏦 مشخصات واریز به حساب:</span>
+                        {/* اطلاعات واریز به حساب در صورت وجود */}
+                        {invoice.paymentMethod === 'transfer' && (
+                          <div className="bg-indigo-50/80 border border-indigo-200/80 rounded-lg p-1.5 text-[11px] space-y-1 text-slate-800">
+                            <div className="font-bold text-indigo-900 flex items-center gap-1">
+                              <span>🏦 مشخصات واریز به حساب:</span>
+                            </div>
+                            {invoice.transferDescription ? (
+                              <div className="leading-relaxed">{invoice.transferDescription}</div>
+                            ) : (
+                              <div className="text-slate-500 italic">واریز به حساب بانکی فروشگاه</div>
+                            )}
                           </div>
-                          {invoice.transferDescription ? (
-                            <div className="leading-relaxed">{invoice.transferDescription}</div>
-                          ) : (
-                            <div className="text-slate-500 italic">واریز به حساب بانکی فروشگاه</div>
-                          )}
+                        )}
+
+                        {/* اطلاعات نقدی */}
+                        {invoice.paymentMethod === 'cash' && (
+                          <div className="text-[11px] text-emerald-800 bg-emerald-50/80 border border-emerald-200/80 rounded-lg p-1">
+                            ✓ دریافت کامل وجه به صورت نقدی در صندوق
+                          </div>
+                        )}
+                      </div>
+
+                      {invoice.notes && (
+                        <p><strong>توضیحات فاکتور:</strong> {invoice.notes}</p>
+                      )}
+                      <p className="text-[11px] text-slate-600 leading-relaxed">
+                        {settings.invoiceFooterText || 'از اعتماد و همکاری شما صمیمانه متشکریم.'}
+                      </p>
+                    </div>
+
+                    {/* Calculations Table */}
+                    <div className="border border-slate-300 rounded-xl overflow-hidden text-xs">
+                      <div className="p-2 flex justify-between border-b border-slate-200 bg-slate-50">
+                        <span className="text-slate-600">جمع ناخالص اقلام:</span>
+                        <span className="font-semibold text-slate-800">{formatPrice(invoice.subtotal, settings.currency)}</span>
+                      </div>
+                      {invoice.totalDiscount > 0 && (
+                        <div className="p-2 flex justify-between border-b border-slate-200 text-rose-700 bg-white">
+                          <span>مجموع تخفیفات:</span>
+                          <span>-{formatPrice(invoice.totalDiscount, settings.currency)}</span>
                         </div>
                       )}
-
-                      {/* اطلاعات نقدی */}
-                      {invoice.paymentMethod === 'cash' && (
-                        <div className="text-[11px] text-emerald-800 bg-emerald-50/80 border border-emerald-200/80 rounded-lg p-1.5">
-                          ✓ دریافت کامل وجه به صورت نقدی در صندوق
+                      {invoice.taxAmount > 0 && (
+                        <div className="p-2 flex justify-between border-b border-slate-200 bg-slate-50">
+                          <span className="text-slate-600">مالیات و ارزش افزوده ({toPersianDigits(invoice.taxRate)}٪):</span>
+                          <span className="font-semibold text-slate-800">{formatPrice(invoice.taxAmount, settings.currency)}</span>
+                        </div>
+                      )}
+                      <div className="p-2.5 flex justify-between bg-slate-900 text-white font-bold text-sm">
+                        <span>مبلغ نهایی قابل پرداخت:</span>
+                        <span className="text-emerald-400 font-extrabold">{formatPrice(invoice.finalTotal, settings.currency)}</span>
+                      </div>
+                      {invoice.paymentStatus === 'partial' && (
+                        <div className="p-2 flex justify-between border-t border-slate-200 bg-amber-50 text-amber-900 font-medium">
+                          <span>مبلغ پرداختی: {formatPrice(invoice.paidAmount, settings.currency)}</span>
+                          <span>مانده بدهی: {formatPrice(invoice.finalTotal - invoice.paidAmount, settings.currency)}</span>
                         </div>
                       )}
                     </div>
-
-                    {invoice.notes && (
-                      <p><strong>توضیحات فاکتور:</strong> {invoice.notes}</p>
-                    )}
-                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                      {settings.invoiceFooterText || 'از اعتماد و همکاری شما صمیمانه متشکریم.'}
-                    </p>
                   </div>
 
-                  {/* Calculations Table */}
-                  <div className="border border-slate-300 rounded-xl overflow-hidden text-xs">
-                    <div className="p-2.5 flex justify-between border-b border-slate-200 bg-slate-50">
-                      <span className="text-slate-600">جمع ناخالص اقلام:</span>
-                      <span className="font-semibold text-slate-800">{formatPrice(invoice.subtotal, settings.currency)}</span>
+                  {/* Signatures & Stamps */}
+                  <div className={`invoice-signatures grid grid-cols-2 text-center text-slate-600 border-t border-slate-200 ${
+                    isA5 ? 'pt-2 pb-1 text-[10px]' : 'pt-5 pb-2 text-xs'
+                  }`}>
+                    <div className={isA5 ? (isLandscape ? 'space-y-2' : 'space-y-3') : 'space-y-8'}>
+                      <span className="font-bold text-slate-700">مهر و امضای خریدار</span>
+                      <div className="text-[11px] text-slate-400">کالا صحیح و سالم تحویل گردید</div>
                     </div>
-                    {invoice.totalDiscount > 0 && (
-                      <div className="p-2.5 flex justify-between border-b border-slate-200 text-rose-700 bg-white">
-                        <span>مجموع تخفیفات:</span>
-                        <span>-{formatPrice(invoice.totalDiscount, settings.currency)}</span>
-                      </div>
-                    )}
-                    {invoice.taxAmount > 0 && (
-                      <div className="p-2.5 flex justify-between border-b border-slate-200 bg-slate-50">
-                        <span className="text-slate-600">مالیات و ارزش افزوده ({toPersianDigits(invoice.taxRate)}٪):</span>
-                        <span className="font-semibold text-slate-800">{formatPrice(invoice.taxAmount, settings.currency)}</span>
-                      </div>
-                    )}
-                    <div className="p-3 flex justify-between bg-slate-900 text-white font-bold text-sm">
-                      <span>مبلغ نهایی قابل پرداخت:</span>
-                      <span className="text-emerald-400 font-extrabold">{formatPrice(invoice.finalTotal, settings.currency)}</span>
+                    <div className={isA5 ? (isLandscape ? 'space-y-2' : 'space-y-3') : 'space-y-8'}>
+                      <span className="font-bold text-slate-700">مهر و امضای فروشنده</span>
+                      <div className="text-[11px] text-slate-400">{settings.storeName}</div>
                     </div>
-                    {invoice.paymentStatus === 'partial' && (
-                      <div className="p-2.5 flex justify-between border-t border-slate-200 bg-amber-50 text-amber-900 font-medium">
-                        <span>مبلغ پرداختی: {formatPrice(invoice.paidAmount, settings.currency)}</span>
-                        <span>مانده بدهی: {formatPrice(invoice.finalTotal - invoice.paidAmount, settings.currency)}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Signatures & Stamps */}
-                <div className={`invoice-signatures grid grid-cols-2 text-center text-slate-600 border-t border-slate-200 ${
-                  isA5 ? 'pt-3 pb-1 text-[10px]' : 'pt-8 pb-4 text-xs'
-                }`}>
-                  <div className={isA5 ? (isLandscape ? 'space-y-3' : 'space-y-4') : 'space-y-12'}>
-                    <span className="font-bold text-slate-700">مهر و امضای خریدار</span>
-                    <div className="text-[11px] text-slate-400">کالا صحیح و سالم تحویل گردید</div>
-                  </div>
-                  <div className={isA5 ? (isLandscape ? 'space-y-3' : 'space-y-4') : 'space-y-12'}>
-                    <span className="font-bold text-slate-700">مهر و امضای فروشنده</span>
-                    <div className="text-[11px] text-slate-400">{settings.storeName}</div>
                   </div>
                 </div>
               </div>

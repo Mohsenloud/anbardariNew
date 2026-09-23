@@ -110,10 +110,32 @@ export const exportElementToPdf = async (
 
   const paperSize = options?.pageSize || 'a4';
   const orientation = options?.orientation || 'portrait';
-  const targetWidthPx = 
-    paperSize === 'a5'
-      ? (orientation === 'landscape' ? 780 : 560)
-      : (orientation === 'landscape' ? 1080 : 820);
+  const isLandscape = orientation === 'landscape';
+  const isA5 = paperSize === 'a5';
+
+  // Standard margins: 4.5mm for A4, 3.5mm for A5 to maximize usable page coverage
+  const marginMm = isA5 ? 3.5 : 4.5;
+
+  // Exact standard ISO aspect-ratio canvas dimensions to ensure full-sheet coverage
+  let targetWidthPx: number;
+  let targetMinHeightPx: number;
+  if (isA5) {
+    if (isLandscape) {
+      targetWidthPx = 900;
+      targetMinHeightPx = Math.round(900 * (141 / 203)); // 625px
+    } else {
+      targetWidthPx = 620;
+      targetMinHeightPx = Math.round(620 * (203 / 141)); // 892px
+    }
+  } else {
+    if (isLandscape) {
+      targetWidthPx = 1180;
+      targetMinHeightPx = Math.round(1180 * (201 / 288)); // 824px
+    } else {
+      targetWidthPx = 820;
+      targetMinHeightPx = Math.round(820 * (288 / 201)); // 1175px
+    }
+  }
 
   const { scale: renderScale, compression: jpegCompression } = resolvePdfQuality(options);
 
@@ -158,22 +180,25 @@ export const exportElementToPdf = async (
           (el as HTMLElement).style.setProperty('visibility', 'hidden', 'important');
         });
 
-        // Force cloned element itself to have proper dimensions according to document type
-        const isLandscape = orientation === 'landscape';
-        const targetAspectRatio = isLandscape ? (297 / 210) : (210 / 297);
-        const targetMinHeightPx = Math.round(targetWidthPx / targetAspectRatio);
+        // Determine if element fits on a single page or exceeds to multi-page
+        const naturalHeight = element.scrollHeight;
+        const isSinglePageMode = naturalHeight <= targetMinHeightPx * 1.15;
 
-        if (options?.documentType === 'exit_slip') {
+        // Force cloned element itself to have proper full-page dimensions and balanced flex distribution
+        if (isSinglePageMode) {
           clonedElement.style.setProperty('min-height', `${targetMinHeightPx}px`, 'important');
           clonedElement.style.setProperty('height', `${targetMinHeightPx}px`, 'important');
+          clonedElement.style.setProperty('max-height', `${targetMinHeightPx}px`, 'important');
           clonedElement.style.setProperty('display', 'flex', 'important');
           clonedElement.style.setProperty('flex-direction', 'column', 'important');
           clonedElement.style.setProperty('justify-content', 'space-between', 'important');
         } else {
           clonedElement.style.setProperty('height', 'auto', 'important');
-          clonedElement.style.setProperty('min-height', 'fit-content', 'important');
+          clonedElement.style.setProperty('min-height', `${targetMinHeightPx}px`, 'important');
+          clonedElement.style.setProperty('display', 'flex', 'important');
+          clonedElement.style.setProperty('flex-direction', 'column', 'important');
         }
-        clonedElement.style.setProperty('max-height', 'none', 'important');
+
         clonedElement.style.setProperty('align-self', 'flex-start', 'important');
         clonedElement.style.setProperty('overflow', 'visible', 'important');
         clonedElement.style.setProperty('width', `${targetWidthPx}px`, 'important');
@@ -201,6 +226,34 @@ export const exportElementToPdf = async (
             el.style.setProperty('font-family', "'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", 'important');
           }
         });
+
+        // Ensure layout roots have 100% height and space-between distribution
+        const rootLayouts = clonedElement.querySelectorAll(
+          '.standard-exit-slip-layout, .simple-exit-slip-layout, .standard-invoice-layout, .simple-invoice-layout'
+        );
+        rootLayouts.forEach((rl) => {
+          const rlel = rl as HTMLElement;
+          rlel.style.setProperty('height', '100%', 'important');
+          rlel.style.setProperty('min-height', '100%', 'important');
+          rlel.style.setProperty('display', 'flex', 'important');
+          rlel.style.setProperty('flex-direction', 'column', 'important');
+          rlel.style.setProperty('justify-content', 'space-between', 'important');
+          rlel.style.setProperty('width', '100%', 'important');
+        });
+
+        // Ensure middle table container expands smoothly in single-page mode
+        if (isSinglePageMode) {
+          const tableBoxes = clonedElement.querySelectorAll(
+            '.exit-slip-table-box, .invoice-table-box, .simple-invoice-table-box'
+          );
+          tableBoxes.forEach((tb) => {
+            const tbel = tb as HTMLElement;
+            tbel.style.setProperty('flex', '1 1 auto', 'important');
+            tbel.style.setProperty('display', 'flex', 'important');
+            tbel.style.setProperty('flex-direction', 'column', 'important');
+            tbel.style.setProperty('justify-content', 'flex-start', 'important');
+          });
+        }
 
         // Ensure header row layout is stable across all modes
         const headerRow = clonedElement.querySelector('.exit-slip-header-row');
@@ -297,28 +350,18 @@ export const exportElementToPdf = async (
 
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = paperSize === 'a5' ? 4 : 7; // Clean margins: 4mm for A5, 7mm for A4
+    const margin = marginMm;
     const usableWidth = pageWidth - margin * 2;
     const usableHeight = pageHeight - margin * 2;
     const contentWidth = usableWidth;
     const contentHeight = (canvas.height * contentWidth) / canvas.width;
 
-    if (options?.documentType === 'exit_slip' && contentHeight <= usableHeight * 1.08) {
-      // Exit slip fills the entire single page gracefully with balanced margins
-      pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, usableHeight, undefined, 'FAST');
-    } else if (contentHeight <= usableHeight) {
-      // Content fits naturally on a single page
-      pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, contentHeight, undefined, 'FAST');
-    } else if (paperSize === 'a5' || contentHeight <= usableHeight * 1.95) {
-      // Auto-fit to single page: scale proportionally so ALL data (header, items, terms, signatures) fits on one single sheet
-      const scale = usableHeight / contentHeight;
-      const fittedWidth = contentWidth * scale;
-      const fittedHeight = usableHeight;
-      const offsetX = margin + (usableWidth - fittedWidth) / 2;
-      pdf.addImage(imgData, 'JPEG', offsetX, margin, fittedWidth, fittedHeight, undefined, 'FAST');
+    if (contentHeight <= usableHeight * 1.25) {
+      // Document fills the entire usable area of the page completely (no blank voids, full page coverage)
+      pdf.addImage(imgData, 'JPEG', margin, margin, usableWidth, usableHeight, undefined, 'FAST');
     } else {
-      // True multi-page canvas slicing (prevents any data clipping or jsPDF drawing bugs)
-      const pxPerMm = canvas.width / contentWidth;
+      // Multi-page canvas slicing spanning 100% usable width (no horizontal shrinkage)
+      const pxPerMm = canvas.width / usableWidth;
       const sliceHeightPx = Math.floor(usableHeight * pxPerMm);
       let yOffsetPx = 0;
       let isFirstPage = true;
@@ -347,8 +390,8 @@ export const exportElementToPdf = async (
             currentSliceHeightPx
           );
           const sliceImgData = sliceCanvas.toDataURL('image/jpeg', jpegCompression);
-          const sliceHeightMm = (currentSliceHeightPx * contentWidth) / canvas.width;
-          pdf.addImage(sliceImgData, 'JPEG', margin, margin, contentWidth, sliceHeightMm, undefined, 'FAST');
+          const sliceHeightMm = (currentSliceHeightPx * usableWidth) / canvas.width;
+          pdf.addImage(sliceImgData, 'JPEG', margin, margin, usableWidth, sliceHeightMm, undefined, 'FAST');
         }
         yOffsetPx += sliceHeightPx;
         isFirstPage = false;
@@ -380,10 +423,32 @@ export const generatePdfBlob = async (
 
   const paperSize = options?.pageSize || 'a4';
   const orientation = options?.orientation || 'portrait';
-  const targetWidthPx = 
-    paperSize === 'a5'
-      ? (orientation === 'landscape' ? 780 : 560)
-      : (orientation === 'landscape' ? 1080 : 820);
+  const isLandscape = orientation === 'landscape';
+  const isA5 = paperSize === 'a5';
+
+  // Standard margins: 4.5mm for A4, 3.5mm for A5 to maximize usable page coverage
+  const marginMm = isA5 ? 3.5 : 4.5;
+
+  // Exact standard ISO aspect-ratio canvas dimensions to ensure full-sheet coverage
+  let targetWidthPx: number;
+  let targetMinHeightPx: number;
+  if (isA5) {
+    if (isLandscape) {
+      targetWidthPx = 900;
+      targetMinHeightPx = Math.round(900 * (141 / 203)); // 625px
+    } else {
+      targetWidthPx = 620;
+      targetMinHeightPx = Math.round(620 * (203 / 141)); // 892px
+    }
+  } else {
+    if (isLandscape) {
+      targetWidthPx = 1180;
+      targetMinHeightPx = Math.round(1180 * (201 / 288)); // 824px
+    } else {
+      targetWidthPx = 820;
+      targetMinHeightPx = Math.round(820 * (288 / 201)); // 1175px
+    }
+  }
 
   const { scale: renderScale, compression: jpegCompression } = resolvePdfQuality(options);
 
@@ -426,9 +491,25 @@ export const generatePdfBlob = async (
           (el as HTMLElement).style.setProperty('visibility', 'hidden', 'important');
         });
 
-        clonedElement.style.setProperty('height', 'auto', 'important');
-        clonedElement.style.setProperty('max-height', 'none', 'important');
-        clonedElement.style.setProperty('min-height', 'fit-content', 'important');
+        // Determine if element fits on a single page or exceeds to multi-page
+        const naturalHeight = element.scrollHeight;
+        const isSinglePageMode = naturalHeight <= targetMinHeightPx * 1.15;
+
+        // Force cloned element itself to have proper full-page dimensions and balanced flex distribution
+        if (isSinglePageMode) {
+          clonedElement.style.setProperty('min-height', `${targetMinHeightPx}px`, 'important');
+          clonedElement.style.setProperty('height', `${targetMinHeightPx}px`, 'important');
+          clonedElement.style.setProperty('max-height', `${targetMinHeightPx}px`, 'important');
+          clonedElement.style.setProperty('display', 'flex', 'important');
+          clonedElement.style.setProperty('flex-direction', 'column', 'important');
+          clonedElement.style.setProperty('justify-content', 'space-between', 'important');
+        } else {
+          clonedElement.style.setProperty('height', 'auto', 'important');
+          clonedElement.style.setProperty('min-height', `${targetMinHeightPx}px`, 'important');
+          clonedElement.style.setProperty('display', 'flex', 'important');
+          clonedElement.style.setProperty('flex-direction', 'column', 'important');
+        }
+
         clonedElement.style.setProperty('align-self', 'flex-start', 'important');
         clonedElement.style.setProperty('overflow', 'visible', 'important');
         clonedElement.style.setProperty('width', `${targetWidthPx}px`, 'important');
@@ -456,6 +537,34 @@ export const generatePdfBlob = async (
             el.style.setProperty('font-family', "'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", 'important');
           }
         });
+
+        // Ensure layout roots have 100% height and space-between distribution
+        const rootLayouts = clonedElement.querySelectorAll(
+          '.standard-exit-slip-layout, .simple-exit-slip-layout, .standard-invoice-layout, .simple-invoice-layout'
+        );
+        rootLayouts.forEach((rl) => {
+          const rlel = rl as HTMLElement;
+          rlel.style.setProperty('height', '100%', 'important');
+          rlel.style.setProperty('min-height', '100%', 'important');
+          rlel.style.setProperty('display', 'flex', 'important');
+          rlel.style.setProperty('flex-direction', 'column', 'important');
+          rlel.style.setProperty('justify-content', 'space-between', 'important');
+          rlel.style.setProperty('width', '100%', 'important');
+        });
+
+        // Ensure middle table container expands smoothly in single-page mode
+        if (isSinglePageMode) {
+          const tableBoxes = clonedElement.querySelectorAll(
+            '.exit-slip-table-box, .invoice-table-box, .simple-invoice-table-box'
+          );
+          tableBoxes.forEach((tb) => {
+            const tbel = tb as HTMLElement;
+            tbel.style.setProperty('flex', '1 1 auto', 'important');
+            tbel.style.setProperty('display', 'flex', 'important');
+            tbel.style.setProperty('flex-direction', 'column', 'important');
+            tbel.style.setProperty('justify-content', 'flex-start', 'important');
+          });
+        }
 
         // Ensure header row layout is stable across all modes
         const headerRow = clonedElement.querySelector('.exit-slip-header-row');
@@ -543,22 +652,18 @@ export const generatePdfBlob = async (
 
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = paperSize === 'a5' ? 4 : 7;
+    const margin = marginMm;
     const usableWidth = pageWidth - margin * 2;
     const usableHeight = pageHeight - margin * 2;
     const contentWidth = usableWidth;
     const contentHeight = (canvas.height * contentWidth) / canvas.width;
 
-    if (contentHeight <= usableHeight) {
-      pdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, contentHeight, undefined, 'FAST');
-    } else if (paperSize === 'a5' || contentHeight <= usableHeight * 1.95) {
-      const scale = usableHeight / contentHeight;
-      const fittedWidth = contentWidth * scale;
-      const fittedHeight = usableHeight;
-      const offsetX = margin + (usableWidth - fittedWidth) / 2;
-      pdf.addImage(imgData, 'JPEG', offsetX, margin, fittedWidth, fittedHeight, undefined, 'FAST');
+    if (contentHeight <= usableHeight * 1.25) {
+      // Document fills the entire usable area of the page completely (no blank voids, full page coverage)
+      pdf.addImage(imgData, 'JPEG', margin, margin, usableWidth, usableHeight, undefined, 'FAST');
     } else {
-      const pxPerMm = canvas.width / contentWidth;
+      // Multi-page canvas slicing spanning 100% usable width (no horizontal shrinkage)
+      const pxPerMm = canvas.width / usableWidth;
       const sliceHeightPx = Math.floor(usableHeight * pxPerMm);
       let yOffsetPx = 0;
       let isFirstPage = true;
@@ -587,8 +692,8 @@ export const generatePdfBlob = async (
             currentSliceHeightPx
           );
           const sliceImgData = sliceCanvas.toDataURL('image/jpeg', jpegCompression);
-          const sliceHeightMm = (currentSliceHeightPx * contentWidth) / canvas.width;
-          pdf.addImage(sliceImgData, 'JPEG', margin, margin, contentWidth, sliceHeightMm, undefined, 'FAST');
+          const sliceHeightMm = (currentSliceHeightPx * usableWidth) / canvas.width;
+          pdf.addImage(sliceImgData, 'JPEG', margin, margin, usableWidth, sliceHeightMm, undefined, 'FAST');
         }
         yOffsetPx += sliceHeightPx;
         isFirstPage = false;
@@ -620,7 +725,7 @@ export const printElementDirectly = (
 ): boolean => {
   const paperSize = options?.pageSize || 'a4';
   const orientation = options?.orientation || 'portrait';
-  const marginMm = paperSize === 'a5' ? 5 : 8;
+  const marginMm = paperSize === 'a5' ? 4 : 6;
 
   const element = document.getElementById(elementId);
   if (!element) {
@@ -682,11 +787,11 @@ export const printElementInNewWindow = (
 
   const paperSize = options?.pageSize || 'a4';
   const orientation = options?.orientation || 'portrait';
-  const marginMm = paperSize === 'a5' ? 5 : 8;
+  const marginMm = paperSize === 'a5' ? 4 : 6;
   const targetWidthPx = 
     paperSize === 'a5'
-      ? (orientation === 'landscape' ? 760 : 540)
-      : (orientation === 'landscape' ? 1060 : 800);
+      ? (orientation === 'landscape' ? 850 : 600)
+      : (orientation === 'landscape' ? 1140 : 840);
 
   try {
     // Open a new standalone window
@@ -773,6 +878,11 @@ export const printElementInNewWindow = (
               border-radius: 0 !important;
               padding: 0 !important;
               max-width: 100% !important;
+              min-height: calc(100vh - ${marginMm * 2}mm) !important;
+              height: calc(100vh - ${marginMm * 2}mm) !important;
+              display: flex !important;
+              flex-direction: column !important;
+              justify-content: space-between !important;
               box-shadow: none !important;
             }
             @page {
@@ -784,7 +894,7 @@ export const printElementInNewWindow = (
       </head>
       <body>
         <div class="top-print-toolbar no-print">
-          <span style="font-size: 13px; font-weight: 500;">آماده‌سازی پیش‌نمایش چاپ برگه خروج (${paperSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'})</span>
+          <span style="font-size: 13px; font-weight: 500;">آماده‌سازی چاپ ${title} (${paperSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'})</span>
           <button class="top-print-btn" onclick="window.print()">باز کردن پرینتر (Print)</button>
         </div>
         <div class="print-wrapper">

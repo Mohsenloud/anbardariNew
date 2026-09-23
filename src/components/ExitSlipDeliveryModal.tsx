@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Invoice, ExitSlipData, AppUser, StoreSettings } from '../types';
+import { Invoice, ExitSlipData, AppUser, StoreSettings, SavedVehicle } from '../types';
 import { getCurrentJalaliDate, getCurrentJalaliTime, toPersianDigits } from '../utils/jalali';
+import { StorageService } from '../utils/storage';
 import {
   Truck,
   X,
@@ -17,9 +18,17 @@ import {
   ArrowRight,
   Printer,
   Warehouse,
-  MapPin
+  MapPin,
+  BookmarkPlus,
+  BookmarkCheck,
+  Save,
+  Trash2,
+  Search,
+  ChevronDown,
+  ChevronUp,
+  Check
 } from 'lucide-react';
-import { IranPlatePicker } from './IranPlatePicker';
+import { IranPlatePicker, parseVehicleInfo } from './IranPlatePicker';
 
 interface ExitSlipDeliveryModalProps {
   isOpen: boolean;
@@ -74,6 +83,21 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
   const [deliveryNotes, setDeliveryNotes] = useState<string>(slipLog.deliveryNotes || '');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // مشخصات ماشین‌های ثبت‌شده در ناوگان جهت تسریع ورود اطلاعات
+  const [savedVehicles, setSavedVehicles] = useState<SavedVehicle[]>(() => StorageService.getSavedVehicles());
+  const [showSavedFleet, setShowSavedFleet] = useState<boolean>(false);
+  const [fleetSearchQuery, setFleetSearchQuery] = useState<string>('');
+  const [vehicleFeedback, setVehicleFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [autoSaveToFleet, setAutoSaveToFleet] = useState<boolean>(true);
+
+  // اشتراک در تغییرات ذخیره‌سازی ماشین‌ها
+  useEffect(() => {
+    const unsub = StorageService.subscribe(() => {
+      setSavedVehicles(StorageService.getSavedVehicles());
+    });
+    return () => unsub();
+  }, []);
+
   // Keep track of which invoice has been loaded into form to prevent periodic background sync resets
   const loadedInvoiceIdRef = React.useRef<string | null>(null);
 
@@ -92,6 +116,8 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
         setDeliveredBy(slipLog.deliveredBy || currentUser?.fullName || 'انباردار');
         setDeliveryNotes(slipLog.deliveryNotes || '');
         setErrorMsg(null);
+        setVehicleFeedback(null);
+        setShowSavedFleet(false);
       }
     } else if (!isOpen) {
       // Reset ref when modal is closed so next opening gets fresh data
@@ -107,11 +133,91 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
     setDeliveredAt(`${getCurrentJalaliDate()} - ساعت ${getCurrentJalaliTime()}`);
   };
 
+  // ثبت دستی و سریع مشخصات ماشین فعلی در ناوگان ذخیره‌شده
+  const handleRegisterVehicle = () => {
+    if (!vehicleInfo.trim() && !receiverName.trim()) {
+      setVehicleFeedback({
+        type: 'error',
+        message: 'لطفاً ابتدا مشخصات یا پلاک ماشین را وارد فرمایید.',
+      });
+      return;
+    }
+
+    const parsed = parseVehicleInfo(vehicleInfo);
+    const vehicleType = parsed?.vehicleType || 'وانت باربری';
+    const plateNumber = (!parsed?.isFreeText && parsed?.part1 && parsed?.part2)
+      ? `${parsed.part1} ${parsed.letter} ${parsed.part2} ایران ${parsed.iranCode}`
+      : '';
+
+    const saved = StorageService.addOrUpdateSavedVehicle({
+      vehicleType,
+      vehicleInfo: vehicleInfo.trim() || 'خودرو تحویل بار',
+      driverName: receiverName.trim(),
+      driverPhone: receiverPhone.trim(),
+      plateNumber,
+      colorDesc: parsed?.colorDesc || '',
+    });
+
+    setSavedVehicles(StorageService.getSavedVehicles());
+    setVehicleFeedback({
+      type: 'success',
+      message: `مشخصات ماشین «${saved.vehicleType}${saved.driverName ? ` - ${saved.driverName}` : ''}» با موفقیت ذخیره شد و در دفعات بعد با یک کلیک در دسترس است.`,
+    });
+    setTimeout(() => setVehicleFeedback(null), 5000);
+  };
+
+  // انتخاب یک ماشین از لیست ذخیره‌شده و پرکردن آنی فیلدهای فرم
+  const handleSelectSavedVehicle = (veh: SavedVehicle) => {
+    setVehicleInfo(veh.vehicleInfo);
+    if (veh.driverName) {
+      setReceiverName(veh.driverName);
+    }
+    if (veh.driverPhone) {
+      setReceiverPhone(veh.driverPhone);
+    }
+    setShowSavedFleet(false);
+    setVehicleFeedback({
+      type: 'success',
+      message: `اطلاعات «${veh.vehicleType}${veh.driverName ? ` (راننده: ${veh.driverName})` : ''}» در فرم جای‌گذاری شد.`,
+    });
+    setTimeout(() => setVehicleFeedback(null), 3500);
+  };
+
+  // حذف ماشین از لیست ذخیره‌شده‌ها
+  const handleDeleteSavedVehicle = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm('آیا از حذف این مشخصات ماشین از لیست ذخیره‌شده‌ها اطمینان دارید؟')) {
+      StorageService.deleteSavedVehicle(id);
+      setSavedVehicles(StorageService.getSavedVehicles());
+    }
+  };
+
+  const filteredSavedVehicles = savedVehicles.filter((v) => {
+    if (!fleetSearchQuery.trim()) return true;
+    const q = fleetSearchQuery.toLowerCase();
+    return (
+      (v.vehicleInfo || '').toLowerCase().includes(q) ||
+      (v.vehicleType || '').toLowerCase().includes(q) ||
+      (v.driverName || '').toLowerCase().includes(q) ||
+      (v.driverPhone || '').includes(q) ||
+      (v.plateNumber || '').includes(q)
+    );
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isDelivered && !receiverName.trim()) {
       setErrorMsg('لطفاً نام تحویل‌گیرنده یا راننده را مشخص فرمایید.');
       return;
+    }
+
+    // ذخیره خودکار در ناوگان در صورت فعال بودن تیک
+    if (autoSaveToFleet && vehicleInfo.trim()) {
+      StorageService.addOrUpdateSavedVehicle({
+        vehicleInfo: vehicleInfo.trim(),
+        driverName: receiverName.trim(),
+        driverPhone: receiverPhone.trim(),
+      });
     }
 
     onSave({
@@ -169,83 +275,57 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto space-y-5 text-xs">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-5 overflow-y-auto space-y-3.5 text-xs">
           
-          {/* Top Status Switcher Banner */}
-          <div className={`p-4 rounded-2xl border transition-all ${
+          {/* Top Status Switcher Strip (Clean & Compact) */}
+          <div className={`p-2.5 rounded-xl border flex flex-wrap items-center justify-between gap-2 transition-all ${
             isDelivered 
-              ? 'bg-emerald-50/90 border-emerald-300 shadow-xs' 
-              : 'bg-amber-50/70 border-amber-200 shadow-xs'
+              ? 'bg-emerald-50/80 border-emerald-200 shadow-2xs' 
+              : 'bg-slate-50 border-slate-200'
           }`}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                  isDelivered 
-                    ? 'bg-emerald-600 text-white shadow-xs' 
-                    : 'bg-amber-500 text-white shadow-xs'
-                }`}>
-                  {isDelivered ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
-                </div>
-                <div className="space-y-0.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-bold text-sm text-slate-900">
-                      وضعیت تحویل بار از انبار:
-                    </span>
-                    <span className={`px-2.5 py-0.5 rounded-full font-bold text-xs border ${
-                      isDelivered 
-                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300' 
-                        : 'bg-amber-100 text-amber-800 border-amber-300'
-                    }`}>
-                      {isDelivered ? 'بار تحویل گردید (خروج قطعی)' : 'در انتظار تحویل و بارگیری'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500">
-                    {isDelivered
-                      ? 'با تایید این بخش، انباردار گواهی می‌دهد اقلام فیزیکی تحویل راننده یا مشتری شده است.'
-                      : 'این حواله در لیست انبار به عنوان «در انتظار تحویل» نمایش داده می‌شود.'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Delivery Toggle Button */}
-              <button
-                type="button"
-                id="toggle-delivery-status-btn"
-                onClick={() => {
-                  const next = !isDelivered;
-                  setIsDelivered(next);
-                  if (next && !slipLog.deliveredAt) {
-                    setDeliveredAt(`${getCurrentJalaliDate()} - ساعت ${getCurrentJalaliTime()}`);
-                  }
-                }}
-                className={`px-4 py-2.5 rounded-xl font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-2 shrink-0 select-none ${
-                  isDelivered
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-700/20'
-                    : 'bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 hover:border-amber-400'
-                }`}
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>{isDelivered ? 'تایید شده (بار تحویل شد)' : 'تغییر به وضعیت تحویل شد'}</span>
-              </button>
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${isDelivered ? 'bg-emerald-500 ring-2 ring-emerald-300' : 'bg-amber-400'}`} />
+              <span className="font-bold text-xs text-slate-800">وضعیت تحویل:</span>
+              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
+                isDelivered 
+                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300' 
+                  : 'bg-amber-100 text-amber-800 border-amber-300'
+              }`}>
+                {isDelivered ? 'بار تحویل گردید (خروج قطعی)' : 'در انتظار تحویل و بارگیری'}
+              </span>
             </div>
+
+            {/* Delivery Toggle Button */}
+            <button
+              type="button"
+              id="toggle-delivery-status-btn"
+              onClick={() => {
+                const next = !isDelivered;
+                setIsDelivered(next);
+                if (next && !slipLog.deliveredAt) {
+                  setDeliveredAt(`${getCurrentJalaliDate()} - ساعت ${getCurrentJalaliTime()}`);
+                }
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5 select-none ${
+                isDelivered
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>{isDelivered ? 'تایید شده (خروج قطعی)' : 'تغییر به تحویل شد'}</span>
+            </button>
           </div>
 
-          {/* Quick Invoice Goods Summary */}
-          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
-            <div className="flex items-center gap-2">
-              <PackageCheck className="w-4 h-4 text-blue-600" />
-              <span>اقلام حواله خروج:</span>
-              <strong className="text-slate-800 font-['Vazirmatn']">
-                {toPersianDigits(invoice.items.length)} قلم کالا
-              </strong>
-              <span>معادل</span>
-              <strong className="text-emerald-700 font-bold font-['Vazirmatn']">
-                {toPersianDigits(totalUnits)} واحد فیزیکی
-              </strong>
+          {/* Quick Invoice Goods Summary Strip */}
+          <div className="bg-slate-100/70 rounded-lg px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600 border border-slate-200/60">
+            <div className="flex items-center gap-1.5">
+              <PackageCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span>اقلام: <strong className="text-slate-800 font-['Vazirmatn']">{toPersianDigits(invoice.items.length)} قلم</strong> ({toPersianDigits(totalUnits)} عدد)</span>
             </div>
-            <div className="flex items-center gap-1.5 text-slate-600 font-medium">
-              <Warehouse className="w-3.5 h-3.5 text-slate-400" />
-              <span>انبار مبدأ: <strong className="text-slate-800">{originWarehouseName}</strong></span>
+            <div className="flex items-center gap-1 text-slate-600">
+              <Warehouse className="w-3 h-3 text-slate-400 shrink-0" />
+              <span>انبار: <strong className="text-slate-700">{originWarehouseName}</strong></span>
               {settings?.originWarehouseCode && (
                 <span className="text-[10px] text-slate-400 font-mono">[{toPersianDigits(settings.originWarehouseCode)}]</span>
               )}
@@ -254,20 +334,20 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
 
           {/* Error Message */}
           {errorMsg && (
-            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-center gap-2 text-xs">
+            <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-center gap-2 text-xs">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
               <span>{errorMsg}</span>
             </div>
           )}
 
-          {/* Fields Grid */}
-          <div className="space-y-4">
-            {/* 1 & 2. Receiver Name and Phone (Compact 2-Column Grid) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Fields Container */}
+          <div className="space-y-3">
+            {/* 1 & 2. Receiver Name and Phone */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-slate-500" />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                    <User className="w-3.5 h-3.5 text-slate-400" />
                     <span>تحویل‌گیرنده / راننده</span>
                     <span className="text-rose-500">*</span>
                   </label>
@@ -276,28 +356,28 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
                     onClick={() => setReceiverName(invoice.customerName)}
                     className="text-[10px] text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center gap-0.5"
                   >
-                    <Sparkles className="w-3 h-3 text-blue-500" />
-                    <span>درج نام خریدار</span>
+                    <Sparkles className="w-2.5 h-2.5 text-blue-500" />
+                    <span>نام خریدار</span>
                   </button>
                 </div>
                 <input
                   type="text"
                   id="receiver-name-input"
-                  placeholder="مثال: رضا احمدی یا نام خریدار"
+                  placeholder="نام راننده یا مشتری"
                   value={receiverName}
                   onChange={(e) => {
                     setReceiverName(e.target.value);
                     if (errorMsg) setErrorMsg(null);
                   }}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-xs sm:text-sm font-medium text-slate-900"
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-blue-500 transition-all text-xs font-medium text-slate-900"
                 />
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-slate-500" />
-                    <span>شماره تماس راننده / تحویل‌گیرنده</span>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                    <Phone className="w-3.5 h-3.5 text-slate-400" />
+                    <span>شماره تماس راننده</span>
                   </label>
                   {invoice.customerPhone && (
                     <button
@@ -316,38 +396,192 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
                   placeholder="۰۹۱۲۳۴۵۶۷۸۹"
                   value={receiverPhone}
                   onChange={(e) => setReceiverPhone(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-xs sm:text-sm font-['Vazirmatn'] text-left text-slate-900"
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-blue-500 transition-all text-xs font-['Vazirmatn'] text-left text-slate-900"
                 />
               </div>
             </div>
 
-            {/* 3. Vehicle Specifications & Plate (Selectable Fields) */}
-            <div>
-              <label className="block text-xs font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
-                <Truck className="w-3.5 h-3.5 text-blue-600" />
-                <span>مشخصات ماشین و پلاک ملی حمل‌کننده:</span>
-              </label>
+            {/* 3. مشخصات ماشین، پلاک ملی و ثبت در ناوگان */}
+            <div className="bg-slate-50/70 p-2.5 rounded-xl border border-slate-200 space-y-2">
+              <div className="flex items-center justify-between flex-wrap gap-1.5">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Truck className="w-3.5 h-3.5 text-blue-600" />
+                  <span>مشخصات خودرو و پلاک ملی:</span>
+                </label>
+
+                {/* دکمه‌های ناوبری سریع ناوگان */}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    id="register-vehicle-btn"
+                    onClick={handleRegisterVehicle}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-2xs transition-all cursor-pointer"
+                    title="ذخیره مشخصات این خودرو در ناوگان"
+                  >
+                    <BookmarkPlus className="w-3 h-3" />
+                    <span>ثبت خودرو</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="toggle-saved-fleet-btn"
+                    onClick={() => setShowSavedFleet(!showSavedFleet)}
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer border ${
+                      showSavedFleet
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
+                    }`}
+                    title="مشاهده فهرست خودروهای ثبت‌شده"
+                  >
+                    <Truck className="w-3 h-3" />
+                    <span>ناوگان ({toPersianDigits(savedVehicles.length)})</span>
+                    {showSavedFleet ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* پیام بازخورد عملیات ثبت ماشین */}
+              {vehicleFeedback && (
+                <div
+                  className={`p-2 rounded-lg text-[11px] flex items-center justify-between animate-fadeIn ${
+                    vehicleFeedback.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : 'bg-rose-50 text-rose-800 border border-rose-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    {vehicleFeedback.type === 'success' ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                    )}
+                    <span>{vehicleFeedback.message}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setVehicleFeedback(null)}
+                    className="text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+
+              {/* انتخاب سریع از ماشین‌های پرکاربرد (چیپ‌های یک کلیکی فشرده) */}
+              {!showSavedFleet && savedVehicles.length > 0 && (
+                <div className="flex flex-wrap gap-1 items-center pt-0.5">
+                  <span className="text-[10px] text-slate-400 font-medium ml-1">انتخاب سریع:</span>
+                  {savedVehicles.slice(0, 4).map((veh) => (
+                    <button
+                      key={veh.id}
+                      type="button"
+                      onClick={() => handleSelectSavedVehicle(veh)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300 rounded-md text-[11px] font-medium transition-all shadow-2xs cursor-pointer"
+                    >
+                      <span className="font-bold">{veh.vehicleType}</span>
+                      {veh.plateNumber && (
+                        <span className="font-mono text-[9.5px] text-slate-500 bg-slate-100 px-1 py-0.2 rounded">
+                          {toPersianDigits(veh.plateNumber.split(' ').slice(0, 3).join(' '))}
+                        </span>
+                      )}
+                      {veh.driverName && (
+                        <span className="text-[10px] text-slate-400">({veh.driverName})</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* پنل بازشونده مدیریت ناوگان */}
+              {showSavedFleet && (
+                <div className="bg-white rounded-xl border border-blue-200 p-2.5 shadow-xs space-y-2 animate-fadeIn">
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5">
+                    <span className="text-[11px] font-bold text-slate-800">فهرست ماشین‌های ثبت‌شده:</span>
+                    <div className="relative w-44 sm:w-52">
+                      <Search className="w-3 h-3 text-slate-400 absolute right-2 top-1.5" />
+                      <input
+                        type="text"
+                        placeholder="جستجوی پلاک یا راننده..."
+                        value={fleetSearchQuery}
+                        onChange={(e) => setFleetSearchQuery(e.target.value)}
+                        className="w-full pr-7 pl-2 py-0.5 text-[11px] bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  {filteredSavedVehicles.length === 0 ? (
+                    <div className="text-center py-2 text-[11px] text-slate-400">
+                      {fleetSearchQuery ? 'موردی یافت نشد.' : 'هنوز خودرویی ثبت نشده است.'}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-36 overflow-y-auto pr-0.5">
+                      {filteredSavedVehicles.map((veh) => (
+                        <div
+                          key={veh.id}
+                          onClick={() => handleSelectSavedVehicle(veh)}
+                          className="p-1.5 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 transition-all cursor-pointer flex items-center justify-between gap-1 text-[11px]"
+                        >
+                          <div className="truncate">
+                            <div className="flex items-center gap-1 truncate">
+                              <span className="font-bold text-slate-800 truncate">{veh.vehicleType}</span>
+                              {veh.driverName && <span className="text-slate-500 truncate">({veh.driverName})</span>}
+                            </div>
+                            {veh.plateNumber && (
+                              <div className="font-mono text-[9.5px] text-slate-600 mt-0.5 truncate">
+                                {toPersianDigits(veh.plateNumber)}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteSavedVehicle(veh.id, e)}
+                            className="text-slate-300 hover:text-rose-600 p-1 shrink-0"
+                            title="حذف"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* پلاک‌خوان و فرم ساخت پلاک */}
               <IranPlatePicker
                 value={vehicleInfo}
                 onChange={(formatted) => setVehicleInfo(formatted)}
                 customerName={invoice.customerName}
               />
+
+              {/* تنظیم ذخیره خودکار در ناوگان */}
+              <label className="flex items-center gap-1.5 cursor-pointer select-none pt-0.5">
+                <input
+                  type="checkbox"
+                  checked={autoSaveToFleet}
+                  onChange={(e) => setAutoSaveToFleet(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
+                />
+                <span className="text-[11px] text-slate-600">
+                  ذخیره خودکار مشخصات خودرو و راننده در ناوگان برای مراجعات بعد
+                </span>
+              </label>
             </div>
 
-            {/* 4. Delivery Date/Time & Confirmed By Storekeeper */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            {/* 4. تاریخ و زمان و متصدی انبار (اگر تحویل فعال باشد) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="font-bold text-slate-700 flex items-center gap-1.5">
-                    <Calendar className="w-4 h-4 text-slate-400" />
-                    <span>تاریخ و زمان تایید تحویل بار</span>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-slate-700 flex items-center gap-1 text-xs">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    <span>تاریخ و زمان تحویل</span>
                   </label>
                   <button
                     type="button"
                     onClick={handleRefreshTimestamp}
                     className="text-[10px] text-blue-600 hover:underline cursor-pointer"
                   >
-                    زمان جاری
+                    اکنون
                   </button>
                 </div>
                 <input
@@ -355,49 +589,49 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
                   id="delivered-at-input"
                   value={deliveredAt}
                   onChange={(e) => setDeliveredAt(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-['Vazirmatn'] text-slate-800 text-xs"
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-blue-500 transition-all font-['Vazirmatn'] text-slate-800 text-xs"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 flex items-center gap-1.5 mb-1.5">
-                  <UserCheck className="w-4 h-4 text-slate-400" />
-                  <span>انباردار تاییدکننده تحویل</span>
+                <label className="font-bold text-slate-700 flex items-center gap-1 mb-1 text-xs">
+                  <UserCheck className="w-3.5 h-3.5 text-slate-400" />
+                  <span>انباردار تاییدکننده</span>
                 </label>
                 <input
                   type="text"
                   id="delivered-by-input"
-                  placeholder="نام انباردار یا متصدی تحویل"
+                  placeholder="نام انباردار یا متصدی"
                   value={deliveredBy}
                   onChange={(e) => setDeliveredBy(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-800 text-xs"
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-blue-500 transition-all text-slate-800 text-xs"
                 />
               </div>
             </div>
 
-            {/* 5. Notes & Waybill */}
+            {/* 5. بارنامه / یادداشت */}
             <div>
-              <label className="font-bold text-slate-700 flex items-center gap-1.5 mb-1.5">
-                <FileText className="w-4 h-4 text-slate-400" />
-                <span>شماره بارنامه، گیت خروج یا یادداشت تحویل</span>
+              <label className="font-bold text-slate-700 flex items-center gap-1 mb-1 text-xs">
+                <FileText className="w-3.5 h-3.5 text-slate-400" />
+                <span>شماره بارنامه یا توضیحات خروج</span>
               </label>
-              <textarea
-                rows={2}
+              <input
+                type="text"
                 id="delivery-notes-input"
-                placeholder="در صورت وجود شماره بارنامه، بیجک، نام باربری یا توضیحات تکمیلی وارد فرمایید..."
+                placeholder="شماره بارنامه، بیجک یا توضیحات خروج..."
                 value={deliveryNotes}
                 onChange={(e) => setDeliveryNotes(e.target.value)}
-                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-800 resize-none"
+                className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-blue-500 transition-all text-slate-800 text-xs"
               />
             </div>
           </div>
 
           {/* Modal Actions */}
-          <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-end gap-2.5">
+          <div className="pt-2.5 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold transition-all cursor-pointer text-center text-xs"
+              className="w-full sm:w-auto px-3.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold transition-all cursor-pointer text-center text-xs"
             >
               انصراف
             </button>
@@ -411,6 +645,13 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
                     setErrorMsg('لطفاً نام تحویل‌گیرنده یا راننده را مشخص فرمایید.');
                     return;
                   }
+                  if (autoSaveToFleet && vehicleInfo.trim()) {
+                    StorageService.addOrUpdateSavedVehicle({
+                      vehicleInfo: vehicleInfo.trim(),
+                      driverName: receiverName.trim(),
+                      driverPhone: receiverPhone.trim(),
+                    });
+                  }
                   onSaveAndPrint({
                     isDelivered,
                     deliveredAt: isDelivered ? deliveredAt : '',
@@ -421,24 +662,24 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
                     deliveryNotes: deliveryNotes.trim(),
                   });
                 }}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 text-xs"
-                title="ذخیره اطلاعات و باز کردن پنجره چاپ برگه خروج"
+                className="w-full sm:w-auto px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition-all shadow-xs active:scale-98 cursor-pointer flex items-center justify-center gap-1.5 text-xs"
+                title="ذخیره اطلاعات و چاپ برگه خروج"
               >
-                <Printer className="w-4 h-4" />
-                <span>ذخیره و چاپ برگه خروج</span>
+                <Printer className="w-3.5 h-3.5" />
+                <span>ذخیره و چاپ حواله</span>
               </button>
             )}
 
             <button
               type="submit"
               id="save-delivery-details-btn"
-              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center justify-center gap-2 text-xs"
+              className="w-full sm:w-auto px-5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-xs active:scale-98 cursor-pointer flex items-center justify-center gap-1.5 text-xs"
             >
-              <CheckCircle2 className="w-4 h-4" />
+              <CheckCircle2 className="w-3.5 h-3.5" />
               <span>
                 {isDelivered
-                  ? 'ثبت و تایید قطعی تحویل بار'
-                  : 'ذخیره مشخصات راننده و خودرو'}
+                  ? 'ثبت و تایید قطعی تحویل'
+                  : 'ذخیره مشخصات'}
               </span>
             </button>
           </div>

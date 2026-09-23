@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Product, ProductVariant, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData, InboundReceipt, InboundReceiptItem, DirectTransfer, Customer } from '../types';
 import { toPersianDigits, toEnglishDigits, getCurrentJalaliDate, getCurrentJalaliTime, formatPrice } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
@@ -9,6 +9,7 @@ import { ExitSlipDeliveryModal } from './ExitSlipDeliveryModal';
 import { CustomerExportModal } from './CustomerExportModal';
 import { InboundReceiptsList } from './InboundReceiptsList';
 import { DirectTransfersList } from './DirectTransfersList';
+import { CategoryManagerModal } from './CategoryManagerModal';
 import { 
   Plus, 
   Search, 
@@ -39,7 +40,9 @@ import {
   SlidersHorizontal,
   Barcode,
   RefreshCw,
-  Hash
+  Hash,
+  FolderTree,
+  Tag
 } from 'lucide-react';
 import {
   generateNextProductCode,
@@ -122,12 +125,17 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   const [customerExportSelected, setCustomerExportSelected] = useState<Customer | null>(null);
   const [customersList, setCustomersList] = useState<Customer[]>(() => StorageService.getCustomers());
 
+  // Categories State & Management
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [categoriesList, setCategoriesList] = useState<string[]>(() => StorageService.getCategories());
+
   // Keep storage in sync with updates
   useEffect(() => {
     const unsub = StorageService.subscribe(() => {
       setExitSlipLogs(StorageService.getExitSlipLogs());
       setDirectTransfers(StorageService.getDirectTransfers());
       setCustomersList(StorageService.getCustomers());
+      setCategoriesList(StorageService.getCategories());
     });
     return () => unsub();
   }, []);
@@ -151,8 +159,47 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   // Delete Confirmation Modal
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
 
-  // Categories list
-  const categories = Array.from(new Set(products.map((p) => p.category).filter(Boolean)));
+  // Combined & Deduped Categories list
+  const categories = useMemo(() => {
+    const fromStorage = categoriesList;
+    const fromProducts = products.map((p) => p.category?.trim()).filter(Boolean);
+    const set = new Set([...fromStorage, ...fromProducts]);
+    if (!set.has('عمومی')) {
+      return ['عمومی', ...Array.from(set)];
+    }
+    return Array.from(set);
+  }, [categoriesList, products]);
+
+  // Category CRUD Handlers
+  const handleAddCategory = (name: string) => {
+    const success = StorageService.addCategory(name);
+    if (success) {
+      setCategoriesList(StorageService.getCategories());
+    }
+    return success;
+  };
+
+  const handleRenameCategory = (oldName: string, newName: string) => {
+    const success = StorageService.renameCategory(oldName, newName, true);
+    if (success) {
+      setCategoriesList(StorageService.getCategories());
+      if (selectedCategory === oldName) {
+        setSelectedCategory(newName);
+      }
+    }
+    return success;
+  };
+
+  const handleDeleteCategory = (name: string, reassignTo = 'عمومی') => {
+    const success = StorageService.deleteCategory(name, reassignTo);
+    if (success) {
+      setCategoriesList(StorageService.getCategories());
+      if (selectedCategory === name) {
+        setSelectedCategory('all');
+      }
+    }
+    return success;
+  };
 
   // Filtered products
   const filteredProducts = products.filter((p) => {
@@ -340,8 +387,14 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       ? cleanVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
       : Math.max(0, Number(editingProduct.stock) || 0);
 
+    const catName = editingProduct.category?.trim() || 'عمومی';
+    if (catName) {
+      handleAddCategory(catName);
+    }
+
     const saved: Product = {
       ...editingProduct,
+      category: catName,
       id: editingProduct.id || `prod-${Date.now()}`,
       name: editingProduct.name.trim(),
       code: finalCode,
@@ -423,19 +476,21 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   const outOfStockCount = products.filter((p) => p.stock === 0).length;
   const totalStockUnits = products.reduce((sum, p) => sum + p.stock, 0);
 
-  // Exit slip stats & filters
-  const unprintedSlipsCount = invoices.filter(
+  // Exit slip stats & filters (فقط فاکتورهای قطعی و رسمی دارای حواله خروج هستند، پیش‌فاکتورها حواله ندارند)
+  const regularInvoices = useMemo(() => invoices.filter((inv) => !inv.isProforma), [invoices]);
+
+  const unprintedSlipsCount = regularInvoices.filter(
     (inv) => !exitSlipLogs[inv.id] || exitSlipLogs[inv.id].printCount === 0
   ).length;
-  const printedSlipsCount = invoices.length - unprintedSlipsCount;
-  const pendingDeliverySlipsCount = invoices.filter(
+  const printedSlipsCount = regularInvoices.length - unprintedSlipsCount;
+  const pendingDeliverySlipsCount = regularInvoices.filter(
     (inv) => !exitSlipLogs[inv.id]?.isDelivered
   ).length;
-  const deliveredSlipsCount = invoices.filter(
+  const deliveredSlipsCount = regularInvoices.filter(
     (inv) => Boolean(exitSlipLogs[inv.id]?.isDelivered)
   ).length;
 
-  const totalDispatchedUnits = invoices.reduce(
+  const totalDispatchedUnits = regularInvoices.reduce(
     (sum, inv) => sum + inv.items.reduce((s, it) => s + it.quantity, 0),
     0
   );
@@ -445,6 +500,10 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   ).length;
 
   const handleOpenExitSlip = (inv: Invoice) => {
+    if (inv.isProforma) {
+      alert('امکان صدور حواله خروج برای پیش‌فاکتور وجود ندارد. حواله خروج انبار صرفاً برای فاکتورهای رسمی و قطعی صادر می‌گردد.');
+      return;
+    }
     // اطمینان از تخصیص شماره ترتیبی و منظم به حواله خروج انبار
     let currentLog = exitSlipLogs[inv.id];
     if (!currentLog?.slipNumber) {
@@ -533,7 +592,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     setDirectTransfers(StorageService.getDirectTransfers());
   };
 
-  const filteredExitSlips = invoices.filter((inv) => {
+  const filteredExitSlips = regularInvoices.filter((inv) => {
     const log = exitSlipLogs[inv.id] || { printCount: 0, isDelivered: false };
     if (exitSlipFilter === 'pending_delivery' && log.isDelivered) return false;
     if (exitSlipFilter === 'delivered' && !log.isDelivered) return false;
@@ -724,8 +783,23 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             </div>
           </div>
 
-          {/* Action Buttons (Excel Export/Import & New Product) */}
-          <div className="flex items-center gap-2 shrink-0 self-start md:self-auto">
+          {/* Action Buttons (Categories, Excel Export/Import & New Product) */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0 self-start md:self-auto">
+            {/* Category Management Button */}
+            <button
+              type="button"
+              id="manage-categories-btn"
+              onClick={() => setIsCategoryModalOpen(true)}
+              title="مدیریت و تعریف دسته‌بندی‌های محصولات (قطعات، لوازم جانبی و...)"
+              className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 active:scale-95 text-indigo-900 border border-indigo-200/90 hover:border-indigo-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+            >
+              <FolderTree className="w-4 h-4 text-indigo-600" />
+              <span>دسته‌بندی‌ها</span>
+              <span className="bg-indigo-200/70 text-indigo-900 text-[10px] font-mono px-1.5 py-0.2 rounded-full font-bold">
+                {toPersianDigits(categories.length)}
+              </span>
+            </button>
+
             {/* Excel Export */}
             <button
               type="button"
@@ -997,9 +1071,11 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                   onChange={(e) => setSelectedCategory(e.target.value)}
                   className="bg-transparent font-medium text-slate-800 outline-none cursor-pointer"
                 >
-                  <option value="all">همه دسته‌ها</option>
+                  <option value="all">همه دسته‌ها ({toPersianDigits(products.length)})</option>
                   {categories.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {c} ({toPersianDigits(products.filter((p) => p.category === c).length)})
+                    </option>
                   ))}
                 </select>
               </div>
@@ -1046,6 +1122,112 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             </div>
           </div>
 
+          {/* Visual Category Quick-Filter Bar with Horizontal Scroll */}
+          <div className="px-4 py-2.5 bg-slate-100/70 border-b border-slate-200/80 flex items-center gap-2 overflow-x-auto no-scrollbar">
+            <span className="text-[11px] font-bold text-slate-500 shrink-0 flex items-center gap-1">
+              <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
+              <span>دسته‌ها:</span>
+            </span>
+
+            <button
+              type="button"
+              onClick={() => setSelectedCategory('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                selectedCategory === 'all'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/90'
+              }`}
+            >
+              <span>همه کالاها</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                selectedCategory === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+              }`}>
+                {toPersianDigits(products.length)}
+              </span>
+            </button>
+
+            {categories.map((cat) => {
+              const catCount = products.filter((p) => p.category === cat).length;
+              const isSelected = selectedCategory === cat;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-500/20'
+                      : 'bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-900 border border-slate-200/90 hover:border-indigo-300'
+                  }`}
+                >
+                  <span>{cat}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                    isSelected ? 'bg-indigo-700 text-white' : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {toPersianDigits(catCount)}
+                  </span>
+                </button>
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={() => setIsCategoryModalOpen(true)}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-indigo-700 hover:bg-indigo-100 bg-indigo-50 border border-indigo-200/90 transition-all shrink-0 cursor-pointer flex items-center gap-1 shadow-2xs"
+              title="مدیریت و تعریف دسته‌بندی جدید"
+            >
+              <Plus className="w-3.5 h-3.5 text-indigo-600" />
+              <span>تعریف دسته جدید</span>
+            </button>
+          </div>
+
+          {/* Active Category Information Banner */}
+          {selectedCategory !== 'all' && (
+            <div className="mx-4 mt-3 mb-1 p-3 bg-gradient-to-r from-indigo-50/90 via-blue-50/70 to-indigo-50/90 border border-indigo-200/90 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs animate-in fade-in">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+                  <FolderTree className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-extrabold text-slate-900 flex items-center gap-2">
+                    <span className="text-slate-500 font-normal">دسته‌بندی فیلتر شده:</span>
+                    <span className="text-indigo-900 bg-white px-2.5 py-0.5 rounded-lg border border-indigo-200 font-black shadow-2xs">
+                      {selectedCategory}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-600 mt-1 flex flex-wrap items-center gap-2">
+                    <span>
+                      <strong>{toPersianDigits(filteredProducts.length)}</strong> قلم کالا
+                    </span>
+                    <span>•</span>
+                    <span>
+                      مجموع موجودی فیزیکی این دسته: <strong className="font-mono font-bold text-indigo-950">{toPersianDigits(filteredProducts.reduce((s, p) => s + (Number(p.stock) || 0), 0))}</strong> عدد
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCategoryModalOpen(true)}
+                  className="px-2.5 py-1.5 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl font-bold text-xs transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>مدیریت این دسته</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory('all')}
+                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl font-bold text-xs transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                >
+                  <X className="w-3.5 h-3.5 text-slate-400" />
+                  <span>نمایش همه کالاها</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Mobile View: Product Cards (Hidden on Desktop) */}
           <div className="block sm:hidden divide-y divide-slate-100">
             {filteredProducts.length === 0 ? (
@@ -1064,7 +1246,14 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                       <div>
                         <h4 className="font-bold text-slate-900 text-sm leading-tight">{prod.name}</h4>
                         <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px] text-slate-500">
-                          <span className="bg-slate-100 px-2 py-0.5 rounded-md font-medium text-slate-600">{prod.category}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCategory(prod.category)}
+                            className="bg-indigo-50 active:bg-indigo-100 text-indigo-700 hover:text-indigo-900 border border-indigo-200/80 px-2 py-0.5 rounded-md font-bold text-[10px] cursor-pointer transition-colors"
+                            title={`فیلتر سریع بر اساس دسته‌بندی «${prod.category}»`}
+                          >
+                            {prod.category}
+                          </button>
                           <span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded font-semibold">کد: {toPersianDigits(prod.code)}</span>
                         </div>
                       </div>
@@ -1202,7 +1391,14 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                         <td className="p-3.5">
                           <div className="font-bold text-slate-900">{prod.name}</div>
                           <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500">
-                            <span className="bg-slate-100 px-2 py-0.5 rounded-md">{prod.category}</span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedCategory(prod.category)}
+                              className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-900 border border-indigo-200/80 px-2 py-0.5 rounded-md font-bold transition-colors cursor-pointer"
+                              title={`فیلتر سریع بر اساس دسته‌بندی «${prod.category}»`}
+                            >
+                              {prod.category}
+                            </button>
                             <span>واحد: {prod.unit}</span>
                           </div>
                           {prod.hasVariants && prod.variants && prod.variants.length > 0 && (
@@ -2065,15 +2261,51 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">دسته‌بندی</label>
-                    <input
-                      type="text"
-                      id="product-modal-category"
-                      value={editingProduct.category}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
-                      placeholder="لوازم جانبی، دیجیتال، ..."
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                    />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-slate-700">دسته‌بندی</label>
+                      <button
+                        type="button"
+                        onClick={() => setIsCategoryModalOpen(true)}
+                        className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+                        title="مدیریت و تعریف دسته‌بندی جدید"
+                      >
+                        <FolderTree className="w-3 h-3" />
+                        <span>مدیریت دسته‌ها</span>
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        list="product-modal-categories-datalist"
+                        id="product-modal-category"
+                        value={editingProduct.category}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
+                        placeholder="انتخاب یا تایپ دسته‌بندی..."
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-medium"
+                      />
+                      <datalist id="product-modal-categories-datalist">
+                        {categories.map((c) => (
+                          <option key={c} value={c} />
+                        ))}
+                      </datalist>
+                    </div>
+                    {/* Quick suggestion chips */}
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {categories.slice(0, 6).map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setEditingProduct({ ...editingProduct, category: c })}
+                          className={`text-[10px] px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                            editingProduct.category === c
+                              ? 'bg-indigo-600 text-white font-bold'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div>
@@ -3002,6 +3234,20 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
         invoices={invoices || []}
         settings={settings}
       />
+
+      {/* CATEGORY MANAGER MODAL */}
+      {isCategoryModalOpen && (
+        <CategoryManagerModal
+          categories={categories}
+          products={products}
+          currency={settings.currency}
+          onAddCategory={handleAddCategory}
+          onRenameCategory={handleRenameCategory}
+          onDeleteCategory={handleDeleteCategory}
+          onSelectCategory={(cat) => setSelectedCategory(cat)}
+          onClose={() => setIsCategoryModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

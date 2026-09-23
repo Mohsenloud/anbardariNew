@@ -75,25 +75,25 @@ export const DirectTransferPrintModal: React.FC<DirectTransferPrintModalProps> =
         className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden my-auto print:max-h-none print:w-full print:shadow-none print:border-none print:rounded-none"
       >
         {/* Actions Bar (Hidden in Print) */}
-        <div className="bg-slate-900 text-white p-3 sm:p-4 flex items-center justify-between shadow-sm print:hidden">
-          <div className="flex items-center gap-2">
-            <Printer className="w-5 h-5 text-amber-400" />
-            <span className="text-sm font-bold">پیش‌نمایش چاپ برگه خروج و ورود انبار</span>
-            <span className="text-xs text-slate-400 font-mono">({transfer.transferNumber})</span>
+        <div className="bg-slate-900 text-white px-3 sm:px-4 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-2 shadow-sm print:hidden shrink-0 border-b border-slate-800">
+          <div className="flex items-center gap-2 min-w-0">
+            <Printer className="w-5 h-5 text-amber-400 shrink-0" />
+            <span className="text-xs sm:text-sm font-bold truncate">پیش‌نمایش چاپ برگه خروج و ورود انبار</span>
+            <span className="text-xs text-slate-400 font-mono hidden sm:inline">({transfer.transferNumber})</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs transition-all shadow"
+              className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs transition-all shadow cursor-pointer"
             >
               <Printer className="w-4 h-4" />
-              <span>چاپ رسمی (Print)</span>
+              <span>چاپ رسمی</span>
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+              className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>

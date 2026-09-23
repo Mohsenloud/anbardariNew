@@ -196,6 +196,13 @@ export default function App() {
       movements: settings.autoDeductStock && !newInvoice.isProforma && newMovements.length > 0 ? updatedMovements : undefined,
     });
 
+    // ایجاد حواله خروج انبار صرفاً و منحصراً برای فاکتورهای رسمی/قطعی (پیش‌فاکتور به هیچ عنوان حواله ایجاد نمی‌کند)
+    if (!newInvoice.isProforma) {
+      StorageService.getOrAssignExitSlipNumber(newInvoice.id, newInvoice.invoiceNumber);
+    } else {
+      StorageService.deleteExitSlipLog(newInvoice.id);
+    }
+
     if (newInvoice.isProforma) {
       showToast(`پیش‌فاکتور شماره ${newInvoice.invoiceNumber} با موفقیت ثبت شد (بدون کسر از موجودی انبار).`);
     } else {
@@ -357,6 +364,13 @@ export default function App() {
       });
     }
 
+    // بررسی و اعمال وضعیت حواله خروج بر اساس قطعی یا پیش‌فاکتور بودن سند
+    if (updatedInvoice.isProforma) {
+      StorageService.deleteExitSlipLog(updatedInvoice.id);
+    } else if (originalInvoice.isProforma && !updatedInvoice.isProforma) {
+      StorageService.getOrAssignExitSlipNumber(updatedInvoice.id, updatedInvoice.invoiceNumber);
+    }
+
     setEditingInvoice(null);
 
     // Log user activity
@@ -498,6 +512,9 @@ export default function App() {
       details: `تبدیل پیش‌فاکتور ${proformaInvoice.invoiceNumber} به فاکتور قطعی ${finalNumber} و کسر از موجودی انبار`,
     });
 
+    // هنگام تبدیل پیش‌فاکتور به فاکتور رسمی، اکنون حواله خروج کالا صادر می‌گردد
+    StorageService.getOrAssignExitSlipNumber(proformaInvoice.id, finalNumber);
+
     showToast(`پیش‌فاکتور ${proformaInvoice.invoiceNumber} با موفقیت به فاکتور رسمی ${finalNumber} تبدیل و اقلام از انبار کسر شد.`);
     return true;
   };
@@ -566,6 +583,7 @@ export default function App() {
   const handleDeleteInvoice = (invoiceId: string) => {
     const inv = invoices.find((i) => i.id === invoiceId);
     StorageService.markInvoiceDeleted(invoiceId);
+    StorageService.deleteExitSlipLog(invoiceId);
 
     const updatedInvoices = invoices.filter((i) => i.id !== invoiceId);
     setInvoices(updatedInvoices);

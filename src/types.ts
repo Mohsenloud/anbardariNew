@@ -249,6 +249,21 @@ export interface ExitSlipData {
 }
 
 // ----------------------------------------------------
+// خودروهای ثبت‌شده / ناوگان حمل بار (Saved Delivery Vehicles)
+// ----------------------------------------------------
+export interface SavedVehicle {
+  id: string;
+  vehicleType: string; // نوع خودرو مثلاً وانت نیسان، خاور، وانت پراید
+  vehicleInfo: string; // متن مشخصات کامل خودرو و پلاک
+  driverName?: string; // نام راننده یا تحویل‌گیرنده پیش‌فرض
+  driverPhone?: string; // شماره تماس راننده
+  plateNumber?: string; // پلاک تفکیک‌شده
+  colorDesc?: string; // رنگ خودرو
+  notes?: string; // توضیحات تکمیلی
+  createdAt: string; // تاریخ ثبت شمسی
+}
+
+// ----------------------------------------------------
 // فاکتور خرید (Purchase Invoices) و حواله ورود به انبار (Inbound Warehouse Receipts)
 // ----------------------------------------------------
 

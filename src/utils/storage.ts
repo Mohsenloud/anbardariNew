@@ -18,7 +18,8 @@ import {
   ServerBackupInfo,
   DirectTransfer,
   DirectTransferItem,
-  DirectTransferReturnRecord
+  DirectTransferReturnRecord,
+  SavedVehicle
 } from '../types';
 import { getCurrentJalaliDate, getCurrentJalaliTime } from './jalali';
 import {
@@ -56,6 +57,8 @@ const STORAGE_KEYS = {
   ACTIVITY_LOGS: 'factor_app_activity_logs_v1',
   DIRECT_TRANSFERS: 'factor_app_direct_transfers_v1',
   DELETED_INVOICES: 'factor_app_deleted_invoices_v1',
+  SAVED_VEHICLES: 'factor_app_saved_vehicles_v1',
+  CATEGORIES: 'factor_app_categories_v1',
 };
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
@@ -702,6 +705,42 @@ const initialDirectTransfers: DirectTransfer[] = [
   },
 ];
 
+export const initialSavedVehicles: SavedVehicle[] = [
+  {
+    id: 'veh-1',
+    vehicleType: 'وانت نیسان',
+    vehicleInfo: 'وانت نیسان - (آبی) - پلاک: ۲۴ ع ۵۶۷ ایران ۶۸',
+    driverName: 'علی رضایی',
+    driverPhone: '۰۹۱۲۳۴۵۶۷۸۹',
+    plateNumber: '۲۴ ع ۵۶۷ ایران ۶۸',
+    colorDesc: 'آبی',
+    notes: 'باربری اختصاصی انبار مرکزی',
+    createdAt: '۱۴۰۳/۰۶/۰۱',
+  },
+  {
+    id: 'veh-2',
+    vehicleType: 'خاور / ایسوزو',
+    vehicleInfo: 'خاور / ایسوزو - (سفید) - پلاک: ۸۸ ع ۲۱۴ ایران ۱۱',
+    driverName: 'محمد کاظمی',
+    driverPhone: '۰۹۳۵۱۱۱۲۲۳۳',
+    plateNumber: '۸۸ ع ۲۱۴ ایران ۱۱',
+    colorDesc: 'سفید',
+    notes: 'حمل بارهای سنگین و حجیم',
+    createdAt: '۱۴۰۳/۰۶/۰۵',
+  },
+  {
+    id: 'veh-3',
+    vehicleType: 'وانت پراید',
+    vehicleInfo: 'وانت پراید - (سفید) - پلاک: ۶۳ ب ۹۱۵ ایران ۲۱',
+    driverName: 'رضا کریمی',
+    driverPhone: '۰۹۱۲۹۸۷۶۵۴۳',
+    plateNumber: '۶۳ ب ۹۱۵ ایران ۲۱',
+    colorDesc: 'سفید',
+    notes: 'ارسال سریع درون‌شهری',
+    createdAt: '۱۴۰۳/۰۶/۱۰',
+  },
+];
+
 export const StorageService = {
   _listeners: [] as Array<() => void>,
   _lastServerRevision: 0,
@@ -834,6 +873,7 @@ export const StorageService = {
             exitSlipLogs: this.getExitSlipLogs(),
             activityLogs: this.getActivityLogs(),
             directTransfers: this.getDirectTransfers(),
+            savedVehicles: this.getSavedVehicles(),
             deletedInvoiceIds: deletedArr,
           };
       const res = await fetch('/api/db', {
@@ -940,6 +980,10 @@ export const StorageService = {
           localStorage.setItem(STORAGE_KEYS.DIRECT_TRANSFERS, JSON.stringify(d.directTransfers));
           hasAnyUpdate = true;
         }
+        if (Array.isArray(d.savedVehicles)) {
+          localStorage.setItem(STORAGE_KEYS.SAVED_VEHICLES, JSON.stringify(d.savedVehicles));
+          hasAnyUpdate = true;
+        }
 
         if (d.settings && typeof d.settings === 'object') {
           if (!isRecentSave) {
@@ -987,6 +1031,11 @@ export const StorageService = {
 
         if (Array.isArray(d.activityLogs)) {
           localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(d.activityLogs));
+          hasAnyUpdate = true;
+        }
+
+        if (Array.isArray(d.categories)) {
+          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(d.categories));
           hasAnyUpdate = true;
         }
 
@@ -1189,6 +1238,112 @@ export const StorageService = {
     const { products: ensuredProducts } = ensureProductCodesAndBarcodes(products);
     localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(ensuredProducts));
     this.queuePushToServer({ products: ensuredProducts });
+  },
+
+  // -------------------------------------------------------------
+  // CATEGORIES MANAGEMENT (دسته‌بندی‌های محصولات)
+  // -------------------------------------------------------------
+  getCategories(): string[] {
+    const defaultCategories = [
+      'عمومی',
+      'قطعات',
+      'لوازم جانبی',
+      'مواد اولیه',
+      'ابزارآلات',
+      'ملزومات اداری',
+      'ذخیره‌سازی',
+      'کابل و رابط',
+    ];
+
+    try {
+      const products = this.getProducts();
+      const productCategories: string[] = products
+        .map((p) => p.category?.trim())
+        .filter((c): c is string => Boolean(c));
+      const raw = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
+
+      if (!raw) {
+        const merged: string[] = Array.from(new Set<string>([...defaultCategories, ...productCategories]));
+        localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(merged));
+        return merged;
+      }
+
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const parsedClean: string[] = parsed.map((c) => String(c).trim()).filter(Boolean);
+        const merged: string[] = Array.from(new Set<string>([...parsedClean, ...productCategories]));
+        if (merged.length !== parsed.length) {
+          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(merged));
+        }
+        return merged;
+      }
+      return Array.from(new Set<string>([...defaultCategories, ...productCategories]));
+    } catch {
+      return defaultCategories;
+    }
+  },
+
+  saveCategories(categories: string[]) {
+    const clean = Array.from(new Set(categories.map((c) => c.trim()).filter(Boolean)));
+    localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(clean));
+    this.queuePushToServer({ categories: clean });
+    this.notifyChange();
+  },
+
+  addCategory(name: string): boolean {
+    const clean = name.trim();
+    if (!clean) return false;
+    const current = this.getCategories();
+    if (current.some((c) => c.toLowerCase() === clean.toLowerCase())) return false;
+    this.saveCategories([...current, clean]);
+    return true;
+  },
+
+  renameCategory(oldName: string, newName: string, updateProducts = true): boolean {
+    const cleanOld = oldName.trim();
+    const cleanNew = newName.trim();
+    if (!cleanNew || cleanOld === cleanNew) return false;
+
+    const current = this.getCategories();
+    const updatedCategories = current.map((c) => (c === cleanOld ? cleanNew : c));
+    this.saveCategories(updatedCategories);
+
+    if (updateProducts) {
+      const products = this.getProducts();
+      let changed = false;
+      const updatedProducts = products.map((p) => {
+        if (p.category === cleanOld) {
+          changed = true;
+          return { ...p, category: cleanNew };
+        }
+        return p;
+      });
+      if (changed) {
+        this.saveProducts(updatedProducts);
+      }
+    }
+    return true;
+  },
+
+  deleteCategory(categoryName: string, reassignTo = 'عمومی'): boolean {
+    const clean = categoryName.trim();
+    const current = this.getCategories();
+    const updated = current.filter((c) => c !== clean);
+    this.saveCategories(updated);
+
+    const products = this.getProducts();
+    let changed = false;
+    const updatedProducts = products.map((p) => {
+      if (p.category === clean) {
+        changed = true;
+        return { ...p, category: reassignTo };
+      }
+      return p;
+    });
+    if (changed) {
+      this.saveProducts(updatedProducts);
+    }
+    return true;
   },
 
   getCustomers(): Customer[] {
@@ -1596,6 +1751,7 @@ export const StorageService = {
   },
 
   // EXIT SLIP (حواله خروج از انبار) METHODS
+  // توجه بسیار مهم: پیش‌فاکتورها به هیچ عنوان حواله خروج انبار ندارند!
   getExitSlipLogs(): Record<string, ExitSlipData> {
     const data = localStorage.getItem(STORAGE_KEYS.EXIT_SLIP_LOGS);
     if (!data) return {};
@@ -1603,6 +1759,24 @@ export const StorageService = {
       const parsed = JSON.parse(data);
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         return {};
+      }
+      // پاکسازی خودکار: پیش‌فاکتورها نباید در لیست یا لاگ حواله خروج باشند
+      const invoices = this.getInvoices();
+      const proformaIds = new Set(invoices.filter((i) => i.isProforma).map((i) => i.id));
+      if (proformaIds.size > 0) {
+        let hasProforma = false;
+        const cleaned: Record<string, ExitSlipData> = {};
+        for (const [key, val] of Object.entries(parsed)) {
+          if (proformaIds.has(key)) {
+            hasProforma = true;
+          } else {
+            cleaned[key] = val as ExitSlipData;
+          }
+        }
+        if (hasProforma) {
+          localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(cleaned));
+        }
+        return cleaned;
       }
       return parsed;
     } catch {
@@ -1628,11 +1802,18 @@ export const StorageService = {
 
   getNextExitSlipNumber(): string {
     const logs = this.getExitSlipLogs();
-    const invoices = this.getInvoices();
+    const invoices = this.getInvoices().filter((i) => !i.isProforma);
     return generateNextExitSlipNumber(logs, invoices);
   },
 
   getOrAssignExitSlipNumber(invoiceId: string, invoiceNumber?: string): string {
+    const invoices = this.getInvoices();
+    const targetInv = invoices.find((i) => i.id === invoiceId);
+    // برای پیش‌فاکتورها به هیچ عنوان حواله خروج تخصیص نمی‌یابد
+    if (targetInv?.isProforma) {
+      return '';
+    }
+
     const logs = this.getExitSlipLogs();
     const current = logs[invoiceId];
     if (current?.slipNumber) {
@@ -1653,6 +1834,14 @@ export const StorageService = {
     return nextSlipNum;
   },
 
+  deleteExitSlipLog(invoiceId: string) {
+    const logs = this.getExitSlipLogs();
+    if (logs[invoiceId]) {
+      delete logs[invoiceId];
+      this.saveExitSlipLogs(logs);
+    }
+  },
+
   getNextInboundReceiptNumber(): string {
     const receipts = this.getInboundReceipts();
     return generateNextInboundReceiptNumber(receipts);
@@ -1669,6 +1858,15 @@ export const StorageService = {
   },
 
   getExitSlipLog(invoiceId: string): ExitSlipData {
+    const invoices = this.getInvoices();
+    const targetInv = invoices.find((i) => i.id === invoiceId);
+    if (targetInv?.isProforma) {
+      return {
+        invoiceId,
+        printCount: 0,
+        history: [],
+      };
+    }
     const logs = this.getExitSlipLogs();
     return logs[invoiceId] || {
       invoiceId,
@@ -1683,6 +1881,12 @@ export const StorageService = {
     printedAt?: string,
     fallbackData?: Partial<ExitSlipData>
   ): ExitSlipData {
+    const invoices = this.getInvoices();
+    const targetInv = invoices.find((i) => i.id === invoiceId);
+    if (targetInv?.isProforma) {
+      return (fallbackData as ExitSlipData) || { invoiceId, printCount: 0, history: [] };
+    }
+
     const logs = this.getExitSlipLogs();
     const current = logs[invoiceId] || fallbackData || {
       invoiceId,
@@ -1732,6 +1936,12 @@ export const StorageService = {
       slipNumber?: string;
     }
   ): ExitSlipData {
+    const invoices = this.getInvoices();
+    const targetInv = invoices.find((i) => i.id === invoiceId);
+    if (targetInv?.isProforma) {
+      return { invoiceId, printCount: 0, history: [] };
+    }
+
     const logs = this.getExitSlipLogs();
     const current = logs[invoiceId] || {
       invoiceId,
@@ -1746,6 +1956,93 @@ export const StorageService = {
     logs[invoiceId] = updated;
     this.saveExitSlipLogs(logs);
     return updated;
+  },
+
+  // ----------------------------------------------------
+  // مدیریت ماشین‌های ثبت‌شده و ناوگان تحویل گیرنده کالا
+  // ----------------------------------------------------
+  getSavedVehicles(): SavedVehicle[] {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.SAVED_VEHICLES);
+      if (!raw) {
+        localStorage.setItem(STORAGE_KEYS.SAVED_VEHICLES, JSON.stringify(initialSavedVehicles));
+        return initialSavedVehicles;
+      }
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : initialSavedVehicles;
+    } catch {
+      return initialSavedVehicles;
+    }
+  },
+
+  saveSavedVehicles(vehicles: SavedVehicle[]): void {
+    try {
+      const safe = Array.isArray(vehicles) ? vehicles : [];
+      localStorage.setItem(STORAGE_KEYS.SAVED_VEHICLES, JSON.stringify(safe));
+      this.notifyChange();
+      this.pushToServer({ savedVehicles: safe });
+    } catch (e) {
+      console.error('Failed to save vehicles:', e);
+    }
+  },
+
+  addOrUpdateSavedVehicle(data: {
+    id?: string;
+    vehicleType?: string;
+    vehicleInfo: string;
+    driverName?: string;
+    driverPhone?: string;
+    plateNumber?: string;
+    colorDesc?: string;
+    notes?: string;
+  }): SavedVehicle {
+    const list = this.getSavedVehicles();
+    const cleanInfo = data.vehicleInfo.trim();
+    const cleanDriver = (data.driverName || '').trim();
+    const cleanPhone = (data.driverPhone || '').trim();
+
+    // جستجوی خودروی مشابه بر اساس آی‌دی یا متن مشخصات ماشین
+    const existingIdx = data.id
+      ? list.findIndex((v) => v.id === data.id)
+      : list.findIndex((v) => v.vehicleInfo.trim() === cleanInfo && (!cleanDriver || v.driverName === cleanDriver));
+
+    let savedVehicle: SavedVehicle;
+
+    if (existingIdx !== -1) {
+      savedVehicle = {
+        ...list[existingIdx],
+        vehicleType: data.vehicleType || list[existingIdx].vehicleType || 'وانت باربری',
+        vehicleInfo: cleanInfo || list[existingIdx].vehicleInfo,
+        driverName: cleanDriver || list[existingIdx].driverName || '',
+        driverPhone: cleanPhone || list[existingIdx].driverPhone || '',
+        plateNumber: data.plateNumber?.trim() || list[existingIdx].plateNumber || '',
+        colorDesc: data.colorDesc?.trim() || list[existingIdx].colorDesc || '',
+        notes: data.notes?.trim() || list[existingIdx].notes || '',
+      };
+      list[existingIdx] = savedVehicle;
+    } else {
+      savedVehicle = {
+        id: data.id || `veh-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        vehicleType: data.vehicleType || 'وانت باربری',
+        vehicleInfo: cleanInfo,
+        driverName: cleanDriver,
+        driverPhone: cleanPhone,
+        plateNumber: data.plateNumber?.trim() || '',
+        colorDesc: data.colorDesc?.trim() || '',
+        notes: data.notes?.trim() || '',
+        createdAt: getCurrentJalaliDate(),
+      };
+      list.unshift(savedVehicle);
+    }
+
+    this.saveSavedVehicles(list);
+    return savedVehicle;
+  },
+
+  deleteSavedVehicle(id: string): void {
+    const list = this.getSavedVehicles();
+    const updated = list.filter((v) => v.id !== id);
+    this.saveSavedVehicles(updated);
   },
 
   clearInvoices() {

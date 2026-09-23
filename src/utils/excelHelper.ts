@@ -489,12 +489,12 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
   XLSX.utils.book_append_sheet(wb, wsItems, 'ریز_اقلام_فاکتورها');
 
   // ----------------------------------------------------
-  // Sheet 3: حواله‌های خروج انبار با جزییات تحویل و لجستیک
+  // Sheet 3: حواله‌های خروج انبار با جزییات تحویل و لجستیک (فقط فاکتورهای قطعی)
   // ----------------------------------------------------
   const slipRows: any[] = [];
   let slipCounter = 1;
 
-  for (const inv of customerInvoices) {
+  for (const inv of customerInvoices.filter((i) => !i.isProforma)) {
     const slip = exitSlipLogs[inv.id] || { invoiceId: inv.id, printCount: 0, history: [] };
     const slipNum = slip.slipNumber || inv.invoiceNumber;
     const isDeliveredFa = slip.isDelivered ? 'بار تحویل شد' : 'در انتظار تحویل انبار';

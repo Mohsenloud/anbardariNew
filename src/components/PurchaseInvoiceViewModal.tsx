@@ -67,14 +67,14 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
       <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[96vh]">
         {/* Top Actions (Hidden in Print) */}
-        <div className="no-print bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between border-b border-slate-800 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <ShoppingBag className="w-5 h-5 text-emerald-400" />
-            <span className="font-bold text-sm sm:text-base">
+        <div className="no-print bg-slate-900 text-white px-3 sm:px-5 py-2.5 sm:py-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <ShoppingBag className="w-5 h-5 text-emerald-400 shrink-0" />
+            <span className="font-bold text-xs sm:text-base truncate">
               فاکتور خرید شماره {toPersianDigits(invoice.invoiceNumber)}
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {invoice.inboundReceiptId && onOpenReceipt && (
               <button
                 type="button"
@@ -82,19 +82,19 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
                   onOpenReceipt(invoice.inboundReceiptId!);
                   onClose();
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-bold text-xs transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-bold text-xs transition-all cursor-pointer"
               >
-                <span>مشاهده حواله ورود انبار</span>
+                <span>حواله ورود</span>
                 <ArrowRight className="w-3.5 h-3.5 rotate-180" />
               </button>
             )}
             <button
               type="button"
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer"
             >
               <Printer className="w-4 h-4" />
-              <span>چاپ فاکتور خرید</span>
+              <span>چاپ فاکتور</span>
             </button>
             <button
               type="button"
