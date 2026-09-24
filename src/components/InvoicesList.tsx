@@ -5,6 +5,7 @@ import { exportInvoicesToCsv } from '../utils/csvExport';
 import { StorageService } from '../utils/storage';
 import { CustomerExportModal } from './CustomerExportModal';
 import { InvoiceQuickDetailsModal } from './InvoiceQuickDetailsModal';
+import { CustomerBulkPaymentModal } from './CustomerBulkPaymentModal';
 import { 
   Search, 
   Printer, 
@@ -30,6 +31,11 @@ import {
   Banknote, 
   Coins, 
   ChevronDown, 
+  ChevronUp,
+  BarChart3,
+  SlidersHorizontal,
+  MoreVertical,
+  Download,
   Filter, 
   Check,
   Eye
@@ -48,6 +54,10 @@ interface InvoicesListProps {
   onNewInvoice: () => void;
   onNewProforma?: () => void;
   onConvertProforma?: (invoice: Invoice, newInvoiceNumber?: string) => boolean | void;
+  onBatchUpdatePaymentStatus?: (
+    updates: { invoiceId: string; status: 'paid' | 'unpaid' | 'partial'; paidAmount: number }[],
+    details?: string
+  ) => void;
 }
 
 type SortOption = 'date-desc' | 'date-asc' | 'total-desc' | 'total-asc' | 'debt-desc' | 'customer-asc';
@@ -65,6 +75,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   onNewInvoice,
   onNewProforma,
   onConvertProforma,
+  onBatchUpdatePaymentStatus,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
@@ -83,10 +94,19 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   const [paymentNewStatus, setPaymentNewStatus] = useState<'paid' | 'unpaid' | 'partial'>('paid');
   const [paymentNewAmount, setPaymentNewAmount] = useState<number>(0);
 
+  // Bulk Payment state
+  const [bulkPaymentCustomer, setBulkPaymentCustomer] = useState<Customer | null>(null);
+  const [isBulkPickerOpen, setIsBulkPickerOpen] = useState(false);
+  const [bulkPickerSearch, setBulkPickerSearch] = useState('');
+
   // Customer Excel Export Modal
   const [isCustomerExportModalOpen, setIsCustomerExportModalOpen] = useState(false);
   const [customerExportSelected, setCustomerExportSelected] = useState<Customer | null>(null);
   const [customersList, setCustomersList] = useState<Customer[]>(() => StorageService.getCustomers());
+
+  // UI declutter states
+  const [showStats, setShowStats] = useState(false);
+  const [isToolsOpen, setIsToolsOpen] = useState(false);
 
   useEffect(() => {
     const unsub = StorageService.subscribe(() => {
@@ -185,6 +205,36 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   }, [invoices]);
   const totalPendingDebt = Math.max(0, totalSalesVolume - totalReceivedCash);
 
+  // Debtor customers for bulk payment settlement
+  const debtorCustomers = useMemo(() => {
+    const debtMap = new Map<string, { customer: Customer; debt: number; count: number }>();
+    invoices.forEach((inv) => {
+      if (inv.isProforma || inv.paymentStatus === 'paid') return;
+      const remaining = Math.max(0, inv.finalTotal - (inv.paidAmount || 0));
+      if (remaining <= 0) return;
+      const key = inv.customerId || inv.customerName.trim().toLowerCase();
+      if (!debtMap.has(key)) {
+        let matchedCust = customersList.find(
+          (c) => c.id === inv.customerId || c.name.trim().toLowerCase() === inv.customerName.trim().toLowerCase()
+        );
+        if (!matchedCust) {
+          matchedCust = {
+            id: inv.customerId || `cust-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+            name: inv.customerName,
+            phone: inv.customerPhone || '',
+            createdAt: inv.date,
+          };
+        }
+        debtMap.set(key, { customer: matchedCust, debt: remaining, count: 1 });
+      } else {
+        const entry = debtMap.get(key)!;
+        entry.debt += remaining;
+        entry.count += 1;
+      }
+    });
+    return Array.from(debtMap.values()).sort((a, b) => b.debt - a.debt);
+  }, [invoices, customersList]);
+
   // Permission checks
   const canCreate = !currentUser || currentUser.permissions.canCreateInvoice;
   const canDelete = !currentUser || currentUser.permissions.canDeleteInvoice;
@@ -238,358 +288,355 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
 
   return (
     <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 pb-16 px-2 sm:px-4">
-      {/* 1. Header Card (Desktop & Mobile Optimized) */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-3">
-          <div className="p-2.5 sm:p-3 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-100 shrink-0">
-            <ReceiptText className="w-6 h-6" />
+      {/* 1. Header Card (Decluttered & Streamlined) */}
+      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 shrink-0">
+            <ReceiptText className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg sm:text-xl font-black text-slate-800">
-                لیست و مدیریت فاکتورهای فروش
+            <div className="flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-black text-slate-800">
+                لیست و مدیریت فاکتورها
               </h2>
               <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold">
-                {toPersianDigits(invoices.length)} سند ثبت‌شده
+                {toPersianDigits(invoices.length)} سند
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              سوابق صدور، چاپ فاکتور رسمی و حرارتی، مدیریت مطالبات و مرجوعی کالا به انبار
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              صدور، چاپ، پیگیری وصول مطالبات و تسویه فاکتورها
             </p>
           </div>
         </div>
 
-        {/* Top Action Buttons (Mobile: Full width grid, Desktop: Flex row) */}
+        {/* Top Action Buttons: Primary + Tools Dropdown */}
         <div className="flex items-center gap-2 flex-wrap">
-          {canCreate && (
-            <>
-              <button
-                id="invoices-list-new-btn"
-                type="button"
-                onClick={onNewInvoice}
-                className="flex-1 sm:flex-initial min-h-[44px] flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm shadow-emerald-200 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>صدور فاکتور جدید</span>
-              </button>
+          {/* Toggle Financial Summary Stats */}
+          <button
+            type="button"
+            onClick={() => setShowStats((prev) => !prev)}
+            className={`min-h-[40px] px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+              showStats 
+                ? 'bg-slate-900 text-white border-slate-900 shadow-xs' 
+                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+            }`}
+            title="نمایش یا پنهان‌سازی خلاصه آمار فروش و مطالبات"
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span className="hidden sm:inline">آمار مالی</span>
+            {showStats ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
 
-              {onNewProforma && (
-                <button
-                  id="invoices-list-new-proforma-btn"
-                  type="button"
-                  onClick={onNewProforma}
-                  className="flex-1 sm:flex-initial min-h-[44px] flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 text-indigo-700 border border-indigo-200 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-2xs"
-                >
-                  <FileClock className="w-4 h-4 text-indigo-600" />
-                  <span>صدور پیش‌فاکتور</span>
-                </button>
+          {/* Secondary Tools Menu */}
+          <div className="relative">
+            <button
+              type="button"
+              id="invoices-tools-menu-btn"
+              onClick={() => setIsToolsOpen((prev) => !prev)}
+              className="min-h-[40px] px-3 py-2 rounded-xl text-xs font-bold bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-all cursor-pointer flex items-center gap-1.5"
+              title="سایر ابزارها، تسویه تجمیعی و خروجی‌ها"
+            >
+              <SlidersHorizontal className="w-4 h-4 text-slate-500" />
+              <span>عملیات و خروجی‌ها</span>
+              {debtorCustomers.length > 0 && (
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
               )}
-            </>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+
+            {isToolsOpen && (
+              <>
+                <div 
+                  className="fixed inset-0 z-30" 
+                  onClick={() => setIsToolsOpen(false)} 
+                />
+                <div className="absolute left-0 mt-1.5 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-40 text-xs text-right animate-in fade-in duration-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsToolsOpen(false);
+                      setIsBulkPickerOpen(true);
+                    }}
+                    className="w-full px-3.5 py-2.5 flex items-center justify-between hover:bg-amber-50/70 text-slate-700 hover:text-amber-900 font-bold transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-amber-600" />
+                      <span>تسویه تجمیعی مشتری</span>
+                    </div>
+                    {debtorCustomers.length > 0 && (
+                      <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full text-[10px]">
+                        {toPersianDigits(debtorCustomers.length)} بدهکار
+                      </span>
+                    )}
+                  </button>
+
+                  <div className="h-px bg-slate-100 my-1" />
+
+                  {canAccessAdmin && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsToolsOpen(false);
+                          const filterLabel = statusFilter === 'all' ? 'همه' : statusFilter === 'paid' ? 'تسویه_شده' : statusFilter === 'partial' ? 'اقساطی' : 'نسیه';
+                          exportInvoicesToCsv(filteredInvoices, settings, `گزارش_فاکتورها_${filterLabel}_${filteredInvoices.length}_فقره`);
+                        }}
+                        disabled={filteredInvoices.length === 0}
+                        className="w-full px-3.5 py-2 flex items-center gap-2 hover:bg-slate-50 text-slate-700 font-medium transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                        <span>خروجی اکسل لیست جاری ({toPersianDigits(filteredInvoices.length)})</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsToolsOpen(false);
+                          setCustomerExportSelected(null);
+                          setIsCustomerExportModalOpen(true);
+                        }}
+                        className="w-full px-3.5 py-2 flex items-center gap-2 hover:bg-purple-50 text-purple-800 font-medium transition-colors cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-4 h-4 text-purple-600" />
+                        <span>خروجی کلیه اسناد و حواله‌های یک شخص</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Proforma Button */}
+          {canCreate && onNewProforma && (
+            <button
+              id="invoices-list-new-proforma-btn"
+              type="button"
+              onClick={onNewProforma}
+              className="min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <FileClock className="w-4 h-4 text-indigo-600" />
+              <span className="hidden sm:inline">پیش‌فاکتور جدید</span>
+              <span className="sm:hidden">پیش‌فاکتور</span>
+            </button>
           )}
 
-          {canAccessAdmin && (
-            <>
-              <button
-                type="button"
-                id="export-person-slips-invoices-list-btn"
-                onClick={() => {
-                  setCustomerExportSelected(null);
-                  setIsCustomerExportModalOpen(true);
-                }}
-                className="min-h-[44px] flex items-center justify-center gap-1.5 bg-purple-50 hover:bg-purple-100 active:bg-purple-200 text-purple-700 border border-purple-200 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0"
-                title="خروجی فایل اکسل فاکتورها و حواله‌های خروج یک شخص با جزییات کامل"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-purple-600" />
-                <span className="hidden sm:inline">اکسپورت اسناد شخص</span>
-              </button>
-
-              <button
-                type="button"
-                id="export-filtered-invoices-csv-btn"
-                onClick={() => {
-                  const filterLabel = statusFilter === 'all' ? 'همه' : statusFilter === 'paid' ? 'تسویه_شده' : statusFilter === 'partial' ? 'اقساطی' : 'نسیه';
-                  exportInvoicesToCsv(filteredInvoices, settings, `گزارش_فاکتورها_${filterLabel}_${filteredInvoices.length}_فقره`);
-                }}
-                disabled={filteredInvoices.length === 0}
-                className="min-h-[44px] flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 border border-slate-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                title="خروجی فایل اکسل و CSV فاکتورها جهت بارگذاری در نرم‌افزارهای حسابداری"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                <span className="hidden sm:inline">خروجی اکسل</span>
-              </button>
-            </>
+          {/* Main Primary Action: New Invoice */}
+          {canCreate && (
+            <button
+              id="invoices-list-new-btn"
+              type="button"
+              onClick={onNewInvoice}
+              className="min-h-[40px] px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              <span>فاکتور جدید</span>
+            </button>
           )}
         </div>
       </div>
 
-      {/* 2. Interactive KPI Overview Cards (Clickable Quick Filters) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-        {/* Card 1: Total Sales */}
-        <div 
-          onClick={() => {
-            setStatusFilter('all');
-            setDocTypeFilter('all');
-          }}
-          className={`bg-white p-4 rounded-2xl border transition-all cursor-pointer shadow-xs hover:border-slate-300 group ${
-            statusFilter === 'all' && docTypeFilter === 'all' ? 'ring-2 ring-slate-900/10 border-slate-400' : 'border-slate-200/90'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">مجموع فروش فاکتورها</span>
-            <span className="p-1.5 rounded-xl bg-slate-100 text-slate-700 group-hover:bg-slate-200 transition-colors">
-              <Coins className="w-4 h-4" />
+      {/* 2. Collapsible Slim Financial Stats Strip */}
+      {showStats && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 animate-in fade-in duration-150">
+          <div 
+            onClick={() => {
+              setStatusFilter('all');
+              setDocTypeFilter('all');
+            }}
+            className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs hover:border-slate-300 transition-all cursor-pointer flex items-center justify-between"
+          >
+            <div>
+              <div className="text-[11px] font-bold text-slate-500">مجموع فروش فاکتورها</div>
+              <div className="text-base font-black text-slate-900 mt-0.5 font-mono">
+                {formatPrice(totalSalesVolume, settings.currency)}
+              </div>
+            </div>
+            <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg font-bold">
+              {toPersianDigits(regularInvoicesCount)} فاکتور
             </span>
           </div>
-          <div className="text-lg sm:text-xl font-black text-slate-900 mt-2 font-['Vazirmatn'] tracking-tight">
-            {formatPrice(totalSalesVolume, settings.currency)}
-          </div>
-          <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 pt-2 border-t border-slate-100">
-            <span>{toPersianDigits(regularInvoicesCount)} فاکتور قطعی</span>
-            <span className="text-indigo-600 font-medium">{toPersianDigits(proformaInvoicesCount)} پیش‌فاکتور</span>
-          </div>
-        </div>
 
-        {/* Card 2: Received Cash / POS */}
-        <div 
-          onClick={() => setStatusFilter('paid')}
-          className={`bg-white p-4 rounded-2xl border transition-all cursor-pointer shadow-xs hover:border-emerald-300 group ${
-            statusFilter === 'paid' ? 'ring-2 ring-emerald-500/20 border-emerald-500 bg-emerald-50/20' : 'border-slate-200/90'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-emerald-800">مبلغ وصول شده (نقدی / پوز)</span>
-            <span className="p-1.5 rounded-xl bg-emerald-100 text-emerald-700 group-hover:bg-emerald-200 transition-colors">
-              <CheckCircle2 className="w-4 h-4" />
+          <div 
+            onClick={() => setStatusFilter('paid')}
+            className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition-all cursor-pointer flex items-center justify-between"
+          >
+            <div>
+              <div className="text-[11px] font-bold text-emerald-800">مبلغ وصول شده (نقد / پوز)</div>
+              <div className="text-base font-black text-emerald-700 mt-0.5 font-mono">
+                {formatPrice(totalReceivedCash, settings.currency)}
+              </div>
+            </div>
+            <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-lg font-bold">
+              {toPersianDigits(statusCounts.paid)} تسویه
             </span>
           </div>
-          <div className="text-lg sm:text-xl font-black text-emerald-700 mt-2 font-['Vazirmatn'] tracking-tight">
-            {formatPrice(totalReceivedCash, settings.currency)}
-          </div>
-          <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 pt-2 border-t border-slate-100">
-            <span>دریافتی‌های تسویه‌شده</span>
-            <span className="text-emerald-700 font-bold">{toPersianDigits(statusCounts.paid)} فقره</span>
-          </div>
-        </div>
 
-        {/* Card 3: Outstanding Debts */}
-        <div 
-          onClick={() => setStatusFilter(statusFilter === 'unpaid' ? 'partial' : 'unpaid')}
-          className={`bg-white p-4 rounded-2xl border transition-all cursor-pointer shadow-xs hover:border-amber-300 group ${
-            statusFilter === 'unpaid' || statusFilter === 'partial' ? 'ring-2 ring-amber-500/20 border-amber-500 bg-amber-50/20' : 'border-slate-200/90'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-amber-800">مانده طلب و نسیه (وصول نشده)</span>
-            <span className="p-1.5 rounded-xl bg-amber-100 text-amber-700 group-hover:bg-amber-200 transition-colors">
-              <Clock className="w-4 h-4" />
-            </span>
-          </div>
-          <div className="text-lg sm:text-xl font-black text-amber-700 mt-2 font-['Vazirmatn'] tracking-tight">
-            {formatPrice(totalPendingDebt, settings.currency)}
-          </div>
-          <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 pt-2 border-t border-slate-100">
-            <span>مطالبات باز مشتریان</span>
-            <span className="text-amber-800 font-bold">
-              {toPersianDigits(statusCounts.unpaid + statusCounts.partial)} فاکتور
+          <div 
+            onClick={() => setStatusFilter(statusFilter === 'unpaid' ? 'partial' : 'unpaid')}
+            className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs hover:border-amber-300 transition-all cursor-pointer flex items-center justify-between"
+          >
+            <div>
+              <div className="text-[11px] font-bold text-amber-800">مانده طلب و نسیه</div>
+              <div className="text-base font-black text-amber-700 mt-0.5 font-mono">
+                {formatPrice(totalPendingDebt, settings.currency)}
+              </div>
+            </div>
+            <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-lg font-bold">
+              {toPersianDigits(statusCounts.unpaid + statusCounts.partial)} باز
             </span>
           </div>
         </div>
-      </div>
+      )}
 
       {/* 3. Main Data Container */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
-        {/* Document Type Selector Segmented Tabs */}
-        <div className="bg-slate-50/90 p-2 sm:p-3 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <div className="flex bg-slate-200/70 p-1 rounded-xl text-xs font-bold shadow-inner max-w-full overflow-x-auto">
-            <button
-              id="doc-filter-all"
-              type="button"
-              onClick={() => setDocTypeFilter('all')}
-              className={`min-h-[38px] px-3.5 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                docTypeFilter === 'all'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <span>همه اسناد</span>
-              <span className="text-[10px] px-1.5 py-0.2 bg-slate-100 text-slate-700 rounded-full font-mono">
-                {toPersianDigits(invoices.length)}
-              </span>
-            </button>
-            <button
-              id="doc-filter-regular"
-              type="button"
-              onClick={() => setDocTypeFilter('regular')}
-              className={`min-h-[38px] px-3.5 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                docTypeFilter === 'regular'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <span>فاکتورهای فروش</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                docTypeFilter === 'regular' ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-700'
-              }`}>
-                {toPersianDigits(regularInvoicesCount)}
-              </span>
-            </button>
-            <button
-              id="doc-filter-proforma"
-              type="button"
-              onClick={() => setDocTypeFilter('proforma')}
-              className={`min-h-[38px] px-3.5 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                docTypeFilter === 'proforma'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-indigo-700 hover:text-indigo-900'
-              }`}
-            >
-              <FileClock className="w-3.5 h-3.5" />
-              <span>پیش‌فاکتورها</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                docTypeFilter === 'proforma' ? 'bg-indigo-700 text-white' : 'bg-indigo-100 text-indigo-800'
-              }`}>
-                {toPersianDigits(proformaInvoicesCount)}
-              </span>
-            </button>
-          </div>
-
-          <div className="text-[11px] text-slate-500 font-medium hidden md:block">
-            {docTypeFilter === 'proforma'
-              ? 'پیش‌فاکتورها اسناد اولیه هستند و تا زمان تبدیل، موجودی انبار را کسر نمی‌کنند.'
-              : 'فیلتر سریع بر اساس نوع سند فروش'}
-          </div>
-        </div>
-
-        {/* Proforma Educational Banner */}
-        {docTypeFilter === 'proforma' && (
-          <div className="bg-indigo-50 border-b border-indigo-100 px-4 py-2.5 text-xs text-indigo-900 flex items-center gap-2">
-            <FileClock className="w-4 h-4 text-indigo-600 shrink-0" />
-            <span className="leading-relaxed">
-              <strong>راهنما:</strong> پیش‌فاکتورها هنوز از انبار خارج نشده‌اند. با کلیک بر روی دکمه «تبدیل به فاکتور»، اقلام به صورت خودکار از موجودی انبار کسر و سند قطعی صادر می‌شود.
-            </span>
-          </div>
-        )}
-
-        {/* Search & Filter & Sorting Toolbar */}
-        <div className="p-3 sm:p-4 border-b border-slate-200/80 bg-white space-y-3">
-          <div className="flex flex-col md:flex-row gap-2.5 items-stretch md:items-center justify-between">
+        {/* Unified Clean Filter & Search Toolbar */}
+        <div className="p-3 sm:p-3.5 border-b border-slate-200/80 bg-slate-50/50 space-y-2.5">
+          {/* Row 1: Search + Document Type Switcher + Sort */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 justify-between">
             {/* Search Input */}
             <div className="relative flex-1 group">
-              <Search className="w-4 h-4 text-slate-400 group-focus-within:text-emerald-600 absolute right-3.5 top-1/2 -translate-y-1/2 transition-colors pointer-events-none" />
+              <Search className="w-4 h-4 text-slate-400 group-focus-within:text-emerald-600 absolute right-3 top-1/2 -translate-y-1/2 transition-colors pointer-events-none" />
               <input
                 type="text"
                 id="invoices-search-input"
-                placeholder="جستجو بر اساس شماره فاکتور، نام خریدار، تلفن، چک..."
+                placeholder="جستجوی فاکتور، خریدار، تلفن، چک..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full min-h-[44px] bg-slate-50 border border-slate-200 rounded-xl pr-10 pl-9 py-2 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                className="w-full min-h-[38px] bg-white border border-slate-200 rounded-xl pr-9 pl-8 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200 transition-colors cursor-pointer"
-                  title="پاک کردن جستجو"
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 cursor-pointer"
+                  title="پاک کردن"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
 
+            {/* Document Type Segmented Pills */}
+            <div className="flex bg-slate-200/70 p-0.5 rounded-xl text-xs font-bold shrink-0 self-start sm:self-auto">
+              <button
+                type="button"
+                id="doc-filter-all"
+                onClick={() => setDocTypeFilter('all')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap text-[11px] ${
+                  docTypeFilter === 'all'
+                    ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                همه ({toPersianDigits(invoices.length)})
+              </button>
+              <button
+                type="button"
+                id="doc-filter-regular"
+                onClick={() => setDocTypeFilter('regular')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap text-[11px] ${
+                  docTypeFilter === 'regular'
+                    ? 'bg-emerald-600 text-white shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                فاکتورها ({toPersianDigits(regularInvoicesCount)})
+              </button>
+              <button
+                type="button"
+                id="doc-filter-proforma"
+                onClick={() => setDocTypeFilter('proforma')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap text-[11px] ${
+                  docTypeFilter === 'proforma'
+                    ? 'bg-indigo-600 text-white shadow-2xs font-bold'
+                    : 'text-indigo-700 hover:text-indigo-900'
+                }`}
+              >
+                پیش‌فاکتور ({toPersianDigits(proformaInvoicesCount)})
+              </button>
+            </div>
+
             {/* Sorting Dropdown */}
-            <div className="flex items-center gap-2 shrink-0">
-              <div className="relative flex-1 sm:flex-initial">
-                <select
-                  id="invoices-sort-select"
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as SortOption)}
-                  className="w-full min-h-[44px] appearance-none bg-slate-50 border border-slate-200 rounded-xl pr-8 pl-8 py-2 text-xs font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-slate-500/20 focus:border-slate-400 outline-none cursor-pointer"
-                >
-                  <option value="date-desc">جدیدترین تاریخ صدور</option>
-                  <option value="date-asc">قدیمی‌ترین تاریخ صدور</option>
-                  <option value="total-desc">بیشترین مبلغ فاکتور</option>
-                  <option value="total-asc">کمترین مبلغ فاکتور</option>
-                  <option value="debt-desc">بیشترین مانده طلب (نسیه)</option>
-                  <option value="customer-asc">نام خریدار (الفبا)</option>
-                </select>
-                <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+            <div className="relative shrink-0 w-36 sm:w-44">
+              <select
+                id="invoices-sort-select"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                className="w-full min-h-[38px] appearance-none bg-white border border-slate-200 rounded-xl pr-7 pl-6 py-1.5 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-slate-500/20 focus:border-slate-400 outline-none cursor-pointer"
+              >
+                <option value="date-desc">جدیدترین تاریخ</option>
+                <option value="date-asc">قدیمی‌ترین تاریخ</option>
+                <option value="total-desc">بیشترین مبلغ</option>
+                <option value="total-asc">کمترین مبلغ</option>
+                <option value="debt-desc">بیشترین مانده طلب</option>
+                <option value="customer-asc">نام خریدار</option>
+              </select>
+              <ArrowUpDown className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-3 h-3 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           </div>
 
-          {/* Status Filter Pills Row */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+          {/* Row 2: Status Chips & Summary Counter */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
               <button
                 id="filter-inv-all"
                 type="button"
                 onClick={() => setStatusFilter('all')}
-                className={`min-h-[36px] px-3 py-1.5 rounded-xl transition-all cursor-pointer font-bold flex items-center gap-1.5 ${
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                   statusFilter === 'all'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? 'bg-slate-900 text-white shadow-2xs'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                <span>همه</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-white/20">
-                  {toPersianDigits(statusCounts.all)}
-                </span>
+                همه ({toPersianDigits(statusCounts.all)})
               </button>
 
               <button
                 id="filter-inv-paid"
                 type="button"
                 onClick={() => setStatusFilter('paid')}
-                className={`min-h-[36px] px-3 py-1.5 rounded-xl transition-all cursor-pointer font-bold flex items-center gap-1.5 ${
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
                   statusFilter === 'paid'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/60'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200/70 hover:bg-emerald-100'
                 }`}
               >
-                <CheckCircle className="w-3.5 h-3.5" />
-                <span>تسویه شده</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-white/20">
-                  {toPersianDigits(statusCounts.paid)}
-                </span>
+                <CheckCircle className="w-3 h-3" />
+                <span>تسویه شده ({toPersianDigits(statusCounts.paid)})</span>
               </button>
 
               <button
                 id="filter-inv-partial"
                 type="button"
                 onClick={() => setStatusFilter('partial')}
-                className={`min-h-[36px] px-3 py-1.5 rounded-xl transition-all cursor-pointer font-bold flex items-center gap-1.5 ${
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
                   statusFilter === 'partial'
-                    ? 'bg-amber-600 text-white shadow-xs'
-                    : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/60'
+                    ? 'bg-amber-600 text-white shadow-2xs'
+                    : 'bg-amber-50 text-amber-800 border border-amber-200/70 hover:bg-amber-100'
                 }`}
               >
-                <Clock className="w-3.5 h-3.5" />
-                <span>بیعانه / اقساط</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-white/20">
-                  {toPersianDigits(statusCounts.partial)}
-                </span>
+                <Clock className="w-3 h-3" />
+                <span>بیعانه ({toPersianDigits(statusCounts.partial)})</span>
               </button>
 
               <button
                 id="filter-inv-unpaid"
                 type="button"
                 onClick={() => setStatusFilter('unpaid')}
-                className={`min-h-[36px] px-3 py-1.5 rounded-xl transition-all cursor-pointer font-bold flex items-center gap-1.5 ${
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
                   statusFilter === 'unpaid'
-                    ? 'bg-rose-600 text-white shadow-xs'
-                    : 'bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-200/60'
+                    ? 'bg-rose-600 text-white shadow-2xs'
+                    : 'bg-rose-50 text-rose-800 border border-rose-200/70 hover:bg-rose-100'
                 }`}
               >
-                <AlertCircle className="w-3.5 h-3.5" />
-                <span>نسیه / پرداخت‌نشده</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-white/20">
-                  {toPersianDigits(statusCounts.unpaid)}
-                </span>
+                <AlertCircle className="w-3 h-3" />
+                <span>نسیه ({toPersianDigits(statusCounts.unpaid)})</span>
               </button>
             </div>
 
-            {/* Filtered records counter */}
             <div className="text-[11px] text-slate-500 font-medium">
               نمایش <strong className="text-slate-800 font-mono">{toPersianDigits(filteredInvoices.length)}</strong> از <strong className="text-slate-800 font-mono">{toPersianDigits(invoices.length)}</strong> سند
             </div>
@@ -1296,6 +1343,121 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
         invoices={invoices}
         settings={settings}
       />
+
+      {/* MODAL: CHOOSE CUSTOMER FOR BULK SETTLEMENT */}
+      {isBulkPickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-amber-400" />
+                <h3 className="font-black text-sm sm:text-base">
+                  انتخاب مشتری جهت تسویه یکباره فاکتورها
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBulkPickerOpen(false);
+                  setBulkPickerSearch('');
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 border-b border-slate-100 bg-slate-50">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={bulkPickerSearch}
+                  onChange={(e) => setBulkPickerSearch(e.target.value)}
+                  placeholder="جستجوی نام یا شماره مشتری..."
+                  className="w-full bg-white border border-slate-200 rounded-xl pr-9 pl-3 py-2 text-xs outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 overflow-y-auto divide-y divide-slate-100 max-h-[50vh]">
+              {debtorCustomers.filter((d) => 
+                d.customer.name.toLowerCase().includes(bulkPickerSearch.toLowerCase()) ||
+                (d.customer.phone && d.customer.phone.includes(bulkPickerSearch))
+              ).length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  هیچ مشتری با بدهی تسویه‌نشده یافت نشد.
+                </div>
+              ) : (
+                debtorCustomers
+                  .filter((d) => 
+                    d.customer.name.toLowerCase().includes(bulkPickerSearch.toLowerCase()) ||
+                    (d.customer.phone && d.customer.phone.includes(bulkPickerSearch))
+                  )
+                  .map(({ customer, debt, count }) => (
+                    <button
+                      key={customer.id}
+                      type="button"
+                      onClick={() => {
+                        setIsBulkPickerOpen(false);
+                        setBulkPickerSearch('');
+                        setBulkPaymentCustomer(customer);
+                      }}
+                      className="w-full p-3 flex items-center justify-between text-right hover:bg-amber-50/60 transition-colors rounded-xl group cursor-pointer"
+                    >
+                      <div>
+                        <div className="font-bold text-slate-900 text-xs group-hover:text-amber-900">
+                          {customer.name}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          {toPersianDigits(count)} فاکتور تسویه‌نشده
+                          {customer.phone && ` | تلفن: ${toPersianDigits(customer.phone)}`}
+                        </div>
+                      </div>
+                      <div className="text-left shrink-0">
+                        <div className="text-xs font-black text-rose-700 font-mono">
+                          {formatPrice(debt, settings.currency)}
+                        </div>
+                        <span className="text-[10px] text-amber-700 font-bold group-hover:underline">
+                          تسویه فاکتورها ←
+                        </span>
+                      </div>
+                    </button>
+                  ))
+              )}
+            </div>
+
+            <div className="p-3 bg-slate-50 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBulkPickerOpen(false);
+                  setBulkPickerSearch('');
+                }}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                بستن
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOMER BULK PAYMENT MODAL */}
+      {bulkPaymentCustomer && (
+        <CustomerBulkPaymentModal
+          isOpen={!!bulkPaymentCustomer}
+          onClose={() => setBulkPaymentCustomer(null)}
+          customer={bulkPaymentCustomer}
+          invoices={invoices}
+          settings={settings}
+          onConfirmPayment={(updates, details) => {
+            if (onBatchUpdatePaymentStatus) {
+              onBatchUpdatePaymentStatus(updates, details);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

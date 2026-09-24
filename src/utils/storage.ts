@@ -57,9 +57,22 @@ const STORAGE_KEYS = {
   ACTIVITY_LOGS: 'factor_app_activity_logs_v1',
   DIRECT_TRANSFERS: 'factor_app_direct_transfers_v1',
   DELETED_INVOICES: 'factor_app_deleted_invoices_v1',
+  TOMBSTONES: 'factor_app_tombstones_v1',
   SAVED_VEHICLES: 'factor_app_saved_vehicles_v1',
   CATEGORIES: 'factor_app_categories_v1',
 };
+
+export interface AppTombstones {
+  invoices: string[];
+  products: string[];
+  customers: string[];
+  purchaseInvoices: string[];
+  inboundReceipts: string[];
+  directTransfers: string[];
+  savedVehicles: string[];
+  users: string[];
+  categories: string[];
+}
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
   admin: {
@@ -563,27 +576,108 @@ export const StorageService = {
     });
   },
 
-  // Track deleted invoices to prevent zombie rebirth during sync
-  getDeletedInvoiceIds(): Set<string> {
+  // Track deleted items across all entities to prevent zombie rebirth during sync
+  getDeletedTombstones(): AppTombstones {
+    const emptyTombstones: AppTombstones = {
+      invoices: [],
+      products: [],
+      customers: [],
+      purchaseInvoices: [],
+      inboundReceipts: [],
+      directTransfers: [],
+      savedVehicles: [],
+      users: [],
+      categories: [],
+    };
+
     try {
-      const raw = localStorage.getItem(STORAGE_KEYS.DELETED_INVOICES);
+      const raw = localStorage.getItem(STORAGE_KEYS.TOMBSTONES);
+      let tombstones: AppTombstones = emptyTombstones;
       if (raw) {
-        const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) return new Set(arr);
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          tombstones = { ...emptyTombstones, ...parsed };
+        }
       }
-    } catch {}
-    return new Set<string>();
+
+      // Backward compatibility with DELETED_INVOICES key
+      const legacyInvoices = localStorage.getItem(STORAGE_KEYS.DELETED_INVOICES);
+      if (legacyInvoices) {
+        const arr = JSON.parse(legacyInvoices);
+        if (Array.isArray(arr)) {
+          const set = new Set([...(tombstones.invoices || []), ...arr]);
+          tombstones.invoices = Array.from(set);
+        }
+      }
+
+      return tombstones;
+    } catch {
+      return emptyTombstones;
+    }
+  },
+
+  getDeletedInvoiceIds(): Set<string> {
+    const tombstones = this.getDeletedTombstones();
+    return new Set<string>(tombstones.invoices || []);
+  },
+
+  recordTombstone(entityType: keyof AppTombstones, id: string | string[]) {
+    try {
+      const ids = (Array.isArray(id) ? id : [id]).filter(Boolean).map((i) => String(i).trim());
+      if (ids.length === 0) return;
+
+      const current = this.getDeletedTombstones();
+      const list = new Set(current[entityType] || []);
+      ids.forEach((item) => list.add(item));
+      current[entityType] = Array.from(list).slice(-2000);
+
+      localStorage.setItem(STORAGE_KEYS.TOMBSTONES, JSON.stringify(current));
+
+      if (entityType === 'invoices') {
+        localStorage.setItem(STORAGE_KEYS.DELETED_INVOICES, JSON.stringify(current.invoices));
+      }
+
+      // Fire dedicated instant delete API to central server
+      const apiTypeMap: Record<keyof AppTombstones, string> = {
+        invoices: 'invoice',
+        products: 'product',
+        customers: 'customer',
+        purchaseInvoices: 'purchaseInvoice',
+        inboundReceipts: 'inboundReceipt',
+        directTransfers: 'directTransfer',
+        savedVehicles: 'savedVehicle',
+        users: 'user',
+        categories: 'category',
+      };
+
+      ids.forEach((itemId) => {
+        fetch('/api/db/delete-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+          body: JSON.stringify({ type: apiTypeMap[entityType] || entityType, id: itemId }),
+        })
+          .then((res) => res.json())
+          .then((json) => {
+            if (json?.revision && typeof json.revision === 'number') {
+              this._lastServerRevision = json.revision;
+            }
+            if (json?.checksum) {
+              this._lastServerChecksum = json.checksum;
+            }
+          })
+          .catch(() => {});
+      });
+    } catch (e) {
+      console.error('Failed to record tombstone:', e);
+    }
   },
 
   markInvoiceDeleted(invoiceIds: string | string[]) {
     try {
-      const ids = (Array.isArray(invoiceIds) ? invoiceIds : [invoiceIds]).filter(Boolean);
-      const current = this.getDeletedInvoiceIds();
-      ids.forEach((id) => current.add(id));
-      const arr = Array.from(current).slice(-2000);
-      localStorage.setItem(STORAGE_KEYS.DELETED_INVOICES, JSON.stringify(arr));
+      const ids = (Array.isArray(invoiceIds) ? invoiceIds : [invoiceIds]).filter(Boolean).map((i) => String(i).trim());
+      this.recordTombstone('invoices', ids);
 
-      const delSet = new Set(arr);
+      const delSet = this.getDeletedInvoiceIds();
       const remaining = this.getInvoices().filter((inv) => !delSet.has(inv.id));
       localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(remaining));
 
@@ -601,7 +695,8 @@ export const StorageService = {
       }
 
       this.pushToServer({
-        deletedInvoiceIds: arr,
+        deletedInvoiceIds: Array.from(delSet),
+        tombstones: this.getDeletedTombstones(),
         invoices: remaining,
         ...(logsChanged ? { exitSlipLogs: logs } : {}),
       });
@@ -678,9 +773,9 @@ export const StorageService = {
   // Asynchronously sync local changes to centralized server database
   async pushToServer(customPayload?: any): Promise<boolean> {
     try {
-      const deletedArr = Array.from(this.getDeletedInvoiceIds());
+      const tombstones = this.getDeletedTombstones();
       const payload = customPayload
-        ? { deletedInvoiceIds: deletedArr, ...customPayload }
+        ? { deletedInvoiceIds: tombstones.invoices, tombstones, ...customPayload }
         : {
             products: this.getProducts(),
             customers: this.getCustomers(),
@@ -694,11 +789,13 @@ export const StorageService = {
             activityLogs: this.getActivityLogs(),
             directTransfers: this.getDirectTransfers(),
             savedVehicles: this.getSavedVehicles(),
-            deletedInvoiceIds: deletedArr,
+            categories: this.getCategories(),
+            deletedInvoiceIds: tombstones.invoices,
+            tombstones,
           };
       const res = await fetch('/api/db', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
         body: JSON.stringify(payload),
       });
       if (res.ok) {
@@ -716,10 +813,16 @@ export const StorageService = {
     }
   },
 
-  // Fetch updated records from server and sync into local storage with Zero-Loss Protection
+  // Fetch updated records from server and sync into local storage with Zero-Loss Protection & Cache Busting
   async syncFromServer(): Promise<boolean> {
     try {
-      const res = await fetch('/api/db');
+      const res = await fetch(`/api/db?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        },
+      });
       if (!res.ok) return false;
       const json = await res.json();
       if (json && json.success && json.data) {
@@ -742,61 +845,105 @@ export const StorageService = {
 
         let hasAnyUpdate = false;
 
-        if (Array.isArray(d.products)) {
-          localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(d.products));
-          hasAnyUpdate = true;
-        }
-        if (Array.isArray(d.customers)) {
-          localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(d.customers));
-          hasAnyUpdate = true;
-        }
-        
-        // 1. Synchronize server-wide deleted invoice IDs
-        if (Array.isArray(d.deletedInvoiceIds)) {
-          const currentDeleted = this.getDeletedInvoiceIds();
-          let addedAny = false;
-          d.deletedInvoiceIds.forEach((id: string) => {
-            if (typeof id === 'string' && id && !currentDeleted.has(id)) {
-              currentDeleted.add(id);
-              addedAny = true;
-            }
-          });
-          if (addedAny) {
-            const arr = Array.from(currentDeleted).slice(-2000);
-            localStorage.setItem(STORAGE_KEYS.DELETED_INVOICES, JSON.stringify(arr));
-          }
-        }
-        const deletedSet = this.getDeletedInvoiceIds();
+        // 1. Synchronize server-wide tombstones across all entities
+        const localTombstones = this.getDeletedTombstones();
+        let tombstonesUpdated = false;
 
-        // 2. Authoritative Invoice Synchronization (Server is Single Source of Truth)
+        const mergeList = (key: keyof AppTombstones, serverList: any) => {
+          if (Array.isArray(serverList)) {
+            const set = new Set(localTombstones[key] || []);
+            serverList.forEach((id: string) => {
+              if (typeof id === 'string' && id.trim() && !set.has(id.trim())) {
+                set.add(id.trim());
+                tombstonesUpdated = true;
+              }
+            });
+            localTombstones[key] = Array.from(set).slice(-2000);
+          }
+        };
+
+        if (d.tombstones && typeof d.tombstones === 'object') {
+          mergeList('invoices', d.tombstones.invoices);
+          mergeList('products', d.tombstones.products);
+          mergeList('customers', d.tombstones.customers);
+          mergeList('purchaseInvoices', d.tombstones.purchaseInvoices);
+          mergeList('inboundReceipts', d.tombstones.inboundReceipts);
+          mergeList('directTransfers', d.tombstones.directTransfers);
+          mergeList('savedVehicles', d.tombstones.savedVehicles);
+          mergeList('users', d.tombstones.users);
+          mergeList('categories', d.tombstones.categories);
+        }
+
+        if (Array.isArray(d.deletedInvoiceIds)) {
+          mergeList('invoices', d.deletedInvoiceIds);
+        }
+
+        if (tombstonesUpdated) {
+          localStorage.setItem(STORAGE_KEYS.TOMBSTONES, JSON.stringify(localTombstones));
+          localStorage.setItem(STORAGE_KEYS.DELETED_INVOICES, JSON.stringify(localTombstones.invoices));
+        }
+
+        const invDelSet = new Set(localTombstones.invoices);
+        const prodDelSet = new Set(localTombstones.products);
+        const custDelSet = new Set(localTombstones.customers);
+        const purchDelSet = new Set(localTombstones.purchaseInvoices);
+        const inbDelSet = new Set(localTombstones.inboundReceipts);
+        const transDelSet = new Set(localTombstones.directTransfers);
+        const vehDelSet = new Set(localTombstones.savedVehicles);
+        const usrDelSet = new Set(localTombstones.users);
+        const catDelSet = new Set(localTombstones.categories.map((c) => c.toLowerCase()));
+
+        // 2. Authoritative Data Synchronization with Tombstone Filtering
+        if (Array.isArray(d.products)) {
+          const cleanProducts = d.products.filter((p: Product) => !prodDelSet.has(p.id));
+          localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(cleanProducts));
+          hasAnyUpdate = true;
+        }
+
+        if (Array.isArray(d.customers)) {
+          const cleanCustomers = d.customers.filter((c: Customer) => !custDelSet.has(c.id));
+          localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(cleanCustomers));
+          hasAnyUpdate = true;
+        }
+
         if (Array.isArray(d.invoices)) {
-          const finalInvoices = d.invoices.filter((inv: Invoice) => !deletedSet.has(inv.id));
+          const finalInvoices = d.invoices.filter((inv: Invoice) => !invDelSet.has(inv.id));
           localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(finalInvoices));
           hasAnyUpdate = true;
         }
 
         if (Array.isArray(d.purchaseInvoices)) {
-          localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(d.purchaseInvoices));
+          const cleanPurchases = d.purchaseInvoices.filter((p: PurchaseInvoice) => !purchDelSet.has(p.id));
+          localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(cleanPurchases));
           hasAnyUpdate = true;
         }
+
         if (Array.isArray(d.inboundReceipts)) {
-          localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(d.inboundReceipts));
+          const cleanInbound = d.inboundReceipts.filter((r: InboundReceipt) => !inbDelSet.has(r.id));
+          localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(cleanInbound));
           hasAnyUpdate = true;
         }
+
         if (Array.isArray(d.movements)) {
           localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(d.movements));
           hasAnyUpdate = true;
         }
+
         if (Array.isArray(d.users)) {
-          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(d.users));
+          const cleanUsers = d.users.filter((u: AppUser) => !usrDelSet.has(u.id));
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(cleanUsers));
           hasAnyUpdate = true;
         }
+
         if (Array.isArray(d.directTransfers)) {
-          localStorage.setItem(STORAGE_KEYS.DIRECT_TRANSFERS, JSON.stringify(d.directTransfers));
+          const cleanTransfers = d.directTransfers.filter((t: DirectTransfer) => !transDelSet.has(t.id));
+          localStorage.setItem(STORAGE_KEYS.DIRECT_TRANSFERS, JSON.stringify(cleanTransfers));
           hasAnyUpdate = true;
         }
+
         if (Array.isArray(d.savedVehicles)) {
-          localStorage.setItem(STORAGE_KEYS.SAVED_VEHICLES, JSON.stringify(d.savedVehicles));
+          const cleanVehicles = d.savedVehicles.filter((v: any) => !vehDelSet.has(v.id));
+          localStorage.setItem(STORAGE_KEYS.SAVED_VEHICLES, JSON.stringify(cleanVehicles));
           hasAnyUpdate = true;
         }
 
@@ -823,7 +970,7 @@ export const StorageService = {
           const cleaned: Record<string, ExitSlipData> = {};
           // Only keep exit slips that belong to non-deleted invoices
           for (const [invId, slip] of Object.entries(remoteLogs)) {
-            if (!deletedSet.has(invId)) {
+            if (!invDelSet.has(invId)) {
               cleaned[invId] = slip;
             }
           }
@@ -837,7 +984,8 @@ export const StorageService = {
         }
 
         if (Array.isArray(d.categories)) {
-          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(d.categories));
+          const cleanCats = d.categories.filter((c: string) => !catDelSet.has(String(c).trim().toLowerCase()));
+          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(cleanCats));
           hasAnyUpdate = true;
         }
 
@@ -1013,20 +1161,18 @@ export const StorageService = {
 
   getProducts(): Product[] {
     const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
+    const tombstones = this.getDeletedTombstones();
+    const prodDelSet = new Set(tombstones.products || []);
+
     let list: Product[] = [];
     if (!data) {
-      list = initialProducts;
+      list = initialProducts.filter((p) => !prodDelSet.has(p.id));
     } else {
       try {
         const parsed: Product[] = JSON.parse(data);
-        // Ensure the hardener variant example product is present so user has an immediate live example
-        if (!parsed.some((p) => p.hasVariants || p.id === 'prod-hardener-1')) {
-          list = [initialProducts[0], ...parsed];
-        } else {
-          list = parsed;
-        }
+        list = Array.isArray(parsed) ? parsed.filter((p) => !prodDelSet.has(p.id)) : [];
       } catch {
-        list = initialProducts;
+        list = initialProducts.filter((p) => !prodDelSet.has(p.id));
       }
     }
 
@@ -1039,10 +1185,24 @@ export const StorageService = {
   },
 
   saveProducts(products: Product[]) {
+    const tombstones = this.getDeletedTombstones();
+    const prodDelSet = new Set(tombstones.products || []);
+    const clean = products.filter((p) => !prodDelSet.has(p.id));
+
     // پیش از ذخیره‌سازی، اطمینان از تکمیل بودن کد و بارکد تمام اقلام توسط سیستم
-    const { products: ensuredProducts } = ensureProductCodesAndBarcodes(products);
+    const { products: ensuredProducts } = ensureProductCodesAndBarcodes(clean);
     localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(ensuredProducts));
     this.queuePushToServer({ products: ensuredProducts });
+  },
+
+  deleteProduct(productId: string) {
+    const cleanId = String(productId).trim();
+    this.recordTombstone('products', cleanId);
+
+    const remaining = this.getProducts().filter((p) => p.id !== cleanId);
+    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(remaining));
+    this.queuePushToServer({ products: remaining });
+    this.notifyChange();
   },
 
   // -------------------------------------------------------------
@@ -1061,35 +1221,44 @@ export const StorageService = {
     ];
 
     try {
+      const tombstones = this.getDeletedTombstones();
+      const catDelSet = new Set((tombstones.categories || []).map((c) => c.toLowerCase()));
+
       const products = this.getProducts();
       const productCategories: string[] = products
         .map((p) => p.category?.trim())
-        .filter((c): c is string => Boolean(c));
+        .filter((c): c is string => Boolean(c) && !catDelSet.has(c.toLowerCase()));
       const raw = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
 
       if (!raw) {
-        const merged: string[] = Array.from(new Set<string>([...defaultCategories, ...productCategories]));
+        const merged: string[] = Array.from(new Set<string>([...defaultCategories, ...productCategories]))
+          .filter((c) => !catDelSet.has(c.toLowerCase()));
         localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(merged));
         return merged;
       }
 
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        const parsedClean: string[] = parsed.map((c) => String(c).trim()).filter(Boolean);
+        const parsedClean: string[] = parsed
+          .map((c) => String(c).trim())
+          .filter((c) => Boolean(c) && !catDelSet.has(c.toLowerCase()));
         const merged: string[] = Array.from(new Set<string>([...parsedClean, ...productCategories]));
         if (merged.length !== parsed.length) {
           localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(merged));
         }
         return merged;
       }
-      return Array.from(new Set<string>([...defaultCategories, ...productCategories]));
+      return Array.from(new Set<string>([...defaultCategories, ...productCategories]))
+        .filter((c) => !catDelSet.has(c.toLowerCase()));
     } catch {
       return defaultCategories;
     }
   },
 
   saveCategories(categories: string[]) {
-    const clean = Array.from(new Set(categories.map((c) => c.trim()).filter(Boolean)));
+    const tombstones = this.getDeletedTombstones();
+    const catDelSet = new Set((tombstones.categories || []).map((c) => c.toLowerCase()));
+    const clean = Array.from(new Set(categories.map((c) => c.trim()).filter((c) => Boolean(c) && !catDelSet.has(c.toLowerCase()))));
     localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(clean));
     this.queuePushToServer({ categories: clean });
     this.notifyChange();
@@ -1132,6 +1301,8 @@ export const StorageService = {
 
   deleteCategory(categoryName: string, reassignTo = 'عمومی'): boolean {
     const clean = categoryName.trim();
+    this.recordTombstone('categories', clean);
+
     const current = this.getCategories();
     const updated = current.filter((c) => c !== clean);
     this.saveCategories(updated);
@@ -1148,25 +1319,44 @@ export const StorageService = {
     if (changed) {
       this.saveProducts(updatedProducts);
     }
+    this.notifyChange();
     return true;
   },
 
   getCustomers(): Customer[] {
     const data = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
+    const tombstones = this.getDeletedTombstones();
+    const custDelSet = new Set(tombstones.customers || []);
+
     if (!data) {
-      localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(initialCustomers));
-      return initialCustomers;
+      const clean = initialCustomers.filter((c) => !custDelSet.has(c.id));
+      localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(clean));
+      return clean;
     }
     try {
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed.filter((c: Customer) => !custDelSet.has(c.id)) : [];
     } catch {
-      return initialCustomers;
+      return initialCustomers.filter((c) => !custDelSet.has(c.id));
     }
   },
 
   saveCustomers(customers: Customer[]) {
-    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
-    this.queuePushToServer({ customers });
+    const tombstones = this.getDeletedTombstones();
+    const custDelSet = new Set(tombstones.customers || []);
+    const clean = customers.filter((c) => !custDelSet.has(c.id));
+    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(clean));
+    this.queuePushToServer({ customers: clean });
+  },
+
+  deleteCustomer(customerId: string) {
+    const cleanId = String(customerId).trim();
+    this.recordTombstone('customers', cleanId);
+
+    const remaining = this.getCustomers().filter((c) => c.id !== cleanId);
+    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(remaining));
+    this.queuePushToServer({ customers: remaining });
+    this.notifyChange();
   },
 
   getInvoices(): Invoice[] {
@@ -1195,20 +1385,28 @@ export const StorageService = {
 
   getPurchaseInvoices(): PurchaseInvoice[] {
     const data = localStorage.getItem(STORAGE_KEYS.PURCHASE_INVOICES);
+    const tombstones = this.getDeletedTombstones();
+    const purchDelSet = new Set(tombstones.purchaseInvoices || []);
+
     if (!data) {
-      localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(initialPurchaseInvoices));
-      return initialPurchaseInvoices;
+      const clean = initialPurchaseInvoices.filter((p) => !purchDelSet.has(p.id));
+      localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(clean));
+      return clean;
     }
     try {
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed.filter((p: PurchaseInvoice) => !purchDelSet.has(p.id)) : [];
     } catch {
-      return initialPurchaseInvoices;
+      return initialPurchaseInvoices.filter((p) => !purchDelSet.has(p.id));
     }
   },
 
   savePurchaseInvoices(purchaseInvoices: PurchaseInvoice[]) {
-    localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(purchaseInvoices));
-    this.queuePushToServer({ purchaseInvoices });
+    const tombstones = this.getDeletedTombstones();
+    const purchDelSet = new Set(tombstones.purchaseInvoices || []);
+    const clean = purchaseInvoices.filter((p) => !purchDelSet.has(p.id));
+    localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(clean));
+    this.queuePushToServer({ purchaseInvoices: clean });
   },
 
   savePurchaseInvoice(invoice: PurchaseInvoice) {
@@ -1223,26 +1421,38 @@ export const StorageService = {
   },
 
   deletePurchaseInvoice(invoiceId: string) {
-    const invoices = this.getPurchaseInvoices().filter((i) => i.id !== invoiceId);
+    const cleanId = String(invoiceId).trim();
+    this.recordTombstone('purchaseInvoices', cleanId);
+
+    const invoices = this.getPurchaseInvoices().filter((i) => i.id !== cleanId);
     this.savePurchaseInvoices(invoices);
+    this.notifyChange();
   },
 
   getInboundReceipts(): InboundReceipt[] {
     const data = localStorage.getItem(STORAGE_KEYS.INBOUND_RECEIPTS);
+    const tombstones = this.getDeletedTombstones();
+    const inbDelSet = new Set(tombstones.inboundReceipts || []);
+
     if (!data) {
-      localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(initialInboundReceipts));
-      return initialInboundReceipts;
+      const clean = initialInboundReceipts.filter((r) => !inbDelSet.has(r.id));
+      localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(clean));
+      return clean;
     }
     try {
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed.filter((r: InboundReceipt) => !inbDelSet.has(r.id)) : [];
     } catch {
-      return initialInboundReceipts;
+      return initialInboundReceipts.filter((r) => !inbDelSet.has(r.id));
     }
   },
 
   saveInboundReceipts(inboundReceipts: InboundReceipt[]) {
-    localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(inboundReceipts));
-    this.queuePushToServer({ inboundReceipts });
+    const tombstones = this.getDeletedTombstones();
+    const inbDelSet = new Set(tombstones.inboundReceipts || []);
+    const clean = inboundReceipts.filter((r) => !inbDelSet.has(r.id));
+    localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(clean));
+    this.queuePushToServer({ inboundReceipts: clean });
   },
 
   saveInboundReceipt(receipt: InboundReceipt) {
@@ -1257,8 +1467,12 @@ export const StorageService = {
   },
 
   deleteInboundReceipt(receiptId: string) {
-    const receipts = this.getInboundReceipts().filter((r) => r.id !== receiptId);
+    const cleanId = String(receiptId).trim();
+    this.recordTombstone('inboundReceipts', cleanId);
+
+    const receipts = this.getInboundReceipts().filter((r) => r.id !== cleanId);
     this.saveInboundReceipts(receipts);
+    this.notifyChange();
   },
 
   saveProduct(product: Product) {
@@ -1415,20 +1629,27 @@ export const StorageService = {
 
   getUsers(): AppUser[] {
     const data = localStorage.getItem(STORAGE_KEYS.USERS);
+    const tombstones = this.getDeletedTombstones();
+    const userDelSet = new Set(tombstones.users || []);
+
     if (!data) {
-      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(initialUsers));
-      return initialUsers;
+      const clean = initialUsers.filter((u) => !userDelSet.has(u.id));
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(clean));
+      return clean;
     }
     try {
       const users: AppUser[] = JSON.parse(data);
       if (!Array.isArray(users) || users.length === 0) {
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(initialUsers));
-        return initialUsers;
+        const clean = initialUsers.filter((u) => !userDelSet.has(u.id));
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(clean));
+        return clean;
       }
-      // Ensure all users have valid unique IDs
+      // Ensure all users have valid unique IDs and exclude deleted users
       const seenIds = new Set<string>();
       let needsSave = false;
-      const sanitized: AppUser[] = users.map((u, idx): AppUser => {
+      const sanitized: AppUser[] = users
+        .filter((u) => !userDelSet.has(u.id))
+        .map((u, idx): AppUser => {
         let validId = u.id && u.id.trim() ? u.id.trim() : `user-migrated-${idx}-${Date.now()}`;
         if (seenIds.has(validId)) {
           validId = `${validId}-${idx}`;
@@ -1455,7 +1676,7 @@ export const StorageService = {
       }
       return sanitized;
     } catch {
-      return initialUsers;
+      return initialUsers.filter((u) => !userDelSet.has(u.id));
     }
   },
 
@@ -1547,17 +1768,21 @@ export const StorageService = {
       return { success: false, message: 'حداقل یک کاربر مدیر فعال باید در سیستم باقی بماند.' };
     }
 
-    const filtered = users.filter((u) => u.id !== userId);
+    const cleanId = String(userId).trim();
+    this.recordTombstone('users', cleanId);
+
+    const filtered = users.filter((u) => u.id !== cleanId);
     this.saveUsers(filtered);
 
     // If current active user was deleted, reset to another user
     const currentActiveId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID);
-    if (currentActiveId === userId) {
+    if (currentActiveId === cleanId) {
       const nextUser = filtered.find((u) => u.isActive) || filtered[0];
       if (nextUser) {
         localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, nextUser.id);
       }
     }
+    this.notifyChange();
     return { success: true };
   },
 
@@ -1775,12 +2000,17 @@ export const StorageService = {
   getSavedVehicles(): SavedVehicle[] {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.SAVED_VEHICLES);
+      const tombstones = this.getDeletedTombstones();
+      const vehDelSet = new Set(tombstones.savedVehicles || []);
+
       if (!raw) {
-        localStorage.setItem(STORAGE_KEYS.SAVED_VEHICLES, JSON.stringify(initialSavedVehicles));
-        return initialSavedVehicles;
+        const clean = initialSavedVehicles.filter((v) => !vehDelSet.has(v.id));
+        localStorage.setItem(STORAGE_KEYS.SAVED_VEHICLES, JSON.stringify(clean));
+        return clean;
       }
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : initialSavedVehicles;
+      const list = Array.isArray(parsed) ? parsed : initialSavedVehicles;
+      return list.filter((v: SavedVehicle) => !vehDelSet.has(v.id));
     } catch {
       return initialSavedVehicles;
     }
@@ -1850,10 +2080,87 @@ export const StorageService = {
     return savedVehicle;
   },
 
-  deleteSavedVehicle(id: string): void {
+  deleteSavedVehicle(id: string, vehicleInfo?: string): void {
+    const cleanId = String(id).trim();
+    this.recordTombstone('savedVehicles', cleanId);
+
+    const targetInfo = (vehicleInfo || '').trim().toLowerCase();
+    if (targetInfo) {
+      this.recordTombstone('savedVehicles', `info::${targetInfo}`);
+    }
+
     const list = this.getSavedVehicles();
-    const updated = list.filter((v) => v.id !== id);
+    const updated = list.filter((v) => {
+      if (v.id === cleanId) return false;
+      if (targetInfo && v.vehicleInfo.trim().toLowerCase() === targetInfo) return false;
+      return true;
+    });
+
     this.saveSavedVehicles(updated);
+    this.notifyChange();
+  },
+
+  clearAllSavedVehicles(): void {
+    const current = this.getExitSlipVehicles();
+    current.forEach((v) => {
+      this.recordTombstone('savedVehicles', v.id);
+      if (v.vehicleInfo) {
+        this.recordTombstone('savedVehicles', `info::${v.vehicleInfo.trim().toLowerCase()}`);
+      }
+    });
+    this.saveSavedVehicles([]);
+    this.notifyChange();
+  },
+
+  // دریافت تمام خودروهای ثبت‌شده در حواله‌های خروج (هم ناوگان ذخیره‌شده و هم سوابق تحویل فاکتورها، به استثنای موارد حذف‌شده)
+  getExitSlipVehicles(): Array<SavedVehicle & { sourceLabel?: string }> {
+    const tombstones = this.getTombstones();
+    const vehDelSet = new Set(tombstones.savedVehicles);
+
+    const fleet = this.getSavedVehicles().filter((v) => {
+      if (vehDelSet.has(v.id)) return false;
+      const infoKey = `info::${v.vehicleInfo.trim().toLowerCase()}`;
+      if (vehDelSet.has(infoKey) || vehDelSet.has(v.vehicleInfo.trim().toLowerCase())) return false;
+      return true;
+    });
+
+    const result: Array<SavedVehicle & { sourceLabel?: string }> = fleet.map((v) => ({
+      ...v,
+      sourceLabel: 'ناوگان ثبت‌شده',
+    }));
+
+    // همچنین بررسی تمام حواله‌های خروج ثبت‌شده در فاکتورهای فروش
+    const invoices = this.getInvoices();
+    const seenInfo = new Set(fleet.map((v) => (v.vehicleInfo || '').trim().toLowerCase()));
+
+    invoices.forEach((inv) => {
+      const exitSlip = inv.exitSlip;
+      if (exitSlip && exitSlip.vehicleInfo && exitSlip.vehicleInfo.trim()) {
+        const key = exitSlip.vehicleInfo.trim().toLowerCase();
+        const customId = `inv-veh-${inv.id}`;
+        const infoKey = `info::${key}`;
+
+        // اگر توسط کاربر حذف شده باشد، نمایش داده نشود
+        if (vehDelSet.has(customId) || vehDelSet.has(infoKey) || vehDelSet.has(key)) {
+          return;
+        }
+
+        if (!seenInfo.has(key)) {
+          seenInfo.add(key);
+          result.push({
+            id: customId,
+            vehicleType: 'وانت / خودرو تحویل',
+            vehicleInfo: exitSlip.vehicleInfo.trim(),
+            driverName: exitSlip.receiverName || inv.customerName || '',
+            driverPhone: exitSlip.receiverPhone || inv.customerPhone || '',
+            createdAt: exitSlip.deliveredAt || inv.date,
+            sourceLabel: `حواله خروج فاکتور ${inv.invoiceNumber}`,
+          });
+        }
+      }
+    });
+
+    return result;
   },
 
   clearInvoices() {
@@ -1960,16 +2267,20 @@ export const StorageService = {
   // -------------------------------------------------------------
   getDirectTransfers(): DirectTransfer[] {
     const data = localStorage.getItem(STORAGE_KEYS.DIRECT_TRANSFERS);
+    const tombstones = this.getDeletedTombstones();
+    const transDelSet = new Set(tombstones.directTransfers || []);
+
     if (!data) {
-      localStorage.setItem(STORAGE_KEYS.DIRECT_TRANSFERS, JSON.stringify(initialDirectTransfers));
-      return initialDirectTransfers;
+      const clean = initialDirectTransfers.filter((t) => !transDelSet.has(t.id));
+      localStorage.setItem(STORAGE_KEYS.DIRECT_TRANSFERS, JSON.stringify(clean));
+      return clean;
     }
     try {
       const parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) return parsed;
-      return initialDirectTransfers;
+      const list = Array.isArray(parsed) ? parsed : initialDirectTransfers;
+      return list.filter((t: DirectTransfer) => !transDelSet.has(t.id));
     } catch {
-      return initialDirectTransfers;
+      return initialDirectTransfers.filter((t) => !transDelSet.has(t.id));
     }
   },
 
@@ -2200,7 +2511,10 @@ export const StorageService = {
       this.saveProducts(updatedProducts);
     }
 
-    const filtered = transfers.filter((t) => t.id !== transferId);
+    const cleanId = String(transferId).trim();
+    this.recordTombstone('directTransfers', cleanId);
+
+    const filtered = transfers.filter((t) => t.id !== cleanId);
     this.saveDirectTransfers(filtered);
 
     this.logActivity({
@@ -2210,6 +2524,7 @@ export const StorageService = {
       details: `حواله ${target.title} از سیستم حذف شد. ${returnStockToWarehouse ? 'موجودی کالاهای باقیمانده به انبار برگشت داده شد.' : ''}`,
     });
 
+    this.notifyChange();
     return { success: true };
   },
 

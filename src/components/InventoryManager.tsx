@@ -165,6 +165,17 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   // Detail Modal for Clean 1-Row / 2-Row List View
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
 
+  // User selection for table display: 'single_row' (فقط نام و دسته) | 'double_row' (دو ردیفه)
+  const [productTableView, setProductTableView] = useState<'single_row' | 'double_row'>(() => {
+    const saved = localStorage.getItem('inventory_product_table_view');
+    return saved === 'double_row' ? 'double_row' : 'single_row';
+  });
+
+  const handleSetProductTableView = (mode: 'single_row' | 'double_row') => {
+    setProductTableView(mode);
+    localStorage.setItem('inventory_product_table_view', mode);
+  };
+
   // Combined & Deduped Categories list
   const categories = useMemo(() => {
     const fromStorage = categoriesList;
@@ -1125,6 +1136,37 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                   ناموجود
                 </button>
               </div>
+              {/* Layout Mode Switcher (تک ردیفه / دو ردیفه) */}
+              <div className="flex bg-slate-100 p-0.5 border border-slate-200 rounded-xl text-xs gap-1">
+                <button
+                  type="button"
+                  id="view-mode-single-row"
+                  onClick={() => handleSetProductTableView('single_row')}
+                  className={`px-2.5 py-1 rounded-lg transition-all font-bold cursor-pointer flex items-center gap-1.5 ${
+                    productTableView === 'single_row'
+                      ? 'bg-white text-indigo-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="جدول تک‌ردیفه (فقط نام و دسته‌بندی با دکمه مشاهده اطلاعات کامل)"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>تک‌ردیفه (نام و دسته)</span>
+                </button>
+                <button
+                  type="button"
+                  id="view-mode-double-row"
+                  onClick={() => handleSetProductTableView('double_row')}
+                  className={`px-2.5 py-1 rounded-lg transition-all font-bold cursor-pointer flex items-center gap-1.5 ${
+                    productTableView === 'double_row'
+                      ? 'bg-white text-indigo-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="نمای دو ردیفه فشرده"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>دو ردیفه</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1234,66 +1276,133 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             </div>
           )}
 
-          {/* Mobile View: Product Cards (2-Row Streamlined Cards) */}
-          <div className="block sm:hidden divide-y divide-slate-100">
-            {filteredProducts.length === 0 ? (
-              <div className="text-center py-10 text-slate-400 p-4">
-                هیچ کالایی با معیارهای جستجو یافت نشد.
-              </div>
-            ) : (
-              filteredProducts.map((prod, index) => {
-                const isOut = prod.stock === 0;
-                const isLow = prod.stock > 0 && prod.stock <= prod.minStockAlert;
+          {/* PRODUCT LIST VIEWS (تک ردیفه یا دو ردیفه بر اساس انتخاب کاربر) */}
+          {productTableView === 'single_row' ? (
+            /* 1. SINGLE-ROW TABLE (فقط نام و دسته‌بندی - اطلاعات کالا در صفحه جداگانه) */
+            <div className="overflow-x-auto">
+              <table className="w-full text-right border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-100/80 text-slate-700 border-b border-slate-200">
+                    <th className="p-3.5 font-bold w-16 text-center">ردیف</th>
+                    <th className="p-3.5 font-bold">نام کالا</th>
+                    <th className="p-3.5 font-bold w-56">دسته‌بندی</th>
+                    <th className="p-3.5 font-bold text-center w-48">اطلاعات کالا</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredProducts.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="text-center py-12 text-slate-400">
+                        هیچ کالایی با معیارهای جستجو یافت نشد.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredProducts.map((prod, index) => (
+                      <tr
+                        key={prod.id}
+                        onClick={() => setDetailProduct(prod)}
+                        className={`cursor-pointer transition-colors ${
+                          index % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'
+                        } hover:bg-emerald-50/40`}
+                        title="جهت مشاهده تمام اطلاعات این کالا کلیک کنید"
+                      >
+                        {/* 1. Index */}
+                        <td className="p-3.5 text-center text-slate-400 font-mono text-xs">
+                          {toPersianDigits(index + 1)}
+                        </td>
 
-                return (
+                        {/* 2. Product Name */}
+                        <td className="p-3.5">
+                          <div className="font-extrabold text-slate-900 text-xs sm:text-sm flex items-center gap-2">
+                            <span>{prod.name}</span>
+                            {prod.hasVariants && prod.variants && prod.variants.length > 0 && (
+                              <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md">
+                                {toPersianDigits(prod.variants.length)} تنوع
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 3. Category */}
+                        <td className="p-3.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedCategory(prod.category);
+                            }}
+                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 px-3 py-1 rounded-lg font-bold text-xs transition-colors cursor-pointer"
+                            title={`فیلتر بر اساس دسته «${prod.category}»`}
+                          >
+                            {prod.category}
+                          </button>
+                        </td>
+
+                        {/* 4. Complete Details Button */}
+                        <td className="p-3.5 text-center">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDetailProduct(prod);
+                            }}
+                            className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>مشاهده صفحه کالا</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            /* 2. DOUBLE-ROW STREAMLINED VIEW (جدول / نمای دو ردیفه) */
+            <div className="divide-y divide-slate-100">
+              {filteredProducts.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  هیچ کالایی با معیارهای جستجو یافت نشد.
+                </div>
+              ) : (
+                filteredProducts.map((prod, index) => (
                   <div
                     key={prod.id}
                     onClick={() => setDetailProduct(prod)}
-                    className={`p-3 space-y-2 cursor-pointer transition-colors active:bg-slate-100 ${
-                      index % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'
+                    className={`p-3.5 space-y-2 cursor-pointer transition-colors hover:bg-emerald-50/40 active:bg-slate-100 ${
+                      index % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'
                     }`}
+                    title="جهت مشاهده تمام اطلاعات این کالا کلیک کنید"
                   >
-                    {/* Row 1: Product Name, Code, and Stock Badge */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="font-bold text-slate-900 text-xs truncate">
+                    {/* Row 1: Index & Product Name */}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="font-mono text-slate-400 text-xs w-6 text-center shrink-0">
+                          {toPersianDigits(index + 1)}.
+                        </span>
+                        <span className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">
                           {prod.name}
                         </span>
-                        <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 shrink-0">
-                          {toPersianDigits(prod.code)}
-                        </span>
-                      </div>
-
-                      {/* Stock badge */}
-                      <span
-                        className={`px-2 py-0.5 rounded-full font-bold text-[10px] flex items-center gap-1 border shrink-0 ${
-                          isOut
-                            ? 'bg-rose-100 text-rose-800 border-rose-300'
-                            : isLow
-                            ? 'bg-amber-100 text-amber-800 border-amber-300'
-                            : 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                        }`}
-                      >
-                        {isOut && <span className="w-1.5 h-1.5 rounded-full bg-rose-600"></span>}
-                        {isLow && <AlertTriangle className="w-3 h-3 text-amber-600" />}
-                        <span>
-                          {toPersianDigits(prod.stock)} {prod.unit}
-                        </span>
-                      </span>
-                    </div>
-
-                    {/* Row 2: Category, Unit, and Details Button */}
-                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-slate-400 text-[11px]">دسته‌بندی:</span>
-                        <span className="bg-indigo-50 text-indigo-700 border border-indigo-200/80 px-2 py-0.5 rounded-md font-bold text-[10px] truncate max-w-[140px]">
-                          {prod.category}
-                        </span>
                         {prod.hasVariants && prod.variants && prod.variants.length > 0 && (
-                          <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.2 rounded shrink-0">
                             {toPersianDigits(prod.variants.length)} تنوع
                           </span>
                         )}
+                      </div>
+
+                      <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shrink-0">
+                        کد: {toPersianDigits(prod.code)}
+                      </span>
+                    </div>
+
+                    {/* Row 2: Category & Complete Details Button */}
+                    <div className="flex items-center justify-between gap-3 pt-1 border-t border-slate-100/90 text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-slate-400 text-[11px]">دسته‌بندی:</span>
+                        <span className="bg-indigo-50 text-indigo-700 border border-indigo-200/80 px-2.5 py-0.5 rounded-lg font-bold text-xs truncate">
+                          {prod.category}
+                        </span>
                       </div>
 
                       <button
@@ -1302,130 +1411,17 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                           e.stopPropagation();
                           setDetailProduct(prod);
                         }}
-                        className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                        className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs shrink-0"
                       >
                         <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>جزئیات</span>
+                        <span>مشاهده صفحه جزئیات کالا</span>
                       </button>
                     </div>
                   </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Desktop View: Clean 1-Row Table (Hidden on Mobile) */}
-          <div className="hidden sm:block overflow-x-auto">
-            <table className="w-full text-right border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-100/70 text-slate-700 border-b border-slate-200">
-                  <th className="p-3.5 font-bold w-16 text-center">ردیف</th>
-                  <th className="p-3.5 font-bold w-24">کد کالا</th>
-                  <th className="p-3.5 font-bold">نام کالا</th>
-                  <th className="p-3.5 font-bold">دسته‌بندی</th>
-                  <th className="p-3.5 font-bold text-center">موجودی انبار</th>
-                  <th className="p-3.5 font-bold text-center w-28">عملیات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredProducts.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="text-center py-10 text-slate-400">
-                      هیچ کالایی با معیارهای جستجو یافت نشد.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredProducts.map((prod, index) => {
-                    const isOut = prod.stock === 0;
-                    const isLow = prod.stock > 0 && prod.stock <= prod.minStockAlert;
-
-                    return (
-                      <tr
-                        key={prod.id}
-                        onClick={() => setDetailProduct(prod)}
-                        className={`cursor-pointer transition-colors ${
-                          index % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'
-                        } hover:bg-emerald-50/40`}
-                      >
-                        {/* Index */}
-                        <td className="p-3.5 text-center text-slate-400 font-mono text-xs">
-                          {toPersianDigits(index + 1)}
-                        </td>
-
-                        {/* Code */}
-                        <td className="p-3.5">
-                          <span className="font-mono text-slate-800 font-bold text-xs bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                            {toPersianDigits(prod.code)}
-                          </span>
-                        </td>
-
-                        {/* Name */}
-                        <td className="p-3.5">
-                          <div className="font-bold text-slate-900 text-xs flex items-center gap-2">
-                            <span>{prod.name}</span>
-                            {prod.hasVariants && prod.variants && prod.variants.length > 0 && (
-                              <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
-                                {toPersianDigits(prod.variants.length)} تنوع
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Category */}
-                        <td className="p-3.5">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedCategory(prod.category);
-                            }}
-                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 px-2.5 py-1 rounded-lg font-bold text-xs transition-colors cursor-pointer"
-                            title={`فیلتر سریع بر اساس «${prod.category}»`}
-                          >
-                            {prod.category}
-                          </button>
-                        </td>
-
-                        {/* Stock Badge */}
-                        <td className="p-3.5 text-center">
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-bold text-xs border ${
-                              isOut
-                                ? 'bg-rose-100 text-rose-800 border-rose-300'
-                                : isLow
-                                ? 'bg-amber-100 text-amber-800 border-amber-300'
-                                : 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                            }`}
-                          >
-                            {isOut && <span className="w-1.5 h-1.5 rounded-full bg-rose-600"></span>}
-                            {isLow && <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />}
-                            <span>
-                              {toPersianDigits(prod.stock)} {prod.unit}
-                            </span>
-                          </span>
-                        </td>
-
-                        {/* Details Action */}
-                        <td className="p-3.5 text-center">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDetailProduct(prod);
-                            }}
-                            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors cursor-pointer"
-                          >
-                            <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>جزئیات</span>
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
       )}
 

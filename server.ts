@@ -205,6 +205,31 @@ const DEFAULT_INITIAL_DATA = {
   movements: [],
   exitSlipLogs: {},
   deletedInvoiceIds: [],
+  tombstones: {
+    invoices: [],
+    products: [],
+    customers: [],
+    purchaseInvoices: [],
+    inboundReceipts: [],
+    directTransfers: [],
+    savedVehicles: [],
+    users: [],
+    categories: [],
+  },
+  categories: [
+    'روغن و روانکار',
+    'فیلترجات',
+    'سیستم ترمز',
+    'برقی و انژکتور',
+    'لوازم موتوری',
+    'جلوبندی و تعلیق',
+    'بدنه و تزیینات',
+    'رنگ و پوشش‌های صنعتی',
+    'هاردنر و خشک‌کن',
+    'تینر و حلال‌ها',
+    'چسب و درزگیر',
+    'کابل و رابط',
+  ],
   settings: {
     storeName: 'فروشگاه و توزیع سپهر',
     storePhone: '۰۲۱-۵۵۴۴۳۳۲۲',
@@ -372,6 +397,8 @@ function validateDatabaseSchema(data: any): { valid: boolean; error?: string } {
     'activityLogs',
     'directTransfers',
     'savedVehicles',
+    'categories',
+    'deletedInvoiceIds',
   ];
   for (const key of arrayKeys) {
     if (data[key] !== undefined && !Array.isArray(data[key])) {
@@ -380,6 +407,9 @@ function validateDatabaseSchema(data: any): { valid: boolean; error?: string } {
   }
   if (data.settings !== undefined && (typeof data.settings !== 'object' || Array.isArray(data.settings))) {
     return { valid: false, error: 'بخش تنظیمات سیستم نامعتبر است.' };
+  }
+  if (data.tombstones !== undefined && (typeof data.tombstones !== 'object' || Array.isArray(data.tombstones))) {
+    return { valid: false, error: 'بخش رهگیری حذفیات (tombstones) باید یک شیء معتبر باشد.' };
   }
   if (data.exitSlipLogs !== undefined && (typeof data.exitSlipLogs !== 'object' || Array.isArray(data.exitSlipLogs))) {
     return { valid: false, error: 'بخش رهگیری برگه‌های خروج (exitSlipLogs) باید یک شیء معتبر باشد.' };
@@ -619,19 +649,21 @@ function readDatabase() {
   return DEFAULT_INITIAL_DATA;
 }
 
-function writeDatabase(data: any, allowAutoSnapshot = true): boolean {
+function writeDatabase(data: any, allowAutoSnapshot = true, autoIncrementRev = false): boolean {
   try {
     const currentRev = typeof data.revision === 'number' ? data.revision : 1;
     const nowIso = new Date().toISOString();
     const payload = {
       ...data,
-      revision: currentRev + 1,
-      updatedAt: nowIso,
+      revision: autoIncrementRev ? currentRev + 1 : currentRev,
+      updatedAt: data.updatedAt || nowIso,
     };
 
     // Calculate integrity checksum
     const rawContent = JSON.stringify(payload, null, 2);
     payload.checksum = crypto.createHash('sha256').update(rawContent).digest('hex');
+    data.checksum = payload.checksum;
+    data.revision = payload.revision;
 
     const finalJson = JSON.stringify(payload, null, 2);
     const tempFile = `${DB_FILE}.tmp.${Date.now()}.${Math.random().toString(36).substring(2, 7)}`;
@@ -886,9 +918,18 @@ async function getLatestConvergedDatabase(): Promise<{ data: any; source: 'postg
   return { data: localData, source: 'local-file' };
 }
 
+// Helper to set aggressive no-cache headers on real-time sync endpoints
+function setNoCacheHeaders(res: express.Response) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+}
+
 // 2. Fetch all shared data (Central synchronization with dual persistence & auto-convergence)
 app.get('/api/db', async (req, res) => {
   try {
+    setNoCacheHeaders(res);
     const { data, source } = await getLatestConvergedDatabase();
     res.json({
       success: true,
@@ -905,6 +946,7 @@ app.get('/api/db', async (req, res) => {
 // 3. Save or update database (Dual persistence: PostgreSQL mana_db + Local Snapshot with Serialized Queue & Zero Data Loss)
 app.post('/api/db', dbWriteLimiter, async (req, res) => {
   try {
+    setNoCacheHeaders(res);
     const incomingData = req.body;
     
     // Schema and structure validation
@@ -940,30 +982,76 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         }
       }
 
-      // Global deleted invoice tracking across all client devices
-      const serverDeletedIds = new Set<string>(
-        Array.isArray(currentDb.deletedInvoiceIds) ? currentDb.deletedInvoiceIds : []
-      );
-      if (Array.isArray(incomingData.deletedInvoiceIds)) {
-        incomingData.deletedInvoiceIds.forEach((id: string) => {
-          if (typeof id === 'string' && id.trim()) serverDeletedIds.add(id.trim());
-        });
-      }
-      const combinedDeletedIds = Array.from(serverDeletedIds).slice(-2000);
-      const delSet = new Set(combinedDeletedIds);
+      // Comprehensive multi-entity tombstones to prevent zombie resurrections across all devices
+      const prevTombstones = currentDb.tombstones || {};
+      const incomingTombstones = incomingData.tombstones || {};
 
-      // Safe invoice handling: if incomingData contains invoices, apply deleted invoice exclusion
-      let finalInvoices = currentDb.invoices || [];
-      if (Array.isArray(incomingData.invoices)) {
-        finalInvoices = incomingData.invoices;
-      }
-      if (delSet.size > 0) {
-        finalInvoices = finalInvoices.filter((inv: any) => !delSet.has(inv.id));
-      }
+      const mergeTombstoneList = (entityKey: string, extraIds: string[] = []): string[] => {
+        const set = new Set<string>();
+        const existing = Array.isArray(prevTombstones[entityKey]) ? prevTombstones[entityKey] : [];
+        const incoming = Array.isArray(incomingTombstones[entityKey]) ? incomingTombstones[entityKey] : [];
+        existing.forEach((id: string) => { if (typeof id === 'string' && id.trim()) set.add(id.trim()); });
+        incoming.forEach((id: string) => { if (typeof id === 'string' && id.trim()) set.add(id.trim()); });
+        extraIds.forEach((id: string) => { if (typeof id === 'string' && id.trim()) set.add(id.trim()); });
+        return Array.from(set).slice(-2000);
+      };
 
-      // Also clean up exitSlipLogs so deleted invoices do not leave ghost slips
+      const extraDeletedInvoiceIds = Array.isArray(incomingData.deletedInvoiceIds) ? incomingData.deletedInvoiceIds : [];
+      const currentLegacyDeleted = Array.isArray(currentDb.deletedInvoiceIds) ? currentDb.deletedInvoiceIds : [];
+
+      const combinedTombstones = {
+        invoices: mergeTombstoneList('invoices', [...extraDeletedInvoiceIds, ...currentLegacyDeleted]),
+        products: mergeTombstoneList('products'),
+        customers: mergeTombstoneList('customers'),
+        purchaseInvoices: mergeTombstoneList('purchaseInvoices'),
+        inboundReceipts: mergeTombstoneList('inboundReceipts'),
+        directTransfers: mergeTombstoneList('directTransfers'),
+        savedVehicles: mergeTombstoneList('savedVehicles'),
+        users: mergeTombstoneList('users'),
+        categories: mergeTombstoneList('categories'),
+      };
+
+      const invoiceDelSet = new Set(combinedTombstones.invoices);
+      const productDelSet = new Set(combinedTombstones.products);
+      const customerDelSet = new Set(combinedTombstones.customers);
+      const purchaseDelSet = new Set(combinedTombstones.purchaseInvoices);
+      const inboundDelSet = new Set(combinedTombstones.inboundReceipts);
+      const transferDelSet = new Set(combinedTombstones.directTransfers);
+      const vehicleDelSet = new Set(combinedTombstones.savedVehicles);
+      const userDelSet = new Set(combinedTombstones.users);
+      const categoryDelSet = new Set(combinedTombstones.categories.map((c: string) => c.trim().toLowerCase()));
+
+      // Safe collections handling: filter out any tombstones so stale clients cannot resurrect deleted records
+      let finalInvoices = Array.isArray(incomingData.invoices) ? incomingData.invoices : (currentDb.invoices || []);
+      finalInvoices = finalInvoices.filter((inv: any) => !invoiceDelSet.has(inv.id));
+
+      let finalProducts = Array.isArray(incomingData.products) ? incomingData.products : (currentDb.products || []);
+      finalProducts = finalProducts.filter((p: any) => !productDelSet.has(p.id));
+
+      let finalCustomers = Array.isArray(incomingData.customers) ? incomingData.customers : (currentDb.customers || []);
+      finalCustomers = finalCustomers.filter((c: any) => !customerDelSet.has(c.id));
+
+      let finalPurchases = Array.isArray(incomingData.purchaseInvoices) ? incomingData.purchaseInvoices : (currentDb.purchaseInvoices || []);
+      finalPurchases = finalPurchases.filter((p: any) => !purchaseDelSet.has(p.id));
+
+      let finalInbound = Array.isArray(incomingData.inboundReceipts) ? incomingData.inboundReceipts : (currentDb.inboundReceipts || []);
+      finalInbound = finalInbound.filter((r: any) => !inboundDelSet.has(r.id));
+
+      let finalTransfers = Array.isArray(incomingData.directTransfers) ? incomingData.directTransfers : (currentDb.directTransfers || []);
+      finalTransfers = finalTransfers.filter((t: any) => !transferDelSet.has(t.id));
+
+      let finalVehicles = Array.isArray(incomingData.savedVehicles) ? incomingData.savedVehicles : (currentDb.savedVehicles || []);
+      finalVehicles = finalVehicles.filter((v: any) => !vehicleDelSet.has(v.id));
+
+      let finalUsers = Array.isArray(incomingData.users) ? incomingData.users : (currentDb.users || []);
+      finalUsers = finalUsers.filter((u: any) => !userDelSet.has(u.id));
+
+      let finalCategories = Array.isArray(incomingData.categories) ? incomingData.categories : (currentDb.categories || []);
+      finalCategories = finalCategories.filter((c: string) => !categoryDelSet.has(String(c).trim().toLowerCase()));
+
+      // Also clean up exitSlipLogs so deleted invoices never leave ghost slips
       const currentExitLogs = { ...(currentDb.exitSlipLogs || {}), ...(incomingData.exitSlipLogs || {}) };
-      delSet.forEach((delId) => {
+      invoiceDelSet.forEach((delId) => {
         delete currentExitLogs[delId];
       });
 
@@ -971,8 +1059,17 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         ...currentDb,
         ...incomingData,
         invoices: finalInvoices,
+        products: finalProducts,
+        customers: finalCustomers,
+        purchaseInvoices: finalPurchases,
+        inboundReceipts: finalInbound,
+        directTransfers: finalTransfers,
+        savedVehicles: finalVehicles,
+        users: finalUsers,
+        categories: finalCategories,
         exitSlipLogs: currentExitLogs,
-        deletedInvoiceIds: combinedDeletedIds,
+        deletedInvoiceIds: combinedTombstones.invoices,
+        tombstones: combinedTombstones,
         ...(mergedSettings ? { settings: mergedSettings } : {}),
         revision: currentRev + 1,
         updatedAt: nowIso,
@@ -983,7 +1080,7 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
       updatedDb.checksum = crypto.createHash('sha256').update(rawContent).digest('hex');
 
       // Dual-write: write to local file snapshot first
-      const successLocal = writeDatabase(updatedDb, true);
+      const successLocal = writeDatabase(updatedDb, true, false);
 
       // Write to PostgreSQL mana_db
       let pgSaved = false;
@@ -1010,6 +1107,114 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
           database: 'mana_db',
         },
         message: 'داده‌ها با موفقیت در پایگاه‌داده ذخیره شدند.',
+      };
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 3.5 Dedicated atomic endpoint for item deletion across all devices
+app.post('/api/db/delete-item', dbWriteLimiter, async (req, res) => {
+  try {
+    setNoCacheHeaders(res);
+    const { type, id } = req.body;
+    if (!type || !id || typeof id !== 'string') {
+      return res.status(400).json({ success: false, message: 'نوع موجودیت و شناسه برای حذف الزامی است.' });
+    }
+
+    const cleanId = id.trim();
+    const result = await enqueueDbWrite(async () => {
+      const { data: currentDb } = await getLatestConvergedDatabase();
+      const currentRev = typeof currentDb.revision === 'number' ? currentDb.revision : 1;
+      const nowIso = new Date().toISOString();
+
+      const tombstones = {
+        invoices: [...(currentDb.tombstones?.invoices || currentDb.deletedInvoiceIds || [])],
+        products: [...(currentDb.tombstones?.products || [])],
+        customers: [...(currentDb.tombstones?.customers || [])],
+        purchaseInvoices: [...(currentDb.tombstones?.purchaseInvoices || [])],
+        inboundReceipts: [...(currentDb.tombstones?.inboundReceipts || [])],
+        directTransfers: [...(currentDb.tombstones?.directTransfers || [])],
+        savedVehicles: [...(currentDb.tombstones?.savedVehicles || [])],
+        users: [...(currentDb.tombstones?.users || [])],
+        categories: [...(currentDb.tombstones?.categories || [])],
+      };
+
+      const updatedDb = { ...currentDb };
+
+      switch (type) {
+        case 'invoice':
+          if (!tombstones.invoices.includes(cleanId)) tombstones.invoices.push(cleanId);
+          updatedDb.invoices = (currentDb.invoices || []).filter((i: any) => i.id !== cleanId);
+          if (updatedDb.exitSlipLogs && updatedDb.exitSlipLogs[cleanId]) {
+            const logs = { ...updatedDb.exitSlipLogs };
+            delete logs[cleanId];
+            updatedDb.exitSlipLogs = logs;
+          }
+          break;
+        case 'product':
+          if (!tombstones.products.includes(cleanId)) tombstones.products.push(cleanId);
+          updatedDb.products = (currentDb.products || []).filter((p: any) => p.id !== cleanId);
+          break;
+        case 'customer':
+          if (!tombstones.customers.includes(cleanId)) tombstones.customers.push(cleanId);
+          updatedDb.customers = (currentDb.customers || []).filter((c: any) => c.id !== cleanId);
+          break;
+        case 'purchaseInvoice':
+          if (!tombstones.purchaseInvoices.includes(cleanId)) tombstones.purchaseInvoices.push(cleanId);
+          updatedDb.purchaseInvoices = (currentDb.purchaseInvoices || []).filter((p: any) => p.id !== cleanId);
+          break;
+        case 'inboundReceipt':
+          if (!tombstones.inboundReceipts.includes(cleanId)) tombstones.inboundReceipts.push(cleanId);
+          updatedDb.inboundReceipts = (currentDb.inboundReceipts || []).filter((r: any) => r.id !== cleanId);
+          break;
+        case 'directTransfer':
+          if (!tombstones.directTransfers.includes(cleanId)) tombstones.directTransfers.push(cleanId);
+          updatedDb.directTransfers = (currentDb.directTransfers || []).filter((t: any) => t.id !== cleanId);
+          break;
+        case 'savedVehicle':
+          if (!tombstones.savedVehicles.includes(cleanId)) tombstones.savedVehicles.push(cleanId);
+          updatedDb.savedVehicles = (currentDb.savedVehicles || []).filter((v: any) => v.id !== cleanId);
+          break;
+        case 'user':
+          if (!tombstones.users.includes(cleanId)) tombstones.users.push(cleanId);
+          updatedDb.users = (currentDb.users || []).filter((u: any) => u.id !== cleanId);
+          break;
+        case 'category':
+          if (!tombstones.categories.includes(cleanId)) tombstones.categories.push(cleanId);
+          updatedDb.categories = (currentDb.categories || []).filter((c: string) => c.trim().toLowerCase() !== cleanId.toLowerCase());
+          break;
+      }
+
+      updatedDb.tombstones = tombstones;
+      updatedDb.deletedInvoiceIds = tombstones.invoices;
+      updatedDb.revision = currentRev + 1;
+      updatedDb.updatedAt = nowIso;
+
+      const rawContent = JSON.stringify(updatedDb, null, 2);
+      updatedDb.checksum = crypto.createHash('sha256').update(rawContent).digest('hex');
+
+      const successLocal = writeDatabase(updatedDb, true, false);
+      let pgSaved = false;
+      if (getPostgresStatus().connected) {
+        try {
+          pgSaved = await saveStateToPostgres(updatedDb);
+        } catch (err: any) {
+          console.warn('[Postgres Delete Item Warning]:', err.message);
+        }
+      }
+
+      return {
+        success: true,
+        revision: updatedDb.revision,
+        checksum: updatedDb.checksum,
+        type,
+        deletedId: cleanId,
+        storage: { local: successLocal, postgresql: pgSaved },
+        message: `مورد مورد نظر با شناسه ${cleanId} با موفقیت در پایگاه‌داده سراسری حذف شد.`,
       };
     });
 

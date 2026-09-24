@@ -183,9 +183,6 @@ export async function loadStateFromPostgres(): Promise<any | null> {
 
 // Save full state into PostgreSQL with ACID transaction
 export async function saveStateToPostgres(data: any): Promise<boolean> {
-  if (!isConnected) {
-    return false;
-  }
   const currentPool = getPostgresPool();
   if (!currentPool) return false;
 
@@ -204,7 +201,41 @@ export async function saveStateToPostgres(data: any): Promise<boolean> {
       ['main_store_data', JSON.stringify(data), rev, data.checksum || '']
     );
 
-    // 2. Sync to relational tables in background if arrays exist
+    // 2. Persist tombstones to deleted_tombstones table if present
+    if (data.tombstones && typeof data.tombstones === 'object') {
+      for (const [entityType, ids] of Object.entries(data.tombstones)) {
+        if (Array.isArray(ids)) {
+          for (const entityId of ids) {
+            if (typeof entityId === 'string' && entityId.trim()) {
+              try {
+                await client.query(
+                  `INSERT INTO deleted_tombstones (entity_type, entity_id, deleted_at)
+                   VALUES ($1, $2, NOW())
+                   ON CONFLICT (entity_type, entity_id) DO NOTHING`,
+                  [entityType, entityId.trim()]
+                );
+              } catch (_) {}
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Remove deleted entities from relational tables
+    if (Array.isArray(data.deletedInvoiceIds) && data.deletedInvoiceIds.length > 0) {
+      await client.query(`DELETE FROM invoices WHERE id = ANY($1)`, [data.deletedInvoiceIds]);
+    }
+    if (data.tombstones?.invoices && Array.isArray(data.tombstones.invoices) && data.tombstones.invoices.length > 0) {
+      await client.query(`DELETE FROM invoices WHERE id = ANY($1)`, [data.tombstones.invoices]);
+    }
+    if (data.tombstones?.products && Array.isArray(data.tombstones.products) && data.tombstones.products.length > 0) {
+      await client.query(`DELETE FROM products WHERE id = ANY($1)`, [data.tombstones.products]);
+    }
+    if (data.tombstones?.customers && Array.isArray(data.tombstones.customers) && data.tombstones.customers.length > 0) {
+      await client.query(`DELETE FROM customers WHERE id = ANY($1)`, [data.tombstones.customers]);
+    }
+
+    // 4. Sync active records to relational tables
     if (Array.isArray(data.warehouses) && data.warehouses.length > 0) {
       for (const w of data.warehouses) {
         await client.query(
@@ -230,6 +261,7 @@ export async function saveStateToPostgres(data: any): Promise<boolean> {
     }
 
     await client.query('COMMIT');
+    isConnected = true;
     return true;
   } catch (err: any) {
     if (client) {
@@ -237,7 +269,6 @@ export async function saveStateToPostgres(data: any): Promise<boolean> {
         await client.query('ROLLBACK');
       } catch (_) {}
     }
-    isConnected = false;
     console.warn('[PostgreSQL Save Notice]:', err.message);
     return false;
   } finally {

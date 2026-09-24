@@ -29,6 +29,7 @@ import {
   Check
 } from 'lucide-react';
 import { IranPlatePicker, parseVehicleInfo } from './IranPlatePicker';
+import { VehicleFleetModal } from './VehicleFleetModal';
 
 interface ExitSlipDeliveryModalProps {
   isOpen: boolean;
@@ -84,8 +85,9 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // مشخصات ماشین‌های ثبت‌شده در ناوگان جهت تسریع ورود اطلاعات
-  const [savedVehicles, setSavedVehicles] = useState<SavedVehicle[]>(() => StorageService.getSavedVehicles());
+  const [savedVehicles, setSavedVehicles] = useState<Array<SavedVehicle & { sourceLabel?: string }>>(() => StorageService.getExitSlipVehicles());
   const [showSavedFleet, setShowSavedFleet] = useState<boolean>(false);
+  const [isFleetModalOpen, setIsFleetModalOpen] = useState<boolean>(false);
   const [fleetSearchQuery, setFleetSearchQuery] = useState<string>('');
   const [vehicleFeedback, setVehicleFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [autoSaveToFleet, setAutoSaveToFleet] = useState<boolean>(true);
@@ -93,7 +95,7 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
   // اشتراک در تغییرات ذخیره‌سازی ماشین‌ها
   useEffect(() => {
     const unsub = StorageService.subscribe(() => {
-      setSavedVehicles(StorageService.getSavedVehicles());
+      setSavedVehicles(StorageService.getExitSlipVehicles());
     });
     return () => unsub();
   }, []);
@@ -158,7 +160,7 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
       colorDesc: parsed?.colorDesc || '',
     });
 
-    setSavedVehicles(StorageService.getSavedVehicles());
+    setSavedVehicles(StorageService.getExitSlipVehicles());
     setVehicleFeedback({
       type: 'success',
       message: `مشخصات ماشین «${saved.vehicleType}${saved.driverName ? ` - ${saved.driverName}` : ''}» با موفقیت ذخیره شد و در دفعات بعد با یک کلیک در دسترس است.`,
@@ -184,11 +186,16 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
   };
 
   // حذف ماشین از لیست ذخیره‌شده‌ها
-  const handleDeleteSavedVehicle = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDeleteSavedVehicle = (id: string, vehicleInfo?: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     if (window.confirm('آیا از حذف این مشخصات ماشین از لیست ذخیره‌شده‌ها اطمینان دارید؟')) {
-      StorageService.deleteSavedVehicle(id);
-      setSavedVehicles(StorageService.getSavedVehicles());
+      StorageService.deleteSavedVehicle(id, vehicleInfo);
+      setSavedVehicles(StorageService.getExitSlipVehicles());
+      setVehicleFeedback({
+        type: 'success',
+        message: 'مشخصات ماشین با موفقیت از ناوگان حذف شد.',
+      });
+      setTimeout(() => setVehicleFeedback(null), 3500);
     }
   };
 
@@ -410,7 +417,7 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
                 </label>
 
                 {/* دکمه‌های ناوبری سریع ناوگان */}
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 flex-wrap">
                   <button
                     type="button"
                     id="register-vehicle-btn"
@@ -420,6 +427,17 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
                   >
                     <BookmarkPlus className="w-3 h-3" />
                     <span>ثبت خودرو</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="exit-slip-manage-fleet-btn"
+                    onClick={() => setIsFleetModalOpen(true)}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold bg-white hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 shadow-2xs transition-all cursor-pointer"
+                    title="مدیریت جامع و حذف خودروهای ثبت‌شده در ناوگان"
+                  >
+                    <Trash2 className="w-3 h-3 text-rose-500" />
+                    <span>مدیریت و حذف خودروها</span>
                   </button>
 
                   <button
@@ -534,7 +552,7 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
                           </div>
                           <button
                             type="button"
-                            onClick={(e) => handleDeleteSavedVehicle(veh.id, e)}
+                            onClick={(e) => handleDeleteSavedVehicle(veh.id, veh.vehicleInfo, e)}
                             className="text-slate-300 hover:text-rose-600 p-1 shrink-0"
                             title="حذف"
                           >
@@ -685,6 +703,15 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* مودال جامع مدیریت و حذف خودروهای ثبت‌شده در ناوگان */}
+      <VehicleFleetModal
+        isOpen={isFleetModalOpen}
+        onClose={() => setIsFleetModalOpen(false)}
+        onSelectVehicle={(veh) => {
+          handleSelectSavedVehicle(veh);
+        }}
+      />
     </div>
   );
 };

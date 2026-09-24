@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   ArrowUpRight, 
@@ -14,12 +14,20 @@ import {
   Layers, 
   Check, 
   AlertCircle,
-  Hash
+  Hash,
+  Truck,
+  BookmarkPlus,
+  ChevronDown,
+  ChevronUp,
+  Search,
+  CheckCircle2,
+  Sparkles
 } from 'lucide-react';
-import { Product, DirectTransfer, DirectTransferType, DirectTransferItem, StoreSettings } from '../types';
-import { getCurrentJalaliDate, getCurrentJalaliTime } from '../utils/jalali';
+import { Product, DirectTransfer, DirectTransferType, DirectTransferItem, StoreSettings, SavedVehicle } from '../types';
+import { getCurrentJalaliDate, getCurrentJalaliTime, toPersianDigits } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
-import { IranPlatePicker } from './IranPlatePicker';
+import { IranPlatePicker, parseVehicleInfo } from './IranPlatePicker';
+import { VehicleFleetModal } from './VehicleFleetModal';
 
 interface DirectTransferModalProps {
   isOpen: boolean;
@@ -60,6 +68,22 @@ export const DirectTransferModal: React.FC<DirectTransferModalProps> = ({
   const [dispatchVehicleInfo, setDispatchVehicleInfo] = useState<string>('');
   const [destination, setDestination] = useState<string>('');
   const [dispatchNotes, setDispatchNotes] = useState<string>('');
+
+  // خودروهای ثبت‌شده در حواله‌های خروج و ناوگان جهت انتقال سریع مشخصات
+  const [savedVehicles, setSavedVehicles] = useState<Array<SavedVehicle & { sourceLabel?: string }>>(() => StorageService.getExitSlipVehicles());
+  const [showSavedFleet, setShowSavedFleet] = useState<boolean>(false);
+  const [isFleetModalOpen, setIsFleetModalOpen] = useState<boolean>(false);
+  const [fleetSearchQuery, setFleetSearchQuery] = useState<string>('');
+  const [vehicleFeedback, setVehicleFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [autoSaveToFleet, setAutoSaveToFleet] = useState<boolean>(true);
+
+  // همگام‌سازی لحظه‌ای با تغییرات ناوگان و حواله‌ها
+  useEffect(() => {
+    const unsub = StorageService.subscribe(() => {
+      setSavedVehicles(StorageService.getExitSlipVehicles());
+    });
+    return () => unsub();
+  }, []);
 
   // Items State
   const [items, setItems] = useState<DirectTransferItem[]>([]);
@@ -143,6 +167,83 @@ export const DirectTransferModal: React.FC<DirectTransferModalProps> = ({
     setItems(items.filter((i) => i.id !== id));
   };
 
+  // انتخاب یک خودرو از سوابق حواله‌های خروج یا ناوگان و پرکردن خودکار مشخصات
+  const handleSelectSavedVehicle = (veh: SavedVehicle & { sourceLabel?: string }) => {
+    setDispatchVehicleInfo(veh.vehicleInfo);
+    if (veh.driverName) {
+      setReceiverName(veh.driverName);
+    }
+    if (veh.driverPhone) {
+      setReceiverPhone(veh.driverPhone);
+    }
+    setShowSavedFleet(false);
+    setVehicleFeedback({
+      type: 'success',
+      message: `مشخصات «${veh.vehicleType}${veh.driverName ? ` (راننده: ${veh.driverName})` : ''}» از حواله خروج انتقال یافت.`,
+    });
+    setTimeout(() => setVehicleFeedback(null), 4000);
+  };
+
+  // ثبت دستی خودروی جاری در فهرست ناوگان
+  const handleRegisterVehicle = () => {
+    if (!dispatchVehicleInfo.trim() && !receiverName.trim()) {
+      setVehicleFeedback({
+        type: 'error',
+        message: 'لطفاً ابتدا مشخصات یا پلاک ماشین را وارد فرمایید.',
+      });
+      return;
+    }
+
+    const parsed = parseVehicleInfo(dispatchVehicleInfo);
+    const vehicleType = parsed?.vehicleType || 'وانت باربری';
+    const plateNumber = (!parsed?.isFreeText && parsed?.part1 && parsed?.part2)
+      ? `${parsed.part1} ${parsed.letter} ${parsed.part2} ایران ${parsed.iranCode}`
+      : '';
+
+    const saved = StorageService.addOrUpdateSavedVehicle({
+      vehicleType,
+      vehicleInfo: dispatchVehicleInfo.trim() || 'خودرو خارج‌کننده بار',
+      driverName: receiverName.trim(),
+      driverPhone: receiverPhone.trim(),
+      plateNumber,
+      colorDesc: parsed?.colorDesc || '',
+    });
+
+    setSavedVehicles(StorageService.getExitSlipVehicles());
+    setVehicleFeedback({
+      type: 'success',
+      message: `مشخصات ماشین «${saved.vehicleType}${saved.driverName ? ` - ${saved.driverName}` : ''}» در ناوگان ثبت شد و در دفعات بعد در دسترس است.`,
+    });
+    setTimeout(() => setVehicleFeedback(null), 4000);
+  };
+
+  // حذف ماشین از ناوگان
+  const handleDeleteSavedVehicle = (id: string, vehicleInfo?: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (window.confirm('آیا از حذف این خودرو از فهرست ذخیره‌شده‌ها اطمینان دارید؟')) {
+      StorageService.deleteSavedVehicle(id, vehicleInfo);
+      setSavedVehicles(StorageService.getExitSlipVehicles());
+      setVehicleFeedback({
+        type: 'success',
+        message: 'خودروی مورد نظر با موفقیت از ناوگان حذف شد.',
+      });
+      setTimeout(() => setVehicleFeedback(null), 3500);
+    }
+  };
+
+  const filteredSavedVehicles = savedVehicles.filter((v) => {
+    if (!fleetSearchQuery.trim()) return true;
+    const q = fleetSearchQuery.toLowerCase();
+    return (
+      (v.vehicleInfo || '').toLowerCase().includes(q) ||
+      (v.vehicleType || '').toLowerCase().includes(q) ||
+      (v.driverName || '').toLowerCase().includes(q) ||
+      (v.driverPhone || '').includes(q) ||
+      (v.plateNumber || '').includes(q) ||
+      (v.sourceLabel || '').toLowerCase().includes(q)
+    );
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
@@ -155,6 +256,15 @@ export const DirectTransferModal: React.FC<DirectTransferModalProps> = ({
     if (!receiverName.trim()) {
       setFormError('لطفاً نام شخص تحویل‌گیرنده یا راننده خروج را وارد فرمایید.');
       return;
+    }
+
+    // ذخیره خودکار در ناوگان مشترک در صورت فعال بودن تیک
+    if (autoSaveToFleet && dispatchVehicleInfo.trim()) {
+      StorageService.addOrUpdateSavedVehicle({
+        vehicleInfo: dispatchVehicleInfo.trim(),
+        driverName: receiverName.trim(),
+        driverPhone: receiverPhone.trim(),
+      });
     }
 
     const finalTitle = title.trim() || `خروج بدون فاکتور ${transferNumber} - ${items[0]?.productName}`;
@@ -486,15 +596,198 @@ export const DirectTransferModal: React.FC<DirectTransferModalProps> = ({
 
           {/* Section 3: Driver, Receiver & Vehicle Details (مشخصات تعمیر گیرنده و خارج‌کننده بار) */}
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
-            <div className="flex items-center gap-2 text-sm font-bold text-slate-700 border-b border-slate-200 pb-2">
-              <Car className="w-4 h-4 text-amber-600" />
-              <span>مشخصات تعمیر گیرنده / تحویل‌گیرنده و خودروی خارج‌کننده دستگاه</span>
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2 flex-wrap gap-2">
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                <Car className="w-4 h-4 text-amber-600" />
+                <span>مشخصات تحویل‌گیرنده / راننده و خودروی خارج‌کننده</span>
+              </div>
+
+              {/* دکمه‌های ناوبری سریع ناوگان و انتقال از حواله‌های خروج */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  id="direct-transfer-register-veh-btn"
+                  onClick={handleRegisterVehicle}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-2xs transition-all cursor-pointer"
+                  title="ذخیره مشخصات این خودرو در ناوگان برای استفاده در حواله‌های خروج و امانی"
+                >
+                  <BookmarkPlus className="w-3.5 h-3.5" />
+                  <span>ثبت در ناوگان</span>
+                </button>
+
+                <button
+                  type="button"
+                  id="direct-transfer-manage-fleet-btn"
+                  onClick={() => setIsFleetModalOpen(true)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-white hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 shadow-2xs transition-all cursor-pointer"
+                  title="مدیریت جامع، مشاهده و حذف خودروهای ثبت‌شده در ناوگان"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                  <span>مدیریت و حذف خودروها</span>
+                </button>
+
+                <button
+                  type="button"
+                  id="direct-transfer-fleet-toggle-btn"
+                  onClick={() => setShowSavedFleet(!showSavedFleet)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                    showSavedFleet
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                      : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
+                  }`}
+                  title="مشاهده و انتخاب از خودروهای ثبت‌شده در حواله‌های خروج"
+                >
+                  <Truck className="w-3.5 h-3.5 text-amber-600 group-hover:text-white" />
+                  <span>خودروها ({toPersianDigits(savedVehicles.length)})</span>
+                  {showSavedFleet ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+              </div>
             </div>
+
+            {/* پیام بازخورد عملیات ثبت یا انتقال ماشین */}
+            {vehicleFeedback && (
+              <div
+                className={`p-2.5 rounded-xl text-xs flex items-center justify-between animate-fadeIn ${
+                  vehicleFeedback.type === 'success'
+                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    : 'bg-rose-50 text-rose-800 border border-rose-200'
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  {vehicleFeedback.type === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  )}
+                  <span className="font-medium">{vehicleFeedback.message}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setVehicleFeedback(null)}
+                  className="text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* انتخاب سریع از خودروهای ثبت‌شده در حواله‌های خروج (چیپ‌های یک کلیکی فشرده) */}
+            {!showSavedFleet && savedVehicles.length > 0 && (
+              <div className="bg-amber-50/60 p-2.5 rounded-xl border border-amber-200/70 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] text-amber-900 font-bold">
+                  <div className="flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    <span>انتقال سریع مشخصات خودرو از حواله‌های خروج:</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-normal">با یک کلیک راننده، شماره و پلاک پر می‌شود</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  {savedVehicles.slice(0, 5).map((veh) => (
+                    <button
+                      key={veh.id}
+                      type="button"
+                      onClick={() => handleSelectSavedVehicle(veh)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white hover:bg-amber-100/70 text-slate-800 hover:text-amber-900 border border-amber-200 hover:border-amber-400 rounded-lg text-xs font-medium transition-all shadow-2xs cursor-pointer group"
+                    >
+                      <Truck className="w-3 h-3 text-amber-600 group-hover:scale-110 transition-transform" />
+                      <span className="font-bold">{veh.vehicleType}</span>
+                      {veh.plateNumber && (
+                        <span className="font-mono text-[10px] text-slate-600 bg-slate-100 px-1 py-0.2 rounded border border-slate-200">
+                          {toPersianDigits(veh.plateNumber.split(' ').slice(0, 3).join(' '))}
+                        </span>
+                      )}
+                      {veh.driverName && (
+                        <span className="text-[11px] text-slate-500">({veh.driverName})</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* پنل بازشونده مدیریت و جستجوی ناوگان خودروهای حواله خروج */}
+            {showSavedFleet && (
+              <div className="bg-white rounded-xl border border-amber-300 p-3 shadow-sm space-y-2.5 animate-fadeIn">
+                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-1.5">
+                    <Truck className="w-4 h-4 text-amber-600" />
+                    <span className="text-xs font-bold text-slate-800">
+                      خودروها و رانندگان ثبت‌شده در حواله‌های خروج انبار:
+                    </span>
+                  </div>
+                  <div className="relative w-48 sm:w-60">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
+                    <input
+                      type="text"
+                      placeholder="جستجوی پلاک، مدل یا راننده..."
+                      value={fleetSearchQuery}
+                      onChange={(e) => setFleetSearchQuery(e.target.value)}
+                      className="w-full pr-8 pl-2.5 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+
+                {filteredSavedVehicles.length === 0 ? (
+                  <div className="text-center py-4 text-xs text-slate-400">
+                    {fleetSearchQuery ? 'هیچ خودرویی با این مشخصات یافت نشد.' : 'هنوز هیچ خودرویی در حواله‌های خروج ثبت نشده است.'}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-0.5">
+                    {filteredSavedVehicles.map((veh) => (
+                      <div
+                        key={veh.id}
+                        onClick={() => handleSelectSavedVehicle(veh)}
+                        className="p-2 rounded-xl border border-slate-200 hover:border-amber-400 hover:bg-amber-50/50 transition-all cursor-pointer flex items-center justify-between gap-2 text-xs group"
+                      >
+                        <div className="truncate flex-1">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="font-bold text-slate-800 group-hover:text-amber-900 truncate">
+                              {veh.vehicleType}
+                            </span>
+                            {veh.sourceLabel && (
+                              <span className="text-[9.5px] bg-slate-100 text-slate-500 px-1 py-0.2 rounded border border-slate-200">
+                                {veh.sourceLabel}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500">
+                            {veh.driverName && (
+                              <span className="font-medium text-slate-700">راننده: {veh.driverName}</span>
+                            )}
+                            {veh.driverPhone && (
+                              <span className="font-mono">({toPersianDigits(veh.driverPhone)})</span>
+                            )}
+                          </div>
+                          {veh.plateNumber && (
+                            <div className="font-mono text-[10px] text-amber-800 mt-0.5 font-bold truncate">
+                              {toPersianDigits(veh.plateNumber)}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-[10px] font-bold text-amber-700 bg-amber-100 group-hover:bg-amber-600 group-hover:text-white px-2 py-1 rounded-md transition-colors">
+                            انتخاب
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteSavedVehicle(veh.id, veh.vehicleInfo, e)}
+                            className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg transition-colors cursor-pointer"
+                            title="حذف این ماشین از ناوگان"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  نام تعمیر گیرنده / خارج‌کننده: <span className="text-rose-500">*</span>
+                  نام تحویل‌گیرنده / خارج‌کننده: <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
                   <User className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
@@ -511,7 +804,7 @@ export const DirectTransferModal: React.FC<DirectTransferModalProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  شماره تماس تعمیر گیرنده / راننده:
+                  شماره تماس تحویل‌گیرنده / راننده:
                 </label>
                 <div className="relative">
                   <Phone className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
@@ -550,6 +843,17 @@ export const DirectTransferModal: React.FC<DirectTransferModalProps> = ({
                 placeholder="نوع خودرو (مثلاً وانت نیسان، پراید بار) و پلاک"
               />
             </div>
+
+            {/* چک‌باکس ذخیره خودکار در ناوگان مشترک */}
+            <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-600 hover:text-slate-800">
+              <input
+                type="checkbox"
+                checked={autoSaveToFleet}
+                onChange={(e) => setAutoSaveToFleet(e.target.checked)}
+                className="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500"
+              />
+              <span>ذخیره خودکار این خودرو در فهرست ناوگان انبار (قابل استفاده مجدد در حواله‌های خروج و امانی)</span>
+            </label>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               <div className="flex gap-2">
@@ -624,6 +928,15 @@ export const DirectTransferModal: React.FC<DirectTransferModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* مودال جامع مدیریت و حذف خودروهای ثبت‌شده در ناوگان */}
+      <VehicleFleetModal
+        isOpen={isFleetModalOpen}
+        onClose={() => setIsFleetModalOpen(false)}
+        onSelectVehicle={(veh) => {
+          handleSelectSavedVehicle(veh);
+        }}
+      />
     </div>
   );
 };

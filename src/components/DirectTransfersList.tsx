@@ -18,12 +18,14 @@ import {
   Share2,
   Package,
   Layers,
-  ChevronDown
+  ChevronDown,
+  FileDown
 } from 'lucide-react';
 import { DirectTransfer, DirectTransferType, DirectTransferStatus, Product, StoreSettings } from '../types';
 import { DirectTransferModal } from './DirectTransferModal';
 import { DirectTransferReturnModal } from './DirectTransferReturnModal';
 import { DirectTransferPrintModal } from './DirectTransferPrintModal';
+import { MiniIranPlate } from './IranPlatePicker';
 
 interface DirectTransfersListProps {
   transfers: DirectTransfer[];
@@ -52,6 +54,7 @@ export const DirectTransfersList: React.FC<DirectTransfersListProps> = ({
   const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
   const [returnModalTransfer, setReturnModalTransfer] = useState<DirectTransfer | null>(null);
   const [printModalTransfer, setPrintModalTransfer] = useState<DirectTransfer | null>(null);
+  const [autoExportPdf, setAutoExportPdf] = useState(false);
   const [transferToDelete, setTransferToDelete] = useState<DirectTransfer | null>(null);
   const [revertStockOnDelete, setRevertStockOnDelete] = useState(true);
 
@@ -345,9 +348,8 @@ export const DirectTransfersList: React.FC<DirectTransfersListProps> = ({
                             )}
                           </div>
                           {transfer.dispatchVehicleInfo && (
-                            <div className="flex items-center gap-1 text-amber-900 bg-amber-50/70 px-2 py-0.5 rounded border border-amber-200">
-                              <Car className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                              <span className="font-medium">{transfer.dispatchVehicleInfo}</span>
+                            <div className="pt-0.5">
+                              <MiniIranPlate plateInfo={transfer.dispatchVehicleInfo} />
                             </div>
                           )}
                           {transfer.destination && (
@@ -370,9 +372,8 @@ export const DirectTransfersList: React.FC<DirectTransfersListProps> = ({
                               <span>آورنده: {latestReturn.returnerName}</span>
                             </div>
                             {latestReturn.returnVehicleInfo && (
-                              <div className="flex items-center gap-1 text-[11px] text-emerald-800">
-                                <Car className="w-3 h-3 text-emerald-600 shrink-0" />
-                                <span>{latestReturn.returnVehicleInfo}</span>
+                              <div className="pt-0.5">
+                                <MiniIranPlate plateInfo={latestReturn.returnVehicleInfo} />
                               </div>
                             )}
                             <div className="text-[10px] text-slate-500 font-mono">
@@ -418,14 +419,32 @@ export const DirectTransfersList: React.FC<DirectTransfersListProps> = ({
                             </button>
                           )}
 
+                          {/* Download PDF Slip Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAutoExportPdf(true);
+                              setPrintModalTransfer(transfer);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg font-bold text-[11px] transition-all w-full justify-center shadow-2xs cursor-pointer hover:shadow-xs"
+                            title="دانلود فایل PDF حواله خروج دستگاه و کالای امانی"
+                          >
+                            <FileDown className="w-3.5 h-3.5 text-emerald-700" />
+                            <span>دانلود فایل PDF</span>
+                          </button>
+
                           {/* Print Slip Button */}
                           <button
                             type="button"
-                            onClick={() => setPrintModalTransfer(transfer)}
-                            className="flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium text-[11px] transition-colors w-full justify-center"
+                            onClick={() => {
+                              setAutoExportPdf(false);
+                              setPrintModalTransfer(transfer);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium text-[11px] transition-colors w-full justify-center cursor-pointer"
+                            title="مشاهده پیش‌نمایش و چاپ رسمی برگه"
                           >
                             <Printer className="w-3.5 h-3.5" />
-                            <span>چاپ برگه حواله</span>
+                            <span>پیش‌نمایش و چاپ</span>
                           </button>
 
                           {/* Delete Button */}
@@ -492,13 +511,17 @@ export const DirectTransfersList: React.FC<DirectTransfersListProps> = ({
         />
       )}
 
-      {/* Print Modal */}
+      {/* Print & PDF Modal */}
       {printModalTransfer && (
         <DirectTransferPrintModal
           isOpen={!!printModalTransfer}
-          onClose={() => setPrintModalTransfer(null)}
+          onClose={() => {
+            setPrintModalTransfer(null);
+            setAutoExportPdf(false);
+          }}
           transfer={printModalTransfer}
           settings={settings}
+          autoExportPdf={autoExportPdf}
         />
       )}
 

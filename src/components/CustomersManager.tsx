@@ -5,6 +5,7 @@ import { StorageService } from '../utils/storage';
 import { exportCustomersToExcel, exportPersonInvoicesAndExitSlipsToExcel } from '../utils/excelHelper';
 import { ExcelImportModal } from './ExcelImportModal';
 import { CustomerExportModal } from './CustomerExportModal';
+import { CustomerBulkPaymentModal } from './CustomerBulkPaymentModal';
 import { 
   Users, 
   Search, 
@@ -19,7 +20,9 @@ import {
   CheckCircle2,
   FileSpreadsheet,
   Download,
-  Upload
+  Upload,
+  CreditCard,
+  AlertCircle
 } from 'lucide-react';
 
 interface CustomersManagerProps {
@@ -31,6 +34,10 @@ interface CustomersManagerProps {
   onDeleteCustomer: (customerId: string) => void;
   onSelectCustomerForInvoice: (customer: Customer) => void;
   onImportCustomers?: (customers: Customer[], mode: 'merge' | 'replace') => void;
+  onBatchUpdatePaymentStatus?: (
+    updates: { invoiceId: string; status: 'paid' | 'unpaid' | 'partial'; paidAmount: number }[],
+    details?: string
+  ) => void;
 }
 
 export const CustomersManager: React.FC<CustomersManagerProps> = ({
@@ -42,6 +49,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   onDeleteCustomer,
   onSelectCustomerForInvoice,
   onImportCustomers,
+  onBatchUpdatePaymentStatus,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -50,6 +58,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportModalCustomer, setExportModalCustomer] = useState<Customer | null>(null);
+  const [paymentModalCustomer, setPaymentModalCustomer] = useState<Customer | null>(null);
 
   // Filter customers
   const filteredCustomers = customers.filter((c) => {
@@ -194,6 +203,8 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
               // Invoices for this customer
               const customerInvoices = invoices.filter((i) => i.customerId === cust.id || i.customerName === cust.name);
               const totalSpent = customerInvoices.reduce((sum, i) => sum + i.finalTotal, 0);
+              const unpaidInvoices = customerInvoices.filter((i) => !i.isProforma && (i.paymentStatus === 'unpaid' || i.paymentStatus === 'partial'));
+              const remainingDebt = unpaidInvoices.reduce((sum, inv) => sum + Math.max(0, inv.finalTotal - (inv.paidAmount || 0)), 0);
 
               return (
                 <div
@@ -260,6 +271,24 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                           <span className="line-clamp-2">{cust.address}</span>
                         </div>
                       )}
+
+                      {/* Debt / Settle Status Banner */}
+                      {remainingDebt > 0 ? (
+                        <div className="mt-2 p-2 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between gap-1 text-[11px]">
+                          <div className="flex items-center gap-1.5 text-rose-700 font-bold">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span>بدهی تسویه‌نشده:</span>
+                          </div>
+                          <span className="font-mono font-black text-rose-800">
+                            {formatPrice(remainingDebt, settings.currency)}
+                          </span>
+                        </div>
+                      ) : customerInvoices.length > 0 ? (
+                        <div className="mt-2 p-1.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-center gap-1 text-[11px] text-emerald-700 font-bold">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>تسویه حساب کامل</span>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
@@ -273,6 +302,20 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 flex-wrap">
+                      {/* Settle Debt / Bulk Payment Button */}
+                      {remainingDebt > 0 && (
+                        <button
+                          type="button"
+                          id={`settle-customer-debt-${cust.id}`}
+                          onClick={() => setPaymentModalCustomer(cust)}
+                          title="ثبت واریزی یکباره و تسویه تجمیعی فاکتورهای این مشتری"
+                          className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition-all cursor-pointer"
+                        >
+                          <CreditCard className="w-3.5 h-3.5" />
+                          <span>ثبت واریزی و تسویه</span>
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         id={`export-customer-excel-${cust.id}`}
@@ -489,6 +532,22 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
         invoices={invoices}
         settings={settings}
       />
+
+      {/* CUSTOMER BULK PAYMENT / LUMP-SUM DEPOSIT MODAL */}
+      {paymentModalCustomer && (
+        <CustomerBulkPaymentModal
+          isOpen={!!paymentModalCustomer}
+          onClose={() => setPaymentModalCustomer(null)}
+          customer={paymentModalCustomer}
+          invoices={invoices}
+          settings={settings}
+          onConfirmPayment={(updates, details) => {
+            if (onBatchUpdatePaymentStatus) {
+              onBatchUpdatePaymentStatus(updates, details);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

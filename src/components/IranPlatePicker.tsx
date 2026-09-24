@@ -646,3 +646,69 @@ export const IranPlatePicker: React.FC<IranPlatePickerProps> = ({
     </div>
   );
 };
+
+// Mini graphic Iranian license plate for clean display across exit slips, direct transfers, and reports
+export const MiniIranPlate: React.FC<{ plateInfo: string; hideType?: boolean }> = ({ plateInfo, hideType = false }) => {
+  const parsed = parseVehicleInfo(plateInfo);
+  if (!parsed || parsed.isFreeText || !parsed.part1 || !parsed.letter || !parsed.part2 || !parsed.iranCode) {
+    return (
+      <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-300 font-['Vazirmatn'] text-[11px]">
+        {plateInfo}
+      </span>
+    );
+  }
+
+  const isYellow = parsed.letter === 'ع' || parsed.letter === 'ت';
+
+  return (
+    <div className="inline-flex items-center gap-1.5 flex-wrap">
+      {!hideType && parsed.vehicleType && (
+        <span className="text-[11px] font-bold text-slate-800">
+          {parsed.vehicleType}
+          {parsed.colorDesc ? ` (${parsed.colorDesc})` : ''}:
+        </span>
+      )}
+      <div 
+        dir="ltr"
+        className={`inline-flex items-stretch border border-slate-900 rounded-sm overflow-hidden text-slate-950 font-black shadow-2xs select-none ${
+          isYellow ? 'bg-amber-300' : 'bg-white'
+        }`}
+        style={{ height: '22px' }}
+      >
+        {/* Blue band */}
+        <div className="bg-[#003399] text-white w-3.5 flex flex-col items-center justify-between py-0.5 px-0.5 shrink-0">
+          <div className="w-2 h-1 flex flex-col justify-between">
+            <span className="h-[0.5px] bg-[#239f40] w-full block"></span>
+            <span className="h-[0.5px] bg-white w-full block"></span>
+            <span className="h-[0.5px] bg-[#da0000] w-full block"></span>
+          </div>
+          <span className="text-[5px] font-sans font-bold leading-none">IR</span>
+        </div>
+
+        {/* 2 digits */}
+        <div className="px-1 flex items-center justify-center font-['Vazirmatn'] text-[11px] font-black min-w-[16px]">
+          {toPersianDigits(parsed.part1)}
+        </div>
+
+        {/* Letter */}
+        <div className="px-1 flex items-center justify-center font-['Vazirmatn'] text-[10px] font-black min-w-[14px]">
+          {parsed.letter}
+        </div>
+
+        {/* 3 digits */}
+        <div className="px-1 flex items-center justify-center font-['Vazirmatn'] text-[11px] font-black min-w-[22px]">
+          {toPersianDigits(parsed.part2)}
+        </div>
+
+        {/* Iran code */}
+        <div className="border-r border-slate-900 bg-slate-50/70 px-1 flex flex-col items-center justify-center leading-none">
+          <span className="text-[5px] text-slate-600 font-bold">ایران</span>
+          <span className="font-['Vazirmatn'] text-[10px] font-black text-slate-950">
+            {toPersianDigits(parsed.iranCode)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+

@@ -643,6 +643,37 @@ export default function App() {
     showToast('وضعیت تسویه فاکتور بروزرسانی شد.');
   };
 
+  // 4.1 BATCH UPDATE PAYMENT STATUS (Lump-sum payment across multiple customer invoices)
+  const handleBatchUpdatePaymentStatus = (
+    updates: { invoiceId: string; status: 'paid' | 'unpaid' | 'partial'; paidAmount: number }[],
+    details?: string
+  ) => {
+    const updateMap = new Map(updates.map((u) => [u.invoiceId, u]));
+    const updated = invoices.map((inv) => {
+      const up = updateMap.get(inv.id);
+      if (up) {
+        return {
+          ...inv,
+          paymentStatus: up.status,
+          paidAmount: up.paidAmount,
+        };
+      }
+      return inv;
+    });
+
+    setInvoices(updated);
+    StorageService.saveInvoices(updated);
+
+    StorageService.logActivity({
+      category: 'sales',
+      actionType: 'update_payment',
+      actionTitle: 'ثبت واریزی و تسویه تجمیعی فاکتورها',
+      details: details || `تسویه تجمیعی ${updates.length} فاکتور`,
+    });
+
+    showToast(`${updates.length} فاکتور با موفقیت تسویه و در حساب مشتری ثبت گردید.`);
+  };
+
   // 5. INVENTORY PRODUCT MANAGEMENT
   const handleSaveProduct = (product: Product) => {
     let updatedProducts: Product[];
@@ -705,9 +736,9 @@ export default function App() {
 
   const handleDeleteProduct = (productId: string) => {
     const prod = products.find((p) => p.id === productId);
-    const updated = products.filter((p) => p.id !== productId);
+    StorageService.deleteProduct(productId);
+    const updated = StorageService.getProducts();
     setProducts(updated);
-    StorageService.saveProducts(updated);
 
     StorageService.logActivity({
       category: 'warehouse',
@@ -903,9 +934,9 @@ export default function App() {
 
   const handleDeleteCustomer = (customerId: string) => {
     const cust = customers.find((c) => c.id === customerId);
-    const updated = customers.filter((c) => c.id !== customerId);
+    StorageService.deleteCustomer(customerId);
+    const updated = StorageService.getCustomers();
     setCustomers(updated);
-    StorageService.saveCustomers(updated);
 
     StorageService.logActivity({
       category: 'customer',
@@ -1293,6 +1324,7 @@ export default function App() {
               }
             }}
             onConvertProforma={handleConvertProforma}
+            onBatchUpdatePaymentStatus={handleBatchUpdatePaymentStatus}
           />
         )}
 
@@ -1341,6 +1373,7 @@ export default function App() {
             onDeleteCustomer={handleDeleteCustomer}
             onSelectCustomerForInvoice={handleSelectCustomerForInvoice}
             onImportCustomers={handleImportCustomers}
+            onBatchUpdatePaymentStatus={handleBatchUpdatePaymentStatus}
           />
         )}
 

@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { StoreSettings, WarehouseInfo, Product, StockMovement } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { StoreSettings, WarehouseInfo, Product, StockMovement, SavedVehicle } from '../types';
 import { toPersianDigits } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
 import {
@@ -22,7 +22,11 @@ import {
   Save,
   RotateCcw,
   Sparkles,
+  Truck,
+  Car,
 } from 'lucide-react';
+import { VehicleFleetModal } from './VehicleFleetModal';
+import { MiniIranPlate } from './IranPlatePicker';
 
 interface WarehouseSettingsManagerProps {
   settings: StoreSettings;
@@ -111,6 +115,19 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
 
   // Modal State for Delete Confirmation
   const [warehouseToDelete, setWarehouseToDelete] = useState<WarehouseInfo | null>(null);
+
+  // Fleet and registered vehicles state
+  const [savedVehicles, setSavedVehicles] = useState<Array<SavedVehicle & { sourceLabel?: string }>>(() =>
+    StorageService.getExitSlipVehicles()
+  );
+  const [isFleetModalOpen, setIsFleetModalOpen] = useState(false);
+
+  useEffect(() => {
+    const unsub = StorageService.subscribe(() => {
+      setSavedVehicles(StorageService.getExitSlipVehicles());
+    });
+    return () => unsub();
+  }, []);
 
   // Form dirty flag to prevent background sync from wiping in-progress changes
   const isFormDirty = React.useRef(false);
@@ -873,6 +890,108 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
         </div>
       </div>
 
+      {/* SECTION: FLEET AND CARRIER VEHICLES (مدیریت ناوگان و خودروهای حمل بار) */}
+      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <h4 className="text-base font-black text-slate-900 flex items-center gap-2">
+              <Truck className="w-5 h-5 text-amber-600" />
+              <span>مدیریت ناوگان و خودروهای حمل بار (حواله‌های خروج و امانی)</span>
+            </h4>
+            <p className="text-xs text-slate-500 mt-0.5">
+              خودروهای ثبت‌شده در حواله‌های خروج فاکتور و امانی در این بخش ذخیره شده و با یک کلیک در فرم‌ها پر می‌شوند. شما می‌توانید هر خودرو را ویرایش یا به کلی حذف نمایید.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            id="manage-fleet-global-btn"
+            onClick={() => setIsFleetModalOpen(true)}
+            className="flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
+          >
+            <Truck className="w-4 h-4 text-amber-400" />
+            <span>مدیریت و حذف خودروها ({toPersianDigits(savedVehicles.length)})</span>
+          </button>
+        </div>
+
+        {savedVehicles.length === 0 ? (
+          <div className="text-center py-8 text-xs text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200 p-6 space-y-2">
+            <Car className="w-8 h-8 text-slate-300 mx-auto" />
+            <p className="font-bold text-slate-700">هیچ خودرویی تاکنون در ناوگان ثبت نشده است.</p>
+            <p className="text-slate-400">با زدن دکمه «مدیریت و حذف خودروها» می‌توانید ناوگان باربری خود را تعریف کنید.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {savedVehicles.slice(0, 6).map((veh) => (
+              <div
+                key={veh.id}
+                className="bg-slate-50/60 p-3 rounded-xl border border-slate-200 hover:border-amber-400 transition-all flex flex-col justify-between gap-2"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-bold text-slate-800 text-xs truncate">
+                      {veh.vehicleType}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`آیا از حذف خودروی «${veh.vehicleType || veh.vehicleInfo}» اطمینان دارید؟`)) {
+                          StorageService.deleteSavedVehicle(veh.id, veh.vehicleInfo);
+                          setSavedVehicles(StorageService.getExitSlipVehicles());
+                          showNotification('خودروی مورد نظر با موفقیت از ناوگان حذف گردید.');
+                        }
+                      }}
+                      className="text-slate-300 hover:text-rose-600 p-1 rounded-md transition-colors cursor-pointer"
+                      title="حذف این خودرو از ناوگان"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="mt-1.5">
+                    <MiniIranPlate plateInfo={veh.vehicleInfo} />
+                  </div>
+
+                  {(veh.driverName || veh.driverPhone) && (
+                    <div className="mt-2 text-[11px] text-slate-600 space-y-0.5">
+                      {veh.driverName && (
+                        <div className="flex items-center gap-1">
+                          <User className="w-3 h-3 text-slate-400" />
+                          <span>راننده: {veh.driverName}</span>
+                        </div>
+                      )}
+                      {veh.driverPhone && (
+                        <div className="flex items-center gap-1 font-mono text-[10px]">
+                          <Phone className="w-3 h-3 text-slate-400" />
+                          <span dir="ltr">{toPersianDigits(veh.driverPhone)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[10px] text-slate-400">
+                  <span>{veh.sourceLabel || 'ناوگان ثبت‌شده'}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`آیا از حذف خودروی «${veh.vehicleType || veh.vehicleInfo}» اطمینان دارید؟`)) {
+                        StorageService.deleteSavedVehicle(veh.id, veh.vehicleInfo);
+                        setSavedVehicles(StorageService.getExitSlipVehicles());
+                        showNotification('خودروی مورد نظر با موفقیت از ناوگان حذف گردید.');
+                      }
+                    }}
+                    className="text-rose-600 hover:text-rose-700 font-bold cursor-pointer"
+                  >
+                    حذف ماشین
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* SECTION 3: INVENTORY OPERATIONAL RULES (قوانین و رفتار انبارداری در فاکتورساز) */}
       <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-5">
         <div>
@@ -1213,6 +1332,12 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
           </div>
         </div>
       )}
+
+      {/* مودال جامع مدیریت ناوگان و حذف خودروهای ثبت‌شده */}
+      <VehicleFleetModal
+        isOpen={isFleetModalOpen}
+        onClose={() => setIsFleetModalOpen(false)}
+      />
     </div>
   );
 };
