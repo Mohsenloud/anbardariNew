@@ -129,7 +129,7 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
 
   if (!isOpen || !invoice) return null;
 
-  const totalUnits = invoice.items.reduce((sum, item) => sum + item.quantity, 0);
+  const totalUnits = (invoice.items || []).reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0);
 
   const handleRefreshTimestamp = () => {
     setDeliveredAt(`${getCurrentJalaliDate()} - ساعت ${getCurrentJalaliTime()}`);
@@ -328,7 +328,7 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
           <div className="bg-slate-100/70 rounded-lg px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600 border border-slate-200/60">
             <div className="flex items-center gap-1.5">
               <PackageCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-              <span>اقلام: <strong className="text-slate-800 font-['Vazirmatn']">{toPersianDigits(invoice.items.length)} قلم</strong> ({toPersianDigits(totalUnits)} عدد)</span>
+              <span>اقلام: <strong className="text-slate-800 font-['Vazirmatn']">{toPersianDigits((invoice.items || []).length)} قلم</strong> ({toPersianDigits(totalUnits)} عدد)</span>
             </div>
             <div className="flex items-center gap-1 text-slate-600">
               <Warehouse className="w-3 h-3 text-slate-400 shrink-0" />
@@ -497,7 +497,7 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
                       className="inline-flex items-center gap-1 px-2 py-0.5 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300 rounded-md text-[11px] font-medium transition-all shadow-2xs cursor-pointer"
                     >
                       <span className="font-bold">{veh.vehicleType}</span>
-                      {veh.plateNumber && (
+                      {veh.plateNumber && typeof veh.plateNumber === 'string' && (
                         <span className="font-mono text-[9.5px] text-slate-500 bg-slate-100 px-1 py-0.2 rounded">
                           {toPersianDigits(veh.plateNumber.split(' ').slice(0, 3).join(' '))}
                         </span>

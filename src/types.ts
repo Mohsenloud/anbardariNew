@@ -26,6 +26,7 @@ export interface Product {
   // پشتیبانی از تنوع کالا (رنگ، سایز، مدل و...)
   hasVariants?: boolean;
   variants?: ProductVariant[];
+  purchasePrice?: number; // آلیاس buyPrice برای سازگاری
 }
 
 export interface Customer {
@@ -86,11 +87,14 @@ export interface InvoiceItem {
   id: string;
   productId: string;
   productName: string;
+  name?: string; // آلیاس productName
   productCode: string;
+  code?: string; // آلیاس productCode
   barcode?: string; // بارکد محصول یا خدمت
   unit: string;
   quantity: number;
   unitPrice: number;
+  price?: number; // آلیاس unitPrice
   buyPrice: number; // قیمت خرید در لحظه فروش برای محاسبه سود
   discount: number; // مبلغ تخفیف برای این ردیف
   total: number; // (quantity * unitPrice) - discount
@@ -169,6 +173,7 @@ export interface StoreSettings {
   showStoreEditionBadge?: boolean; // نمایش یا عدم نمایش عبارت «نسخه فروشگاهی»
   storeName: string;
   tagline: string;
+  logo?: string; // لوگو یا تصویر سربرگ
   sellerName: string;
   phone: string;
   mobile: string;
@@ -257,6 +262,7 @@ export interface AppUser {
   id: string;
   username: string;
   fullName: string;
+  name?: string; // آلیاس fullName
   role: UserRole;
   roleTitle: string;
   permissions: UserPermissions;

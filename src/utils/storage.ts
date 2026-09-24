@@ -2264,7 +2264,7 @@ export const StorageService = {
     // جستجوی خودروی مشابه بر اساس آی‌دی یا متن مشخصات ماشین
     const existingIdx = data.id
       ? list.findIndex((v) => v.id === data.id)
-      : list.findIndex((v) => v.vehicleInfo.trim() === cleanInfo && (!cleanDriver || v.driverName === cleanDriver));
+      : list.findIndex((v) => (v.vehicleInfo || '').trim() === cleanInfo && (!cleanDriver || (v.driverName || '') === cleanDriver));
 
     let savedVehicle: SavedVehicle;
 
@@ -2331,55 +2331,68 @@ export const StorageService = {
     this.notifyChange();
   },
 
+  getTombstones(): AppTombstones {
+    return this.getDeletedTombstones();
+  },
+
   // دریافت تمام خودروهای ثبت‌شده در حواله‌های خروج (هم ناوگان ذخیره‌شده و هم سوابق تحویل فاکتورها، به استثنای موارد حذف‌شده)
   getExitSlipVehicles(): Array<SavedVehicle & { sourceLabel?: string }> {
-    const tombstones = this.getTombstones();
-    const vehDelSet = new Set(tombstones.savedVehicles);
+    try {
+      const tombstones = this.getDeletedTombstones();
+      const vehDelSet = new Set(tombstones?.savedVehicles || []);
 
-    const fleet = this.getSavedVehicles().filter((v) => {
-      if (vehDelSet.has(v.id)) return false;
-      const infoKey = `info::${v.vehicleInfo.trim().toLowerCase()}`;
-      if (vehDelSet.has(infoKey) || vehDelSet.has(v.vehicleInfo.trim().toLowerCase())) return false;
-      return true;
-    });
+      const fleet = (this.getSavedVehicles() || []).filter((v) => {
+        if (!v || !v.id) return false;
+        if (vehDelSet.has(v.id)) return false;
+        const vInfo = String(v.vehicleInfo || '').trim().toLowerCase();
+        if (!vInfo) return true;
+        const infoKey = `info::${vInfo}`;
+        if (vehDelSet.has(infoKey) || vehDelSet.has(vInfo)) return false;
+        return true;
+      });
 
-    const result: Array<SavedVehicle & { sourceLabel?: string }> = fleet.map((v) => ({
-      ...v,
-      sourceLabel: 'ناوگان ثبت‌شده',
-    }));
+      const result: Array<SavedVehicle & { sourceLabel?: string }> = fleet.map((v) => ({
+        ...v,
+        vehicleInfo: String(v.vehicleInfo || ''),
+        sourceLabel: 'ناوگان ثبت‌شده',
+      }));
 
-    // همچنین بررسی تمام حواله‌های خروج ثبت‌شده در فاکتورهای فروش
-    const invoices = this.getInvoices();
-    const seenInfo = new Set(fleet.map((v) => (v.vehicleInfo || '').trim().toLowerCase()));
+      // همچنین بررسی تمام حواله‌های خروج ثبت‌شده در فاکتورهای فروش
+      const invoices = this.getInvoices() || [];
+      const seenInfo = new Set(fleet.map((v) => String(v.vehicleInfo || '').trim().toLowerCase()));
 
-    invoices.forEach((inv) => {
-      const exitSlip = inv.exitSlip;
-      if (exitSlip && exitSlip.vehicleInfo && exitSlip.vehicleInfo.trim()) {
-        const key = exitSlip.vehicleInfo.trim().toLowerCase();
-        const customId = `inv-veh-${inv.id}`;
-        const infoKey = `info::${key}`;
+      invoices.forEach((inv) => {
+        const exitSlip = inv.exitSlip;
+        if (exitSlip && exitSlip.vehicleInfo && String(exitSlip.vehicleInfo).trim()) {
+          const key = String(exitSlip.vehicleInfo).trim().toLowerCase();
+          const customId = `inv-veh-${inv.id}`;
+          const infoKey = `info::${key}`;
 
-        // اگر توسط کاربر حذف شده باشد، نمایش داده نشود
-        if (vehDelSet.has(customId) || vehDelSet.has(infoKey) || vehDelSet.has(key)) {
-          return;
+          // اگر توسط کاربر حذف شده باشد، نمایش داده نشود
+          if (vehDelSet.has(customId) || vehDelSet.has(infoKey) || vehDelSet.has(key)) {
+            return;
+          }
+
+          if (!seenInfo.has(key)) {
+            seenInfo.add(key);
+            result.push({
+              id: customId,
+              vehicleType: 'وانت / خودرو تحویل',
+              vehicleInfo: String(exitSlip.vehicleInfo).trim(),
+              driverName: exitSlip.receiverName || inv.customerName || '',
+              driverPhone: exitSlip.receiverPhone || inv.customerPhone || '',
+              createdAt: exitSlip.deliveredAt || inv.date,
+              sourceLabel: `حواله خروج فاکتور ${inv.invoiceNumber}`,
+            });
+          }
         }
+      });
 
-        if (!seenInfo.has(key)) {
-          seenInfo.add(key);
-          result.push({
-            id: customId,
-            vehicleType: 'وانت / خودرو تحویل',
-            vehicleInfo: exitSlip.vehicleInfo.trim(),
-            driverName: exitSlip.receiverName || inv.customerName || '',
-            driverPhone: exitSlip.receiverPhone || inv.customerPhone || '',
-            createdAt: exitSlip.deliveredAt || inv.date,
-            sourceLabel: `حواله خروج فاکتور ${inv.invoiceNumber}`,
-          });
-        }
-      }
-    });
-
-    return result;
+      return result;
+    } catch (err) {
+      console.error('Error in getExitSlipVehicles:', err);
+      return [];
+    }
   },
 
   clearInvoices() {

@@ -610,7 +610,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   };
 
   const filteredExitSlips = regularInvoices.filter((inv) => {
-    const log = exitSlipLogs[inv.id] || { printCount: 0, isDelivered: false };
+    const log: Partial<ExitSlipData> = exitSlipLogs[inv.id] || { printCount: 0, isDelivered: false };
     if (exitSlipFilter === 'pending_delivery' && log.isDelivered) return false;
     if (exitSlipFilter === 'delivered' && !log.isDelivered) return false;
     if (exitSlipFilter === 'unprinted' && log.printCount > 0) return false;
@@ -2856,6 +2856,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           isOpen={Boolean(deliveryModalInvoice)}
           invoice={deliveryModalInvoice}
           slipLog={exitSlipLogs[deliveryModalInvoice.id] || { invoiceId: deliveryModalInvoice.id, printCount: 0, history: [] }}
+          settings={settings}
           currentUser={currentUser}
           onClose={() => setDeliveryModalInvoice(null)}
           onSave={(deliveryData) => handleSaveExitSlipDelivery(deliveryModalInvoice.id, deliveryData)}

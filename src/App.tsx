@@ -1583,7 +1583,7 @@ export default function App() {
           onLoginSuccess={handleLoginSuccess}
           users={users}
           targetUser={loginTargetUser}
-          currentUserId={currentUser?.id}
+          currentUser={currentUser || undefined}
         />
       )}
 

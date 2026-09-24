@@ -16,6 +16,7 @@ interface IranPlatePickerProps {
   onChange: (formattedVehicleInfo: string) => void;
   customerName?: string;
   placeholder?: string;
+  initialVehicleType?: string;
 }
 
 export const COMMON_LETTERS = [
@@ -127,7 +128,7 @@ export const VEHICLE_TYPES = [
 export const COLOR_PRESETS = ['آبی', 'سفید', 'مشکی', 'نقره‌ای', 'کرم', 'زرد', 'قرمز', 'اتاق‌دار', 'کفی'];
 
 // Parse an existing vehicle info string into plate segments
-export function parseVehicleInfo(text: string): {
+export function parseVehicleInfo(text?: string | null): {
   vehicleType: string;
   part1: string;
   letter: string;
@@ -136,7 +137,8 @@ export function parseVehicleInfo(text: string): {
   colorDesc: string;
   isFreeText: boolean;
 } {
-  if (!text || !text.trim()) {
+  const safeText = String(text || '').trim();
+  if (!safeText) {
     return {
       vehicleType: 'وانت نیسان',
       part1: '',
@@ -148,7 +150,7 @@ export function parseVehicleInfo(text: string): {
     };
   }
 
-  const enText = toEnglishDigits(text);
+  const enText = toEnglishDigits(safeText);
 
   // Attempt pattern 1: 24 ع 567 ایران 68 (or 24 - ع - 567)
   const pattern1 = enText.match(/(\d{2})\s*([آ-یa-zA-Zء-ي]{1,3})\s*(\d{3})\s*(?:ایران|iran|-)?\s*(\d{2})/i);
@@ -157,7 +159,7 @@ export function parseVehicleInfo(text: string): {
 
   let vehicleType = 'وانت نیسان';
   for (const vt of VEHICLE_TYPES) {
-    if (vt !== 'سایر / دستی' && text.includes(vt)) {
+    if (vt !== 'سایر / دستی' && safeText.includes(vt)) {
       vehicleType = vt;
       break;
     }
@@ -165,7 +167,7 @@ export function parseVehicleInfo(text: string): {
 
   let colorDesc = '';
   for (const c of COLOR_PRESETS) {
-    if (text.includes(c)) {
+    if (safeText.includes(c)) {
       colorDesc = c;
       break;
     }
