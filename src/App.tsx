@@ -24,6 +24,7 @@ import { UserLoginModal } from './components/UserLoginModal';
 import { LoginScreen } from './components/LoginScreen';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { MobileFloatingPWAInstall } from './components/MobileFloatingPWAInstall';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { CheckCircle2, ShieldAlert } from 'lucide-react';
 
 export default function App() {
@@ -1443,22 +1444,24 @@ export default function App() {
         )}
 
         {activeTab === 'inventory' && isTabPermitted('inventory', currentUser, settings) && (
-          <InventoryManager
-            products={products}
-            movements={movements}
-            invoices={invoices}
-            inboundReceipts={inboundReceipts}
-            settings={settings}
-            currentUser={currentUser || undefined}
-            onSaveProduct={handleSaveProduct}
-            onDeleteProduct={handleDeleteProduct}
-            onAdjustStock={handleAdjustStock}
-            onImportProducts={handleImportProducts}
-            onConfirmInboundReceipt={handleConfirmInboundReceipt}
-            selectedInboundReceiptId={selectedInboundReceiptId}
-            initialSubTab={inventorySubTab}
-            onUpdateSettings={handleSaveSettings}
-          />
+          <ErrorBoundary fallbackTitle="خطا در بخش انبارداری و حواله‌ها">
+            <InventoryManager
+              products={products}
+              movements={movements}
+              invoices={invoices}
+              inboundReceipts={inboundReceipts}
+              settings={settings}
+              currentUser={currentUser || undefined}
+              onSaveProduct={handleSaveProduct}
+              onDeleteProduct={handleDeleteProduct}
+              onAdjustStock={handleAdjustStock}
+              onImportProducts={handleImportProducts}
+              onConfirmInboundReceipt={handleConfirmInboundReceipt}
+              selectedInboundReceiptId={selectedInboundReceiptId}
+              initialSubTab={inventorySubTab}
+              onUpdateSettings={handleSaveSettings}
+            />
+          </ErrorBoundary>
         )}
 
         {activeTab === 'customers' && isTabPermitted('customers', currentUser, settings) && (

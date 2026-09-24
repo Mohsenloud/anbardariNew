@@ -51,33 +51,38 @@ export function getCurrentJalaliTime(): string {
 
 const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
 
-export function toPersianDigits(n: number | string): string {
+export function toPersianDigits(n: number | string | null | undefined): string {
+  if (n === null || n === undefined || n === '') return '';
   return String(n).replace(/\d/g, (d) => persianDigits[parseInt(d, 10)] || d);
 }
 
-export function toEnglishDigits(str: number | string): string {
+export function toEnglishDigits(str: number | string | null | undefined): string {
+  if (str === null || str === undefined || str === '') return '';
   return String(str)
     .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776))
     .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
 }
 
-export function formatPrice(amount: number, currency = 'تومان', usePersianDigits = true): string {
-  const formatted = Math.round(amount).toLocaleString('en-US');
+export function formatPrice(amount: number | null | undefined, currency = 'تومان', usePersianDigits = true): string {
+  const safeAmount = Number(amount) || 0;
+  const formatted = Math.round(safeAmount).toLocaleString('en-US');
   const result = `${formatted} ${currency}`;
   return usePersianDigits ? toPersianDigits(result) : result;
 }
 
-export function formatNumber(num: number, usePersianDigits = true): string {
-  const formatted = Number(num).toLocaleString('en-US');
+export function formatNumber(num: number | null | undefined, usePersianDigits = true): string {
+  const safeNum = Number(num) || 0;
+  const formatted = safeNum.toLocaleString('en-US');
   return usePersianDigits ? toPersianDigits(formatted) : formatted;
 }
 
-export function numberToPersianWords(num: number): string {
-  if (num === 0) return 'صفر';
-  if (isNaN(num)) return '';
+export function numberToPersianWords(num: number | null | undefined): string {
+  const safeNum = Number(num);
+  if (num === null || num === undefined || isNaN(safeNum)) return '';
+  if (safeNum === 0) return 'صفر';
 
-  const isNegative = num < 0;
-  let n = Math.abs(Math.floor(num));
+  const isNegative = safeNum < 0;
+  let n = Math.abs(Math.floor(safeNum));
 
   const yekan = ['', 'یک', 'دو', 'سه', 'چهار', 'پنج', 'شش', 'هفت', 'هشت', 'نه'];
   const dahha = ['', 'ده', 'بیست', 'سی', 'چهل', 'پنجاه', 'شصت', 'هفتاد', 'هشتاد', 'نود'];

@@ -118,15 +118,16 @@ export const VehicleFleetModal: React.FC<VehicleFleetModalProps> = ({
   };
 
   const filteredVehicles = vehicles.filter((v) => {
+    if (!v) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
-      (v.vehicleInfo || '').toLowerCase().includes(q) ||
-      (v.vehicleType || '').toLowerCase().includes(q) ||
-      (v.driverName || '').toLowerCase().includes(q) ||
-      (v.driverPhone || '').includes(q) ||
-      (v.plateNumber || '').includes(q) ||
-      (v.sourceLabel || '').toLowerCase().includes(q)
+      String(v.vehicleInfo || '').toLowerCase().includes(q) ||
+      String(v.vehicleType || '').toLowerCase().includes(q) ||
+      String(v.driverName || '').toLowerCase().includes(q) ||
+      String(v.driverPhone || '').includes(q) ||
+      String(v.plateNumber || '').includes(q) ||
+      String(v.sourceLabel || '').toLowerCase().includes(q)
     );
   });
 

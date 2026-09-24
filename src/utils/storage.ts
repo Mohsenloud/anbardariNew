@@ -2210,6 +2210,12 @@ export const StorageService = {
     };
     logs[invoiceId] = updated;
     this.saveExitSlipLogs(logs);
+
+    if (targetInv) {
+      targetInv.exitSlip = updated;
+      this.saveInvoices(invoices);
+    }
+
     return updated;
   },
 
@@ -2257,39 +2263,39 @@ export const StorageService = {
     notes?: string;
   }): SavedVehicle {
     const list = this.getSavedVehicles();
-    const cleanInfo = data.vehicleInfo.trim();
-    const cleanDriver = (data.driverName || '').trim();
-    const cleanPhone = (data.driverPhone || '').trim();
+    const cleanInfo = String(data?.vehicleInfo || '').trim();
+    const cleanDriver = String(data?.driverName || '').trim();
+    const cleanPhone = String(data?.driverPhone || '').trim();
 
     // جستجوی خودروی مشابه بر اساس آی‌دی یا متن مشخصات ماشین
-    const existingIdx = data.id
+    const existingIdx = data?.id
       ? list.findIndex((v) => v.id === data.id)
-      : list.findIndex((v) => (v.vehicleInfo || '').trim() === cleanInfo && (!cleanDriver || (v.driverName || '') === cleanDriver));
+      : list.findIndex((v) => String(v?.vehicleInfo || '').trim() === cleanInfo && (!cleanDriver || String(v?.driverName || '') === cleanDriver));
 
     let savedVehicle: SavedVehicle;
 
     if (existingIdx !== -1) {
       savedVehicle = {
         ...list[existingIdx],
-        vehicleType: data.vehicleType || list[existingIdx].vehicleType || 'وانت باربری',
-        vehicleInfo: cleanInfo || list[existingIdx].vehicleInfo,
+        vehicleType: data?.vehicleType || list[existingIdx].vehicleType || 'وانت باربری',
+        vehicleInfo: cleanInfo || list[existingIdx].vehicleInfo || '',
         driverName: cleanDriver || list[existingIdx].driverName || '',
         driverPhone: cleanPhone || list[existingIdx].driverPhone || '',
-        plateNumber: data.plateNumber?.trim() || list[existingIdx].plateNumber || '',
-        colorDesc: data.colorDesc?.trim() || list[existingIdx].colorDesc || '',
-        notes: data.notes?.trim() || list[existingIdx].notes || '',
+        plateNumber: data?.plateNumber?.trim() || list[existingIdx].plateNumber || '',
+        colorDesc: data?.colorDesc?.trim() || list[existingIdx].colorDesc || '',
+        notes: data?.notes?.trim() || list[existingIdx].notes || '',
       };
       list[existingIdx] = savedVehicle;
     } else {
       savedVehicle = {
-        id: data.id || `veh-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        vehicleType: data.vehicleType || 'وانت باربری',
+        id: data?.id || `veh-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        vehicleType: data?.vehicleType || 'وانت باربری',
         vehicleInfo: cleanInfo,
         driverName: cleanDriver,
         driverPhone: cleanPhone,
-        plateNumber: data.plateNumber?.trim() || '',
-        colorDesc: data.colorDesc?.trim() || '',
-        notes: data.notes?.trim() || '',
+        plateNumber: data?.plateNumber?.trim() || '',
+        colorDesc: data?.colorDesc?.trim() || '',
+        notes: data?.notes?.trim() || '',
         createdAt: getCurrentJalaliDate(),
       };
       list.unshift(savedVehicle);
@@ -2300,18 +2306,22 @@ export const StorageService = {
   },
 
   deleteSavedVehicle(id: string, vehicleInfo?: string): void {
-    const cleanId = String(id).trim();
-    this.recordTombstone('savedVehicles', cleanId);
+    const cleanId = String(id || '').trim();
+    if (cleanId) {
+      this.recordTombstone('savedVehicles', cleanId);
+    }
 
-    const targetInfo = (vehicleInfo || '').trim().toLowerCase();
+    const targetInfo = String(vehicleInfo || '').trim().toLowerCase();
     if (targetInfo) {
       this.recordTombstone('savedVehicles', `info::${targetInfo}`);
     }
 
     const list = this.getSavedVehicles();
     const updated = list.filter((v) => {
-      if (v.id === cleanId) return false;
-      if (targetInfo && v.vehicleInfo.trim().toLowerCase() === targetInfo) return false;
+      if (!v) return false;
+      if (cleanId && v.id === cleanId) return false;
+      const vInfo = String(v.vehicleInfo || '').trim().toLowerCase();
+      if (targetInfo && vInfo === targetInfo) return false;
       return true;
     });
 
@@ -2322,9 +2332,11 @@ export const StorageService = {
   clearAllSavedVehicles(): void {
     const current = this.getExitSlipVehicles();
     current.forEach((v) => {
-      this.recordTombstone('savedVehicles', v.id);
-      if (v.vehicleInfo) {
-        this.recordTombstone('savedVehicles', `info::${v.vehicleInfo.trim().toLowerCase()}`);
+      if (v?.id) {
+        this.recordTombstone('savedVehicles', v.id);
+      }
+      if (v?.vehicleInfo) {
+        this.recordTombstone('savedVehicles', `info::${String(v.vehicleInfo).trim().toLowerCase()}`);
       }
     });
     this.saveSavedVehicles([]);

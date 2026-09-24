@@ -12,6 +12,7 @@ import { InboundReceiptsList } from './InboundReceiptsList';
 import { DirectTransfersList } from './DirectTransfersList';
 import { CategoryManagerModal } from './CategoryManagerModal';
 import { ProductDetailsModal } from './ProductDetailsModal';
+import { ErrorBoundary } from './ErrorBoundary';
 import { 
   Plus, 
   Search, 
@@ -2800,73 +2801,79 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
       {/* EXIT SLIP DETAILS MODAL */}
       {detailSlipInvoice && (
-        <ExitSlipDetailsModal
-          isOpen={Boolean(detailSlipInvoice)}
-          invoice={detailSlipInvoice}
-          slipLog={exitSlipLogs[detailSlipInvoice.id] || { invoiceId: detailSlipInvoice.id, printCount: 0, history: [] }}
-          settings={settings}
-          currentUser={currentUser}
-          onClose={() => setDetailSlipInvoice(null)}
-          onPrint={(inv) => {
-            setDetailSlipInvoice(null);
-            handleOpenExitSlip(inv);
-          }}
-          onOpenDeliveryModal={(inv) => {
-            setDetailSlipInvoice(null);
-            setDeliveryModalInvoice(inv);
-          }}
-          onOpenHistoryModal={(inv) => {
-            setDetailSlipInvoice(null);
-            setHistoryModalInvoice(inv);
-          }}
-          onExportCustomer={(inv) => {
-            setDetailSlipInvoice(null);
-            const found = customersList.find((c) => c.id === inv.customerId || c.name.trim().toLowerCase() === inv.customerName.trim().toLowerCase());
-            setCustomerExportSelected(found || {
-              id: inv.customerId || `cust-${inv.customerName}`,
-              name: inv.customerName,
-              phone: inv.customerPhone || '',
-              createdAt: inv.date,
-            });
-            setIsCustomerExportModalOpen(true);
-          }}
-          onToggleDelivery={(invId) => {
-            handleQuickToggleDelivery(invId);
-          }}
-        />
+        <ErrorBoundary fallbackTitle="خطا در نمایش جزئیات حواله خروج" onReset={() => setDetailSlipInvoice(null)}>
+          <ExitSlipDetailsModal
+            isOpen={Boolean(detailSlipInvoice)}
+            invoice={detailSlipInvoice}
+            slipLog={exitSlipLogs[detailSlipInvoice.id] || { invoiceId: detailSlipInvoice.id, printCount: 0, history: [] }}
+            settings={settings}
+            currentUser={currentUser}
+            onClose={() => setDetailSlipInvoice(null)}
+            onPrint={(inv) => {
+              setDetailSlipInvoice(null);
+              handleOpenExitSlip(inv);
+            }}
+            onOpenDeliveryModal={(inv) => {
+              setDetailSlipInvoice(null);
+              setDeliveryModalInvoice(inv);
+            }}
+            onOpenHistoryModal={(inv) => {
+              setDetailSlipInvoice(null);
+              setHistoryModalInvoice(inv);
+            }}
+            onExportCustomer={(inv) => {
+              setDetailSlipInvoice(null);
+              const found = customersList.find((c) => c.id === inv.customerId || c.name.trim().toLowerCase() === inv.customerName.trim().toLowerCase());
+              setCustomerExportSelected(found || {
+                id: inv.customerId || `cust-${inv.customerName}`,
+                name: inv.customerName,
+                phone: inv.customerPhone || '',
+                createdAt: inv.date,
+              });
+              setIsCustomerExportModalOpen(true);
+            }}
+            onToggleDelivery={(invId) => {
+              handleQuickToggleDelivery(invId);
+            }}
+          />
+        </ErrorBoundary>
       )}
 
       {/* EXIT SLIP PRINT MODAL */}
       {selectedExitSlipInvoice && (
-        <ExitSlipModal
-          invoice={selectedExitSlipInvoice}
-          settings={settings}
-          currentUser={currentUser}
-          slipLog={exitSlipLogs[selectedExitSlipInvoice.id] || { invoiceId: selectedExitSlipInvoice.id, printCount: 0, history: [] }}
-          onRecordPrint={(currentSlip) => handleRecordExitSlipPrint(selectedExitSlipInvoice.id, currentSlip)}
-          onUpdateDelivery={(deliveryData) => handleSaveExitSlipDelivery(selectedExitSlipInvoice.id, deliveryData)}
-          onUpdateSettings={onUpdateSettings}
-          onClose={() => setSelectedExitSlipInvoice(null)}
-        />
+        <ErrorBoundary fallbackTitle="خطا در نمایش برگه چاپ حواله خروج" onReset={() => setSelectedExitSlipInvoice(null)}>
+          <ExitSlipModal
+            invoice={selectedExitSlipInvoice}
+            settings={settings}
+            currentUser={currentUser}
+            slipLog={exitSlipLogs[selectedExitSlipInvoice.id] || { invoiceId: selectedExitSlipInvoice.id, printCount: 0, history: [] }}
+            onRecordPrint={(currentSlip) => handleRecordExitSlipPrint(selectedExitSlipInvoice.id, currentSlip)}
+            onUpdateDelivery={(deliveryData) => handleSaveExitSlipDelivery(selectedExitSlipInvoice.id, deliveryData)}
+            onUpdateSettings={onUpdateSettings}
+            onClose={() => setSelectedExitSlipInvoice(null)}
+          />
+        </ErrorBoundary>
       )}
 
       {/* EXIT SLIP DELIVERY & VEHICLE MODAL */}
       {deliveryModalInvoice && (
-        <ExitSlipDeliveryModal
-          isOpen={Boolean(deliveryModalInvoice)}
-          invoice={deliveryModalInvoice}
-          slipLog={exitSlipLogs[deliveryModalInvoice.id] || { invoiceId: deliveryModalInvoice.id, printCount: 0, history: [] }}
-          settings={settings}
-          currentUser={currentUser}
-          onClose={() => setDeliveryModalInvoice(null)}
-          onSave={(deliveryData) => handleSaveExitSlipDelivery(deliveryModalInvoice.id, deliveryData)}
-          onSaveAndPrint={(deliveryData) => {
-            handleSaveExitSlipDelivery(deliveryModalInvoice.id, deliveryData);
-            const targetInv = deliveryModalInvoice;
-            setDeliveryModalInvoice(null);
-            handleOpenExitSlip(targetInv);
-          }}
-        />
+        <ErrorBoundary fallbackTitle="خطا در باز کردن پنجره ثبت راننده و خودرو" onReset={() => setDeliveryModalInvoice(null)}>
+          <ExitSlipDeliveryModal
+            isOpen={Boolean(deliveryModalInvoice)}
+            invoice={deliveryModalInvoice}
+            slipLog={exitSlipLogs[deliveryModalInvoice.id] || { invoiceId: deliveryModalInvoice.id, printCount: 0, history: [] }}
+            settings={settings}
+            currentUser={currentUser}
+            onClose={() => setDeliveryModalInvoice(null)}
+            onSave={(deliveryData) => handleSaveExitSlipDelivery(deliveryModalInvoice.id, deliveryData)}
+            onSaveAndPrint={(deliveryData) => {
+              handleSaveExitSlipDelivery(deliveryModalInvoice.id, deliveryData);
+              const targetInv = deliveryModalInvoice;
+              setDeliveryModalInvoice(null);
+              handleOpenExitSlip(targetInv);
+            }}
+          />
+        </ErrorBoundary>
       )}
 
       {/* EXIT SLIP DETAILED PRINT HISTORY MODAL */}

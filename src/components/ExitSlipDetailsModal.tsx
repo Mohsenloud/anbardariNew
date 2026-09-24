@@ -50,7 +50,8 @@ export const ExitSlipDetailsModal: React.FC<ExitSlipDetailsModalProps> = ({
 
   const isDelivered = Boolean(slipLog.isDelivered);
   const isPrinted = slipLog.printCount > 0;
-  const totalQuantity = invoice.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  const safeItems = Array.isArray(invoice.items) ? invoice.items : [];
+  const totalQuantity = safeItems.reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0);
   const slipNumber = slipLog.slipNumber || invoice.invoiceNumber;
 
   return (
@@ -240,7 +241,7 @@ export const ExitSlipDetailsModal: React.FC<ExitSlipDetailsModalProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 font-bold text-slate-800">
                 <Package className="w-4 h-4 text-emerald-600" />
-                <span>اقلام برگه خروج انبار ({toPersianDigits(invoice.items.length)} ردیف کالایی)</span>
+                <span>اقلام برگه خروج انبار ({toPersianDigits(safeItems.length)} ردیف کالایی)</span>
               </div>
               <span className="font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-lg">
                 مجموع تعداد کل: <strong className="font-mono font-black text-emerald-700">{toPersianDigits(totalQuantity)}</strong>
@@ -259,18 +260,18 @@ export const ExitSlipDetailsModal: React.FC<ExitSlipDetailsModalProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {invoice.items.map((item, idx) => (
+                  {safeItems.map((item, idx) => (
                     <tr key={item.id || idx} className={idx % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'}>
                       <td className="p-2.5 text-center text-slate-400 font-mono">{toPersianDigits(idx + 1)}</td>
                       <td className="p-2.5">
-                        <div className="font-bold text-slate-900">{item.name}</div>
+                        <div className="font-bold text-slate-900">{item.productName || item.name || 'کالا'}</div>
                         {item.variantName && (
                           <div className="text-[10px] text-purple-700 font-medium mt-0.5">
                             تنوع: {item.variantName}
                           </div>
                         )}
                       </td>
-                      <td className="p-2.5 text-center font-mono text-slate-600">{toPersianDigits(item.code || '---')}</td>
+                      <td className="p-2.5 text-center font-mono text-slate-600">{toPersianDigits(item.productCode || item.code || '---')}</td>
                       <td className="p-2.5 text-center font-mono font-bold text-emerald-700 text-sm">
                         {toPersianDigits(item.quantity)}
                       </td>
