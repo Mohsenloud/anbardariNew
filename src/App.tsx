@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Product, Customer, Invoice, StockMovement, StoreSettings, AppUser, PurchaseInvoice, InboundReceipt, InboundReceiptItem, InboundReceiptStatus } from './types';
+import { Product, Customer, Invoice, StockMovement, StoreSettings, AppUser, PurchaseInvoice, InboundReceipt, InboundReceiptItem, InboundReceiptStatus, CustomerTransaction } from './types';
 import { StorageService } from './utils/storage';
 import { getCurrentJalaliDate } from './utils/jalali';
 import { isTabPermitted, getDefaultTabForUser, getRoleBadgeConfig } from './utils/permissions';
@@ -31,6 +31,7 @@ export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [customerTransactions, setCustomerTransactions] = useState<CustomerTransaction[]>([]);
   const [purchaseInvoices, setPurchaseInvoices] = useState<PurchaseInvoice[]>([]);
   const [inboundReceipts, setInboundReceipts] = useState<InboundReceipt[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
@@ -57,6 +58,7 @@ export default function App() {
     setProducts(StorageService.getProducts());
     setCustomers(StorageService.getCustomers());
     setInvoices(StorageService.getInvoices());
+    setCustomerTransactions(StorageService.getCustomerTransactions());
     setPurchaseInvoices(StorageService.getPurchaseInvoices());
     setInboundReceipts(StorageService.getInboundReceipts());
     setMovements(StorageService.getMovements());
@@ -952,6 +954,102 @@ export default function App() {
     setActiveTab('new-invoice');
   };
 
+  // 7.1 CUSTOMER TRANSACTIONS (صورتحساب، ثبت واریزی و بدهی مشتری)
+  const handleSaveCustomerTransaction = (txn: CustomerTransaction, autoSettleInvoices?: boolean) => {
+    StorageService.addCustomerTransaction(txn);
+    const updatedTxns = StorageService.getCustomerTransactions();
+    setCustomerTransactions(updatedTxns);
+
+    // If it's a deposit and auto-settle is requested, automatically allocate the deposit to customer's unpaid invoices (FIFO)
+    if (txn.type === 'deposit' && autoSettleInvoices) {
+      let remainingMoney = txn.amount;
+      const customerUnpaidInvoices = invoices
+        .filter((inv) => {
+          if (inv.isProforma) return false;
+          const matches =
+            (inv.customerId && inv.customerId === txn.customerId) ||
+            (inv.customerName && inv.customerName.trim().toLowerCase() === txn.customerName.trim().toLowerCase());
+          if (!matches) return false;
+          return inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'partial';
+        })
+        .sort((a, b) => a.date.localeCompare(b.date)); // oldest first
+
+      if (customerUnpaidInvoices.length > 0 && remainingMoney > 0) {
+        const invoiceUpdates: { invoiceId: string; status: 'paid' | 'unpaid' | 'partial'; paidAmount: number }[] = [];
+
+        for (const inv of customerUnpaidInvoices) {
+          if (remainingMoney <= 0) break;
+          const currentPaid = inv.paidAmount || 0;
+          const debtOnInv = Math.max(0, inv.finalTotal - currentPaid);
+          if (debtOnInv <= 0) continue;
+
+          if (remainingMoney >= debtOnInv) {
+            remainingMoney -= debtOnInv;
+            invoiceUpdates.push({
+              invoiceId: inv.id,
+              status: 'paid',
+              paidAmount: inv.finalTotal,
+            });
+          } else {
+            const newPaid = currentPaid + remainingMoney;
+            remainingMoney = 0;
+            invoiceUpdates.push({
+              invoiceId: inv.id,
+              status: 'partial',
+              paidAmount: newPaid,
+            });
+          }
+        }
+
+        if (invoiceUpdates.length > 0) {
+          const updateMap = new Map(invoiceUpdates.map((u) => [u.invoiceId, u]));
+          const updatedInvoices = invoices.map((inv) => {
+            const up = updateMap.get(inv.id);
+            if (up) {
+              return {
+                ...inv,
+                paymentStatus: up.status,
+                paidAmount: up.paidAmount,
+              };
+            }
+            return inv;
+          });
+          setInvoices(updatedInvoices);
+          StorageService.saveInvoices(updatedInvoices);
+        }
+      }
+    }
+
+    StorageService.logActivity({
+      category: 'customer',
+      actionType: txn.type === 'deposit' ? 'customer_deposit' : 'customer_debt',
+      actionTitle: txn.type === 'deposit' ? 'ثبت واریزی طرف‌حساب' : 'ثبت سند بدهی مشتری',
+      details: `${txn.type === 'deposit' ? 'واریز' : 'بدهی'} به مبلغ ${txn.amount.toLocaleString('fa-IR')} ${settings.currency} برای «${txn.customerName}» (${txn.title || 'سند مالی'})`,
+    });
+
+    showToast(
+      txn.type === 'deposit'
+        ? `واریزی به مبلغ ${txn.amount.toLocaleString('fa-IR')} ${settings.currency} در حساب «${txn.customerName}» ثبت شد.`
+        : `سند بدهی به مبلغ ${txn.amount.toLocaleString('fa-IR')} ${settings.currency} برای «${txn.customerName}» ثبت شد.`
+    );
+  };
+
+  const handleDeleteCustomerTransaction = (txnId: string) => {
+    const txn = customerTransactions.find((t) => t.id === txnId);
+    StorageService.deleteCustomerTransaction(txnId);
+    const updated = StorageService.getCustomerTransactions();
+    setCustomerTransactions(updated);
+
+    StorageService.logActivity({
+      category: 'customer',
+      actionType: 'delete_customer_transaction',
+      actionTitle: 'حذف تراکنش مالی مشتری',
+      details: `حذف سند مالی به مبلغ ${txn?.amount.toLocaleString('fa-IR') || '-'} ${settings.currency} از پرونده «${txn?.customerName || '-'}»`,
+    });
+
+    showToast('سند مالی مورد نظر حذف شد.');
+  };
+
   // 7.5 PURCHASE INVOICES & WAREHOUSE INBOUND RECEIPTS
   const handleSavePurchaseInvoice = (
     newPurchaseInvoice: PurchaseInvoice,
@@ -1367,6 +1465,7 @@ export default function App() {
           <CustomersManager
             customers={customers}
             invoices={invoices}
+            transactions={customerTransactions}
             settings={settings}
             currentUser={currentUser || undefined}
             onSaveCustomer={handleSaveCustomer}
@@ -1374,6 +1473,9 @@ export default function App() {
             onSelectCustomerForInvoice={handleSelectCustomerForInvoice}
             onImportCustomers={handleImportCustomers}
             onBatchUpdatePaymentStatus={handleBatchUpdatePaymentStatus}
+            onSaveTransaction={handleSaveCustomerTransaction}
+            onDeleteTransaction={handleDeleteCustomerTransaction}
+            onViewInvoice={(inv) => setViewingInvoice(inv)}
           />
         )}
 

@@ -19,7 +19,9 @@ import {
   DirectTransfer,
   DirectTransferItem,
   DirectTransferReturnRecord,
-  SavedVehicle
+  SavedVehicle,
+  CustomerTransaction,
+  CustomerLedgerEntry
 } from '../types';
 import { getCurrentJalaliDate, getCurrentJalaliTime } from './jalali';
 import {
@@ -59,6 +61,7 @@ const STORAGE_KEYS = {
   DELETED_INVOICES: 'factor_app_deleted_invoices_v1',
   TOMBSTONES: 'factor_app_tombstones_v1',
   SAVED_VEHICLES: 'factor_app_saved_vehicles_v1',
+  CUSTOMER_TRANSACTIONS: 'factor_app_customer_transactions_v1',
   CATEGORIES: 'factor_app_categories_v1',
 };
 
@@ -70,6 +73,7 @@ export interface AppTombstones {
   inboundReceipts: string[];
   directTransfers: string[];
   savedVehicles: string[];
+  customerTransactions: string[];
   users: string[];
   categories: string[];
 }
@@ -586,6 +590,7 @@ export const StorageService = {
       inboundReceipts: [],
       directTransfers: [],
       savedVehicles: [],
+      customerTransactions: [],
       users: [],
       categories: [],
     };
@@ -646,6 +651,7 @@ export const StorageService = {
         inboundReceipts: 'inboundReceipt',
         directTransfers: 'directTransfer',
         savedVehicles: 'savedVehicle',
+        customerTransactions: 'customerTransaction',
         users: 'user',
         categories: 'category',
       };
@@ -789,6 +795,7 @@ export const StorageService = {
             activityLogs: this.getActivityLogs(),
             directTransfers: this.getDirectTransfers(),
             savedVehicles: this.getSavedVehicles(),
+            customerTransactions: this.getCustomerTransactions(),
             categories: this.getCategories(),
             deletedInvoiceIds: tombstones.invoices,
             tombstones,
@@ -870,6 +877,7 @@ export const StorageService = {
           mergeList('inboundReceipts', d.tombstones.inboundReceipts);
           mergeList('directTransfers', d.tombstones.directTransfers);
           mergeList('savedVehicles', d.tombstones.savedVehicles);
+          mergeList('customerTransactions', d.tombstones.customerTransactions);
           mergeList('users', d.tombstones.users);
           mergeList('categories', d.tombstones.categories);
         }
@@ -890,6 +898,7 @@ export const StorageService = {
         const inbDelSet = new Set(localTombstones.inboundReceipts);
         const transDelSet = new Set(localTombstones.directTransfers);
         const vehDelSet = new Set(localTombstones.savedVehicles);
+        const txnDelSet = new Set(localTombstones.customerTransactions || []);
         const usrDelSet = new Set(localTombstones.users);
         const catDelSet = new Set(localTombstones.categories.map((c) => c.toLowerCase()));
 
@@ -944,6 +953,12 @@ export const StorageService = {
         if (Array.isArray(d.savedVehicles)) {
           const cleanVehicles = d.savedVehicles.filter((v: any) => !vehDelSet.has(v.id));
           localStorage.setItem(STORAGE_KEYS.SAVED_VEHICLES, JSON.stringify(cleanVehicles));
+          hasAnyUpdate = true;
+        }
+
+        if (Array.isArray(d.customerTransactions)) {
+          const cleanTransactions = d.customerTransactions.filter((t: CustomerTransaction) => !txnDelSet.has(t.id));
+          localStorage.setItem(STORAGE_KEYS.CUSTOMER_TRANSACTIONS, JSON.stringify(cleanTransactions));
           hasAnyUpdate = true;
         }
 
@@ -1357,6 +1372,210 @@ export const StorageService = {
     localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(remaining));
     this.queuePushToServer({ customers: remaining });
     this.notifyChange();
+  },
+
+  // -------------------------------------------------------------
+  // CUSTOMER TRANSACTIONS & FINANCIAL LEDGER (صورتحساب و گردش حساب مشتری)
+  // -------------------------------------------------------------
+  getCustomerTransactions(): CustomerTransaction[] {
+    const data = localStorage.getItem(STORAGE_KEYS.CUSTOMER_TRANSACTIONS);
+    const tombstones = this.getDeletedTombstones();
+    const txnDelSet = new Set(tombstones.customerTransactions || []);
+
+    if (!data) return [];
+    try {
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed.filter((t: CustomerTransaction) => !txnDelSet.has(t.id)) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  saveCustomerTransactions(transactions: CustomerTransaction[]) {
+    const tombstones = this.getDeletedTombstones();
+    const txnDelSet = new Set(tombstones.customerTransactions || []);
+    const clean = transactions.filter((t) => !txnDelSet.has(t.id));
+    localStorage.setItem(STORAGE_KEYS.CUSTOMER_TRANSACTIONS, JSON.stringify(clean));
+    this.queuePushToServer({ customerTransactions: clean });
+    this.notifyChange();
+  },
+
+  addCustomerTransaction(transaction: CustomerTransaction): CustomerTransaction {
+    const list = this.getCustomerTransactions();
+    const existsIndex = list.findIndex((t) => t.id === transaction.id);
+    let updated: CustomerTransaction[];
+    if (existsIndex >= 0) {
+      updated = list.map((t) => (t.id === transaction.id ? transaction : t));
+    } else {
+      updated = [transaction, ...list];
+    }
+    this.saveCustomerTransactions(updated);
+    return transaction;
+  },
+
+  deleteCustomerTransaction(id: string) {
+    const cleanId = String(id).trim();
+    this.recordTombstone('customerTransactions', cleanId);
+    const remaining = this.getCustomerTransactions().filter((t) => t.id !== cleanId);
+    localStorage.setItem(STORAGE_KEYS.CUSTOMER_TRANSACTIONS, JSON.stringify(remaining));
+    this.queuePushToServer({ customerTransactions: remaining });
+    this.notifyChange();
+  },
+
+  getCustomerTransactionsByCustomerId(customerId: string): CustomerTransaction[] {
+    const all = this.getCustomerTransactions();
+    return all.filter((t) => t.customerId === customerId);
+  },
+
+  buildCustomerLedger(
+    customer: Customer,
+    invoices: Invoice[],
+    transactions: CustomerTransaction[]
+  ): {
+    entries: CustomerLedgerEntry[];
+    totalDebit: number;
+    totalCredit: number;
+    netBalance: number;
+    balanceStatus: 'debtor' | 'settled' | 'creditor';
+    unpaidInvoicesCount: number;
+  } {
+    const rawEntries: Omit<CustomerLedgerEntry, 'balance' | 'balanceStatus'>[] = [];
+
+    // 1. Process all sales invoices (excluding proformas)
+    const customerInvoices = invoices.filter((inv) => {
+      if (inv.isProforma) return false;
+      return (
+        (inv.customerId && inv.customerId === customer.id) ||
+        (inv.customerName && inv.customerName.trim().toLowerCase() === customer.name.trim().toLowerCase())
+      );
+    });
+
+    let unpaidInvoicesCount = 0;
+
+    customerInvoices.forEach((inv) => {
+      const remainingOnInv = Math.max(0, inv.finalTotal - (inv.paidAmount || 0));
+      if (remainingOnInv > 0) {
+        unpaidInvoicesCount++;
+      }
+
+      // 1.1 Debit entry for the full invoice amount
+      rawEntries.push({
+        id: `inv-deb-${inv.id}`,
+        date: inv.date,
+        documentNumber: inv.invoiceNumber,
+        documentType: 'invoice',
+        documentTypeLabel: inv.type === 'official' ? 'فاکتور رسمی فروش' : 'فاکتور فروش',
+        description: `خرید کالا طبق فاکتور شماره ${inv.invoiceNumber} (${inv.items.length} قلم)${inv.notes ? ` - ${inv.notes}` : ''}`,
+        debit: inv.finalTotal,
+        credit: 0,
+        paymentMethod: inv.paymentMethod ? PAYMENT_METHOD_LABELS[inv.paymentMethod] || inv.paymentMethod : undefined,
+        notes: inv.notes,
+        rawInvoice: inv,
+      });
+
+      // 1.2 Credit entry if payment occurred at invoice issuance
+      if (inv.paidAmount && inv.paidAmount > 0) {
+        rawEntries.push({
+          id: `inv-pay-${inv.id}`,
+          date: inv.date,
+          documentNumber: inv.invoiceNumber,
+          documentType: 'invoice_payment',
+          documentTypeLabel: 'واریز همزمان با فاکتور',
+          description: `پرداخت وجه همزمان با صدور فاکتور شماره ${inv.invoiceNumber}${inv.paymentMethod ? ` [${PAYMENT_METHOD_LABELS[inv.paymentMethod] || inv.paymentMethod}]` : ''}${inv.transferDescription ? ` (${inv.transferDescription})` : ''}`,
+          debit: 0,
+          credit: inv.paidAmount,
+          paymentMethod: inv.paymentMethod ? PAYMENT_METHOD_LABELS[inv.paymentMethod] || inv.paymentMethod : undefined,
+          trackingNumber: inv.chequeNumber || undefined,
+          notes: inv.transferDescription || inv.notes,
+          rawInvoice: inv,
+        });
+      }
+    });
+
+    // 2. Process all standalone transactions for this customer
+    const customerTxns = transactions.filter((t) => {
+      return (
+        (t.customerId && t.customerId === customer.id) ||
+        (t.customerName && t.customerName.trim().toLowerCase() === customer.name.trim().toLowerCase())
+      );
+    });
+
+    customerTxns.forEach((txn) => {
+      if (txn.type === 'deposit') {
+        const payMethodLabel = txn.paymentMethod ? (PAYMENT_METHOD_LABELS[txn.paymentMethod as PaymentMethod] || txn.paymentMethod) : 'واریز به حساب';
+        rawEntries.push({
+          id: `txn-${txn.id}`,
+          date: txn.date,
+          documentNumber: txn.trackingNumber || txn.id.substring(0, 8),
+          documentType: 'deposit',
+          documentTypeLabel: `واریزی / ${payMethodLabel}`,
+          description: `${txn.title || 'واریز وجه مشتری'}${txn.bankName ? ` - بانک ${txn.bankName}` : ''}${txn.invoiceNumber ? ` (بابت فاکتور ${txn.invoiceNumber})` : ''}${txn.notes ? ` - ${txn.notes}` : ''}`,
+          debit: 0,
+          credit: txn.amount,
+          paymentMethod: payMethodLabel,
+          trackingNumber: txn.trackingNumber,
+          notes: txn.notes,
+          rawTransaction: txn,
+        });
+      } else {
+        rawEntries.push({
+          id: `txn-${txn.id}`,
+          date: txn.date,
+          documentNumber: txn.trackingNumber || txn.id.substring(0, 8),
+          documentType: 'debt',
+          documentTypeLabel: 'ثبت بدهی دستی / مانده',
+          description: `${txn.title || 'سند افزایش بدهی'}${txn.notes ? ` - ${txn.notes}` : ''}`,
+          debit: txn.amount,
+          credit: 0,
+          trackingNumber: txn.trackingNumber,
+          notes: txn.notes,
+          rawTransaction: txn,
+        });
+      }
+    });
+
+    // 3. Chronological sorting
+    rawEntries.sort((a, b) => {
+      const cmp = a.date.localeCompare(b.date);
+      if (cmp !== 0) return cmp;
+      // If same date, debit comes before credit
+      if (a.debit > 0 && b.credit > 0) return -1;
+      if (a.credit > 0 && b.debit > 0) return 1;
+      return 0;
+    });
+
+    // 4. Compute running balance
+    let runningBalance = 0;
+    let totalDebit = 0;
+    let totalCredit = 0;
+
+    const entries: CustomerLedgerEntry[] = rawEntries.map((e) => {
+      totalDebit += e.debit;
+      totalCredit += e.credit;
+      runningBalance += (e.debit - e.credit);
+
+      const balanceStatus: 'debtor' | 'settled' | 'creditor' = 
+        runningBalance > 0 ? 'debtor' : runningBalance < 0 ? 'creditor' : 'settled';
+
+      return {
+        ...e,
+        balance: runningBalance,
+        balanceStatus,
+      };
+    });
+
+    const netBalance = totalDebit - totalCredit;
+    const balanceStatus: 'debtor' | 'settled' | 'creditor' = 
+      netBalance > 0 ? 'debtor' : netBalance < 0 ? 'creditor' : 'settled';
+
+    return {
+      entries,
+      totalDebit,
+      totalCredit,
+      netBalance,
+      balanceStatus,
+      unpaidInvoicesCount,
+    };
   },
 
   getInvoices(): Invoice[] {

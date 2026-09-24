@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { Customer, Invoice, StoreSettings, AppUser } from '../types';
+import { Customer, Invoice, StoreSettings, AppUser, CustomerTransaction } from '../types';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
 import { exportCustomersToExcel, exportPersonInvoicesAndExitSlipsToExcel } from '../utils/excelHelper';
 import { ExcelImportModal } from './ExcelImportModal';
 import { CustomerExportModal } from './CustomerExportModal';
 import { CustomerBulkPaymentModal } from './CustomerBulkPaymentModal';
+import { CustomerStatementModal } from './CustomerStatementModal';
+import { CustomerStatementsReportModal } from './CustomerStatementsReportModal';
 import { 
   Users, 
   Search, 
@@ -28,6 +30,7 @@ import {
 interface CustomersManagerProps {
   customers: Customer[];
   invoices: Invoice[];
+  transactions?: CustomerTransaction[];
   settings: StoreSettings;
   currentUser?: AppUser;
   onSaveCustomer: (customer: Customer) => void;
@@ -38,11 +41,15 @@ interface CustomersManagerProps {
     updates: { invoiceId: string; status: 'paid' | 'unpaid' | 'partial'; paidAmount: number }[],
     details?: string
   ) => void;
+  onSaveTransaction?: (txn: CustomerTransaction, autoSettleInvoices?: boolean) => void;
+  onDeleteTransaction?: (txnId: string) => void;
+  onViewInvoice?: (invoice: Invoice) => void;
 }
 
 export const CustomersManager: React.FC<CustomersManagerProps> = ({
   customers,
   invoices,
+  transactions = [],
   settings,
   currentUser,
   onSaveCustomer,
@@ -50,6 +57,9 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   onSelectCustomerForInvoice,
   onImportCustomers,
   onBatchUpdatePaymentStatus,
+  onSaveTransaction,
+  onDeleteTransaction,
+  onViewInvoice,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -59,6 +69,8 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportModalCustomer, setExportModalCustomer] = useState<Customer | null>(null);
   const [paymentModalCustomer, setPaymentModalCustomer] = useState<Customer | null>(null);
+  const [statementCustomer, setStatementCustomer] = useState<Customer | null>(null);
+  const [isStatementsReportOpen, setIsStatementsReportOpen] = useState(false);
 
   // Filter customers
   const filteredCustomers = customers.filter((c) => {
@@ -125,6 +137,17 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 flex-wrap">
+          <button
+            type="button"
+            id="open-customer-statements-report-btn"
+            onClick={() => setIsStatementsReportOpen(true)}
+            title="مشاهده گزارش کلی بدهکاران، واریزی‌ها و صورتحساب همه مشتریان"
+            className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shadow-purple-200 cursor-pointer"
+          >
+            <ReceiptText className="w-4 h-4" />
+            <span>گزارش صورتحساب مشتریان</span>
+          </button>
+
           <button
             type="button"
             id="export-person-invoices-slips-btn"
@@ -203,8 +226,11 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
               // Invoices for this customer
               const customerInvoices = invoices.filter((i) => i.customerId === cust.id || i.customerName === cust.name);
               const totalSpent = customerInvoices.reduce((sum, i) => sum + i.finalTotal, 0);
-              const unpaidInvoices = customerInvoices.filter((i) => !i.isProforma && (i.paymentStatus === 'unpaid' || i.paymentStatus === 'partial'));
-              const remainingDebt = unpaidInvoices.reduce((sum, inv) => sum + Math.max(0, inv.finalTotal - (inv.paidAmount || 0)), 0);
+              
+              // Complete customer ledger calculation
+              const custLedger = StorageService.buildCustomerLedger(cust, invoices, transactions);
+              const hasDebt = custLedger.netBalance > 0;
+              const hasCredit = custLedger.netBalance < 0;
 
               return (
                 <div
@@ -273,26 +299,48 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                       )}
 
                       {/* Debt / Settle Status Banner */}
-                      {remainingDebt > 0 ? (
-                        <div className="mt-2 p-2 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between gap-1 text-[11px]">
+                      {hasDebt ? (
+                        <div 
+                          onClick={() => setStatementCustomer(cust)}
+                          title="کلیک برای باز کردن صورتحساب مالی و ثبت واریزی"
+                          className="mt-2 p-2 bg-rose-50 hover:bg-rose-100/80 border border-rose-200 rounded-xl flex items-center justify-between gap-1 text-[11px] cursor-pointer transition-all"
+                        >
                           <div className="flex items-center gap-1.5 text-rose-700 font-bold">
                             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                             <span>بدهی تسویه‌نشده:</span>
                           </div>
                           <span className="font-mono font-black text-rose-800">
-                            {formatPrice(remainingDebt, settings.currency)}
+                            {formatPrice(custLedger.netBalance, settings.currency)}
                           </span>
                         </div>
-                      ) : customerInvoices.length > 0 ? (
-                        <div className="mt-2 p-1.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-center gap-1 text-[11px] text-emerald-700 font-bold">
+                      ) : hasCredit ? (
+                        <div 
+                          onClick={() => setStatementCustomer(cust)}
+                          title="کلیک برای باز کردن صورتحساب"
+                          className="mt-2 p-1.5 bg-blue-50 hover:bg-blue-100/80 border border-blue-200 rounded-xl flex items-center justify-between gap-1 text-[11px] cursor-pointer transition-all"
+                        >
+                          <div className="flex items-center gap-1.5 text-blue-700 font-bold">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>طلبکار / بستانکار:</span>
+                          </div>
+                          <span className="font-mono font-black text-blue-800">
+                            {formatPrice(Math.abs(custLedger.netBalance), settings.currency)}
+                          </span>
+                        </div>
+                      ) : (customerInvoices.length > 0 || custLedger.entries.length > 0) ? (
+                        <div 
+                          onClick={() => setStatementCustomer(cust)}
+                          title="کلیک برای باز کردن صورتحساب"
+                          className="mt-2 p-1.5 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 rounded-xl flex items-center justify-center gap-1 text-[11px] text-emerald-700 font-bold cursor-pointer transition-all"
+                        >
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>تسویه حساب کامل</span>
+                          <span>تسویه حساب کامل (مشاهده صورتحساب)</span>
                         </div>
                       ) : null}
                     </div>
                   </div>
 
-                  {/* Summary & Quick Invoice Button */}
+                  {/* Summary & Action Buttons */}
                   <div className="pt-3 border-t border-slate-200/80 flex items-center justify-between gap-2 flex-wrap">
                     <div>
                       <div className="text-[10px] text-slate-400">سفارشات:</div>
@@ -302,8 +350,20 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 flex-wrap">
+                      {/* Customer Statement Button */}
+                      <button
+                        type="button"
+                        id={`customer-statement-btn-${cust.id}`}
+                        onClick={() => setStatementCustomer(cust)}
+                        title="مشاهده گردش حساب، ثبت بدهی و واریزی مشتری و چاپ صورتحساب"
+                        className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white shadow-xs transition-all cursor-pointer"
+                      >
+                        <ReceiptText className="w-3.5 h-3.5" />
+                        <span>صورتحساب مالی</span>
+                      </button>
+
                       {/* Settle Debt / Bulk Payment Button */}
-                      {remainingDebt > 0 && (
+                      {hasDebt && (
                         <button
                           type="button"
                           id={`settle-customer-debt-${cust.id}`}
@@ -545,6 +605,50 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
             if (onBatchUpdatePaymentStatus) {
               onBatchUpdatePaymentStatus(updates, details);
             }
+          }}
+        />
+      )}
+
+      {/* CUSTOMER FINANCIAL STATEMENT & TRANSACTIONS MODAL */}
+      {statementCustomer && (
+        <CustomerStatementModal
+          isOpen={!!statementCustomer}
+          onClose={() => setStatementCustomer(null)}
+          customer={statementCustomer}
+          invoices={invoices}
+          transactions={transactions}
+          settings={settings}
+          currentUser={currentUser}
+          onSaveTransaction={(txn, autoSettle) => {
+            if (onSaveTransaction) {
+              onSaveTransaction(txn, autoSettle);
+            } else {
+              StorageService.addCustomerTransaction(txn);
+            }
+          }}
+          onDeleteTransaction={(txnId) => {
+            if (onDeleteTransaction) {
+              onDeleteTransaction(txnId);
+            } else {
+              StorageService.deleteCustomerTransaction(txnId);
+            }
+          }}
+          onViewInvoice={onViewInvoice}
+        />
+      )}
+
+      {/* CUSTOMER MASTER STATEMENTS & DEBTORS REPORT MODAL */}
+      {isStatementsReportOpen && (
+        <CustomerStatementsReportModal
+          isOpen={isStatementsReportOpen}
+          onClose={() => setIsStatementsReportOpen(false)}
+          customers={customers}
+          invoices={invoices}
+          transactions={transactions}
+          settings={settings}
+          onSelectCustomerForStatement={(cust) => {
+            setIsStatementsReportOpen(false);
+            setStatementCustomer(cust);
           }}
         />
       )}

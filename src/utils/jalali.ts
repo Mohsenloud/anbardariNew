@@ -71,3 +71,52 @@ export function formatNumber(num: number, usePersianDigits = true): string {
   const formatted = Number(num).toLocaleString('en-US');
   return usePersianDigits ? toPersianDigits(formatted) : formatted;
 }
+
+export function numberToPersianWords(num: number): string {
+  if (num === 0) return 'صفر';
+  if (isNaN(num)) return '';
+
+  const isNegative = num < 0;
+  let n = Math.abs(Math.floor(num));
+
+  const yekan = ['', 'یک', 'دو', 'سه', 'چهار', 'پنج', 'شش', 'هفت', 'هشت', 'نه'];
+  const dahha = ['', 'ده', 'بیست', 'سی', 'چهل', 'پنجاه', 'شصت', 'هفتاد', 'هشتاد', 'نود'];
+  const dahhaKhas = ['ده', 'یازده', 'دوازده', 'سیزده', 'چهارده', 'پانزده', 'شانزده', 'هفده', 'هجده', 'نوزده'];
+  const sadha = ['', 'یکصد', 'دویست', 'سیصد', 'چهارصد', 'پانصد', 'ششصد', 'هفتصد', 'هشتصد', 'نهصد'];
+  const scales = ['', 'هزار', 'میلیون', 'میلیارد', 'تریلیون'];
+
+  function threeDigitsToWords(val: number): string {
+    const parts: string[] = [];
+    const s = Math.floor(val / 100);
+    const d = Math.floor((val % 100) / 10);
+    const y = val % 10;
+
+    if (s > 0) parts.push(sadha[s]);
+
+    if (d === 1) {
+      parts.push(dahhaKhas[y]);
+    } else {
+      if (d > 1) parts.push(dahha[d]);
+      if (y > 0) parts.push(yekan[y]);
+    }
+
+    return parts.join(' و ');
+  }
+
+  const parts: string[] = [];
+  let scaleIndex = 0;
+
+  while (n > 0) {
+    const chunk = n % 1000;
+    if (chunk > 0) {
+      const chunkText = threeDigitsToWords(chunk);
+      const scaleText = scales[scaleIndex];
+      parts.unshift(scaleText ? `${chunkText} ${scaleText}` : chunkText);
+    }
+    n = Math.floor(n / 1000);
+    scaleIndex++;
+  }
+
+  const result = parts.join(' و ');
+  return isNegative ? `منفی ${result}` : result;
+}

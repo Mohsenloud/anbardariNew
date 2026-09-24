@@ -38,6 +38,50 @@ export interface Customer {
   createdAt: string;
 }
 
+// ----------------------------------------------------
+// صورتحساب و تراکنش‌های مالی طرف‌حساب (Customer Transactions & Ledger)
+// ----------------------------------------------------
+export type CustomerTransactionType = 'debt' | 'deposit'; // بدهی یا واریزی
+export type CustomerPaymentMethod = 'cash' | 'transfer' | 'pos' | 'cheque' | 'card' | 'credit' | 'other';
+
+export interface CustomerTransaction {
+  id: string;
+  customerId: string;
+  customerName: string;
+  type: CustomerTransactionType; // 'debt' = بدهی جدید یا مانده قبلی (بدهکار), 'deposit' = واریز، پرداختی یا چک وصولی (بستانکار)
+  amount: number; // مبلغ به واحد پول فعال (تومان یا ریال)
+  date: string; // تاریخ شمسی (مثلاً ۱۴۰۳/۰۶/۲۴)
+  title: string; // عنوان سند (مثلاً: واریز به حساب، کارت به کارت، مانده طلب سال قبل، چک دریافتی، تسویه فاکتور...)
+  paymentMethod?: CustomerPaymentMethod; // روش پرداخت
+  trackingNumber?: string; // شماره پیگیری / شماره ارجاع / فیش بانکی / شماره چک
+  bankName?: string; // نام بانک یا شماره حساب مقصد
+  chequeDueDate?: string; // تاریخ سررسید چک (در صورت دریافت چک)
+  invoiceId?: string; // شناسه فاکتور فروش در صورت ارتباط مستقیم با فاکتور
+  invoiceNumber?: string; // شماره فاکتور فروش مرتبط
+  notes?: string; // توضیحات و بابت سند
+  recordedBy?: string; // نام کاربر یا صندوق‌دار ثبت‌کننده
+  createdAt: string; // زمان ثبت سیستمی
+  updatedAt?: string;
+}
+
+export interface CustomerLedgerEntry {
+  id: string;
+  date: string;
+  documentNumber: string;
+  documentType: 'invoice' | 'deposit' | 'debt' | 'invoice_payment';
+  documentTypeLabel: string;
+  description: string;
+  debit: number; // بدهکار (مبلغ افزایش بدهی مشتری: فاکتور فروش یا ثبت بدهی)
+  credit: number; // بستانکار (مبلغ پرداخت یا واریز مشتری)
+  balance: number; // مانده حساب پس از این ردیف (مثبت: بدهکار، صفر: تسویه، منفی: بستانکار/طلبکار)
+  balanceStatus: 'debtor' | 'settled' | 'creditor';
+  paymentMethod?: string;
+  trackingNumber?: string;
+  notes?: string;
+  rawTransaction?: CustomerTransaction;
+  rawInvoice?: Invoice;
+}
+
 export interface InvoiceItem {
   id: string;
   productId: string;

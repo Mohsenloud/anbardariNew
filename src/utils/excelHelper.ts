@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Product, ProductVariant, Customer, Invoice, ExitSlipData } from '../types';
+import { Product, ProductVariant, Customer, Invoice, ExitSlipData, CustomerTransaction, CustomerLedgerEntry, StoreSettings } from '../types';
 import { getCurrentJalaliDate } from './jalali';
 import { generateNextProductCode } from './codeGenerator';
 import { StorageService } from './storage';
@@ -1037,4 +1037,206 @@ export async function parseCustomersExcel(file: File): Promise<CustomerImportRes
     validRows,
     errors,
   };
+}
+
+/**
+ * EXPORT SINGLE CUSTOMER FINANCIAL STATEMENT / LEDGER TO EXCEL
+ */
+export function exportCustomerStatementToExcel(
+  customer: Customer,
+  ledger: {
+    entries: CustomerLedgerEntry[];
+    totalDebit: number;
+    totalCredit: number;
+    netBalance: number;
+    balanceStatus: 'debtor' | 'settled' | 'creditor';
+  },
+  settings: StoreSettings
+): void {
+  const wb = XLSX.utils.book_new();
+  const currency = settings.currency || 'تومان';
+  const today = getCurrentJalaliDate();
+
+  // Sheet 1: Detailed Ledger Rows
+  const ledgerRows = ledger.entries.map((entry, index) => {
+    const statusText = entry.balanceStatus === 'debtor' 
+      ? 'بدهکار' 
+      : entry.balanceStatus === 'creditor' 
+        ? 'بستانکار' 
+        : 'تسویه کامل';
+
+    return {
+      'ردیف': index + 1,
+      'تاریخ': entry.date,
+      'نوع سند': entry.documentTypeLabel,
+      'شماره سند / پیگیری': entry.documentNumber,
+      'روش پرداخت': entry.paymentMethod || '—',
+      'شرح تراکنش و سند': entry.description,
+      [`بدهکار (${currency})`]: entry.debit,
+      [`بستانکار (${currency})`]: entry.credit,
+      [`مانده حساب (${currency})`]: Math.abs(entry.balance),
+      'وضعیت مانده': statusText,
+      'توضیحات': entry.notes || '',
+    };
+  });
+
+  // Summary Row at the bottom
+  ledgerRows.push({
+    'ردیف': 'جمع کل' as any,
+    'تاریخ': '',
+    'نوع سند': '',
+    'شماره سند / پیگیری': '',
+    'روش پرداخت': '',
+    'شرح تراکنش و سند': 'مجموع گردش حساب',
+    [`بدهکار (${currency})`]: ledger.totalDebit,
+    [`بستانکار (${currency})`]: ledger.totalCredit,
+    [`مانده حساب (${currency})`]: Math.abs(ledger.netBalance),
+    'وضعیت مانده': ledger.balanceStatus === 'debtor' ? 'بدهکار نهایی' : ledger.balanceStatus === 'creditor' ? 'طلبکار نهایی' : 'تسویه کامل',
+    'توضیحات': '',
+  });
+
+  const wsLedger = XLSX.utils.json_to_sheet(ledgerRows);
+  wsLedger['!cols'] = [
+    { wch: 8 },  // ردیف
+    { wch: 14 }, // تاریخ
+    { wch: 22 }, // نوع سند
+    { wch: 20 }, // شماره سند
+    { wch: 20 }, // روش پرداخت
+    { wch: 45 }, // شرح
+    { wch: 18 }, // بدهکار
+    { wch: 18 }, // بستانکار
+    { wch: 18 }, // مانده
+    { wch: 16 }, // وضعیت
+    { wch: 30 }, // توضیحات
+  ];
+  wsLedger['!views'] = [{ rightToLeft: true }];
+  XLSX.utils.book_append_sheet(wb, wsLedger, 'گردش_حساب_و_ریز_صورتحساب');
+
+  // Sheet 2: Account Overview & Metadata
+  const overviewRows = [
+    { 'عنوان شاخص': 'نام فروشگاه / صادرکننده', 'مقدار / توضیحات': settings.storeName || 'فروشگاه' },
+    { 'عنوان شاخص': 'تلفن تماس صادرکننده', 'مقدار / توضیحات': settings.phone || settings.mobile || '—' },
+    { 'عنوان شاخص': 'تاریخ تهیه گزارش', 'مقدار / توضیحات': today },
+    { 'عنوان شاخص': '----------------------------------', 'مقدار / توضیحات': '----------------------------------' },
+    { 'عنوان شاخص': 'نام کامل مشتری / شرکت', 'مقدار / توضیحات': customer.name },
+    { 'عنوان شاخص': 'شماره تماس مشتری', 'مقدار / توضیحات': customer.phone || 'ثبت نشده' },
+    { 'عنوان شاخص': 'کد ملی یا شناسه اقتصادی', 'مقدار / توضیحات': customer.nationalId || 'ثبت نشده' },
+    { 'عنوان شاخص': 'نشانی مشتری', 'مقدار / توضیحات': customer.address || 'ثبت نشده' },
+    { 'عنوان شاخص': '----------------------------------', 'مقدار / توضیحات': '----------------------------------' },
+    { 'عنوان شاخص': 'تعداد کل ردیف‌های گردش حساب', 'مقدار / توضیحات': ledger.entries.length },
+    { 'عنوان شاخص': `مجموع کل بدهکاری‌ها (${currency})`, 'مقدار / توضیحات': ledger.totalDebit },
+    { 'عنوان شاخص': `مجموع کل واریزی‌ها و پرداختی‌ها (${currency})`, 'مقدار / توضیحات': ledger.totalCredit },
+    { 'عنوان شاخص': `مانده خالص حساب (${currency})`, 'مقدار / توضیحات': Math.abs(ledger.netBalance) },
+    { 
+      'عنوان شاخص': 'وضعیت کلی حساب مشتری', 
+      'مقدار / توضیحات': ledger.balanceStatus === 'debtor' 
+        ? `بدهکار به مبلغ ${ledger.netBalance.toLocaleString('fa-IR')} ${currency}` 
+        : ledger.balanceStatus === 'creditor' 
+          ? `بستانکار (طلبکار) به مبلغ ${Math.abs(ledger.netBalance).toLocaleString('fa-IR')} ${currency}` 
+          : 'تسویه کامل (بی‌حساب)' 
+    },
+  ];
+
+  const wsOverview = XLSX.utils.json_to_sheet(overviewRows);
+  wsOverview['!cols'] = [{ wch: 35 }, { wch: 45 }];
+  wsOverview['!views'] = [{ rightToLeft: true }];
+  XLSX.utils.book_append_sheet(wb, wsOverview, 'خلاصه_مشخصات_و_مانده');
+
+  const safeName = customer.name.replace(/[\/\\?%*:|"<>]/g, '_').trim();
+  const filename = `صورتحساب_${safeName}_${today.replace(/\//g, '-')}.xlsx`;
+  XLSX.writeFile(wb, filename);
+}
+
+/**
+ * EXPORT MASTER STATEMENT REPORT OF ALL CUSTOMERS TO EXCEL
+ */
+export function exportAllCustomerStatementsToExcel(
+  customers: Customer[],
+  invoices: Invoice[],
+  transactions: CustomerTransaction[],
+  settings: StoreSettings
+): void {
+  const wb = XLSX.utils.book_new();
+  const currency = settings.currency || 'تومان';
+  const today = getCurrentJalaliDate();
+
+  let totalAllDebits = 0;
+  let totalAllCredits = 0;
+  let totalAllNetDebt = 0;
+  let debtorCount = 0;
+  let settledCount = 0;
+  let creditorCount = 0;
+
+  const rows = customers.map((c, index) => {
+    const ledger = StorageService.buildCustomerLedger(c, invoices, transactions);
+    totalAllDebits += ledger.totalDebit;
+    totalAllCredits += ledger.totalCredit;
+
+    if (ledger.netBalance > 0) {
+      totalAllNetDebt += ledger.netBalance;
+      debtorCount++;
+    } else if (ledger.netBalance === 0) {
+      settledCount++;
+    } else {
+      creditorCount++;
+    }
+
+    const statusText = ledger.balanceStatus === 'debtor' 
+      ? 'بدهکار' 
+      : ledger.balanceStatus === 'creditor' 
+        ? 'بستانکار' 
+        : 'بی‌حساب (تسویه)';
+
+    // Find last activity date
+    const lastEntry = ledger.entries.length > 0 ? ledger.entries[ledger.entries.length - 1] : null;
+
+    return {
+      'ردیف': index + 1,
+      'نام طرف‌حساب / شرکت': c.name,
+      'شماره تماس': c.phone || '—',
+      'کد ملی / شناسه اقتصادی': c.nationalId || '—',
+      'نشانی': c.address || '—',
+      'تعداد گردش‌ها': ledger.entries.length,
+      [`جمع بدهکار (${currency})`]: ledger.totalDebit,
+      [`جمع بستانکار (${currency})`]: ledger.totalCredit,
+      [`مانده حساب (${currency})`]: Math.abs(ledger.netBalance),
+      'وضعیت مالی': statusText,
+      'تاریخ آخرین فعالیت': lastEntry ? lastEntry.date : c.createdAt || '—',
+    };
+  });
+
+  // Summary row at the bottom
+  rows.push({
+    'ردیف': 'جمع کل' as any,
+    'نام طرف‌حساب / شرکت': `تعداد: ${customers.length} مشتری`,
+    'شماره تماس': '',
+    'کد ملی / شناسه اقتصادی': '',
+    'نشانی': '',
+    'تعداد گردش‌ها': 0,
+    [`جمع بدهکار (${currency})`]: totalAllDebits,
+    [`جمع بستانکار (${currency})`]: totalAllCredits,
+    [`مانده حساب (${currency})`]: totalAllNetDebt,
+    'وضعیت مالی': `بدهکاران: ${debtorCount} | بی‌حساب: ${settledCount} | بستانکاران: ${creditorCount}`,
+    'تاریخ آخرین فعالیت': '',
+  });
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 8 },  // ردیف
+    { wch: 28 }, // نام مشتری
+    { wch: 16 }, // شماره تماس
+    { wch: 20 }, // کد ملی
+    { wch: 35 }, // نشانی
+    { wch: 14 }, // تعداد
+    { wch: 20 }, // بدهکار
+    { wch: 20 }, // بستانکار
+    { wch: 20 }, // مانده
+    { wch: 24 }, // وضعیت
+    { wch: 18 }, // آخرین فعالیت
+  ];
+  ws['!views'] = [{ rightToLeft: true }];
+  XLSX.utils.book_append_sheet(wb, ws, 'گزارش_جامع_صورتحساب_مشتریان');
+
+  const filename = `گزارش_صورتحساب_مشتریان_${today.replace(/\//g, '-')}.xlsx`;
+  XLSX.writeFile(wb, filename);
 }

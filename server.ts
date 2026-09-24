@@ -213,6 +213,7 @@ const DEFAULT_INITIAL_DATA = {
     inboundReceipts: [],
     directTransfers: [],
     savedVehicles: [],
+    customerTransactions: [],
     users: [],
     categories: [],
   },
@@ -367,6 +368,7 @@ const DEFAULT_INITIAL_DATA = {
   inboundReceipts: [],
   activityLogs: [],
   savedVehicles: [],
+  customerTransactions: [],
 };
 
 // -------------------------------------------------------------
@@ -397,6 +399,7 @@ function validateDatabaseSchema(data: any): { valid: boolean; error?: string } {
     'activityLogs',
     'directTransfers',
     'savedVehicles',
+    'customerTransactions',
     'categories',
     'deletedInvoiceIds',
   ];
@@ -1007,6 +1010,7 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         inboundReceipts: mergeTombstoneList('inboundReceipts'),
         directTransfers: mergeTombstoneList('directTransfers'),
         savedVehicles: mergeTombstoneList('savedVehicles'),
+        customerTransactions: mergeTombstoneList('customerTransactions'),
         users: mergeTombstoneList('users'),
         categories: mergeTombstoneList('categories'),
       };
@@ -1018,6 +1022,7 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
       const inboundDelSet = new Set(combinedTombstones.inboundReceipts);
       const transferDelSet = new Set(combinedTombstones.directTransfers);
       const vehicleDelSet = new Set(combinedTombstones.savedVehicles);
+      const transactionDelSet = new Set(combinedTombstones.customerTransactions || []);
       const userDelSet = new Set(combinedTombstones.users);
       const categoryDelSet = new Set(combinedTombstones.categories.map((c: string) => c.trim().toLowerCase()));
 
@@ -1043,6 +1048,9 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
       let finalVehicles = Array.isArray(incomingData.savedVehicles) ? incomingData.savedVehicles : (currentDb.savedVehicles || []);
       finalVehicles = finalVehicles.filter((v: any) => !vehicleDelSet.has(v.id));
 
+      let finalTransactions = Array.isArray(incomingData.customerTransactions) ? incomingData.customerTransactions : (currentDb.customerTransactions || []);
+      finalTransactions = finalTransactions.filter((t: any) => !transactionDelSet.has(t.id));
+
       let finalUsers = Array.isArray(incomingData.users) ? incomingData.users : (currentDb.users || []);
       finalUsers = finalUsers.filter((u: any) => !userDelSet.has(u.id));
 
@@ -1065,6 +1073,7 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         inboundReceipts: finalInbound,
         directTransfers: finalTransfers,
         savedVehicles: finalVehicles,
+        customerTransactions: finalTransactions,
         users: finalUsers,
         categories: finalCategories,
         exitSlipLogs: currentExitLogs,
@@ -1139,6 +1148,7 @@ app.post('/api/db/delete-item', dbWriteLimiter, async (req, res) => {
         inboundReceipts: [...(currentDb.tombstones?.inboundReceipts || [])],
         directTransfers: [...(currentDb.tombstones?.directTransfers || [])],
         savedVehicles: [...(currentDb.tombstones?.savedVehicles || [])],
+        customerTransactions: [...(currentDb.tombstones?.customerTransactions || [])],
         users: [...(currentDb.tombstones?.users || [])],
         categories: [...(currentDb.tombstones?.categories || [])],
       };
@@ -1146,6 +1156,10 @@ app.post('/api/db/delete-item', dbWriteLimiter, async (req, res) => {
       const updatedDb = { ...currentDb };
 
       switch (type) {
+        case 'customerTransaction':
+          if (!tombstones.customerTransactions.includes(cleanId)) tombstones.customerTransactions.push(cleanId);
+          updatedDb.customerTransactions = (currentDb.customerTransactions || []).filter((t: any) => t.id !== cleanId);
+          break;
         case 'invoice':
           if (!tombstones.invoices.includes(cleanId)) tombstones.invoices.push(cleanId);
           updatedDb.invoices = (currentDb.invoices || []).filter((i: any) => i.id !== cleanId);
