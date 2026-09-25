@@ -28,6 +28,7 @@ import { getCurrentJalaliDate, getCurrentJalaliTime, toPersianDigits } from '../
 import { StorageService } from '../utils/storage';
 import { IranPlatePicker, parseVehicleInfo } from './IranPlatePicker';
 import { VehicleFleetModal } from './VehicleFleetModal';
+import { NumericInput } from './NumericInput';
 
 interface DirectTransferModalProps {
   isOpen: boolean;
@@ -497,11 +498,11 @@ export const DirectTransferModal: React.FC<DirectTransferModalProps> = ({
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
                   تعداد ({selectedProduct?.unit || 'عدد'}):
                 </label>
-                <input
-                  type="number"
-                  min="1"
+                <NumericInput
+                  min={1}
                   value={itemQuantity}
-                  onChange={(e) => setItemQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(num) => setItemQuantity(Math.max(1, num || 1))}
+                  textAlign="center"
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm text-center font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
                 />
               </div>

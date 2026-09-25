@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Product, ProductVariant, Customer, Invoice, InvoiceItem, StoreSettings, PaymentMethod } from '../types';
-import { getCurrentJalaliDate, formatPrice, toPersianDigits, toEnglishDigits } from '../utils/jalali';
+import { getCurrentJalaliDate, formatPrice, toPersianDigits, toEnglishDigits, formatNumber, formatThousands } from '../utils/jalali';
+import { NumericInput } from './NumericInput';
 import { 
   Plus, 
   Minus, 
@@ -1710,14 +1711,15 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
                               {/* Discount Input */}
                               <td className="py-3 px-3">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={item.discount || ''}
-                                  onChange={(e) => handleSetItemDiscount(item.id, parseFloat(e.target.value) || 0)}
-                                  placeholder="۰"
-                                  className="w-24 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg px-2 py-1 text-left font-bold text-xs text-slate-800 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                                />
+                                <div className="w-24">
+                                  <NumericInput
+                                    min={0}
+                                    value={item.discount || ''}
+                                    onChange={(num) => handleSetItemDiscount(item.id, num)}
+                                    placeholder="۰"
+                                    className="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg px-2 py-1 text-left font-bold text-xs text-slate-800 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                  />
+                                </div>
                               </td>
 
                               {/* Total Row Price */}
@@ -1941,11 +1943,12 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">
                     تخفیف کلی مازاد روی فاکتور:
                   </label>
-                  <input
-                    type="number"
+                  <NumericInput
+                    min={0}
                     value={extraDiscount || ''}
-                    onChange={(e) => setExtraDiscount(parseFloat(e.target.value) || 0)}
-                    placeholder="مبلغ به ریال"
+                    onChange={(num) => setExtraDiscount(num)}
+                    placeholder="مبلغ تخفیف"
+                    currency={settings.currency}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 text-left focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                 </div>
@@ -2068,10 +2071,13 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
                       مبلغ پرداخت شده علی‌الحساب:
                     </label>
-                    <input
-                      type="number"
+                    <NumericInput
+                      min={0}
                       value={paidAmount || ''}
-                      onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
+                      onChange={(num) => setPaidAmount(num)}
+                      placeholder="مبلغ پرداختی"
+                      currency={settings.currency}
+                      showWords={true}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 text-left focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     />
                   </div>
@@ -2915,11 +2921,10 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                       <label className="block text-[11px] font-bold text-slate-600 mb-1">
                         قیمت فروش ({settings.currency}) *
                       </label>
-                      <input
-                        type="number"
-                        min="0"
+                      <NumericInput
+                        min={0}
                         value={editProductForm.sellPrice}
-                        onChange={(e) => setEditProductForm({ ...editProductForm, sellPrice: parseFloat(e.target.value) || 0 })}
+                        onChange={(num) => setEditProductForm({ ...editProductForm, sellPrice: num })}
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       />
                     </div>
@@ -2927,11 +2932,10 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                       <label className="block text-[11px] font-bold text-slate-600 mb-1">
                         قیمت خرید ({settings.currency})
                       </label>
-                      <input
-                        type="number"
-                        min="0"
+                      <NumericInput
+                        min={0}
                         value={editProductForm.buyPrice}
-                        onChange={(e) => setEditProductForm({ ...editProductForm, buyPrice: parseFloat(e.target.value) || 0 })}
+                        onChange={(num) => setEditProductForm({ ...editProductForm, buyPrice: num })}
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       />
                     </div>
@@ -2944,24 +2948,24 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     <label className="block text-xs font-bold text-slate-700 mb-1">
                       موجودی انبار ({editProductForm.unit})
                     </label>
-                    <input
-                      type="number"
-                      min="0"
+                    <NumericInput
+                      min={0}
                       value={editProductForm.stock}
-                      onChange={(e) => setEditProductForm({ ...editProductForm, stock: parseFloat(e.target.value) || 0 })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all"
+                      onChange={(num) => setEditProductForm({ ...editProductForm, stock: num })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all text-center"
+                      textAlign="center"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
                       حداقل موجودی هشدار
                     </label>
-                    <input
-                      type="number"
-                      min="0"
+                    <NumericInput
+                      min={0}
                       value={editProductForm.minStockAlert}
-                      onChange={(e) => setEditProductForm({ ...editProductForm, minStockAlert: parseFloat(e.target.value) || 0 })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all"
+                      onChange={(num) => setEditProductForm({ ...editProductForm, minStockAlert: num })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition-all text-center"
+                      textAlign="center"
                     />
                   </div>
                 </div>
@@ -3155,13 +3159,14 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    قیمت واحد:
+                    قیمت واحد ({settings.currency}):
                   </label>
-                  <input
-                    type="number"
+                  <NumericInput
+                    min={0}
                     value={servicePrice || ''}
-                    onChange={(e) => setServicePrice(parseFloat(e.target.value) || 0)}
-                    placeholder="مبلغ به ریال"
+                    onChange={(num) => setServicePrice(num)}
+                    placeholder="مبلغ"
+                    currency={settings.currency}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 text-left"
                   />
                 </div>
@@ -3184,11 +3189,11 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   تعداد / مقدار:
                 </label>
-                <input
-                  type="number"
-                  min="1"
+                <NumericInput
+                  min={1}
                   value={serviceQuantity}
-                  onChange={(e) => setServiceQuantity(parseInt(e.target.value, 10) || 1)}
+                  onChange={(num) => setServiceQuantity(num || 1)}
+                  textAlign="center"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
                 />
               </div>
@@ -3638,11 +3643,12 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 تخفیف کلی مازاد روی فاکتور:
               </label>
-              <input
-                type="number"
+              <NumericInput
+                min={0}
                 value={extraDiscount || ''}
-                onChange={(e) => setExtraDiscount(parseFloat(e.target.value) || 0)}
-                placeholder="مبلغ تخفیف مازاد به ریال"
+                onChange={(num) => setExtraDiscount(num)}
+                placeholder="مبلغ تخفیف مازاد"
+                currency={settings.currency}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 text-left focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
             </div>
@@ -3854,10 +3860,13 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   مبلغ پرداخت شده نقدی / علی‌الحساب:
                 </label>
-                <input
-                  type="number"
+                <NumericInput
+                  min={0}
                   value={paidAmount || ''}
-                  onChange={(e) => setPaidAmount(parseFloat(e.target.value) || 0)}
+                  onChange={(num) => setPaidAmount(num)}
+                  placeholder="مبلغ پرداختی"
+                  currency={settings.currency}
+                  showWords={true}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 text-left focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
               </div>

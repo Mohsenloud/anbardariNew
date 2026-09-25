@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Invoice, StoreSettings, AppUser, Product, Customer } from '../types';
-import { formatPrice, toPersianDigits } from '../utils/jalali';
+import { formatPrice, toPersianDigits, formatNumber } from '../utils/jalali';
 import { exportInvoicesToCsv } from '../utils/csvExport';
 import { StorageService } from '../utils/storage';
 import { CustomerExportModal } from './CustomerExportModal';
 import { InvoiceQuickDetailsModal } from './InvoiceQuickDetailsModal';
 import { CustomerBulkPaymentModal } from './CustomerBulkPaymentModal';
+import { NumericInput } from './NumericInput';
 import { 
   Search, 
   Printer, 
@@ -989,13 +990,14 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                 <label htmlFor="partial-paid-amount-input" className="text-xs font-bold text-amber-900 block">
                   مبلغ پرداخت‌شده تا کنون ({settings.currency}):
                 </label>
-                <input
-                  type="number"
+                <NumericInput
                   id="partial-paid-amount-input"
                   value={paymentNewAmount}
-                  onChange={(e) => setPaymentNewAmount(Number(e.target.value) || 0)}
+                  onChange={(num) => setPaymentNewAmount(num)}
                   min={0}
                   max={paymentModalInvoice.finalTotal}
+                  currency={settings.currency}
+                  showWords={true}
                   className="w-full min-h-[44px] bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
                 />
 

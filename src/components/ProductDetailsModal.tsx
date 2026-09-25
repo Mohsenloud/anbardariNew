@@ -1,6 +1,6 @@
 import React from 'react';
 import { Product, StoreSettings, AppUser } from '../types';
-import { toPersianDigits, formatPrice } from '../utils/jalali';
+import { toPersianDigits, formatPrice, formatNumber } from '../utils/jalali';
 import {
   X,
   Package,
@@ -92,7 +92,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
               <span className="text-slate-500 text-[11px] block">موجودی فیزیکی کل در انبار:</span>
               <div className="flex items-center justify-center sm:justify-start gap-2">
                 <span className="text-2xl font-black font-mono text-slate-900">
-                  {toPersianDigits(product.stock)}
+                  {formatNumber(product.stock)}
                 </span>
                 <span className="text-sm font-bold text-slate-600">{product.unit}</span>
               </div>
@@ -116,7 +116,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
               </span>
 
               <span className="text-[11px] text-slate-500 font-medium">
-                حداقل موجودی (نقطه هشدار): <strong className="font-mono text-slate-700">{toPersianDigits(product.minStockAlert)}</strong> {product.unit}
+                حداقل موجودی (نقطه هشدار): <strong className="font-mono text-slate-700">{formatNumber(product.minStockAlert)}</strong> {product.unit}
               </span>
             </div>
           </div>
@@ -165,7 +165,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                     <div className="flex items-center gap-2 font-mono">
                       <span className="text-slate-500 text-[11px]">موجودی:</span>
                       <span className="font-black text-purple-900 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-lg text-xs">
-                        {toPersianDigits(v.stock)} {product.unit}
+                        {formatNumber(v.stock)} {product.unit}
                       </span>
                     </div>
                   </div>

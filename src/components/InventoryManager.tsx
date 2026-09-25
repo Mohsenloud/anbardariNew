@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Product, ProductVariant, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData, InboundReceipt, InboundReceiptItem, DirectTransfer, Customer } from '../types';
-import { toPersianDigits, toEnglishDigits, getCurrentJalaliDate, getCurrentJalaliTime, formatPrice } from '../utils/jalali';
+import { toPersianDigits, toEnglishDigits, getCurrentJalaliDate, getCurrentJalaliTime, formatPrice, formatNumber, formatThousands } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
 import { exportProductsToExcel } from '../utils/excelHelper';
 import { ExcelImportModal } from './ExcelImportModal';
@@ -13,6 +13,7 @@ import { DirectTransfersList } from './DirectTransfersList';
 import { CategoryManagerModal } from './CategoryManagerModal';
 import { ProductDetailsModal } from './ProductDetailsModal';
 import { ErrorBoundary } from './ErrorBoundary';
+import { NumericInput } from './NumericInput';
 import { 
   Plus, 
   Search, 
@@ -1000,7 +1001,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-amber-200 bg-amber-50/40 shadow-xs">
             <span className="text-[11px] sm:text-xs text-amber-800 font-medium">در انتظار پرینت و تحویل</span>
             <div className="text-lg sm:text-xl font-black text-amber-700 mt-1 flex items-center gap-1.5 sm:gap-2">
-              <span>{toPersianDigits(unprintedSlipsCount)}</span>
+              <span>{formatNumber(unprintedSlipsCount)}</span>
               {unprintedSlipsCount > 0 && (
                 <span className="text-[9px] sm:text-[10px] bg-amber-200/80 text-amber-900 font-bold px-1.5 py-0.5 rounded">
                   اقدام فوری
@@ -1012,14 +1013,14 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-emerald-200 bg-emerald-50/30 shadow-xs">
             <span className="text-[11px] sm:text-xs text-emerald-800 font-medium">حواله‌های چاپ شده</span>
             <div className="text-lg sm:text-xl font-black text-emerald-700 mt-1">
-              {toPersianDigits(printedSlipsCount)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">حواله</span>
+              {formatNumber(printedSlipsCount)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">حواله</span>
             </div>
           </div>
 
           <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-xs">
             <span className="text-[11px] sm:text-xs text-slate-500 font-medium">مجموع اقلام فیزیکی تحویلی</span>
             <div className="text-lg sm:text-xl font-black text-blue-700 mt-1">
-              {toPersianDigits(totalDispatchedUnits)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">واحد</span>
+              {formatNumber(totalDispatchedUnits)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">واحد</span>
             </div>
           </div>
         </div>
@@ -1028,21 +1029,21 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-xs">
             <span className="text-[11px] sm:text-xs text-slate-500 font-medium">تنوع کالا در سیستم</span>
             <div className="text-lg sm:text-xl font-black text-slate-800 mt-1">
-              {toPersianDigits(totalItemsCount)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">ردیف</span>
+              {formatNumber(totalItemsCount)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">ردیف</span>
             </div>
           </div>
 
           <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-xs">
             <span className="text-[11px] sm:text-xs text-slate-500 font-medium">مجموع موجودی اقلام انبار</span>
             <div className="text-lg sm:text-xl font-black text-blue-700 mt-1">
-              {toPersianDigits(totalStockUnits)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">واحد / عدد</span>
+              {formatNumber(totalStockUnits)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">واحد / عدد</span>
             </div>
           </div>
 
           <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-amber-200 bg-amber-50/40 shadow-xs">
             <span className="text-[11px] sm:text-xs text-amber-800 font-medium">کالاهای رو به اتمام (نقطه سفارش)</span>
             <div className="text-lg sm:text-xl font-black text-amber-700 mt-1 flex items-center gap-1.5 sm:gap-2">
-              <span>{toPersianDigits(lowStockCount)}</span>
+              <span>{formatNumber(lowStockCount)}</span>
               {lowStockCount > 0 && (
                 <span className="text-[10px] sm:text-[11px] font-normal px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
                   نیازمند شارژ
@@ -1054,7 +1055,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-rose-200 bg-rose-50/40 shadow-xs">
             <span className="text-[11px] sm:text-xs text-rose-800 font-medium">کالاهای ناموجود در انبار</span>
             <div className="text-lg sm:text-xl font-black text-rose-700 mt-1">
-              {toPersianDigits(outOfStockCount)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">قلم</span>
+              {formatNumber(outOfStockCount)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">قلم</span>
             </div>
           </div>
         </div>
@@ -1250,7 +1251,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     </span>
                     <span>•</span>
                     <span>
-                      مجموع موجودی فیزیکی این دسته: <strong className="font-mono font-bold text-indigo-950">{toPersianDigits(filteredProducts.reduce((s, p) => s + (Number(p.stock) || 0), 0))}</strong> عدد
+                      مجموع موجودی فیزیکی این دسته: <strong className="font-mono font-bold text-indigo-950">{formatNumber(filteredProducts.reduce((s, p) => s + (Number(p.stock) || 0), 0))}</strong> عدد
                     </span>
                   </div>
                 </div>
@@ -2059,13 +2060,13 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
                   <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">حداقل موجودی (نقطه سفارش)</label>
-                    <input
-                      type="number"
+                    <NumericInput
                       id="product-modal-minstock"
-                      min="0"
+                      min={0}
                       value={editingProduct.minStockAlert}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, minStockAlert: parseInt(e.target.value, 10) || 0 })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      onChange={(num) => setEditingProduct({ ...editingProduct, minStockAlert: num })}
+                      textAlign="center"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-center font-bold font-mono"
                     />
                   </div>
 
@@ -2078,24 +2079,24 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-slate-700 mb-1">قیمت خرید ({settings.currency})</label>
-                        <input
-                          type="number"
+                        <NumericInput
                           id="product-modal-buyprice"
-                          min="0"
+                          min={0}
                           value={editingProduct.buyPrice}
-                          onChange={(e) => setEditingProduct({ ...editingProduct, buyPrice: parseFloat(e.target.value) || 0 })}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                          onChange={(num) => setEditingProduct({ ...editingProduct, buyPrice: num })}
+                          currency={settings.currency}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-bold font-mono text-slate-700"
                         />
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-slate-700 mb-1">قیمت فروش ({settings.currency})</label>
-                        <input
-                          type="number"
+                        <NumericInput
                           id="product-modal-sellprice"
-                          min="0"
+                          min={0}
                           value={editingProduct.sellPrice}
-                          onChange={(e) => setEditingProduct({ ...editingProduct, sellPrice: parseFloat(e.target.value) || 0 })}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                          onChange={(num) => setEditingProduct({ ...editingProduct, sellPrice: num })}
+                          currency={settings.currency}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-bold font-mono text-emerald-700"
                         />
                       </div>
                     </div>
@@ -2136,7 +2137,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                               {toPersianDigits((editingProduct.variants || []).length)} تنوع تعریف شده
                             </span>
                             <span className="text-[11px] text-slate-500">
-                              (مجموع: <strong className="font-mono font-bold text-purple-950">{toPersianDigits(editingProduct.stock)} {editingProduct.unit}</strong>)
+                              (مجموع: <strong className="font-mono font-bold text-purple-950">{formatNumber(editingProduct.stock)} {editingProduct.unit}</strong>)
                             </span>
                           </div>
 
@@ -2160,7 +2161,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                               >
                                 <span>{v.name}</span>
                                 <span className="text-[10px] text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded font-mono">
-                                  {toPersianDigits(v.stock)} {editingProduct.unit}
+                                  {formatNumber(v.stock)} {editingProduct.unit}
                                 </span>
                               </span>
                             ))}
@@ -2183,16 +2184,13 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                         </span>
                       </label>
                       <div className="relative">
-                        <input
-                          type="number"
+                        <NumericInput
                           id="product-modal-initialstock"
-                          min="0"
+                          min={0}
                           value={editingProduct.stock}
-                          onChange={(e) => {
-                            const val = parseInt(toEnglishDigits(e.target.value), 10);
-                            setEditingProduct({ ...editingProduct, stock: isNaN(val) || val < 0 ? 0 : val });
-                          }}
-                          className="w-full bg-white border border-emerald-300 rounded-xl px-3 py-2 text-xs font-bold font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 text-slate-900"
+                          onChange={(num) => setEditingProduct({ ...editingProduct, stock: num })}
+                          textAlign="center"
+                          className="w-full bg-white border border-emerald-300 rounded-xl px-3 py-2 text-xs font-bold font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 text-slate-900 text-center"
                         />
                       </div>
                       <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
@@ -2384,21 +2382,21 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                                 />
                               </td>
                               <td className="p-2">
-                                <input
-                                  type="number"
-                                  min="0"
+                                <NumericInput
+                                  min={0}
                                   value={v.stock}
-                                  onChange={(e) => handleUpdateVariantField(v.id, 'stock', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                                  onChange={(num) => handleUpdateVariantField(v.id, 'stock', num)}
+                                  textAlign="center"
                                   className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-center font-bold font-mono outline-none focus:border-purple-500"
                                 />
                               </td>
                               {currentUser?.role === 'admin' && (
                                 <td className="p-2">
-                                  <input
-                                    type="number"
-                                    min="0"
+                                  <NumericInput
+                                    min={0}
                                     value={v.sellPrice || editingProduct.sellPrice || 0}
-                                    onChange={(e) => handleUpdateVariantField(v.id, 'sellPrice', Math.max(0, parseFloat(e.target.value) || 0))}
+                                    onChange={(num) => handleUpdateVariantField(v.id, 'sellPrice', num)}
+                                    textAlign="center"
                                     className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-center font-mono outline-none focus:border-purple-500"
                                   />
                                 </td>
@@ -2447,11 +2445,11 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <label className="block text-[10px] font-medium text-slate-500 mb-1">موجودی ({editingProduct.unit})</label>
-                              <input
-                                type="number"
-                                min="0"
+                              <NumericInput
+                                min={0}
                                 value={v.stock}
-                                onChange={(e) => handleUpdateVariantField(v.id, 'stock', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                                onChange={(num) => handleUpdateVariantField(v.id, 'stock', num)}
+                                textAlign="center"
                                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-mono font-bold text-center"
                               />
                             </div>
@@ -2468,11 +2466,11 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                           {currentUser?.role === 'admin' && (
                             <div>
                               <label className="block text-[10px] font-medium text-slate-500 mb-1">قیمت فروش ({settings.currency})</label>
-                              <input
-                                type="number"
-                                min="0"
+                              <NumericInput
+                                min={0}
                                 value={v.sellPrice || editingProduct.sellPrice || 0}
-                                onChange={(e) => handleUpdateVariantField(v.id, 'sellPrice', Math.max(0, parseFloat(e.target.value) || 0))}
+                                onChange={(num) => handleUpdateVariantField(v.id, 'sellPrice', num)}
+                                textAlign="center"
                                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono text-center"
                               />
                             </div>
@@ -2554,7 +2552,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                   <div className="text-left">
                     <span className="text-[10px] text-slate-400 block">موجودی کل فعلی</span>
                     <strong className="text-sm font-bold text-slate-800">
-                      {toPersianDigits(adjustingProduct.stock)} {adjustingProduct.unit}
+                      {formatNumber(adjustingProduct.stock)} {adjustingProduct.unit}
                     </strong>
                   </div>
                 </div>
@@ -2587,7 +2585,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                           >
                             <div className="text-xs font-bold">{v.name}</div>
                             <div className="text-[10px] text-slate-500 mt-0.5">
-                              موجودی: <strong className="font-mono text-purple-700">{toPersianDigits(v.stock)}</strong> {adjustingProduct.unit}
+                              موجودی: <strong className="font-mono text-purple-700">{formatNumber(v.stock)}</strong> {adjustingProduct.unit}
                             </div>
                           </button>
                         );
@@ -2652,16 +2650,13 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     <label className="block text-xs font-bold text-blue-900 mb-1">
                       موجودی فیزیکی شمارش‌شده در انبار ({adjustingProduct.unit}) *
                     </label>
-                    <input
-                      type="number"
-                      min="0"
+                    <NumericInput
+                      min={0}
                       required
                       id="stock-adjust-exact-input"
                       value={exactStockTarget}
-                      onChange={(e) => {
-                        const val = parseInt(toEnglishDigits(e.target.value), 10);
-                        setExactStockTarget(isNaN(val) || val < 0 ? 0 : val);
-                      }}
+                      onChange={(num) => setExactStockTarget(num)}
+                      textAlign="center"
                       className="w-full bg-white border border-blue-300 rounded-xl px-3 py-2 text-sm font-bold text-center font-mono outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-600"
                     />
                     <p className="text-[10px] text-blue-600 text-center mt-1">
@@ -2673,16 +2668,13 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     <label className="block text-xs font-medium text-slate-700 mb-1">
                       {adjustType === 'purchase' ? 'تعداد ورودی به انبار' : 'تعداد خروجی از انبار'} ({adjustingProduct.unit}) *
                     </label>
-                    <input
-                      type="number"
-                      min="1"
+                    <NumericInput
+                      min={1}
                       required
                       id="stock-adjust-quantity-input"
                       value={adjustQuantity}
-                      onChange={(e) => {
-                        const val = parseInt(toEnglishDigits(e.target.value), 10);
-                        setAdjustQuantity(isNaN(val) || val < 1 ? 1 : val);
-                      }}
+                      onChange={(num) => setAdjustQuantity(num || 1)}
+                      textAlign="center"
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-center font-mono outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                     />
                   </div>

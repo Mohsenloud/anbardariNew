@@ -25,6 +25,7 @@ import { getCurrentJalaliDate, getCurrentJalaliTime, toPersianDigits } from '../
 import { StorageService } from '../utils/storage';
 import { IranPlatePicker } from './IranPlatePicker';
 import { VehicleFleetModal } from './VehicleFleetModal';
+import { NumericInput } from './NumericInput';
 
 interface DirectTransferReturnModalProps {
   isOpen: boolean;
@@ -296,14 +297,16 @@ export const DirectTransferReturnModal: React.FC<DirectTransferReturnModalProps>
                         </td>
                         <td className="p-2.5 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            <input
-                              type="number"
-                              min="0"
-                              max={remaining}
-                              value={currentVal}
-                              onChange={(e) => handleQtyChange(item.id, remaining, parseInt(e.target.value) || 0)}
-                              className="w-20 bg-emerald-50/60 border border-emerald-300 rounded-lg px-2 py-1 text-center font-bold text-emerald-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                            />
+                            <div className="w-20">
+                              <NumericInput
+                                min={0}
+                                max={remaining}
+                                value={currentVal}
+                                onChange={(num) => handleQtyChange(item.id, remaining, num)}
+                                textAlign="center"
+                                className="w-full bg-emerald-50/60 border border-emerald-300 rounded-lg px-2 py-1 text-center font-bold text-emerald-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                              />
+                            </div>
                             <span className="text-[11px] text-slate-500">{item.unit}</span>
                           </div>
                         </td>

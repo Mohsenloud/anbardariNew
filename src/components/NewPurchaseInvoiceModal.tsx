@@ -9,7 +9,8 @@ import {
   StoreSettings, 
   AppUser 
 } from '../types';
-import { toPersianDigits, formatPrice, getCurrentJalaliDate } from '../utils/jalali';
+import { toPersianDigits, formatPrice, getCurrentJalaliDate, formatNumber } from '../utils/jalali';
+import { NumericInput } from './NumericInput';
 import { PAYMENT_METHOD_LABELS, StorageService } from '../utils/storage';
 import { generateNextProductCode } from '../utils/codeGenerator';
 import { 
@@ -538,11 +539,11 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                           </select>
                         </td>
                         <td className="p-3">
-                          <input
-                            type="number"
-                            min="1"
+                          <NumericInput
+                            min={1}
                             value={item.quantity}
-                            onChange={(e) => handleItemChange(index, 'quantity', parseInt(e.target.value) || 0)}
+                            onChange={(num) => handleItemChange(index, 'quantity', num || 1)}
+                            textAlign="center"
                             className="w-full px-2 py-2 text-center font-mono font-black rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-slate-900 text-sm"
                           />
                         </td>
@@ -552,22 +553,20 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                           </span>
                         </td>
                         <td className="p-3">
-                          <input
-                            type="number"
-                            min="0"
-                            step="1000"
+                          <NumericInput
+                            min={0}
                             value={item.buyPrice}
-                            onChange={(e) => handleItemChange(index, 'buyPrice', parseInt(e.target.value) || 0)}
+                            onChange={(num) => handleItemChange(index, 'buyPrice', num)}
+                            textAlign="center"
                             className="w-full px-2 py-2 text-center font-mono font-bold rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-slate-800 text-xs"
                           />
                         </td>
                         <td className="p-3">
-                          <input
-                            type="number"
-                            min="0"
-                            step="1000"
+                          <NumericInput
+                            min={0}
                             value={item.discount}
-                            onChange={(e) => handleItemChange(index, 'discount', parseInt(e.target.value) || 0)}
+                            onChange={(num) => handleItemChange(index, 'discount', num)}
+                            textAlign="center"
                             className="w-full px-2 py-2 text-center font-mono rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-rose-600 font-bold text-xs"
                           />
                         </td>
@@ -634,11 +633,11 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                       <label className="block text-[11px] font-bold text-slate-600 mb-1">
                         تعداد ({item.unit || 'عدد'}):
                       </label>
-                      <input
-                        type="number"
-                        min="1"
+                      <NumericInput
+                        min={1}
                         value={item.quantity}
-                        onChange={(e) => handleItemChange(index, 'quantity', parseInt(e.target.value) || 0)}
+                        onChange={(num) => handleItemChange(index, 'quantity', num || 1)}
+                        textAlign="center"
                         className="w-full px-3 py-2 text-center font-mono font-black rounded-xl border border-slate-300 bg-white text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       />
                     </div>
@@ -647,12 +646,11 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                       <label className="block text-[11px] font-bold text-slate-600 mb-1">
                         قیمت خرید واحد (تومان):
                       </label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1000"
+                      <NumericInput
+                        min={0}
                         value={item.buyPrice}
-                        onChange={(e) => handleItemChange(index, 'buyPrice', parseInt(e.target.value) || 0)}
+                        onChange={(num) => handleItemChange(index, 'buyPrice', num)}
+                        textAlign="center"
                         className="w-full px-3 py-2 text-center font-mono font-bold rounded-xl border border-slate-300 bg-white text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       />
                     </div>
@@ -661,12 +659,11 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                       <label className="block text-[11px] font-bold text-slate-600 mb-1">
                         تخفیف ردیف (تومان):
                       </label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1000"
+                      <NumericInput
+                        min={0}
                         value={item.discount}
-                        onChange={(e) => handleItemChange(index, 'discount', parseInt(e.target.value) || 0)}
+                        onChange={(num) => handleItemChange(index, 'discount', num)}
+                        textAlign="center"
                         className="w-full px-3 py-2 text-center font-mono rounded-xl border border-slate-300 bg-white text-rose-600 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       />
                     </div>
@@ -737,12 +734,13 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                   <label className="block font-bold text-amber-900 mb-1">
                     مبلغ پرداخت شده (تومان):
                   </label>
-                  <input
-                    type="number"
-                    min="0"
+                  <NumericInput
+                    min={0}
                     max={finalTotal}
                     value={paidAmount}
-                    onChange={(e) => setPaidAmount(parseInt(e.target.value) || 0)}
+                    onChange={(num) => setPaidAmount(num)}
+                    currency="تومان"
+                    showWords={true}
                     className="w-full p-2 font-mono font-bold rounded-xl border border-amber-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                   />
                   <span className="text-[10px] text-amber-700 mt-1 block">
@@ -833,12 +831,11 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-slate-600 font-medium">تخفیف کلی فاکتور:</span>
                     <div className="relative">
-                      <input
-                        type="number"
-                        min="0"
-                        step="1000"
+                      <NumericInput
+                        min={0}
                         value={overallDiscount}
-                        onChange={(e) => setOverallDiscount(parseInt(e.target.value) || 0)}
+                        onChange={(num) => setOverallDiscount(num)}
+                        textAlign="center"
                         className="w-36 text-center px-2 py-1.5 rounded-xl border border-slate-300 bg-white font-mono text-rose-600 font-bold focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-xs"
                       />
                     </div>
@@ -847,13 +844,12 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-slate-600 font-medium">هزینه حمل و باربری:</span>
                     <div className="relative">
-                      <input
-                        type="number"
-                        min="0"
-                        step="5000"
+                      <NumericInput
+                        min={0}
                         value={shippingCost}
-                        onChange={(e) => setShippingCost(parseInt(e.target.value) || 0)}
+                        onChange={(num) => setShippingCost(num)}
                         placeholder="۰"
+                        textAlign="center"
                         className="w-36 text-center px-2 py-1.5 rounded-xl border border-slate-300 bg-white font-mono text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-xs"
                       />
                     </div>
@@ -985,12 +981,11 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                     <label className="block font-bold text-slate-700 mb-1">
                       قیمت خرید (تومان):
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1000"
+                    <NumericInput
+                      min={0}
                       value={newProductBuyPrice}
-                      onChange={(e) => setNewProductBuyPrice(parseInt(e.target.value) || 0)}
+                      onChange={(num) => setNewProductBuyPrice(num)}
+                      currency="تومان"
                       className="w-full px-3 py-2 font-mono rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     />
                   </div>
@@ -998,13 +993,12 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                     <label className="block font-bold text-slate-700 mb-1">
                       قیمت فروش (تومان):
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1000"
+                    <NumericInput
+                      min={0}
                       value={newProductSellPrice}
-                      onChange={(e) => setNewProductSellPrice(parseInt(e.target.value) || 0)}
+                      onChange={(num) => setNewProductSellPrice(num)}
                       placeholder="اختیاری"
+                      currency="تومان"
                       className="w-full px-3 py-2 font-mono rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     />
                   </div>

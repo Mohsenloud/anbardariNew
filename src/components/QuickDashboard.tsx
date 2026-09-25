@@ -9,10 +9,11 @@ import {
   AppUser,
   WarehouseInfo 
 } from '../types';
-import { formatPrice, toPersianDigits, getCurrentJalaliDate, getCurrentJalaliTime } from '../utils/jalali';
+import { formatPrice, toPersianDigits, getCurrentJalaliDate, getCurrentJalaliTime, formatNumber } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
 import { getRoleBadgeConfig, isTabPermitted } from '../utils/permissions';
 import { clearAppCacheAndReload, getLastCacheUpdatedTime } from '../utils/appUpdater';
+import { NumericInput } from './NumericInput';
 import { 
   LayoutGrid, 
   BarChart3, 
@@ -1851,28 +1852,30 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
 
                     <div className="flex items-center justify-between gap-3 text-xs">
                       <div className="text-slate-500">
-                        موجودی سیستمی: <strong className="text-slate-800">{toPersianDigits(p.stock)} {p.unit}</strong>
+                        موجودی سیستمی: <strong className="text-slate-800">{formatNumber(p.stock)} {p.unit}</strong>
                       </div>
 
                       <div className="flex items-center gap-2">
                         <label className="text-slate-600 font-bold text-[11px]">شمارش جدید:</label>
-                        <input
-                          type="number"
-                          value={currentPhysical}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value, 10);
-                            setAuditQuantities((prev) => ({
-                              ...prev,
-                              [p.id]: isNaN(val) ? 0 : val,
-                            }));
-                          }}
-                          className="w-18 bg-white border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-xs focus:ring-1 focus:ring-emerald-500"
-                        />
+                        <div className="w-20">
+                          <NumericInput
+                            min={0}
+                            value={currentPhysical}
+                            onChange={(num) => {
+                              setAuditQuantities((prev) => ({
+                                ...prev,
+                                [p.id]: num,
+                              }));
+                            }}
+                            textAlign="center"
+                            className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-xs focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
                         {diff !== 0 && (
                           <button
                             type="button"
                             onClick={() => handleApplyAudit(p.id)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] px-2.5 py-1 rounded-lg transition-colors"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
                           >
                             ثبت
                           </button>
@@ -1883,7 +1886,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                     {diff !== 0 && (
                       <div className="text-[11px] flex items-center gap-1 font-bold">
                         <span className={diff > 0 ? 'text-teal-600' : 'text-rose-600'}>
-                          اختلاف: {diff > 0 ? `+${toPersianDigits(diff)}` : toPersianDigits(diff)} {p.unit} ({diff > 0 ? 'مازاد' : 'کسری'})
+                          اختلاف: {diff > 0 ? `+${formatNumber(diff)}` : formatNumber(diff)} {p.unit} ({diff > 0 ? 'مازاد' : 'کسری'})
                         </span>
                       </div>
                     )}

@@ -76,6 +76,24 @@ export function formatNumber(num: number | null | undefined, usePersianDigits = 
   return usePersianDigits ? toPersianDigits(formatted) : formatted;
 }
 
+export function formatThousands(val: number | string | null | undefined, usePersianDigits = true): string {
+  if (val === null || val === undefined || val === '') return '';
+  const eng = toEnglishDigits(String(val)).replace(/,/g, '').trim();
+  const num = Number(eng);
+  if (isNaN(num)) return usePersianDigits ? toPersianDigits(String(val)) : String(val);
+  const parts = eng.split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const res = parts.join('.');
+  return usePersianDigits ? toPersianDigits(res) : res;
+}
+
+export function parseThousands(val: string | number | null | undefined): number {
+  if (val === null || val === undefined || val === '') return 0;
+  const eng = toEnglishDigits(String(val)).replace(/,/g, '').replace(/[^\d.-]/g, '').trim();
+  const num = parseFloat(eng);
+  return isNaN(num) ? 0 : num;
+}
+
 export function numberToPersianWords(num: number | null | undefined): string {
   const safeNum = Number(num);
   if (num === null || num === undefined || isNaN(safeNum)) return '';

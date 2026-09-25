@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { InboundReceipt, InboundReceiptItem, AppUser } from '../types';
-import { toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
+import { toPersianDigits, getCurrentJalaliDate, formatNumber } from '../utils/jalali';
+import { NumericInput } from './NumericInput';
 import { 
   CheckCircle2, 
   AlertTriangle, 
@@ -222,13 +223,15 @@ export const InboundReceiptVerificationModal: React.FC<InboundReceiptVerificatio
                         >
                           -
                         </button>
-                        <input
-                          type="number"
-                          min="0"
-                          value={item.receivedQuantity}
-                          onChange={(e) => handleQuantityChange(idx, parseInt(e.target.value) || 0)}
-                          className="w-20 text-center py-2 font-mono font-black text-sm text-slate-900 focus:outline-none"
-                        />
+                        <div className="w-24">
+                          <NumericInput
+                            min={0}
+                            value={item.receivedQuantity}
+                            onChange={(num) => handleQuantityChange(idx, num)}
+                            textAlign="center"
+                            className="w-full text-center py-2 font-mono font-black text-sm text-slate-900 focus:outline-none"
+                          />
+                        </div>
                         <button
                           type="button"
                           onClick={() => handleQuantityChange(idx, item.receivedQuantity + 1)}

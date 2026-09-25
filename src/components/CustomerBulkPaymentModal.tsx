@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Customer, Invoice, StoreSettings } from '../types';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
+import { NumericInput } from './NumericInput';
 
 interface CustomerBulkPaymentModalProps {
   isOpen: boolean;
@@ -300,18 +301,20 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
                     مبلغ واریزی فیش / رسید مشتری ({settings.currency || 'تومان'}):
                   </label>
                   <div className="flex items-center gap-2">
-                    <input
-                      type="number"
+                    <NumericInput
+                      id="custom-deposit-amount-input"
                       min={0}
                       value={customDepositAmount || ''}
-                      onChange={(e) => setCustomDepositAmount(Number(e.target.value) || 0)}
+                      onChange={(num) => setCustomDepositAmount(num)}
                       className="w-full bg-white border border-emerald-300 rounded-xl px-3 py-2 text-sm font-bold font-mono text-emerald-900 outline-none focus:ring-2 focus:ring-emerald-500"
-                      placeholder="مثال: ۵۰۰۰۰۰۰۰"
+                      placeholder="مثال: ۵۰,۰۰۰,۰۰۰"
+                      currency={settings.currency || 'تومان'}
+                      showWords={true}
                     />
                     <button
                       type="button"
                       onClick={() => setCustomDepositAmount(selectedRemainingDebt)}
-                      className="px-3 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shrink-0 hover:bg-emerald-700 transition-colors cursor-pointer"
+                      className="px-3 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shrink-0 hover:bg-emerald-700 transition-colors cursor-pointer self-start mt-0.5"
                     >
                       تسویه کامل انتخابی
                     </button>

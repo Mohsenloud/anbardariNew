@@ -35,6 +35,7 @@ import {
 import { StorageService } from '../utils/storage';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate, numberToPersianWords } from '../utils/jalali';
 import { exportCustomerStatementToExcel } from '../utils/excelHelper';
+import { NumericInput } from './NumericInput';
 
 interface CustomerStatementModalProps {
   isOpen: boolean;
@@ -460,23 +461,16 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     مبلغ ({settings.currency}) *
                   </label>
-                  <input
-                    type="text"
+                  <NumericInput
                     required
                     id="txn-amount-input"
-                    value={formAmount ? Number(formAmount.replace(/,/g, '')).toLocaleString('en-US') : ''}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/[^\d]/g, '');
-                      setFormAmount(val);
-                    }}
+                    value={formAmount}
+                    onChange={(num, raw) => setFormAmount(raw.replace(/,/g, ''))}
                     placeholder="مثال: ۲,۵۰۰,۰۰۰"
+                    currency={settings.currency}
+                    showWords={true}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                   />
-                  {numericAmount > 0 && (
-                    <p className="text-[10px] text-emerald-700 font-bold mt-1 leading-tight">
-                      {numberToPersianWords(numericAmount)} {settings.currency}
-                    </p>
-                  )}
                 </div>
 
                 {/* 2. Date */}
