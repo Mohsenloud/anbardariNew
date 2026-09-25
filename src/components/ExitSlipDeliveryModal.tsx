@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { IranPlatePicker, parseVehicleInfo } from './IranPlatePicker';
 import { VehicleFleetModal } from './VehicleFleetModal';
+import { DeliveryDateTimePicker } from './DeliveryDateTimePicker';
 
 interface ExitSlipDeliveryModalProps {
   isOpen: boolean;
@@ -586,31 +587,14 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
               </label>
             </div>
 
-            {/* 4. تاریخ و زمان و متصدی انبار (اگر تحویل فعال باشد) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="font-bold text-slate-700 flex items-center gap-1 text-xs">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    <span>تاریخ و زمان تحویل</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleRefreshTimestamp}
-                    className="text-[10px] text-blue-600 hover:underline cursor-pointer"
-                  >
-                    اکنون
-                  </button>
-                </div>
-                <input
-                  type="text"
-                  id="delivered-at-input"
-                  value={deliveredAt}
-                  onChange={(e) => setDeliveredAt(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-blue-500 transition-all font-['Vazirmatn'] text-slate-800 text-xs"
-                />
-              </div>
+            {/* 4. تاریخ و زمان تحویل و متصدی انبار (طراحی فشرده، سریع و کم‌جا) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-start">
+              <DeliveryDateTimePicker
+                value={deliveredAt}
+                onChange={(val) => setDeliveredAt(val)}
+              />
 
+              {/* متصدی انبار تاییدکننده خروج بار */}
               <div>
                 <label className="font-bold text-slate-700 flex items-center gap-1 mb-1 text-xs">
                   <UserCheck className="w-3.5 h-3.5 text-slate-400" />
@@ -622,7 +606,7 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
                   placeholder="نام انباردار یا متصدی"
                   value={deliveredBy}
                   onChange={(e) => setDeliveredBy(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-blue-500 transition-all text-slate-800 text-xs"
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-blue-500 transition-all text-slate-800 text-xs font-medium"
                 />
               </div>
             </div>
