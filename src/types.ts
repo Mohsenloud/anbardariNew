@@ -36,6 +36,7 @@ export interface Customer {
   nationalId?: string; // کد ملی یا شناسه اقتصادی
   address?: string;
   notes?: string;
+  telegramChatId?: string; // شناسه یا چت‌آیدی تلگرام مشتری (اختیاری جهت ارسال مستقیم فاکتور به مشتری)
   createdAt: string;
 }
 
@@ -241,6 +242,14 @@ export interface StoreSettings {
   pdfSyncQuality?: boolean; // اعمال کیفیت یکسان برای هر دو بخش
   pdfCustomScale?: number; // مقیاس رندر سفارشی (اختیاری)
   pdfCustomCompression?: number; // کیفیت فشرده‌سازی تصویر سفارشی (اختیاری)
+
+  // تنظیمات ربات تلگرام جهت ارسال مستقیم فایل PDF فاکتورها و حواله‌های خروج
+  telegramBotEnabled?: boolean; // فعال بودن قابلیت ارسال مستقیم به تلگرام
+  telegramBotToken?: string; // توکن ربات تلگرام (از @BotFather)
+  telegramChatId?: string; // چت‌آیدی، شناسه گروه یا کانال پیش‌فرض تلگرام
+  telegramAutoSendInvoice?: boolean; // ارسال خودکار فایل PDF فاکتور بلافاصله پس از ثبت
+  telegramAutoSendExitSlip?: boolean; // ارسال خودکار فایل PDF حواله خروج پس از تایید تحویل
+  telegramCaptionTemplate?: string; // الگوی متن کپشن تلگرام (اختیاری)
 }
 
 export type PdfQualityPreset = 'economy' | 'standard' | 'high' | 'ultra';

@@ -1473,6 +1473,156 @@ app.get('/api/backup', (req, res) => {
 });
 
 // -------------------------------------------------------------
+// TELEGRAM BOT API PROXY ENDPOINTS (DIRECT PDF & MESSAGE DISPATCH)
+// -------------------------------------------------------------
+
+// 12.1 Test Bot Connection (getMe)
+app.post('/api/telegram/test-connection', async (req, res) => {
+  try {
+    const botToken = (req.body?.botToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    if (!botToken) {
+      return res.status(400).json({ success: false, error: 'توکن ربات تلگرام وارد نشده است.' });
+    }
+
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      return res.status(400).json({
+        success: false,
+        error: data.description || 'توکن ربات نامعتبر است. لطفاً توکن دریافتی از BotFather را بررسی نمایید.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      bot: data.result,
+      message: `اتصال به ربات «${data.result.first_name}» (@${data.result.username}) با موفقیت برقرار شد.`,
+    });
+  } catch (err: any) {
+    console.error('[Telegram API] test-connection error:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'خطا در ارتباط با سرور تلگرام: ' + (err?.message || ''),
+    });
+  }
+});
+
+// 12.2 Test Message to Chat/Channel/Group (sendMessage)
+app.post('/api/telegram/test-message', async (req, res) => {
+  try {
+    const botToken = (req.body?.botToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    const chatId = (req.body?.chatId || process.env.TELEGRAM_CHAT_ID || '').trim();
+    const customText = req.body?.text;
+
+    if (!botToken) {
+      return res.status(400).json({ success: false, error: 'توکن ربات وارد نشده است.' });
+    }
+    if (!chatId) {
+      return res.status(400).json({ success: false, error: 'شناسه چت / گروه / کانال مقصد وارد نشده است.' });
+    }
+
+    const text = customText || [
+      '🔔 <b>پیام تستی اتصال سامانه حسابداری به تلگرام</b>',
+      '',
+      '✅ اتصال به این چت با موفقیت تایید شد.',
+      '📄 قابلیت ارسال مستقیم فایل‌های PDF فاکتور و حواله خروج انبار فعال است.',
+      '',
+      `🕒 زمان تست: ${new Date().toLocaleTimeString('fa-IR')}`,
+    ].join('\n');
+
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'HTML',
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      return res.status(400).json({
+        success: false,
+        error: data.description || 'ارسال پیام با خطا مواجه شد. اطمینان حاصل فرمایید ربات در چت/کانال عضو و ادمین باشد یا دکمه Start را زده باشید.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'پیام آزمایشی با موفقیت به تلگرام ارسال گردید.',
+      result: data.result,
+    });
+  } catch (err: any) {
+    console.error('[Telegram API] test-message error:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'خطا در ارسال پیام به تلگرام: ' + (err?.message || ''),
+    });
+  }
+});
+
+// 12.3 Send PDF Document to Chat/Channel/Group (sendDocument)
+app.post('/api/telegram/send-pdf', async (req, res) => {
+  try {
+    const botToken = (req.body?.botToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    const chatId = (req.body?.chatId || process.env.TELEGRAM_CHAT_ID || '').trim();
+    const { pdfBase64, filename, caption } = req.body;
+
+    if (!botToken) {
+      return res.status(400).json({ success: false, error: 'توکن ربات تلگرام در تنظیمات ثبت نشده است.' });
+    }
+    if (!chatId) {
+      return res.status(400).json({ success: false, error: 'شناسه چت یا کانال مقصد مشخص نشده است.' });
+    }
+    if (!pdfBase64) {
+      return res.status(400).json({ success: false, error: 'محتوای فایل PDF یافت نشد.' });
+    }
+
+    const safeFilename = (filename || 'invoice.pdf').endsWith('.pdf') ? filename : `${filename}.pdf`;
+    const cleanBase64 = pdfBase64
+      .replace(/^data:application\/pdf;base64,/, '')
+      .replace(/^data:application\/octet-stream;base64,/, '');
+    const pdfBuffer = Buffer.from(cleanBase64, 'base64');
+    const fileBlob = new Blob([pdfBuffer], { type: 'application/pdf' });
+
+    const formData = new FormData();
+    formData.append('chat_id', chatId);
+    formData.append('document', fileBlob, safeFilename);
+    if (caption) {
+      formData.append('caption', caption);
+      formData.append('parse_mode', 'HTML');
+    }
+
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      console.error('[Telegram API] sendDocument failed:', data);
+      return res.status(400).json({
+        success: false,
+        error: data.description || 'ارسال فایل PDF به تلگرام با خطا مواجه شد. لطفاً دسترسی ربات به این چت را بررسی فرمایید.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: `فایل PDF «${safeFilename}» با موفقیت به تلگرام ارسال شد.`,
+      result: data.result,
+    });
+  } catch (err: any) {
+    console.error('[Telegram API] send-pdf exception:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'خطای سرور در ارسال فایل به تلگرام: ' + (err?.message || ''),
+    });
+  }
+});
+
+// -------------------------------------------------------------
 // VITE OR STATIC CLIENT SERVING
 // -------------------------------------------------------------
 async function startServer() {

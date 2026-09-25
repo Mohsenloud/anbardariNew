@@ -456,6 +456,14 @@ const initialSettings: StoreSettings = {
   pdfInvoiceQuality: 'standard',
   pdfExitSlipQuality: 'high',
   pdfSyncQuality: false,
+
+  // تنظیمات ربات تلگرام
+  telegramBotEnabled: false,
+  telegramBotToken: '',
+  telegramChatId: '',
+  telegramAutoSendInvoice: false,
+  telegramAutoSendExitSlip: false,
+  telegramCaptionTemplate: '',
 };
 
 const initialActivityLogs: ActivityLog[] = [

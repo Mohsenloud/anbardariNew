@@ -3,6 +3,8 @@ import { Invoice, StoreSettings, AppUser, ExitSlipData } from '../types';
 import { toPersianDigits, getCurrentJalaliTime, toEnglishDigits } from '../utils/jalali';
 import { exportElementToPdf, printElementDirectly, printElementInNewWindow, generatePdfBlob } from '../utils/pdfHelper';
 import { StorageService } from '../utils/storage';
+import { TelegramSendPdfModal } from './TelegramSendPdfModal';
+import { formatExitSlipTelegramCaption } from '../utils/telegramService';
 import { 
   Printer, 
   X, 
@@ -155,6 +157,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
   const [showWarehouseConfigModal, setShowWarehouseConfigModal] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [showSocialModal, setShowSocialModal] = useState(false);
+  const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
   const [statusNotification, setStatusNotification] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -442,10 +445,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
   };
 
   const handleSendTelegram = () => {
-    const text = encodeURIComponent(getExitSlipShareText());
-    const url = `https://t.me/share/url?url=${encodeURIComponent(window.location.origin)}&text=${text}`;
-    window.open(url, '_blank');
-    showNotification('متن حواله در تلگرام ارسال شد.');
+    setIsTelegramModalOpen(true);
   };
 
   const handleSendEitaa = () => {
@@ -1694,6 +1694,17 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                     <Download className="w-4 h-4 text-slate-500" />
                     <span>دانلود مستقیم فایل PDF</span>
                   </button>
+
+                  {/* Telegram Direct PDF Dispatch Button */}
+                  <button
+                    type="button"
+                    id="exit-slip-send-telegram-pdf-btn"
+                    onClick={() => setIsTelegramModalOpen(true)}
+                    className="flex items-center justify-center gap-2 bg-[#229ED9] hover:bg-[#1C8AC2] active:scale-98 text-white py-2.5 px-3 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer sm:col-span-2"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>✈️ ارسال مستقیم فایل PDF به تلگرام (ربات)</span>
+                  </button>
                 </div>
               </div>
 
@@ -1962,6 +1973,29 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* Telegram Send PDF Modal */}
+      {isTelegramModalOpen && (
+        <TelegramSendPdfModal
+          isOpen={isTelegramModalOpen}
+          onClose={() => setIsTelegramModalOpen(false)}
+          settings={settings}
+          documentTitle={`حواله خروج انبار شماره ${invoice.invoiceNumber}`}
+          defaultFilename={`برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}_${pageSize}.pdf`}
+          defaultCaption={formatExitSlipTelegramCaption(invoice, slipLog, settings)}
+          customerName={slipLog.receiverName || invoice.customerName}
+          pdfBlobGenerator={async () => {
+            const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}_${pageSize}.pdf`;
+            const exitSlipQualityPreset = (settings?.pdfExitSlipQuality as any) || 'high';
+            return await generatePdfBlob('printable-exit-slip', filename, {
+              pageSize,
+              orientation,
+              documentType: 'exit_slip',
+              quality: exitSlipQualityPreset,
+            });
+          }}
+        />
       )}
 
     </div>

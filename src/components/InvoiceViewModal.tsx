@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Invoice, StoreSettings } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { exportElementToPdf, printElementDirectly, printElementInNewWindow, generatePdfBlob } from '../utils/pdfHelper';
+import { TelegramSendPdfModal } from './TelegramSendPdfModal';
+import { formatInvoiceTelegramCaption } from '../utils/telegramService';
 import { 
   Printer, 
   X, 
@@ -46,6 +48,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [showSocialModal, setShowSocialModal] = useState(false);
+  const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
   // Paper format & orientation settings (persisted in localStorage)
@@ -209,10 +212,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   };
 
   const handleSendTelegram = () => {
-    const text = encodeURIComponent(getInvoiceShareText());
-    const url = `https://t.me/share/url?url=&text=${text}`;
-    window.open(url, '_blank');
-    showToast('متن فاکتور در تلگرام ارسال شد.');
+    setIsTelegramModalOpen(true);
   };
 
   const handleSendEitaa = () => {
@@ -1182,6 +1182,17 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                     <Download className="w-4 h-4 text-slate-500" />
                     <span>دانلود مستقیم فایل PDF</span>
                   </button>
+
+                  {/* Telegram Direct PDF Dispatch Button */}
+                  <button
+                    type="button"
+                    id="invoice-send-telegram-pdf-btn"
+                    onClick={() => setIsTelegramModalOpen(true)}
+                    className="flex items-center justify-center gap-2 bg-[#229ED9] hover:bg-[#1C8AC2] active:scale-98 text-white py-2.5 px-3 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer sm:col-span-2"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>✈️ ارسال مستقیم فایل PDF به تلگرام (ربات)</span>
+                  </button>
                 </div>
               </div>
 
@@ -1290,6 +1301,34 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {/* Telegram Send PDF Modal */}
+      {isTelegramModalOpen && (
+        <TelegramSendPdfModal
+          isOpen={isTelegramModalOpen}
+          onClose={() => setIsTelegramModalOpen(false)}
+          settings={settings}
+          documentTitle={`فاکتور فروش شماره ${invoice.invoiceNumber}`}
+          defaultFilename={
+            invoice.isProforma
+              ? `پیش_فاکتور_${invoice.invoiceNumber}_${pageSize}.pdf`
+              : `فاکتور_فروش_${invoice.invoiceNumber}_${pageSize}.pdf`
+          }
+          defaultCaption={formatInvoiceTelegramCaption(invoice, settings)}
+          customerName={invoice.customerName}
+          pdfBlobGenerator={async () => {
+            const filename = invoice.isProforma
+              ? `پیش_فاکتور_${invoice.invoiceNumber}_${pageSize}.pdf`
+              : `فاکتور_فروش_${invoice.invoiceNumber}_${pageSize}.pdf`;
+            const invoiceQualityPreset = (settings?.pdfInvoiceQuality as any) || 'standard';
+            return await generatePdfBlob('printable-invoice', filename, {
+              pageSize,
+              orientation,
+              documentType: 'invoice',
+              quality: invoiceQualityPreset,
+            });
+          }}
+        />
       )}
     </div>
   );
