@@ -462,7 +462,11 @@ const initialSettings: StoreSettings = {
   telegramBotToken: '',
   telegramChatId: '',
   telegramAutoSendInvoice: false,
+  telegramAutoSendOnlyConfirmed: true,
+  telegramAutoSendOnProformaConvert: true,
   telegramAutoSendExitSlip: false,
+  telegramAutoSendInboundReceipt: false,
+  telegramAutoSendCustomerDirect: true,
   telegramCaptionTemplate: '',
 };
 

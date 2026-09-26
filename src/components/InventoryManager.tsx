@@ -12,6 +12,7 @@ import { InboundReceiptsList } from './InboundReceiptsList';
 import { DirectTransfersList } from './DirectTransfersList';
 import { CategoryManagerModal } from './CategoryManagerModal';
 import { ProductDetailsModal } from './ProductDetailsModal';
+import { autoSendExitSlipPdfToTelegram } from '../utils/telegramService';
 import { ErrorBoundary } from './ErrorBoundary';
 import { NumericInput } from './NumericInput';
 import { 
@@ -82,6 +83,7 @@ interface InventoryManagerProps {
   selectedInboundReceiptId?: string | null;
   initialSubTab?: 'items' | 'inbound-receipts' | 'exit-slips' | 'direct-transfers' | 'movements';
   onUpdateSettings?: (newSettings: StoreSettings) => void;
+  onToast?: (message: string) => void;
 }
 
 export const InventoryManager: React.FC<InventoryManagerProps> = ({
@@ -99,6 +101,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   selectedInboundReceiptId,
   initialSubTab,
   onUpdateSettings,
+  onToast,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'items' | 'inbound-receipts' | 'exit-slips' | 'direct-transfers' | 'movements'>(() => {
     if (selectedInboundReceiptId) return 'inbound-receipts';
@@ -133,6 +136,17 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   // Categories State & Management
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [categoriesList, setCategoriesList] = useState<string[]>(() => StorageService.getCategories());
+
+  // Internal toast notifications
+  const [internalToast, setInternalToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const notifyToast = (msg: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setInternalToast({ message: msg, type });
+    if (onToast) onToast(msg);
+    setTimeout(() => {
+      setInternalToast(null);
+    }, 4500);
+  };
 
   // Keep storage in sync with updates
   useEffect(() => {
@@ -570,6 +584,22 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       ...prev,
       [invoiceId]: updated,
     }));
+
+    // ارسال خودکار فایل PDF حواله خروج به تلگرام در صورت تایید تحویل و فعال بودن در تنظیمات
+    if (deliveryData.isDelivered) {
+      const liveSettings = StorageService.getSettings() || settings;
+      if (liveSettings.telegramBotEnabled && liveSettings.telegramAutoSendExitSlip) {
+        const targetInvoice = invoices.find((inv) => inv.id === invoiceId);
+        if (targetInvoice) {
+          notifyToast('در حال ایجاد و ارسال خودکار فایل PDF حواله خروج به تلگرام...', 'info');
+          autoSendExitSlipPdfToTelegram(targetInvoice, updated, liveSettings, currentUser, {
+            onStart: () => notifyToast('در حال ارسال فایل PDF حواله خروج به تلگرام...', 'info'),
+            onSuccess: (msg) => notifyToast(msg || '✈️ فایل PDF حواله خروج با موفقیت به تلگرام ارسال شد.', 'success'),
+            onError: (err) => notifyToast('⚠️ خطا در ارسال خودکار حواله خروج به تلگرام: ' + err, 'error'),
+          });
+        }
+      }
+    }
   };
 
   const handleQuickToggleDelivery = (invoiceId: string, e?: React.MouseEvent) => {
@@ -589,6 +619,22 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       ...prev,
       [invoiceId]: updated,
     }));
+
+    // ارسال خودکار به تلگرام در صورت تغییر به وضعیت تحویل‌شده
+    if (nextIsDelivered) {
+      const liveSettings = StorageService.getSettings() || settings;
+      if (liveSettings.telegramBotEnabled && liveSettings.telegramAutoSendExitSlip) {
+        const targetInvoice = invoices.find((inv) => inv.id === invoiceId);
+        if (targetInvoice) {
+          notifyToast('در حال ایجاد و ارسال خودکار فایل PDF حواله خروج به تلگرام...', 'info');
+          autoSendExitSlipPdfToTelegram(targetInvoice, updated, liveSettings, currentUser, {
+            onStart: () => notifyToast('در حال ارسال فایل PDF حواله خروج به تلگرام...', 'info'),
+            onSuccess: (msg) => notifyToast(msg || '✈️ فایل PDF حواله خروج با موفقیت به تلگرام ارسال شد.', 'success'),
+            onError: (err) => notifyToast('⚠️ خطا در ارسال خودکار حواله خروج به تلگرام: ' + err, 'error'),
+          });
+        }
+      }
+    }
   };
 
   // Direct Transfers Handlers (خروج و ورود بدون فاکتور - تعمیرات/امانی)
@@ -634,6 +680,20 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
   return (
     <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 pb-12">
+      {/* Toast Notification Banner */}
+      {internalToast && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-70 pointer-events-none animate-fadeIn">
+          <div className={`px-4 py-2.5 rounded-xl shadow-xl border text-xs font-bold flex items-center gap-2 ${
+            internalToast.type === 'error'
+              ? 'bg-rose-50 text-rose-800 border-rose-300'
+              : internalToast.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+              : 'bg-blue-50 text-blue-800 border-blue-300'
+          }`}>
+            <span>{internalToast.message}</span>
+          </div>
+        </div>
+      )}
       {/* MOBILE-FIRST DEDICATED WAREHOUSE NAVIGATION BAR (STICKY BELOW MAIN HEADER) */}
       <div className="sm:hidden sticky top-16 z-20 bg-slate-100 pb-2 pt-1.5 -mx-3 px-3 border-b border-slate-200/90 shadow-xs">
         {/* 5 Ergonomic Mobile Touch Tabs */}

@@ -511,6 +511,13 @@ export const generatePdfBlob = async (
         }
 
         clonedElement.style.setProperty('align-self', 'flex-start', 'important');
+        clonedElement.style.setProperty('position', 'relative', 'important');
+        clonedElement.style.setProperty('left', '0px', 'important');
+        clonedElement.style.setProperty('top', '0px', 'important');
+        clonedElement.style.setProperty('transform', 'none', 'important');
+        clonedElement.style.setProperty('visibility', 'visible', 'important');
+        clonedElement.style.setProperty('opacity', '1', 'important');
+        clonedElement.style.setProperty('z-index', '1', 'important');
         clonedElement.style.setProperty('overflow', 'visible', 'important');
         clonedElement.style.setProperty('width', `${targetWidthPx}px`, 'important');
         clonedElement.style.setProperty('max-width', `${targetWidthPx}px`, 'important');

@@ -2273,25 +2273,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
               </div>
 
-              {/* 4. Automated Dispatch Settings (ارسال خودکار) */}
-              <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3">
-                <h4 className="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-2">
-                  <SlidersHorizontal className="w-4 h-4 text-slate-600" />
-                  <span>تنظیمات ارسال خودکار و اتوماسیون (اختیاری)</span>
-                </h4>
+              {/* 4. Automated Dispatch Settings (تنظیمات ارسال خودکار و اتوماسیون) */}
+              <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <h4 className="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-2">
+                    <SlidersHorizontal className="w-4 h-4 text-[#229ED9]" />
+                    <span>تنظیمات ارسال خودکار و اتوماسیون (اختیاری)</span>
+                  </h4>
+                  <span className="text-[11px] bg-blue-100/70 text-blue-900 font-bold px-2.5 py-0.5 rounded-full">
+                    ارسال آنی پس از تأیید در تلگرام
+                  </span>
+                </div>
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  می‌توانید تعیین کنید سیستم به محض ثبت یا تایید، نسخه PDF را به صورت خودکار به تلگرام بفرستد.
+                  با فعال‌سازی هریک از گزینه‌های زیر، سیستم به محض تایید نهایی سند، فایل رسمی PDF یا خلاصه تراکنش را به صورت خودکار و بدون نیاز به اقدام دستی به چت یا کانال تلگرام ارسال می‌نماید:
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                  {/* Auto-send Invoice */}
-                  <label className="p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-between gap-2 cursor-pointer transition-all">
-                    <div>
+                  {/* 1. Auto-send Confirmed Invoices */}
+                  <label className="p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50/80 flex items-start justify-between gap-3 cursor-pointer transition-all shadow-xs">
+                    <div className="space-y-1">
                       <span className="font-bold text-slate-800 text-xs block">
-                        ارسال خودکار PDF فاکتور
+                        ارسال خودکار PDF فاکتورهای تایید شده
                       </span>
-                      <span className="text-[10px] text-slate-400">
-                        بلافاصله پس از ثبت نهایی فاکتور فروش
+                      <span className="text-[11px] text-slate-500 leading-relaxed block">
+                        بلافاصله پس از ثبت نهایی فاکتور فروش در سیستم
                       </span>
                     </div>
                     <input
@@ -2299,18 +2304,56 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       name="telegramAutoSendInvoice"
                       checked={!!formData.telegramAutoSendInvoice}
                       onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendInvoice: e.target.checked }))}
-                      className="w-4 h-4 rounded text-[#229ED9] focus:ring-[#229ED9] border-slate-300 cursor-pointer"
+                      className="w-4 h-4 mt-0.5 rounded text-[#229ED9] focus:ring-[#229ED9] border-slate-300 cursor-pointer shrink-0"
                     />
                   </label>
 
-                  {/* Auto-send Exit Slip */}
-                  <label className="p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-center justify-between gap-2 cursor-pointer transition-all">
-                    <div>
-                      <span className="font-bold text-slate-800 text-xs block">
-                        ارسال خودکار PDF حواله خروج
+                  {/* 2. Auto-send On Proforma Conversion (بعد از تایید) */}
+                  <label className="p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50/80 flex items-start justify-between gap-3 cursor-pointer transition-all shadow-xs">
+                    <div className="space-y-1">
+                      <span className="font-bold text-slate-800 text-xs block text-indigo-950">
+                        ارسال خودکار بعد از تایید و تبدیل پیش‌فاکتور
                       </span>
-                      <span className="text-[10px] text-slate-400">
-                        بلافاصله پس از تایید تحویل و بارگیری بار
+                      <span className="text-[11px] text-slate-500 leading-relaxed block">
+                        به محض تایید مشتری و تبدیل پیش‌فاکتور به فاکتور رسمی
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      name="telegramAutoSendOnProformaConvert"
+                      checked={formData.telegramAutoSendOnProformaConvert !== false}
+                      onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendOnProformaConvert: e.target.checked }))}
+                      className="w-4 h-4 mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer shrink-0"
+                    />
+                  </label>
+
+                  {/* 3. Send ONLY after confirmation (Don't send draft proformas) */}
+                  <label className="p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50/80 flex items-start justify-between gap-3 cursor-pointer transition-all shadow-xs">
+                    <div className="space-y-1">
+                      <span className="font-bold text-slate-800 text-xs block">
+                        ارسال خودکار فقط بعد از تایید نهایی
+                      </span>
+                      <span className="text-[11px] text-slate-500 leading-relaxed block">
+                        پیش‌فاکتورهای اولیه ارسال نشوند و فقط پس از تایید ارسال انجام شود
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      name="telegramAutoSendOnlyConfirmed"
+                      checked={formData.telegramAutoSendOnlyConfirmed !== false}
+                      onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendOnlyConfirmed: e.target.checked }))}
+                      className="w-4 h-4 mt-0.5 rounded text-[#229ED9] focus:ring-[#229ED9] border-slate-300 cursor-pointer shrink-0"
+                    />
+                  </label>
+
+                  {/* 4. Auto-send Exit Slip after delivery confirmation */}
+                  <label className="p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50/80 flex items-start justify-between gap-3 cursor-pointer transition-all shadow-xs">
+                    <div className="space-y-1">
+                      <span className="font-bold text-slate-800 text-xs block">
+                        ارسال خودکار PDF حواله خروج پس از تایید تحویل
+                      </span>
+                      <span className="text-[11px] text-slate-500 leading-relaxed block">
+                        بلافاصله پس از تایید تحویل بار و ثبت مشخصات راننده
                       </span>
                     </div>
                     <input
@@ -2318,9 +2361,55 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       name="telegramAutoSendExitSlip"
                       checked={!!formData.telegramAutoSendExitSlip}
                       onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendExitSlip: e.target.checked }))}
-                      className="w-4 h-4 rounded text-[#229ED9] focus:ring-[#229ED9] border-slate-300 cursor-pointer"
+                      className="w-4 h-4 mt-0.5 rounded text-[#229ED9] focus:ring-[#229ED9] border-slate-300 cursor-pointer shrink-0"
                     />
                   </label>
+
+                  {/* 5. Auto-send Inbound Receipt after warehouse keeper verification */}
+                  <label className="p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50/80 flex items-start justify-between gap-3 cursor-pointer transition-all shadow-xs">
+                    <div className="space-y-1">
+                      <span className="font-bold text-slate-800 text-xs block">
+                        ارسال خودکار رسید ورود انبار پس از شمارش و تایید
+                      </span>
+                      <span className="text-[11px] text-slate-500 leading-relaxed block">
+                        به محض تایید ورود اقلام و کنترل فیزیکی کالاها توسط انباردار
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      name="telegramAutoSendInboundReceipt"
+                      checked={!!formData.telegramAutoSendInboundReceipt}
+                      onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendInboundReceipt: e.target.checked }))}
+                      className="w-4 h-4 mt-0.5 rounded text-[#229ED9] focus:ring-[#229ED9] border-slate-300 cursor-pointer shrink-0"
+                    />
+                  </label>
+
+                  {/* 6. Prioritize Customer Direct Chat */}
+                  <label className="p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50/80 flex items-start justify-between gap-3 cursor-pointer transition-all shadow-xs">
+                    <div className="space-y-1">
+                      <span className="font-bold text-slate-800 text-xs block">
+                        ارسال مستقیم به تلگرام اختصاصی مشتری
+                      </span>
+                      <span className="text-[11px] text-slate-500 leading-relaxed block">
+                        در صورت ثبت Chat ID برای مشتری، فاکتور مستقیماً به تلگرام او فرستاده شود
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      name="telegramAutoSendCustomerDirect"
+                      checked={formData.telegramAutoSendCustomerDirect !== false}
+                      onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendCustomerDirect: e.target.checked }))}
+                      className="w-4 h-4 mt-0.5 rounded text-[#229ED9] focus:ring-[#229ED9] border-slate-300 cursor-pointer shrink-0"
+                    />
+                  </label>
+                </div>
+
+                {/* Helpful Note */}
+                <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 text-emerald-900 text-[11px] flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    <strong>سیستم هوشمند اتوماسیون:</strong> اسناد بلافاصله پس از تایید رسمی کارشناس یا انباردار تولید شده و به همراه کپشن اطلاعات مالی و مشخصات سند به ربات تلگرام تحویل داده می‌شوند.
+                  </span>
                 </div>
               </div>
 

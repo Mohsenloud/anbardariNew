@@ -1259,9 +1259,16 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
               </div>
 
               {/* Explanation Note */}
-              <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3 text-indigo-900 leading-relaxed">
+              <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3 text-indigo-900 leading-relaxed text-xs">
                 <strong>توجه:</strong> با تایید این عملیات، این سند بلافاصله از حالت پیش‌فاکتور خارج شده و با شماره انتخابی به فاکتور قطعی تبدیل می‌گردد؛ همچنین کلیه اقلام فوق از کاردکس و موجودی انبار کسر خواهند شد.
               </div>
+
+              {settings.telegramBotEnabled && (settings.telegramAutoSendInvoice || settings.telegramAutoSendOnProformaConvert) && (
+                <div className="bg-[#229ED9]/10 border border-[#229ED9]/30 rounded-xl p-2.5 text-[#006699] text-[11px] flex items-center gap-2">
+                  <span className="text-base">✈️</span>
+                  <span><strong>اتوماسیون فعال:</strong> بلافاصله پس از تایید تبدیل، فایل PDF فاکتور رسمی به تلگرام ارسال خواهد شد.</span>
+                </div>
+              )}
             </div>
 
             {/* Modal Actions */}

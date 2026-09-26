@@ -269,6 +269,12 @@ const DEFAULT_INITIAL_DATA = {
     originWarehouseAddress: 'تهران، جاده مخصوص، کیلومتر ۱۲، خیابان بهار، سوله شماره ۴',
     originWarehousePhone: '۰۲۱-۵۵۴۴۳۳۲۲',
     originWarehouseManager: 'مرتضی اکبری (انباردار مرکزی)',
+    telegramBotEnabled: false,
+    telegramBotToken: '',
+    telegramChatId: '',
+    telegramAutoSendInvoice: false,
+    telegramAutoSendExitSlip: false,
+    telegramCaptionTemplate: '',
   },
   users: [
     {
@@ -1565,8 +1571,23 @@ app.post('/api/telegram/test-message', async (req, res) => {
 // 12.3 Send PDF Document to Chat/Channel/Group (sendDocument)
 app.post('/api/telegram/send-pdf', async (req, res) => {
   try {
-    const botToken = (req.body?.botToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
-    const chatId = (req.body?.chatId || process.env.TELEGRAM_CHAT_ID || '').trim();
+    const dbData = readDatabase();
+    const serverSettings = dbData?.settings || {};
+
+    const botToken = (
+      req.body?.botToken ||
+      serverSettings?.telegramBotToken ||
+      process.env.TELEGRAM_BOT_TOKEN ||
+      ''
+    ).trim();
+
+    const chatId = (
+      req.body?.chatId ||
+      serverSettings?.telegramChatId ||
+      process.env.TELEGRAM_CHAT_ID ||
+      ''
+    ).trim();
+
     const { pdfBase64, filename, caption } = req.body;
 
     if (!botToken) {
@@ -1580,9 +1601,7 @@ app.post('/api/telegram/send-pdf', async (req, res) => {
     }
 
     const safeFilename = (filename || 'invoice.pdf').endsWith('.pdf') ? filename : `${filename}.pdf`;
-    const cleanBase64 = pdfBase64
-      .replace(/^data:application\/pdf;base64,/, '')
-      .replace(/^data:application\/octet-stream;base64,/, '');
+    const cleanBase64 = String(pdfBase64).replace(/^data:[^;]+;base64,/, '').trim();
     const pdfBuffer = Buffer.from(cleanBase64, 'base64');
     const fileBlob = new Blob([pdfBuffer], { type: 'application/pdf' });
 
@@ -1594,12 +1613,29 @@ app.post('/api/telegram/send-pdf', async (req, res) => {
       formData.append('parse_mode', 'HTML');
     }
 
-    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+    let response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
       method: 'POST',
       body: formData,
     });
 
-    const data = await response.json();
+    let data = await response.json();
+
+    // Fallback: If Telegram rejected due to HTML parse entity syntax, retry without parse_mode
+    if (!response.ok && data?.description && data.description.includes('can\'t parse entities')) {
+      console.warn('[Telegram API] HTML entity parse error, retrying without parse_mode...');
+      const fallbackFd = new FormData();
+      fallbackFd.append('chat_id', chatId);
+      fallbackFd.append('document', fileBlob, safeFilename);
+      if (caption) {
+        fallbackFd.append('caption', caption.replace(/<[^>]+>/g, ''));
+      }
+      response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+        method: 'POST',
+        body: fallbackFd,
+      });
+      data = await response.json();
+    }
+
     if (!response.ok || !data.ok) {
       console.error('[Telegram API] sendDocument failed:', data);
       return res.status(400).json({

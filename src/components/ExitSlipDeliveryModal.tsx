@@ -26,7 +26,8 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
-  Check
+  Check,
+  Send
 } from 'lucide-react';
 import { IranPlatePicker, parseVehicleInfo } from './IranPlatePicker';
 import { VehicleFleetModal } from './VehicleFleetModal';
@@ -629,14 +630,23 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
           </div>
 
           {/* Modal Actions */}
-          <div className="pt-2.5 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full sm:w-auto px-3.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold transition-all cursor-pointer text-center text-xs"
-            >
-              انصراف
-            </button>
+          <div className="pt-2.5 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2">
+            {/* Telegram Auto-Send Indicator */}
+            {isDelivered && settings?.telegramBotEnabled && settings?.telegramAutoSendExitSlip && (
+              <div className="w-full sm:w-auto flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-200 text-[#1C8AC2] text-[11px] font-bold">
+                <Send className="w-3.5 h-3.5 text-[#229ED9]" />
+                <span>ارسال خودکار PDF به تلگرام ({settings.telegramChatId || 'کانال'})</span>
+              </div>
+            )}
+
+            <div className="w-full sm:w-auto flex items-center justify-end gap-2 mr-auto sm:mr-0">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full sm:w-auto px-3.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold transition-all cursor-pointer text-center text-xs"
+              >
+                انصراف
+              </button>
 
             {onSaveAndPrint && (
               <button
@@ -684,6 +694,7 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
                   : 'ذخیره مشخصات'}
               </span>
             </button>
+            </div>
           </div>
         </form>
       </div>

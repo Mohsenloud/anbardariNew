@@ -137,6 +137,7 @@ export interface Invoice {
   isProforma?: boolean; // آیا پیش‌فاکتور است؟
   convertedAt?: string; // تاریخ تبدیل به فاکتور اصلی فروش
   convertedFromProforma?: string; // شماره پیش‌فاکتور اولیه قبل از تبدیل به فاکتور رسمی
+  telegramChatId?: string; // شناسه یا چت‌آیدی اختصاصی تلگرام مقصد برای ارسال مستقیم PDF این فاکتور
   createdAt: string;
   updatedAt?: string; // تاریخ آخرین ویرایش فاکتور
 }
@@ -247,8 +248,12 @@ export interface StoreSettings {
   telegramBotEnabled?: boolean; // فعال بودن قابلیت ارسال مستقیم به تلگرام
   telegramBotToken?: string; // توکن ربات تلگرام (از @BotFather)
   telegramChatId?: string; // چت‌آیدی، شناسه گروه یا کانال پیش‌فرض تلگرام
-  telegramAutoSendInvoice?: boolean; // ارسال خودکار فایل PDF فاکتور بلافاصله پس از ثبت
-  telegramAutoSendExitSlip?: boolean; // ارسال خودکار فایل PDF حواله خروج پس از تایید تحویل
+  telegramAutoSendInvoice?: boolean; // ارسال خودکار فایل PDF فاکتور پس از ثبت و تایید قطعی
+  telegramAutoSendOnlyConfirmed?: boolean; // ارسال خودکار فاکتور فقط پس از تایید نهایی (عدم ارسال پیش‌فاکتور بدون تایید)
+  telegramAutoSendOnProformaConvert?: boolean; // ارسال خودکار به محض تایید و تبدیل پیش‌فاکتور به فاکتور قطعی
+  telegramAutoSendExitSlip?: boolean; // ارسال خودکار فایل PDF حواله خروج پس از تایید تحویل و بارگیری بار
+  telegramAutoSendInboundReceipt?: boolean; // ارسال خودکار رسید ورود انبار پس از تایید و شمارش انباردار
+  telegramAutoSendCustomerDirect?: boolean; // اولویت ارسال به تلگرام اختصاصی مشتری در صورت ثبت چت‌آیدی مشتری
   telegramCaptionTemplate?: string; // الگوی متن کپشن تلگرام (اختیاری)
 }
 

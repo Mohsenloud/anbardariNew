@@ -27,10 +27,19 @@ import {
   FileDown,
   Sparkles,
   Check,
-  FileText
+  FileText,
+  Send,
+  SlidersHorizontal,
+  Zap,
+  Loader2,
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  MessageSquare
 } from 'lucide-react';
 import { PdfQualityPreset } from '../types';
 import { PDF_QUALITY_PRESETS } from '../utils/pdfHelper';
+import { testTelegramBotConnection, testTelegramMessage } from '../utils/telegramService';
 
 interface SettingsModalProps {
   settings: StoreSettings;
@@ -49,6 +58,70 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [formData, setFormData] = useState<StoreSettings>({ ...settings });
   const [importStatus, setImportStatus] = useState<string>('');
+
+  // Telegram Bot testing states
+  const [isTestingBot, setIsTestingBot] = useState(false);
+  const [botTestResult, setBotTestResult] = useState<{
+    success: boolean;
+    message: string;
+    botInfo?: { id: number; first_name: string; username: string };
+  } | null>(null);
+  const [isTestingMsg, setIsTestingMsg] = useState(false);
+  const [msgTestResult, setMsgTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showBotToken, setShowBotToken] = useState(false);
+
+  const handleTestBotConnection = async () => {
+    if (!formData.telegramBotToken?.trim()) {
+      setBotTestResult({ success: false, message: 'لطفاً ابتدا توکن ربات تلگرام را وارد فرمایید.' });
+      return;
+    }
+    setIsTestingBot(true);
+    setBotTestResult(null);
+    try {
+      const res = await testTelegramBotConnection(formData.telegramBotToken);
+      if (res.success && res.bot) {
+        setBotTestResult({
+          success: true,
+          message: `ارتباط با ربات «${res.bot.first_name}» (@${res.bot.username}) با موفقیت برقرار شد.`,
+          botInfo: res.bot,
+        });
+      } else {
+        setBotTestResult({
+          success: false,
+          message: res.error || 'عدم موفقیت در برقراری اتصال به ربات تلگرام.',
+        });
+      }
+    } catch (e: any) {
+      setBotTestResult({ success: false, message: 'خطا در ارتباط با سرور: ' + (e?.message || '') });
+    } finally {
+      setIsTestingBot(false);
+    }
+  };
+
+  const handleTestTelegramMessage = async () => {
+    if (!formData.telegramBotToken?.trim()) {
+      setMsgTestResult({ success: false, message: 'لطفاً توکن ربات را وارد نمایید.' });
+      return;
+    }
+    if (!formData.telegramChatId?.trim()) {
+      setMsgTestResult({ success: false, message: 'لطفاً شناسه چت / گروه یا کانال مقصد را وارد کنید.' });
+      return;
+    }
+    setIsTestingMsg(true);
+    setMsgTestResult(null);
+    try {
+      const res = await testTelegramMessage(formData.telegramBotToken, formData.telegramChatId);
+      if (res.success) {
+        setMsgTestResult({ success: true, message: res.message || 'پیام آزمایشی به تلگرام ارسال گردید.' });
+      } else {
+        setMsgTestResult({ success: false, message: res.error || 'ارسال پیام با خطا مواجه شد.' });
+      }
+    } catch (e: any) {
+      setMsgTestResult({ success: false, message: 'خطا در برقراری ارتباط: ' + (e?.message || '') });
+    } finally {
+      setIsTestingMsg(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -676,6 +749,204 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </button>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Section 2.9: Telegram Bot & Automation Settings (تنظیمات ارسال خودکار و اتوماسیون) */}
+            <div className="space-y-4 pt-4 border-t border-slate-200">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-[#229ED9]/10 text-[#229ED9] flex items-center justify-center">
+                    <Send className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 text-sm">
+                      اتصال به ربات تلگرام و تنظیمات ارسال خودکار و اتوماسیون (اختیاری)
+                    </h4>
+                    <span className="text-[11px] text-slate-500">
+                      ارسال مستقیم فایل رسمی PDF فاکتورها، حواله‌های خروج و رسیدهای ورود
+                    </span>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors">
+                  <span className="text-xs font-bold text-slate-700">فعال‌سازی ربات تلگرام</span>
+                  <input
+                    type="checkbox"
+                    checked={!!formData.telegramBotEnabled}
+                    onChange={(e) => setFormData(prev => ({ ...prev, telegramBotEnabled: e.target.checked }))}
+                    className="w-4 h-4 rounded text-[#229ED9] focus:ring-[#229ED9] border-slate-300 cursor-pointer"
+                  />
+                </label>
+              </div>
+
+              {formData.telegramBotEnabled && (
+                <div className="space-y-4 animate-fadeIn">
+                  {/* Bot Token */}
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <label className="block text-xs font-bold text-slate-700">
+                      توکن اختصاصی ربات تلگرام (Bot Token):
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type={showBotToken ? 'text' : 'password'}
+                          dir="ltr"
+                          placeholder="مثال: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+                          value={formData.telegramBotToken || ''}
+                          onChange={(e) => {
+                            setFormData(prev => ({ ...prev, telegramBotToken: e.target.value }));
+                            if (botTestResult) setBotTestResult(null);
+                          }}
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left text-slate-800 pr-9"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowBotToken(!showBotToken)}
+                          className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          {showBotToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleTestBotConnection}
+                        disabled={isTestingBot || !formData.telegramBotToken?.trim()}
+                        className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all disabled:opacity-50 shrink-0 cursor-pointer"
+                      >
+                        {isTestingBot ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-amber-300" />}
+                        <span>تست اتصال</span>
+                      </button>
+                    </div>
+
+                    {botTestResult && (
+                      <div className={`p-2.5 rounded-lg border text-xs flex items-center gap-2 ${
+                        botTestResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
+                      }`}>
+                        {botTestResult.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />}
+                        <span>{botTestResult.message}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Chat ID */}
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <label className="block text-xs font-bold text-slate-700">
+                      شناسه پیش‌فرض چت، کانال یا گروه مقصد (Chat ID):
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        dir="ltr"
+                        placeholder="مثلاً: 123456789 یا @MyChannelName یا -1001234567890"
+                        value={formData.telegramChatId || ''}
+                        onChange={(e) => {
+                          setFormData(prev => ({ ...prev, telegramChatId: e.target.value }));
+                          if (msgTestResult) setMsgTestResult(null);
+                        }}
+                        className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left text-slate-800"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleTestTelegramMessage}
+                        disabled={isTestingMsg || !formData.telegramBotToken?.trim() || !formData.telegramChatId?.trim()}
+                        className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center gap-1.5 transition-all disabled:opacity-50 shrink-0 cursor-pointer"
+                      >
+                        {isTestingMsg ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />}
+                        <span>ارسال پیام تستی</span>
+                      </button>
+                    </div>
+
+                    {msgTestResult && (
+                      <div className={`p-2.5 rounded-lg border text-xs flex items-center gap-2 ${
+                        msgTestResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
+                      }`}>
+                        {msgTestResult.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />}
+                        <span>{msgTestResult.message}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Automation & After-Approval Dispatch */}
+                  <div className="p-4 bg-sky-50/60 rounded-2xl border border-sky-200/80 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <h5 className="font-bold text-slate-800 text-xs flex items-center gap-2">
+                        <SlidersHorizontal className="w-4 h-4 text-[#229ED9]" />
+                        <span>تنظیمات ارسال خودکار و اتوماسیون (اختیاری)</span>
+                      </h5>
+                      <span className="text-[10px] font-bold text-[#006699] bg-[#229ED9]/15 px-2 py-0.5 rounded-md">
+                        بعد از تایید ارسال خودکار در تلگرام انجام شود
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <label className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-start justify-between gap-2 cursor-pointer">
+                        <div>
+                          <span className="font-bold text-slate-800 text-xs block">ارسال خودکار فاکتورهای فروش تایید شده</span>
+                          <span className="text-[10px] text-slate-500">بلافاصله پس از ثبت نهایی فاکتور فروش</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={!!formData.telegramAutoSendInvoice}
+                          onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendInvoice: e.target.checked }))}
+                          className="w-4 h-4 mt-0.5 rounded text-[#229ED9] cursor-pointer"
+                        />
+                      </label>
+
+                      <label className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-start justify-between gap-2 cursor-pointer">
+                        <div>
+                          <span className="font-bold text-slate-800 text-xs block">ارسال خودکار بعد از تایید پیش‌فاکتور</span>
+                          <span className="text-[10px] text-slate-500">به محض تایید مشتری و تبدیل به فاکتور رسمی</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={formData.telegramAutoSendOnProformaConvert !== false}
+                          onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendOnProformaConvert: e.target.checked }))}
+                          className="w-4 h-4 mt-0.5 rounded text-indigo-600 cursor-pointer"
+                        />
+                      </label>
+
+                      <label className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-start justify-between gap-2 cursor-pointer">
+                        <div>
+                          <span className="font-bold text-slate-800 text-xs block">ارسال خودکار فقط بعد از تایید نهایی</span>
+                          <span className="text-[10px] text-slate-500">پیش‌فاکتورهای اولیه ارسال نشوند تا تایید شوند</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={formData.telegramAutoSendOnlyConfirmed !== false}
+                          onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendOnlyConfirmed: e.target.checked }))}
+                          className="w-4 h-4 mt-0.5 rounded text-[#229ED9] cursor-pointer"
+                        />
+                      </label>
+
+                      <label className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-start justify-between gap-2 cursor-pointer">
+                        <div>
+                          <span className="font-bold text-slate-800 text-xs block">ارسال خودکار حواله خروج پس از تایید تحویل</span>
+                          <span className="text-[10px] text-slate-500">پس از تایید تحویل بار و ثبت مشخصات راننده</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={!!formData.telegramAutoSendExitSlip}
+                          onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendExitSlip: e.target.checked }))}
+                          className="w-4 h-4 mt-0.5 rounded text-[#229ED9] cursor-pointer"
+                        />
+                      </label>
+
+                      <label className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-start justify-between gap-2 cursor-pointer sm:col-span-2">
+                        <div>
+                          <span className="font-bold text-slate-800 text-xs block">ارسال خودکار رسید ورود انبار پس از تایید و شمارش انباردار</span>
+                          <span className="text-[10px] text-slate-500">به محض تایید ورود کالاها و کنترل فیزیکی اقلام توسط انباردار</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={!!formData.telegramAutoSendInboundReceipt}
+                          onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendInboundReceipt: e.target.checked }))}
+                          className="w-4 h-4 mt-0.5 rounded text-[#229ED9] cursor-pointer"
+                        />
+                      </label>
+                    </div>
                   </div>
                 </div>
               )}

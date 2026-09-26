@@ -25,6 +25,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { MobileFloatingPWAInstall } from './components/MobileFloatingPWAInstall';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { autoSendInvoicePdfToTelegram, autoSendInboundReceiptToTelegram } from './utils/telegramService';
 import { CheckCircle2, ShieldAlert } from 'lucide-react';
 
 export default function App() {
@@ -225,6 +226,21 @@ export default function App() {
       showToast(`فاکتور شماره ${newInvoice.invoiceNumber} با موفقیت ثبت و از انبار کسر شد.`);
     }
 
+    // ارسال خودکار فایل PDF فاکتور به تلگرام در صورت فعال بودن در تنظیمات
+    const liveSettings = StorageService.getSettings() || settings;
+    if (liveSettings.telegramBotEnabled && liveSettings.telegramAutoSendInvoice) {
+      if (newInvoice.isProforma && liveSettings.telegramAutoSendOnlyConfirmed !== false) {
+        // فاکتور در وضعیت پیش‌فاکتور است و طبق تنظیمات، ارسال پس از تایید نهایی انجام می‌گیرد
+        console.log('[AutoSend] Proforma created. Auto-send deferred until final confirmation.');
+      } else {
+        autoSendInvoicePdfToTelegram(newInvoice, liveSettings, {
+          onStart: () => showToast('در حال ایجاد و ارسال فایل PDF فاکتور تایید شده به تلگرام...'),
+          onSuccess: (msg) => showToast(msg || '✈️ فایل PDF فاکتور با موفقیت به تلگرام ارسال شد.'),
+          onError: (err) => showToast('⚠️ خطا در ارسال خودکار فاکتور به تلگرام: ' + err),
+        });
+      }
+    }
+
     // Log user activity
     StorageService.logActivity({
       category: 'sales',
@@ -389,6 +405,16 @@ export default function App() {
 
     setEditingInvoice(null);
 
+    // ارسال خودکار فایل PDF فاکتور ویرایش‌شده به تلگرام در صورت فعال بودن
+    const liveSettings = StorageService.getSettings() || settings;
+    if (liveSettings.telegramBotEnabled && liveSettings.telegramAutoSendInvoice) {
+      autoSendInvoicePdfToTelegram(updatedInvoice, liveSettings, {
+        onStart: () => showToast('در حال ایجاد و ارسال فایل PDF فاکتور به تلگرام...'),
+        onSuccess: (msg) => showToast(msg || '✈️ فایل PDF فاکتور ویرایش‌شده با موفقیت به تلگرام ارسال شد.'),
+        onError: (err) => showToast('⚠️ خطا در ارسال خودکار فاکتور به تلگرام: ' + err),
+      });
+    }
+
     // Log user activity
     StorageService.logActivity({
       category: 'sales',
@@ -408,6 +434,7 @@ export default function App() {
   // 1.1 CONVERT PROFORMA TO OFFICIAL INVOICE (تبدیل پیش‌فاکتور به فاکتور قطعی و کسر از انبار)
   const handleConvertProforma = (proformaInvoice: Invoice, customInvoiceNumber?: string) => {
     const today = getCurrentJalaliDate();
+    let convertedInvoice: Invoice;
     const finalNumber = customInvoiceNumber?.trim() || 
       (proformaInvoice.invoiceNumber.startsWith('PF-') 
         ? proformaInvoice.invoiceNumber.replace('PF-', 'INV-') 
@@ -470,7 +497,7 @@ export default function App() {
       }
 
       // Update invoice record: change isProforma to false, new number, convertedAt, convertedFromProforma
-      const convertedInvoice: Invoice = {
+      convertedInvoice = {
         ...proformaInvoice,
         isProforma: false,
         invoiceNumber: finalNumber,
@@ -496,7 +523,7 @@ export default function App() {
         setViewingInvoice(convertedInvoice);
       }
     } else {
-      const convertedInvoice: Invoice = {
+      convertedInvoice = {
         ...proformaInvoice,
         isProforma: false,
         invoiceNumber: finalNumber,
@@ -530,6 +557,16 @@ export default function App() {
 
     // هنگام تبدیل پیش‌فاکتور به فاکتور رسمی، اکنون حواله خروج کالا صادر می‌گردد
     StorageService.getOrAssignExitSlipNumber(proformaInvoice.id, finalNumber);
+
+    // ارسال خودکار فایل PDF فاکتور رسمی تایید شده به تلگرام پس از تبدیل
+    const liveSettings = StorageService.getSettings() || settings;
+    if (liveSettings.telegramBotEnabled && (liveSettings.telegramAutoSendInvoice || liveSettings.telegramAutoSendOnProformaConvert)) {
+      autoSendInvoicePdfToTelegram(convertedInvoice, liveSettings, {
+        onStart: () => showToast('در حال ایجاد و ارسال خودکار فایل PDF فاکتور تایید شده به تلگرام...'),
+        onSuccess: (msg) => showToast(msg || '✈️ فایل PDF فاکتور تایید شده با موفقیت به تلگرام ارسال شد.'),
+        onError: (err) => showToast('⚠️ خطا در ارسال خودکار فاکتور به تلگرام: ' + err),
+      });
+    }
 
     showToast(`پیش‌فاکتور ${proformaInvoice.invoiceNumber} با موفقیت به فاکتور رسمی ${finalNumber} تبدیل و اقلام از انبار کسر شد.`);
     return true;
@@ -1149,6 +1186,16 @@ export default function App() {
 
     loadData(true);
 
+    // ارسال خودکار رسید ورود انبار به تلگرام در صورت تایید و فعال بودن در تنظیمات
+    const liveSettings = StorageService.getSettings() || settings;
+    if (liveSettings.telegramBotEnabled && liveSettings.telegramAutoSendInboundReceipt) {
+      autoSendInboundReceiptToTelegram(updatedReceipt, liveSettings, {
+        onStart: () => showToast('در حال ارسال خودکار رسید ورود تایید شده به تلگرام...'),
+        onSuccess: (msg) => showToast(msg || '✈️ رسید ورود کالا با موفقیت به تلگرام ارسال شد.'),
+        onError: (err) => showToast('⚠️ خطا در ارسال رسید ورود به تلگرام: ' + err),
+      });
+    }
+
     StorageService.logActivity({
       category: 'warehouse',
       actionType: hasDiscrepancy ? 'verify_inbound_discrepancy' : 'verify_inbound_success',
@@ -1460,6 +1507,7 @@ export default function App() {
               selectedInboundReceiptId={selectedInboundReceiptId}
               initialSubTab={inventorySubTab}
               onUpdateSettings={handleSaveSettings}
+              onToast={showToast}
             />
           </ErrorBoundary>
         )}

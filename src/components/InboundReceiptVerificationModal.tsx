@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { InboundReceipt, InboundReceiptItem, AppUser } from '../types';
 import { toPersianDigits, getCurrentJalaliDate, formatNumber } from '../utils/jalali';
+import { StorageService } from '../utils/storage';
 import { NumericInput } from './NumericInput';
 import { 
   CheckCircle2, 
@@ -11,7 +12,8 @@ import {
   ArrowRight, 
   RotateCcw, 
   FileText,
-  Printer
+  Printer,
+  Send
 } from 'lucide-react';
 
 interface InboundReceiptVerificationModalProps {
@@ -345,7 +347,7 @@ export const InboundReceiptVerificationModal: React.FC<InboundReceiptVerificatio
 
           {/* Actions Footer */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {onPrint && (
                 <button
                   type="button"
@@ -355,6 +357,13 @@ export const InboundReceiptVerificationModal: React.FC<InboundReceiptVerificatio
                   <Printer className="w-4 h-4 text-slate-500" />
                   <span>چاپ برگه حواله ورود</span>
                 </button>
+              )}
+
+              {StorageService.getSettings()?.telegramBotEnabled && StorageService.getSettings()?.telegramAutoSendInboundReceipt && (
+                <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-50 border border-sky-200 text-[#1C8AC2] text-[11px] font-bold">
+                  <Send className="w-3.5 h-3.5 text-[#229ED9]" />
+                  <span>ارسال خودکار به تلگرام پس از تأیید فعال است</span>
+                </div>
               )}
             </div>
 
