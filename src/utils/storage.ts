@@ -13,6 +13,7 @@ import {
   PaymentMethod,
   PurchaseInvoice,
   InboundReceipt,
+  InvoiceShareLink,
   ActivityLog,
   ActivityActionCategory,
   ServerBackupInfo,
@@ -1618,6 +1619,188 @@ export const StorageService = {
     const clean = invoices.filter((inv) => !deletedSet.has(inv.id));
     localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(clean));
     this.queuePushToServer({ invoices: clean, deletedInvoiceIds: Array.from(deletedSet) });
+  },
+
+  // -------------------------------------------------------------
+  // SECURE PUBLIC WEB INVOICE SHARING (لینک نسخه تحت وب برای مشتری)
+  // -------------------------------------------------------------
+  buildInvoicePublicUrl(token: string, customDomain?: string): string {
+    const cleanToken = encodeURIComponent(token.trim());
+    if (customDomain && customDomain.trim()) {
+      let base = customDomain.trim();
+      if (!base.startsWith('http://') && !base.startsWith('https://')) {
+        base = `https://${base}`;
+      }
+      base = base.replace(/\/+$/, '');
+      return `${base}/v/${cleanToken}`;
+    }
+
+    if (typeof window !== 'undefined') {
+      const origin = window.location.origin;
+      return `${origin}/v/${cleanToken}`;
+    }
+    return `/v/${cleanToken}`;
+  },
+
+  async generateOrUpdateShareLink(
+    invoiceId: string,
+    options?: {
+      enabled?: boolean;
+      expiresAt?: string | null;
+      isOneTime?: boolean;
+      maxViews?: number;
+      pinRequired?: boolean;
+      pinCode?: string;
+      allowPdfDownload?: boolean;
+      regenerateToken?: boolean;
+    }
+  ): Promise<{ success: boolean; invoice?: Invoice; shareLink?: InvoiceShareLink; fullUrl?: string; message?: string }> {
+    const invoices = this.getInvoices();
+    const targetIdx = invoices.findIndex((i) => i.id === invoiceId);
+    if (targetIdx === -1) {
+      return { success: false, message: 'فاکتور مورد نظر یافت نشد.' };
+    }
+
+    const currentInvoice = invoices[targetIdx];
+    const prevLink = currentInvoice.shareLink;
+    let token = prevLink?.token;
+
+    if (!token || options?.regenerateToken) {
+      token = `inv_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}`;
+    }
+
+    const shareLink: InvoiceShareLink = {
+      token,
+      enabled: options?.enabled !== undefined ? options.enabled : true,
+      createdAt: prevLink?.createdAt || new Date().toISOString(),
+      expiresAt: options?.expiresAt !== undefined ? options.expiresAt : (prevLink?.expiresAt || null),
+      isOneTime: options?.isOneTime !== undefined ? options.isOneTime : (prevLink?.isOneTime || false),
+      maxViews: options?.isOneTime ? 1 : (options?.maxViews !== undefined ? options.maxViews : prevLink?.maxViews),
+      viewCount: options?.regenerateToken ? 0 : (prevLink?.viewCount || 0),
+      lastViewedAt: options?.regenerateToken ? undefined : prevLink?.lastViewedAt,
+      pinRequired: options?.pinRequired !== undefined ? options.pinRequired : (prevLink?.pinRequired || false),
+      pinCode: options?.pinCode !== undefined ? (options.pinCode ? options.pinCode.trim() : undefined) : prevLink?.pinCode,
+      allowPdfDownload: options?.allowPdfDownload !== undefined ? options.allowPdfDownload : (prevLink?.allowPdfDownload !== false),
+    };
+
+    const updatedInvoice: Invoice = {
+      ...currentInvoice,
+      shareLink,
+      updatedAt: getCurrentJalaliDate(),
+    };
+
+    invoices[targetIdx] = updatedInvoice;
+    this.saveInvoices(invoices);
+    this.notifyChange();
+
+    // Call server API for centralized backend sync
+    try {
+      const res = await fetch(`/api/invoices/${encodeURIComponent(invoiceId)}/share-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...options,
+          token: shareLink.token,
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.shareLink) {
+          updatedInvoice.shareLink = json.shareLink;
+          invoices[targetIdx] = updatedInvoice;
+          this.saveInvoices(invoices);
+        }
+      }
+    } catch {
+      // Offline fallback: already saved locally and queued for server sync
+    }
+
+    const settings = this.getSettings();
+    const fullUrl = this.buildInvoicePublicUrl(shareLink.token, settings.webInvoiceCustomDomain);
+
+    return {
+      success: true,
+      invoice: updatedInvoice,
+      shareLink: updatedInvoice.shareLink || shareLink,
+      fullUrl,
+      message: 'پیوند مشاهده آنلاین فاکتور با موفقیت ایجاد و تنظیم گردید.',
+    };
+  },
+
+  async revokeShareLink(invoiceId: string): Promise<{ success: boolean; message?: string }> {
+    const invoices = this.getInvoices();
+    const targetIdx = invoices.findIndex((i) => i.id === invoiceId);
+    if (targetIdx === -1) {
+      return { success: false, message: 'فاکتور مورد نظر یافت نشد.' };
+    }
+
+    const currentInvoice = invoices[targetIdx];
+    if (currentInvoice.shareLink) {
+      currentInvoice.shareLink.enabled = false;
+      invoices[targetIdx] = currentInvoice;
+      this.saveInvoices(invoices);
+      this.notifyChange();
+    }
+
+    try {
+      await fetch(`/api/invoices/${encodeURIComponent(invoiceId)}/share-link`, {
+        method: 'DELETE',
+      });
+    } catch {}
+
+    return { success: true, message: 'دسترسی به لینک آنلاین با موفقیت لغو و مسدود شد.' };
+  },
+
+  async fetchPublicInvoice(
+    token: string,
+    pin?: string
+  ): Promise<{
+    success: boolean;
+    invoice?: Invoice;
+    settings?: StoreSettings;
+    shareLink?: InvoiceShareLink;
+    pinRequired?: boolean;
+    code?: string;
+    message?: string;
+    storeName?: string;
+    storeLogo?: string;
+    invoiceNumber?: string;
+  }> {
+    try {
+      const pinParam = pin ? `?pin=${encodeURIComponent(pin.trim())}` : '';
+      const res = await fetch(`/api/public/invoice/${encodeURIComponent(token.trim())}${pinParam}`);
+      const data = await res.json();
+      return data;
+    } catch (err: any) {
+      // Local fallback if running completely offline/client-only
+      const localInvoices = this.getInvoices();
+      const match = localInvoices.find((i) => i?.shareLink?.token === token);
+      if (match && match.shareLink && match.shareLink.enabled) {
+        if (match.shareLink.pinRequired && match.shareLink.pinCode) {
+          if (!pin || pin.trim() !== match.shareLink.pinCode.trim()) {
+            return {
+              success: false,
+              code: 'PIN_REQUIRED',
+              pinRequired: true,
+              message: 'مشاهده این فاکتور مستلزم ورود رمز عبور است.',
+              storeName: this.getSettings().storeName,
+              invoiceNumber: match.invoiceNumber,
+            };
+          }
+        }
+        return {
+          success: true,
+          invoice: match,
+          settings: this.getSettings(),
+          shareLink: match.shareLink,
+        };
+      }
+      return {
+        success: false,
+        code: 'NETWORK_ERROR',
+        message: 'عدم امکان اتصال به سرور جهت دریافت فاکتور.',
+      };
+    }
   },
 
   getPurchaseInvoices(): PurchaseInvoice[] {

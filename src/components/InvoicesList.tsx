@@ -6,6 +6,7 @@ import { StorageService } from '../utils/storage';
 import { CustomerExportModal } from './CustomerExportModal';
 import { InvoiceQuickDetailsModal } from './InvoiceQuickDetailsModal';
 import { CustomerBulkPaymentModal } from './CustomerBulkPaymentModal';
+import { InvoiceShareLinkModal } from './InvoiceShareLinkModal';
 import { NumericInput } from './NumericInput';
 import { 
   Search, 
@@ -39,7 +40,8 @@ import {
   Download,
   Filter, 
   Check,
-  Eye
+  Eye,
+  Globe
 } from 'lucide-react';
 
 interface InvoicesListProps {
@@ -55,6 +57,7 @@ interface InvoicesListProps {
   onNewInvoice: () => void;
   onNewProforma?: () => void;
   onConvertProforma?: (invoice: Invoice, newInvoiceNumber?: string) => boolean | void;
+  onOpenShareLinkModal?: (invoice: Invoice) => void;
   onBatchUpdatePaymentStatus?: (
     updates: { invoiceId: string; status: 'paid' | 'unpaid' | 'partial'; paidAmount: number }[],
     details?: string
@@ -76,6 +79,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   onNewInvoice,
   onNewProforma,
   onConvertProforma,
+  onOpenShareLinkModal,
   onBatchUpdatePaymentStatus,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -85,10 +89,19 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   
   // Modals state
   const [quickDetailsInvoice, setQuickDetailsInvoice] = useState<Invoice | null>(null);
+  const [selectedShareLinkInvoice, setSelectedShareLinkInvoice] = useState<Invoice | null>(null);
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const [invoiceToReturn, setInvoiceToReturn] = useState<Invoice | null>(null);
   const [proformaToConvert, setProformaToConvert] = useState<Invoice | null>(null);
   const [conversionNewNumber, setConversionNewNumber] = useState<string>('');
+
+  const handleOpenShareModal = (inv: Invoice) => {
+    if (onOpenShareLinkModal) {
+      onOpenShareLinkModal(inv);
+    } else {
+      setSelectedShareLinkInvoice(inv);
+    }
+  };
   
   // Quick payment update modal state
   const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
@@ -723,6 +736,18 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
+                          handleOpenShareModal(inv);
+                        }}
+                        className="p-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-xl transition-colors cursor-pointer"
+                        title="ارسال نسخه تحت وب فاکتور برای مشتری"
+                      >
+                        <Globe className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setQuickDetailsInvoice(inv);
                         }}
                         className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
@@ -848,6 +873,16 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                             className="p-2 text-slate-600 hover:text-emerald-700 hover:bg-slate-100 active:bg-slate-200 rounded-xl transition-colors cursor-pointer"
                           >
                             <Printer className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            id={`share-link-btn-${inv.id}`}
+                            type="button"
+                            onClick={() => handleOpenShareModal(inv)}
+                            title="ارسال و اشتراک لینک نسخه تحت وب برای مشتری"
+                            className="p-2 text-sky-600 hover:text-sky-800 hover:bg-sky-50 active:bg-sky-100 rounded-xl transition-colors cursor-pointer"
+                          >
+                            <Globe className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -1314,6 +1349,10 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           setQuickDetailsInvoice(null);
           handleOpenPaymentModal(inv);
         }}
+        onOpenShareLinkModal={(inv) => {
+          setQuickDetailsInvoice(null);
+          handleOpenShareModal(inv);
+        }}
         onConvertProforma={onConvertProforma ? (inv) => {
           setQuickDetailsInvoice(null);
           handleOpenConvertModal(inv);
@@ -1464,6 +1503,19 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
             if (onBatchUpdatePaymentStatus) {
               onBatchUpdatePaymentStatus(updates, details);
             }
+          }}
+        />
+      )}
+
+      {/* INVOICE PUBLIC WEB SHARE LINK MODAL */}
+      {selectedShareLinkInvoice && (
+        <InvoiceShareLinkModal
+          isOpen={!!selectedShareLinkInvoice}
+          invoice={selectedShareLinkInvoice}
+          settings={settings}
+          onClose={() => setSelectedShareLinkInvoice(null)}
+          onUpdateInvoice={(updated) => {
+            setSelectedShareLinkInvoice(updated);
           }}
         />
       )}

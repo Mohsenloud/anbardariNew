@@ -27,6 +27,8 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { SimpleInvoiceLayout } from './SimpleInvoiceLayout';
+import { InvoiceShareLinkModal } from './InvoiceShareLinkModal';
+import { StorageService } from '../utils/storage';
 
 interface InvoiceViewModalProps {
   invoice: Invoice | null;
@@ -49,7 +51,13 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [showSocialModal, setShowSocialModal] = useState(false);
   const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
+  const [isShareLinkModalOpen, setIsShareLinkModalOpen] = useState(false);
+  const [activeInvoice, setActiveInvoice] = useState<Invoice>(invoice!);
   const [notification, setNotification] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (invoice) setActiveInvoice(invoice);
+  }, [invoice]);
 
   // Paper format & orientation settings (persisted in localStorage)
   const [pageSize, setPageSize] = useState<'a4' | 'a5'>(() => {
@@ -507,6 +515,18 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                 >
                   <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
                   <span className="hidden xs:inline">واتساپ</span>
+                </button>
+
+                {/* Customer Public Web Link Trigger */}
+                <button
+                  type="button"
+                  id="invoice-header-weblink-btn"
+                  onClick={() => setIsShareLinkModalOpen(true)}
+                  title="ارسال و تنظیم لینک نسخه تحت وب برای مشتری"
+                  className="flex items-center gap-1 bg-indigo-950/70 hover:bg-indigo-900 text-indigo-300 hover:text-white px-2 py-1 rounded-lg border border-indigo-600/40 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <Globe className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="hidden xs:inline">لینک آنلاین</span>
                 </button>
 
                 {/* Social Media & Messengers Modal Trigger */}
@@ -1099,6 +1119,60 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             </div>
 
             <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* PRIMARY OPTION: ONLINE WEB INVOICE (RECOMMENDED - ZERO DOWNLOAD REQUIRED) */}
+              <div className="bg-gradient-to-r from-indigo-50 via-sky-50 to-indigo-50 border-2 border-indigo-200/90 rounded-2xl p-4 space-y-3 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+                      <Globe className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black text-slate-900">
+                        نسخه تحت وب فاکتور برای مشتری
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        مشاهده فوری و آنلاین فاکتور در مرورگر مشتری بدون نیاز به دانلود فایل
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300 shrink-0">
+                    ویژه مشتریان
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSocialModal(false);
+                      setIsShareLinkModalOpen(true);
+                    }}
+                    className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white py-2.5 px-3 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    <Globe className="w-4 h-4" />
+                    <span>مدیریت و ارسال لینک تحت وب</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const shareToken = activeInvoice.shareLink?.token;
+                      if (shareToken) {
+                        const url = StorageService.buildInvoicePublicUrl(shareToken, settings.webInvoiceCustomDomain);
+                        navigator.clipboard.writeText(url).then(() => showToast('پیوند آنلاین کپی شد.'));
+                      } else {
+                        setShowSocialModal(false);
+                        setIsShareLinkModalOpen(true);
+                      }
+                    }}
+                    className="flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 active:scale-98 text-slate-800 border border-slate-300 py-2.5 px-3 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-slate-500" />
+                    <span>کپی مستقیم لینک مشتری</span>
+                  </button>
+                </div>
+              </div>
+
               {/* PRIMARY: DIRECT PDF SHARE & DOWNLOAD (REMAINS EXACTLY AS PDF) */}
               <div className="bg-sky-50 border border-sky-200 rounded-xl p-3.5 space-y-2.5">
                 <div className="flex items-center justify-between">
@@ -1327,6 +1401,19 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
               documentType: 'invoice',
               quality: invoiceQualityPreset,
             });
+          }}
+        />
+      )}
+
+      {/* Customer Web Share Link Management Modal */}
+      {isShareLinkModalOpen && (
+        <InvoiceShareLinkModal
+          isOpen={isShareLinkModalOpen}
+          invoice={activeInvoice || invoice}
+          settings={settings}
+          onClose={() => setIsShareLinkModalOpen(false)}
+          onUpdateInvoice={(updated) => {
+            setActiveInvoice(updated);
           }}
         />
       )}

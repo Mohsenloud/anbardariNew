@@ -20,7 +20,8 @@ import {
   CreditCard,
   Layers,
   FileClock,
-  ShieldAlert
+  ShieldAlert,
+  Globe
 } from 'lucide-react';
 
 interface InvoiceQuickDetailsModalProps {
@@ -32,6 +33,7 @@ interface InvoiceQuickDetailsModalProps {
   onViewInvoice: (invoice: Invoice) => void;
   onEditInvoice?: (invoice: Invoice) => void;
   onOpenPaymentModal?: (invoice: Invoice) => void;
+  onOpenShareLinkModal?: (invoice: Invoice) => void;
   onConvertProforma?: (invoice: Invoice) => void;
   onReturnInvoiceToStock?: (invoice: Invoice) => void;
   onDeleteInvoice?: (invoiceId: string) => void;
@@ -47,6 +49,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
   onViewInvoice,
   onEditInvoice,
   onOpenPaymentModal,
+  onOpenShareLinkModal,
   onConvertProforma,
   onReturnInvoiceToStock,
   onDeleteInvoice,
@@ -368,6 +371,22 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
               >
                 <FileSpreadsheet className="w-4 h-4 text-purple-600" />
                 <span className="hidden sm:inline">اکسپورت مشتری</span>
+              </button>
+            )}
+
+            {/* Public Web Link for Customer */}
+            {onOpenShareLinkModal && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenShareLinkModal(invoice);
+                }}
+                className="px-3 py-2 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="ایجاد و اشتراک لینک نسخه تحت وب برای مشتری (بدون نیاز به دانلود PDF)"
+              >
+                <Globe className="w-4 h-4 text-sky-600" />
+                <span>لینک آنلاین مشتری</span>
               </button>
             )}
 

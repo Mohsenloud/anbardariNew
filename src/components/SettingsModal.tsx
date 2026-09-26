@@ -36,7 +36,8 @@ import {
   AlertTriangle,
   Eye,
   EyeOff,
-  MessageSquare
+  MessageSquare,
+  Globe
 } from 'lucide-react';
 import { PdfQualityPreset } from '../types';
 import { PDF_QUALITY_PRESETS } from '../utils/pdfHelper';
@@ -1171,6 +1172,102 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                       </div>
                     </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Section 2.10: Public Web Invoice Settings (تنظیمات نسخه آنلاین و تحت وب فاکتور برای مشتری) */}
+            <div className="space-y-4 pt-4 border-t border-slate-200">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-sky-500/10 text-sky-600 flex items-center justify-center">
+                    <Globe className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 text-sm">
+                      تنظیمات نسخه تحت وب فاکتور برای مشتریان (مشاهده آنلاین بدون نیاز به دانلود PDF)
+                    </h4>
+                    <span className="text-[11px] text-slate-500">
+                      ایجاد پیوندهای امن، یکبارمصرف یا زمان‌دار جهت مشاهده سریع فاکتور در گوشی و کامپیوتر مشتری
+                    </span>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors">
+                  <span className="text-xs font-bold text-slate-700">فعال بودن لینک تحت وب</span>
+                  <input
+                    type="checkbox"
+                    checked={formData.webInvoiceEnabled !== false}
+                    onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceEnabled: e.target.checked }))}
+                    className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 border-slate-300 cursor-pointer"
+                  />
+                </label>
+              </div>
+
+              {formData.webInvoiceEnabled !== false && (
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Default Expiration */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-700 block">
+                        مدت زمان پیش‌فرض اعتبار پیوندها:
+                      </label>
+                      <select
+                        value={formData.webInvoiceDefaultExpiryHours ?? 0}
+                        onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceDefaultExpiryHours: Number(e.target.value) }))}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/20 cursor-pointer"
+                      >
+                        <option value={0}>همیشه معتبر (بدون انقضای خودکار)</option>
+                        <option value={24}>۲۴ ساعت (۱ روز)</option>
+                        <option value={72}>۳ روز (۷۲ ساعت)</option>
+                        <option value={168}>۷ روز (۱ هفته)</option>
+                        <option value={720}>۳۰ روز (۱ ماه)</option>
+                      </select>
+                    </div>
+
+                    {/* Custom Domain */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-700 block">
+                        دامنه اختصاصی لینک (اختیاری):
+                      </label>
+                      <input
+                        type="text"
+                        dir="ltr"
+                        placeholder="مثال: https://factor.mycompany.ir"
+                        value={formData.webInvoiceCustomDomain || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceCustomDomain: e.target.value }))}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/20"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200/60">
+                    <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">اجازه دانلود فایل PDF و چاپ توسط مشتری</span>
+                        <span className="text-[11px] text-slate-400">نمایش دکمه دانلود PDF و چاپ در صفحه وب مشتری</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={formData.webInvoiceAllowPdfDownload !== false}
+                        onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceAllowPdfDownload: e.target.checked }))}
+                        className="w-4 h-4 text-sky-600 rounded cursor-pointer"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">الزام پیش‌فرض پین‌کد برای فاکتورهای جدید</span>
+                        <span className="text-[11px] text-slate-400">فعال‌سازی رمز ۴ رقمی به صورت پیش‌فرض در صدور فاکتور</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={!!formData.webInvoiceRequirePinDefault}
+                        onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceRequirePinDefault: e.target.checked }))}
+                        className="w-4 h-4 text-indigo-600 rounded cursor-pointer"
+                      />
+                    </label>
                   </div>
                 </div>
               )}

@@ -107,6 +107,20 @@ export interface InvoiceItem {
 export type PaymentStatus = 'paid' | 'unpaid' | 'partial';
 export type PaymentMethod = 'cheque' | 'cash' | 'transfer' | 'pos' | 'credit';
 
+export interface InvoiceShareLink {
+  token: string; // شناسه رمزنگاری شده و یکتای عمومی لینک (مثلا inv_a7f9b2c3...)
+  enabled: boolean; // آیا لینک فعال است؟ (در صورت خاموش بودن، صفحه غیرفعال نمایش داده می‌شود)
+  createdAt: string; // تاریخ و زمان ایجاد به فرمت استاندارد یا شمسی
+  expiresAt?: string | null; // زمان پایان مهلت اعتبار (null = نامحدود)
+  isOneTime?: boolean; // آیا لینک یکبارمصرف است؟ (پس از اولین مشاهده باطل می‌شود)
+  maxViews?: number; // سقف تعداد مجاز بازدید (پیش‌فرض ۱ برای یکبارمصرف یا نامحدود)
+  viewCount: number; // تعداد دفعات مشاهده شده توسط مشتری
+  lastViewedAt?: string; // تاریخ و ساعت آخرین بازدید توسط مشتری
+  pinRequired?: boolean; // آیا برای باز شدن نیاز به وارد کردن پین کد دارد؟
+  pinCode?: string; // پین کد امنیتی (مثلاً ۴ رقم آخر موبایل مشتری یا رمز دلخواه)
+  allowPdfDownload?: boolean; // آیا به مشتری اجازه دانلود مستقیم فایل PDF و چاپ داده شود؟
+}
+
 export interface Invoice {
   id: string;
   invoiceNumber: string;
@@ -138,6 +152,7 @@ export interface Invoice {
   convertedAt?: string; // تاریخ تبدیل به فاکتور اصلی فروش
   convertedFromProforma?: string; // شماره پیش‌فاکتور اولیه قبل از تبدیل به فاکتور رسمی
   telegramChatId?: string; // شناسه یا چت‌آیدی اختصاصی تلگرام مقصد برای ارسال مستقیم PDF این فاکتور
+  shareLink?: InvoiceShareLink; // تنظیمات و شناسه لینک اشتراک آنلاین نسخه تحت وب فاکتور برای مشتری
   createdAt: string;
   updatedAt?: string; // تاریخ آخرین ویرایش فاکتور
 }
@@ -263,6 +278,13 @@ export interface StoreSettings {
   telegramInvoiceTemplate?: 'simple' | 'standard'; // تم و استایل فاکتور ارسالی به تلگرام (ساده یا استاندارد)
   telegramExitSlipTemplate?: 'simple' | 'standard'; // تم و استایل حواله خروج ارسالی به تلگرام (ساده یا استاندارد)
   telegramCaptionTemplate?: string; // الگوی متن کپشن تلگرام (اختیاری)
+
+  // تنظیمات نسخه آنلاین و تحت وب فاکتور برای مشتری (Web Invoice & Share Links)
+  webInvoiceEnabled?: boolean; // فعال بودن قابلیت صدور لینک نسخه تحت وب برای مشتریان
+  webInvoiceDefaultExpiryHours?: number; // مهلت پیش‌فرض اعتبار لینک بر حسب ساعت (۰ = بدون انقضا، ۲۴، ۷۲، ۱۶۸، ۷۲۰)
+  webInvoiceAllowPdfDownload?: boolean; // اجازه دانلود فایل PDF در صفحه وب توسط مشتری
+  webInvoiceRequirePinDefault?: boolean; // الزام پیش‌فرض ورود پین‌کد برای مشاهده فاکتور
+  webInvoiceCustomDomain?: string; // دامنه اختصاصی یا پیشوند آدرس لینک وب (اختیاری)
 }
 
 export type PdfQualityPreset = 'economy' | 'standard' | 'high' | 'ultra';

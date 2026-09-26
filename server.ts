@@ -1659,6 +1659,334 @@ app.post('/api/telegram/send-pdf', async (req, res) => {
 });
 
 // -------------------------------------------------------------
+// SECURE PUBLIC WEB INVOICE API ENDPOINTS (FOR CUSTOMERS)
+// -------------------------------------------------------------
+
+function generateShareToken(): string {
+  return `inv_${crypto.randomBytes(10).toString('hex')}`;
+}
+
+// 13.1 Public endpoint to fetch customer invoice via secure token (Zero login required for customers)
+app.get('/api/public/invoice/:token', async (req, res) => {
+  try {
+    setNoCacheHeaders(res);
+    const token = (req.params.token || '').trim();
+    if (!token) {
+      return res.status(400).json({ success: false, code: 'INVALID_TOKEN', message: 'شناسه لینک فاکتور مشخص نشده است.' });
+    }
+
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const invoices = Array.isArray(dbData?.invoices) ? dbData.invoices : [];
+    const invoiceIndex = invoices.findIndex((inv: any) => inv?.shareLink?.token === token);
+
+    if (invoiceIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        code: 'NOT_FOUND',
+        message: 'فاکتور مورد نظر یافت نشد یا دسترسی به این پیوند توسط فروشگاه باطل گردیده است.',
+      });
+    }
+
+    const invoice = invoices[invoiceIndex];
+    const shareLink = invoice.shareLink;
+
+    // Check if link is enabled
+    if (!shareLink || shareLink.enabled === false) {
+      return res.status(403).json({
+        success: false,
+        code: 'LINK_DISABLED',
+        message: 'مشاهده آنلاین این فاکتور در حال حاضر توسط مدیریت فروشگاه غیرفعال شده است.',
+      });
+    }
+
+    // Check expiration
+    if (shareLink.expiresAt) {
+      const expTime = new Date(shareLink.expiresAt).getTime();
+      if (!isNaN(expTime) && expTime < Date.now()) {
+        return res.status(410).json({
+          success: false,
+          code: 'LINK_EXPIRED',
+          message: 'مهلت زمانی مشاهده این فاکتور به پایان رسیده است. جهت دریافت مجدد با فروشگاه تماس بگیرید.',
+        });
+      }
+    }
+
+    // Check one-time link usage (if one-time and already viewed at least once)
+    const currentViewCount = Number(shareLink.viewCount) || 0;
+    if (shareLink.isOneTime && currentViewCount >= 1) {
+      return res.status(410).json({
+        success: false,
+        code: 'ONE_TIME_EXHAUSTED',
+        message: 'این فاکتور دارای پیوند یکبارمصرف امن بوده و پیش‌تر مشاهده شده است.',
+      });
+    }
+
+    // Check max views
+    if (shareLink.maxViews && shareLink.maxViews > 0 && currentViewCount >= shareLink.maxViews) {
+      return res.status(410).json({
+        success: false,
+        code: 'MAX_VIEWS_EXCEEDED',
+        message: 'سقف تعداد دفعات مجاز برای مشاهده این لینک تکمیل شده است.',
+      });
+    }
+
+    const storeSettings = dbData?.settings || {};
+
+    // Check PIN protection
+    if (shareLink.pinRequired && shareLink.pinCode && shareLink.pinCode.trim().length > 0) {
+      const clientPin = (req.query.pin || req.headers['x-invoice-pin'] || '').toString().trim();
+      const requiredPin = shareLink.pinCode.trim();
+
+      if (!clientPin || clientPin !== requiredPin) {
+        return res.json({
+          success: false,
+          code: 'PIN_REQUIRED',
+          pinRequired: true,
+          message: 'مشاهده این فاکتور مستلزم ورود رمز عبور (پین‌کد) می‌باشد.',
+          storeName: storeSettings.storeName || 'سامانه حسابداری سپهر',
+          storeLogo: storeSettings.logo || storeSettings.storeLogo || '',
+          invoiceNumber: invoice.invoiceNumber,
+          customerName: invoice.customerName,
+        });
+      }
+    }
+
+    // Update view statistics in background
+    const newViewCount = currentViewCount + 1;
+    const nowIso = new Date().toISOString();
+    invoice.shareLink = {
+      ...shareLink,
+      viewCount: newViewCount,
+      lastViewedAt: nowIso,
+      // If one-time, disable for subsequent loads
+      enabled: shareLink.isOneTime ? false : shareLink.enabled,
+    };
+
+    invoices[invoiceIndex] = invoice;
+
+    // Asynchronous non-blocking write to avoid delaying response
+    enqueueDbWrite(async () => {
+      const current = readDatabase();
+      if (Array.isArray(current.invoices)) {
+        const idx = current.invoices.findIndex((i: any) => i.id === invoice.id);
+        if (idx !== -1) {
+          current.invoices[idx] = invoice;
+          writeDatabase(current, false);
+          if (getPostgresStatus().connected) {
+            saveStateToPostgres(current).catch(() => {});
+          }
+        }
+      }
+    }).catch(() => {});
+
+    // Sanitize invoice: remove buyPrice, profit margins or internal notes
+    const sanitizedItems = (invoice.items || []).map((item: any) => ({
+      id: item.id,
+      productId: item.productId,
+      productName: item.productName || item.name || '',
+      productCode: item.productCode || item.code || '',
+      barcode: item.barcode || '',
+      unit: item.unit || 'عدد',
+      quantity: Number(item.quantity) || 0,
+      unitPrice: Number(item.unitPrice || item.price) || 0,
+      discount: Number(item.discount) || 0,
+      total: Number(item.total) || 0,
+      variantName: item.variantName || '',
+    }));
+
+    const sanitizedInvoice = {
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      type: invoice.type || 'standard',
+      customerId: invoice.customerId,
+      customerName: invoice.customerName,
+      customerPhone: invoice.customerPhone || '',
+      customerAddress: invoice.customerAddress || '',
+      customerNationalId: invoice.customerNationalId || '',
+      date: invoice.date,
+      dueDate: invoice.dueDate || '',
+      items: sanitizedItems,
+      subtotal: Number(invoice.subtotal) || 0,
+      totalDiscount: Number(invoice.totalDiscount) || 0,
+      taxRate: Number(invoice.taxRate) || 0,
+      taxAmount: Number(invoice.taxAmount) || 0,
+      finalTotal: Number(invoice.finalTotal) || 0,
+      paymentStatus: invoice.paymentStatus || 'unpaid',
+      paymentMethod: invoice.paymentMethod || 'cash',
+      paidAmount: Number(invoice.paidAmount) || 0,
+      chequeNumber: invoice.chequeNumber || '',
+      chequeDueDate: invoice.chequeDueDate || '',
+      chequeName: invoice.chequeName || '',
+      transferDescription: invoice.transferDescription || '',
+      notes: invoice.notes || '',
+      isProforma: !!invoice.isProforma,
+      convertedAt: invoice.convertedAt || '',
+      convertedFromProforma: invoice.convertedFromProforma || '',
+      createdAt: invoice.createdAt,
+    };
+
+    const publicSettings = {
+      storeName: storeSettings.storeName || 'بازرگانی سپهر',
+      tagline: storeSettings.tagline || storeSettings.storeTagline || '',
+      logo: storeSettings.logo || storeSettings.storeLogo || '',
+      sellerName: storeSettings.sellerName || '',
+      phone: storeSettings.phone || storeSettings.storePhone || '',
+      mobile: storeSettings.mobile || '',
+      address: storeSettings.address || storeSettings.storeAddress || '',
+      postalCode: storeSettings.postalCode || storeSettings.storePostalCode || '',
+      economicCode: storeSettings.economicCode || '',
+      nationalCode: storeSettings.nationalCode || storeSettings.storeNationalId || '',
+      currency: storeSettings.currency || 'تومان',
+      invoiceFooterText: storeSettings.invoiceFooterText || storeSettings.invoiceFooterNote || '',
+      taxEnabled: !!storeSettings.taxEnabled || !!storeSettings.enableTax,
+      taxPercent: Number(storeSettings.taxPercent) || 0,
+    };
+
+    const publicShareMeta = {
+      token: shareLink.token,
+      allowPdfDownload: shareLink.allowPdfDownload !== false,
+      isOneTime: !!shareLink.isOneTime,
+      expiresAt: shareLink.expiresAt || null,
+      viewCount: newViewCount,
+    };
+
+    return res.json({
+      success: true,
+      invoice: sanitizedInvoice,
+      settings: publicSettings,
+      shareLink: publicShareMeta,
+    });
+  } catch (err: any) {
+    console.error('[Public Invoice API] error:', err);
+    return res.status(500).json({
+      success: false,
+      code: 'SERVER_ERROR',
+      message: 'خطای سیستمی در بارگذاری فاکتور آنلاین.',
+    });
+  }
+});
+
+// 13.2 Generate or Update Share Link for an Invoice (Store manager / cashier action)
+app.post('/api/invoices/:id/share-link', async (req, res) => {
+  try {
+    const invoiceId = req.params.id;
+    const {
+      enabled = true,
+      expiresAt = null,
+      isOneTime = false,
+      maxViews,
+      pinRequired = false,
+      pinCode = '',
+      allowPdfDownload = true,
+      regenerateToken = false,
+    } = req.body || {};
+
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const invoices = Array.isArray(dbData?.invoices) ? dbData.invoices : [];
+    const invoiceIndex = invoices.findIndex((inv: any) => inv?.id === invoiceId);
+
+    if (invoiceIndex === -1) {
+      return res.status(404).json({ success: false, message: 'فاکتور مورد نظر یافت نشد.' });
+    }
+
+    const currentInvoice = invoices[invoiceIndex];
+    const existingShareLink = currentInvoice.shareLink;
+
+    let token = existingShareLink?.token;
+    if (!token || regenerateToken) {
+      token = generateShareToken();
+    }
+
+    const updatedShareLink = {
+      token,
+      enabled: enabled !== false,
+      createdAt: existingShareLink?.createdAt || new Date().toISOString(),
+      expiresAt: expiresAt || null,
+      isOneTime: !!isOneTime,
+      maxViews: isOneTime ? 1 : (maxViews ? Number(maxViews) : undefined),
+      viewCount: regenerateToken ? 0 : (Number(existingShareLink?.viewCount) || 0),
+      lastViewedAt: regenerateToken ? undefined : existingShareLink?.lastViewedAt,
+      pinRequired: !!pinRequired,
+      pinCode: pinCode ? String(pinCode).trim() : undefined,
+      allowPdfDownload: allowPdfDownload !== false,
+    };
+
+    currentInvoice.shareLink = updatedShareLink;
+    invoices[invoiceIndex] = currentInvoice;
+
+    await enqueueDbWrite(async () => {
+      const current = readDatabase();
+      if (Array.isArray(current.invoices)) {
+        const idx = current.invoices.findIndex((i: any) => i.id === invoiceId);
+        if (idx !== -1) {
+          current.invoices[idx] = currentInvoice;
+          writeDatabase(current, false);
+          if (getPostgresStatus().connected) {
+            saveStateToPostgres(current).catch(() => {});
+          }
+        }
+      }
+    });
+
+    const host = req.get('host') || 'localhost:3000';
+    const protocol = req.protocol || 'http';
+    const fullUrl = `${protocol}://${host}/v/${token}`;
+
+    return res.json({
+      success: true,
+      message: 'پیوند نسخه تحت وب فاکتور با موفقیت صادر و تنظیم شد.',
+      shareLink: updatedShareLink,
+      fullUrl,
+    });
+  } catch (err: any) {
+    console.error('[Share Link API] create/update error:', err);
+    return res.status(500).json({ success: false, message: err.message || 'خطا در صدور لینک آنلاین فاکتور' });
+  }
+});
+
+// 13.3 Revoke or Disable Share Link for an Invoice
+app.delete('/api/invoices/:id/share-link', async (req, res) => {
+  try {
+    const invoiceId = req.params.id;
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const invoices = Array.isArray(dbData?.invoices) ? dbData.invoices : [];
+    const invoiceIndex = invoices.findIndex((inv: any) => inv?.id === invoiceId);
+
+    if (invoiceIndex === -1) {
+      return res.status(404).json({ success: false, message: 'فاکتور مورد نظر یافت نشد.' });
+    }
+
+    const currentInvoice = invoices[invoiceIndex];
+    if (currentInvoice.shareLink) {
+      currentInvoice.shareLink.enabled = false;
+      invoices[invoiceIndex] = currentInvoice;
+
+      await enqueueDbWrite(async () => {
+        const current = readDatabase();
+        if (Array.isArray(current.invoices)) {
+          const idx = current.invoices.findIndex((i: any) => i.id === invoiceId);
+          if (idx !== -1) {
+            current.invoices[idx] = currentInvoice;
+            writeDatabase(current, false);
+            if (getPostgresStatus().connected) {
+              saveStateToPostgres(current).catch(() => {});
+            }
+          }
+        }
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'دسترسی به لینک آنلاین این فاکتور با موفقیت لغو و مسدود شد.',
+    });
+  } catch (err: any) {
+    console.error('[Share Link API] delete error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// -------------------------------------------------------------
 // VITE OR STATIC CLIENT SERVING
 // -------------------------------------------------------------
 async function startServer() {

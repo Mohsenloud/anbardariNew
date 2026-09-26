@@ -26,9 +26,38 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 import { MobileFloatingPWAInstall } from './components/MobileFloatingPWAInstall';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { autoSendInvoicePdfToTelegram, autoSendInboundReceiptToTelegram } from './utils/telegramService';
+import { PublicWebInvoiceView } from './components/PublicWebInvoiceView';
+import { InvoiceShareLinkModal } from './components/InvoiceShareLinkModal';
 import { CheckCircle2, ShieldAlert } from 'lucide-react';
 
 export default function App() {
+  // Detection for Public Customer Web Invoice view (/v/:token or ?v=:token or #/v/:token)
+  const detectPublicToken = (): string | null => {
+    if (typeof window === 'undefined') return null;
+    const pathname = window.location.pathname;
+    const matchPath = pathname.match(/^\/(?:v|invoice)\/([a-zA-Z0-9_-]+)/);
+    if (matchPath && matchPath[1]) return matchPath[1];
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramToken = urlParams.get('v') || urlParams.get('inv') || urlParams.get('token');
+    if (paramToken) return paramToken.trim();
+
+    const matchHash = window.location.hash.match(/^#\/(?:v|invoice)\/([a-zA-Z0-9_-]+)/);
+    if (matchHash && matchHash[1]) return matchHash[1];
+
+    return null;
+  };
+
+  const [publicInvoiceToken, setPublicInvoiceToken] = useState<string | null>(detectPublicToken);
+  const [appShareLinkInvoice, setAppShareLinkInvoice] = useState<Invoice | null>(null);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setPublicInvoiceToken(detectPublicToken());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
   // Application Data States
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -1343,6 +1372,19 @@ export default function App() {
   // Low stock count for alert badge
   const lowStockCount = products.filter((p) => p.stock <= p.minStockAlert).length;
 
+  // 0. Dedicated Customer Public Web Invoice view (Zero login required for customers)
+  if (publicInvoiceToken) {
+    return (
+      <PublicWebInvoiceView
+        token={publicInvoiceToken}
+        onBackToApp={() => {
+          window.history.pushState({}, '', '/');
+          setPublicInvoiceToken(null);
+        }}
+      />
+    );
+  }
+
   // MANDATORY AUTHENTICATION: Prompt for username and password when opening the application
   if (!currentUser) {
     return (
@@ -1470,6 +1512,7 @@ export default function App() {
               }
             }}
             onConvertProforma={handleConvertProforma}
+            onOpenShareLinkModal={(inv) => setAppShareLinkInvoice(inv)}
             onBatchUpdatePaymentStatus={handleBatchUpdatePaymentStatus}
           />
         )}
@@ -1635,6 +1678,20 @@ export default function App() {
           users={users}
           targetUser={loginTargetUser}
           currentUser={currentUser || undefined}
+        />
+      )}
+
+      {/* Invoice Public Web Share Link Modal */}
+      {appShareLinkInvoice && (
+        <InvoiceShareLinkModal
+          isOpen={!!appShareLinkInvoice}
+          invoice={appShareLinkInvoice}
+          settings={settings}
+          onClose={() => setAppShareLinkInvoice(null)}
+          onUpdateInvoice={(updated) => {
+            setAppShareLinkInvoice(updated);
+            setInvoices((prev) => prev.map((inv) => (inv.id === updated.id ? updated : inv)));
+          }}
         />
       )}
 
