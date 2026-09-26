@@ -493,6 +493,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </p>
                 </div>
 
+                {/* پیکربندی مالیات فاکتور رسمی و ارزش افزوده */}
+                <div className="space-y-3 sm:col-span-2 bg-emerald-50/60 border border-emerald-200 rounded-xl p-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <span className="font-bold text-xs text-emerald-950 block">
+                        درصد مالیات ارزش افزوده در فاکتورهای رسمی:
+                      </span>
+                      <span className="text-[11px] text-emerald-800/80 block mt-0.5">
+                        نرخ قانونی مصوب جهت محاسبه مالیات در صورتحساب‌ها و تم فاکتور رسمی
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-xs text-emerald-900 font-medium">نرخ رسمی:</span>
+                      <input
+                        type="number"
+                        id="settings-official-tax-rate"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        value={formData.officialTaxPercent ?? formData.taxPercent ?? 10}
+                        onChange={(e) => setFormData({ ...formData, officialTaxPercent: parseFloat(e.target.value) || 0 })}
+                        className="w-16 bg-white border border-emerald-300 rounded-lg px-2 py-1 text-center font-bold text-emerald-950 text-xs"
+                      />
+                      <span className="text-xs text-emerald-800 font-bold">٪</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-emerald-200/70 flex items-center justify-between gap-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        id="settings-auto-apply-official-tax"
+                        checked={formData.autoApplyOfficialTax !== false}
+                        onChange={(e) => setFormData({ ...formData, autoApplyOfficialTax: e.target.checked })}
+                        className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                      />
+                      <span className="font-medium text-[11px] text-emerald-900">
+                        افزودن خودکار درصد ارزش افزوده به محض انتخاب تم فاکتور رسمی
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
                 <div className="space-y-3">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -503,12 +546,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                     />
                     <span className="font-medium text-slate-800">
-                      محاسبه پیش‌فرض ارزش افزوده در فاکتورها
+                      محاسبه پیش‌فرض ارزش افزوده در فاکتورهای عادی
                     </span>
                   </label>
                   {formData.taxEnabled && (
                     <div className="flex items-center gap-2 pr-5">
-                      <span className="text-slate-600">نرخ ارزش افزوده:</span>
+                      <span className="text-slate-600">نرخ ارزش افزوده عادی:</span>
                       <input
                         type="number"
                         id="settings-tax-rate"

@@ -645,8 +645,17 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                 {/* Invoice Type Title & Meta Badges */}
                 <div className="flex flex-col items-center sm:items-end space-y-1.5">
                   <div className="inline-block px-3.5 py-1 rounded-xl bg-slate-900 text-white text-xs font-bold tracking-tight">
-                    {currInv.isProforma ? 'پیش‌فاکتور فروش کالا' : 'فاکتور رسمی فروش کالا'}
+                    {currInv.isProforma
+                      ? 'پیش‌فاکتور فروش کالا'
+                      : currInv.type === 'official'
+                      ? 'صورتحساب رسمی فروش کالا و خدمات'
+                      : 'فاکتور فروش کالا'}
                   </div>
+                  {currInv.type === 'official' && (
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-md">
+                      مشمول مالیات بر ارزش افزوده ({toPersianDigits(currInv.taxRate || settings?.officialTaxPercent || 10)}٪)
+                    </span>
+                  )}
 
                   <div className="text-xs text-slate-600 space-y-0.5 text-center sm:text-left">
                     <p>

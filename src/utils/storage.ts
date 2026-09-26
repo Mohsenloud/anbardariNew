@@ -417,6 +417,8 @@ const initialSettings: StoreSettings = {
   enableInvoiceDiscount: true,
   taxEnabled: false,
   taxPercent: 10,
+  officialTaxPercent: 10,
+  autoApplyOfficialTax: true,
   enableDueDate: true,
   enableInvoiceNotes: true,
   autoPrintAfterSave: false,
@@ -2160,6 +2162,12 @@ export const StorageService = {
       }
       if (!merged.defaultExitSlipTemplate) {
         merged.defaultExitSlipTemplate = 'standard';
+      }
+      if (merged.officialTaxPercent === undefined) {
+        merged.officialTaxPercent = merged.taxPercent !== undefined ? merged.taxPercent : 10;
+      }
+      if (merged.autoApplyOfficialTax === undefined) {
+        merged.autoApplyOfficialTax = true;
       }
       return merged;
     } catch {

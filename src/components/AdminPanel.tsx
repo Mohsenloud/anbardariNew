@@ -630,7 +630,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </span>
                   </div>
                   <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-                    <span className="font-medium text-slate-700">مالیات بر ارزش افزوده در فاکتورها:</span>
+                    <span className="font-medium text-slate-700">مالیات ارزش افزوده فاکتور رسمی:</span>
+                    <span className="font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+                      {toPersianDigits(formData.officialTaxPercent || formData.taxPercent || 10)}٪ {formData.autoApplyOfficialTax !== false ? '(اعمال خودکار با تم رسمی)' : ''}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                    <span className="font-medium text-slate-700">مالیات عمومی در سایر فاکتورها:</span>
                     <span className={`font-bold px-2 py-0.5 rounded-md ${formData.taxEnabled ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>
                       {formData.taxEnabled ? `${toPersianDigits(formData.taxPercent)}٪ فعال` : 'غیرفعال'}
                     </span>
@@ -1328,14 +1334,84 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
 
                 {/* Tax Configuration Box */}
-                <div className="pt-5 space-y-3">
-                  <div className="flex items-center justify-between gap-4">
+                <div className="pt-5 space-y-4 border-t border-slate-200">
+                  <div className="space-y-1">
+                    <span className="font-bold text-xs sm:text-sm text-slate-800 flex items-center gap-1.5">
+                      <Percent className="w-4 h-4 text-emerald-600" />
+                      تنظیمات مالیات بر ارزش افزوده و فاکتورهای رسمی
+                    </span>
+                    <p className="text-[11px] text-slate-500">
+                      پیکربندی نرخ درصد مالیات قانونی و نحوه اعمال آن در صدور فاکتورها به ویژه فاکتور رسمی دارایی.
+                    </p>
+                  </div>
+
+                  {/* تنظیم اختصاصی فاکتور رسمی */}
+                  <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <span className="font-extrabold text-xs sm:text-sm text-emerald-950 flex items-center gap-1.5">
+                          <Building2 className="w-4 h-4 text-emerald-700" />
+                          درصد مالیات بر ارزش افزوده در فاکتورهای رسمی:
+                        </span>
+                        <p className="text-[11px] text-emerald-800/80 mt-0.5">
+                          طبق قانون مالیات بر ارزش افزوده کشور، درصد اضافه شدن به هزینه فاکتور رسمی را تعیین کنید.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-1 bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 shadow-xs">
+                          <input
+                            type="number"
+                            id="admin-official-tax-percent"
+                            name="officialTaxPercent"
+                            min="0"
+                            max="100"
+                            step="0.5"
+                            value={formData.officialTaxPercent ?? formData.taxPercent ?? 10}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setFormData({ ...formData, officialTaxPercent: val });
+                            }}
+                            className="w-16 bg-transparent text-center font-black text-sm text-emerald-950 outline-none"
+                          />
+                          <span className="text-xs font-black text-emerald-700">٪</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-emerald-200/70 flex items-center justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <span className="font-bold text-xs text-emerald-950">
+                          افزودن خودکار درصد ارزش افزوده به محض انتخاب تم فاکتور رسمی
+                        </span>
+                        <p className="text-[10.5px] text-emerald-800/70">
+                          با فعال بودن این گزینه، هر زمان کاربر یا صندوق‌دار قالب «رسمی دارایی» را انتخاب کند، درصد مالیات فوق فوراً به فاکتور افزوده می‌شود.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        id="btn-toggle-auto-apply-official-tax"
+                        onClick={() => handleToggle('autoApplyOfficialTax')}
+                        className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                          formData.autoApplyOfficialTax !== false ? 'bg-emerald-600' : 'bg-slate-300'
+                        }`}
+                      >
+                        <div
+                          className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                            formData.autoApplyOfficialTax !== false ? '-translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* تنظیم عمومی مالیات برای سایر فاکتورها */}
+                  <div className="flex items-center justify-between gap-4 pt-1">
                     <div className="space-y-1">
                       <span className="font-bold text-xs sm:text-sm text-slate-800">
-                        محاسبه مالیات بر ارزش افزوده (VAT)
+                        محاسبه پیش‌فرض ارزش افزوده در تمامی فاکتورهای عادی (غیره رسمی)
                       </span>
                       <p className="text-[11px] text-slate-500">
-                        افزودن درصد مشخصی به عنوان مالیات قانونی به جمع فاکتور.
+                        آیا مالیات بر ارزش افزوده به طور پیش‌فرض در فاکتورهای استاندارد، ساده و فیش فعال باشد؟
                       </p>
                     </div>
                     <button
@@ -1354,9 +1430,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
 
                   {formData.taxEnabled && (
-                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex items-center gap-4 max-w-sm mt-2">
+                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex items-center gap-4 max-w-sm">
                       <label className="text-xs font-bold text-slate-700 whitespace-nowrap">
-                        درصد مالیات ارزش افزوده:
+                        درصد مالیات فاکتورهای عادی:
                       </label>
                       <div className="flex items-center gap-1">
                         <input
@@ -1463,6 +1539,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         مطابق ساختار مصوب سازمان امور مالیاتی کشور با کد اقتصادی و شناسه ملی.
                       </p>
                     </div>
+                    {formData.enableOfficialTemplate && (
+                      <div className="mt-3 pt-2.5 border-t border-emerald-200/60 bg-emerald-50/50 rounded-lg p-2 text-[11px] space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-emerald-900">نرخ ارزش افزوده مصوب:</span>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.5"
+                              value={formData.officialTaxPercent ?? formData.taxPercent ?? 10}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setFormData({ ...formData, officialTaxPercent: val });
+                              }}
+                              className="w-14 bg-white border border-emerald-300 rounded px-1.5 py-0.5 text-center font-black text-xs text-emerald-950"
+                            />
+                            <span className="text-[10px] font-bold text-emerald-800">٪</span>
+                          </div>
+                        </div>
+                        <div className="text-[10px] text-emerald-700 flex items-center gap-1">
+                          <Check className="w-3 h-3 shrink-0" />
+                          <span>با انتخاب تم رسمی، این درصد خودکار به فاکتور افزوده می‌شود.</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Template 4: Thermal */}

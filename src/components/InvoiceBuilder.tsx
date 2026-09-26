@@ -40,7 +40,8 @@ import {
   ArrowRight,
   Eye,
   Info,
-  RefreshCw
+  RefreshCw,
+  Building2
 } from 'lucide-react';
 import { StorageService } from '../utils/storage';
 import {
@@ -154,15 +155,36 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   const [filterQuery, setFilterQuery] = useState<string>('');
 
+  // Official tax rate from settings
+  const officialTaxPercent = settings.officialTaxPercent ?? settings.taxPercent ?? 10;
+  const autoApplyOfficialTax = settings.autoApplyOfficialTax !== false;
+
   // Tax & Discount & Payments
   const [taxEnabled, setTaxEnabled] = useState<boolean>(() => {
     if (editingInvoice) return editingInvoice.taxRate > 0;
+    const initialTpl = settings.defaultTemplate || 'standard';
+    if (initialTpl === 'official' && autoApplyOfficialTax) return true;
     return settings.taxEnabled;
   });
   const [taxRate, setTaxRate] = useState<number>(() => {
     if (editingInvoice && editingInvoice.taxRate > 0) return editingInvoice.taxRate;
+    const initialTpl = editingInvoice ? (editingInvoice.type || 'standard') : (settings.defaultTemplate || 'standard');
+    if (initialTpl === 'official' && autoApplyOfficialTax) return officialTaxPercent;
     return settings.taxPercent || 10;
   });
+  const [taxToast, setTaxToast] = useState<string>('');
+
+  const handleSelectInvoiceType = (type: 'standard' | 'official' | 'thermal' | 'simple') => {
+    setInvoiceType(type);
+    if (type === 'official' && autoApplyOfficialTax) {
+      setTaxEnabled(true);
+      const rate = officialTaxPercent;
+      setTaxRate(rate);
+      setTaxToast(`تم فاکتور رسمی دارایی انتخاب شد؛ مالیات بر ارزش افزوده (${toPersianDigits(rate)}٪) به فاکتور افزوده گردید.`);
+      setTimeout(() => setTaxToast(''), 4500);
+    }
+  };
+
   const [extraDiscount, setExtraDiscount] = useState<number>(() => {
     if (editingInvoice) {
       const itemsDisc = editingInvoice.items?.reduce((s, it) => s + (it.discount || 0), 0) || 0;
@@ -1408,6 +1430,55 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               </button>
             </div>
 
+            {/* Quick Template Switcher */}
+            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200/80 text-xs font-bold shrink-0">
+              <button
+                type="button"
+                onClick={() => handleSelectInvoiceType('standard')}
+                className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  invoiceType === 'standard' ? 'bg-white text-emerald-800 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="فاکتور استاندارد A4/A5"
+              >
+                استاندارد
+              </button>
+              <button
+                type="button"
+                id="btn-quick-tpl-official"
+                onClick={() => handleSelectInvoiceType('official')}
+                className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  invoiceType === 'official' ? 'bg-emerald-600 text-white shadow-2xs font-black' : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="فاکتور رسمی دارایی (افزودن خودکار درصد ارزش افزوده)"
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span>رسمی</span>
+                <span className={`text-[10px] px-1 py-0.2 rounded font-mono ${invoiceType === 'official' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
+                  {toPersianDigits(taxEnabled ? taxRate : officialTaxPercent)}٪
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectInvoiceType('simple')}
+                className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  invoiceType === 'simple' ? 'bg-white text-emerald-800 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="فاکتور ساده و خوانا"
+              >
+                ساده
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectInvoiceType('thermal')}
+                className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  invoiceType === 'thermal' ? 'bg-white text-emerald-800 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="فیش پرینتر ۸۰ میلی‌متری"
+              >
+                فیش
+              </button>
+            </div>
+
             {/* Document Settings */}
             <button
               type="button"
@@ -1445,6 +1516,23 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Tax Notification Toast Banner */}
+        {taxToast && (
+          <div className="mx-5 mt-3 p-3 bg-emerald-600 text-white rounded-xl shadow-md flex items-center justify-between text-xs font-bold animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
+              <span>{taxToast}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTaxToast('')}
+              className="text-white/80 hover:text-white p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* DESKTOP WORKSTATION BODY */}
         <div className="grid grid-cols-12 gap-5 p-5 bg-slate-50/70 flex-1">
@@ -3512,7 +3600,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
                     type="button"
-                    onClick={() => setInvoiceType('standard')}
+                    onClick={() => handleSelectInvoiceType('standard')}
                     className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors ${
                       invoiceType === 'standard'
                         ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
@@ -3523,7 +3611,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setInvoiceType('official')}
+                    onClick={() => handleSelectInvoiceType('official')}
                     className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors ${
                       invoiceType === 'official'
                         ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
@@ -3534,7 +3622,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setInvoiceType('simple')}
+                    onClick={() => handleSelectInvoiceType('simple')}
                     className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors ${
                       invoiceType === 'simple'
                         ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
@@ -3545,7 +3633,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setInvoiceType('thermal')}
+                    onClick={() => handleSelectInvoiceType('thermal')}
                     className={`py-2 px-1 text-center rounded-xl text-xs font-bold border transition-colors ${
                       invoiceType === 'thermal'
                         ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
@@ -3555,23 +3643,67 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     حرارتی فیش
                   </button>
                 </div>
+
+                {invoiceType === 'official' && (
+                  <div className="mt-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-950 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>قالب رسمی: مالیات بر ارزش افزوده به صورت خودکار به فاکتور افزوده شد.</span>
+                    </div>
+                    <span className="text-[11px] font-black bg-emerald-600 text-white px-2 py-0.5 rounded-md">
+                      {toPersianDigits(taxRate)}٪
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Tax Toggle */}
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-extrabold text-slate-900 block">مالیات بر ارزش افزوده</span>
-                  <span className="text-[10px] text-slate-500">نرخ: {toPersianDigits(taxRate)}٪</span>
+              <div className="space-y-2 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-extrabold text-slate-900 block">مالیات بر ارزش افزوده</span>
+                    <span className="text-[10px] text-slate-500">
+                      {taxEnabled ? `نرخ اعمال شده: ${toPersianDigits(taxRate)}٪` : 'غیرفعال'}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={taxEnabled}
+                      onChange={(e) => setTaxEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={taxEnabled}
-                    onChange={(e) => setTaxEnabled(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-                </label>
+
+                {taxEnabled && (
+                  <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700">درصد مالیات ارزش افزوده:</label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        value={taxRate}
+                        onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                        className="w-16 bg-white border border-slate-300 rounded-lg px-2 py-1 text-center font-black text-xs text-slate-900 outline-none focus:border-emerald-500"
+                      />
+                      <span className="text-xs font-bold text-slate-600">٪</span>
+                      {taxRate !== officialTaxPercent && (
+                        <button
+                          type="button"
+                          onClick={() => setTaxRate(officialTaxPercent)}
+                          className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-1 rounded hover:bg-emerald-100 cursor-pointer"
+                          title={`بازنشانی به درصد رسمی مصوب (${toPersianDigits(officialTaxPercent)}٪)`}
+                        >
+                          نرخ مصوب ({toPersianDigits(officialTaxPercent)}٪)
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

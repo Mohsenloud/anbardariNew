@@ -262,7 +262,9 @@ export interface StoreSettings {
   enableItemDiscount: boolean; // فیلد تخفیف برای هر ردیف کالا
   enableInvoiceDiscount: boolean; // فیلد تخفیف کلی فاکتور
   taxEnabled: boolean; // فعال بودن مالیات بر ارزش افزوده
-  taxPercent: number; // درصد مالیات
+  taxPercent: number; // درصد مالیات عمومی
+  officialTaxPercent?: number; // درصد مالیات بر ارزش افزوده فاکتورهای رسمی (تعیین شده توسط مدیر)
+  autoApplyOfficialTax?: boolean; // اعمال خودکار درصد مالیات ارزش افزوده به محض انتخاب تم فاکتور رسمی
   enableDueDate: boolean; // فیلد تاریخ سررسید/چک در فاکتور
   enableInvoiceNotes: boolean; // فیلد یادداشت‌ها و شروط فاکتور
   autoPrintAfterSave: boolean; // باز شدن خودکار پنجره چاپ بلافاصله بعد از ثبت فاکتور

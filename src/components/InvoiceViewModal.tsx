@@ -97,6 +97,23 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   const isA4Landscape = !isA5 && isLandscape;
   const isA4Portrait = !isA5 && !isLandscape;
 
+  const officialTaxPercent = settings.officialTaxPercent ?? settings.taxPercent ?? 10;
+  const isOfficial = currentTemplate === 'official';
+
+  const effectiveTaxRate = (invoice.taxRate && invoice.taxRate > 0)
+    ? invoice.taxRate
+    : (isOfficial ? officialTaxPercent : 0);
+
+  const taxableAmount = Math.max(0, invoice.subtotal - invoice.totalDiscount);
+
+  const effectiveTaxAmount = (invoice.taxAmount && invoice.taxAmount > 0 && (!isOfficial || invoice.taxRate === effectiveTaxRate))
+    ? invoice.taxAmount
+    : (effectiveTaxRate > 0 ? Math.round((taxableAmount * effectiveTaxRate) / 100) : 0);
+
+  const effectiveFinalTotal = (effectiveTaxAmount > 0 && (!invoice.taxAmount || invoice.taxAmount === 0))
+    ? taxableAmount + effectiveTaxAmount
+    : invoice.finalTotal;
+
   const handlePrint = () => {
     const docTitle = invoice.isProforma
       ? `پیش‌فاکتور فروش شماره ${invoice.invoiceNumber} (${pageSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'})`
@@ -382,11 +399,15 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                       id="modal-tpl-official"
                       type="button"
                       onClick={() => setTemplate('official')}
-                      className={`px-2 py-1 rounded-md transition-all cursor-pointer text-[11px] whitespace-nowrap ${
+                      className={`px-2 py-1 rounded-md transition-all cursor-pointer text-[11px] whitespace-nowrap flex items-center gap-1 ${
                         currentTemplate === 'official' ? 'bg-emerald-600 text-white font-bold shadow-2xs' : 'text-slate-300 hover:text-white'
                       }`}
+                      title={`قالب رسمی دارایی (افزودن ${toPersianDigits(officialTaxPercent)}٪ ارزش افزوده)`}
                     >
-                      رسمی
+                      <span>رسمی</span>
+                      <span className={`text-[9px] px-1 py-0.2 rounded font-mono ${currentTemplate === 'official' ? 'bg-white/20 text-white' : 'bg-emerald-800 text-emerald-200'}`}>
+                        {toPersianDigits(effectiveTaxRate > 0 ? effectiveTaxRate : officialTaxPercent)}٪
+                      </span>
                     </button>
                   )}
                   {settings.enableThermalTemplate !== false && (
@@ -953,20 +974,24 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                           <span>-{formatPrice(invoice.totalDiscount, settings.currency)}</span>
                         </div>
                       )}
-                      {invoice.taxAmount > 0 && (
-                        <div className="p-2 flex justify-between border-b border-slate-200 bg-slate-50">
-                          <span className="text-slate-600">مالیات و ارزش افزوده ({toPersianDigits(invoice.taxRate)}٪):</span>
-                          <span className="font-semibold text-slate-800">{formatPrice(invoice.taxAmount, settings.currency)}</span>
+                      {effectiveTaxAmount > 0 && (
+                        <div className={`p-2 flex justify-between border-b border-slate-200 ${isOfficial ? 'bg-emerald-50/70 text-emerald-950 font-bold' : 'bg-slate-50'}`}>
+                          <span className={isOfficial ? 'text-emerald-900 font-extrabold' : 'text-slate-600'}>
+                            مالیات و ارزش افزوده ({toPersianDigits(effectiveTaxRate)}٪):
+                          </span>
+                          <span className="font-semibold text-slate-800">
+                            +{formatPrice(effectiveTaxAmount, settings.currency)}
+                          </span>
                         </div>
                       )}
                       <div className="p-2.5 flex justify-between bg-slate-900 text-white font-bold text-sm">
                         <span>مبلغ نهایی قابل پرداخت:</span>
-                        <span className="text-emerald-400 font-extrabold">{formatPrice(invoice.finalTotal, settings.currency)}</span>
+                        <span className="text-emerald-400 font-extrabold">{formatPrice(effectiveFinalTotal, settings.currency)}</span>
                       </div>
                       {invoice.paymentStatus === 'partial' && (
                         <div className="p-2 flex justify-between border-t border-slate-200 bg-amber-50 text-amber-900 font-medium">
                           <span>مبلغ پرداختی: {formatPrice(invoice.paidAmount, settings.currency)}</span>
-                          <span>مانده بدهی: {formatPrice(invoice.finalTotal - invoice.paidAmount, settings.currency)}</span>
+                          <span>مانده بدهی: {formatPrice(effectiveFinalTotal - invoice.paidAmount, settings.currency)}</span>
                         </div>
                       )}
                     </div>
