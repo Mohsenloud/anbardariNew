@@ -2422,10 +2422,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                         <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                           <Receipt className="w-3.5 h-3.5 text-[#229ED9]" />
-                          <span>کاغذ فاکتور فروش ارسالی به تلگرام</span>
+                          <span>فاکتور فروش ارسالی به تلگرام</span>
                         </span>
                         <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
-                          {(formData.telegramInvoicePageSize || 'a4').toUpperCase()} - {formData.telegramInvoiceOrientation === 'landscape' ? 'افقی' : 'عمودی'}
+                          {(formData.telegramInvoicePageSize || 'a4').toUpperCase()} - {formData.telegramInvoiceOrientation === 'landscape' ? 'افقی' : 'عمودی'} - {(formData.telegramInvoiceTemplate || 'standard') === 'simple' ? 'قالب ساده' : 'قالب استاندارد'}
                         </span>
                       </div>
 
@@ -2496,6 +2496,53 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           </button>
                         </div>
                       </div>
+
+                      {/* Theme / Style Selector (ساده یا استاندارد) */}
+                      <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                        <label className="text-[11px] font-medium text-slate-600 flex items-center justify-between">
+                          <span>تم و استایل قالب فاکتور:</span>
+                          <span className="text-[10px] text-indigo-600 font-bold">
+                            {(formData.telegramInvoiceTemplate || 'standard') === 'simple' ? 'استایل ساده و مینیمال' : 'استایل رسمی و استاندارد'}
+                          </span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, telegramInvoiceTemplate: 'standard' }))}
+                            className={`p-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                              (formData.telegramInvoiceTemplate || 'standard') === 'standard'
+                                ? 'border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-500/30'
+                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>استایل استاندارد</span>
+                            </div>
+                            <span className="text-[9.5px] font-normal text-slate-500 text-center">
+                              سربرگ کادربندی رسمی، اطلاعات کامل
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, telegramInvoiceTemplate: 'simple' }))}
+                            className={`p-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                              formData.telegramInvoiceTemplate === 'simple'
+                                ? 'border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-1 ring-indigo-500/30'
+                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>استایل ساده</span>
+                            </div>
+                            <span className="text-[9.5px] font-normal text-slate-500 text-center">
+                              جدول فلت مقادیر، تمیز و خوانا
+                            </span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Exit Slip Paper Config */}
@@ -2503,10 +2550,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                         <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                           <Warehouse className="w-3.5 h-3.5 text-amber-600" />
-                          <span>کاغذ حواله خروج انبار در تلگرام</span>
+                          <span>حواله خروج انبار در تلگرام</span>
                         </span>
                         <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
-                          {(formData.telegramExitSlipPageSize || 'a4').toUpperCase()} - {formData.telegramExitSlipOrientation === 'landscape' ? 'افقی' : 'عمودی'}
+                          {(formData.telegramExitSlipPageSize || 'a4').toUpperCase()} - {formData.telegramExitSlipOrientation === 'landscape' ? 'افقی' : 'عمودی'} - {(formData.telegramExitSlipTemplate || 'standard') === 'simple' ? 'قالب ساده' : 'قالب استاندارد'}
                         </span>
                       </div>
 
@@ -2574,6 +2621,53 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           >
                             <div className="w-3.5 h-2.5 border-2 border-current rounded-2xs shrink-0" />
                             <span>افقی (Landscape)</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Theme / Style Selector (ساده یا استاندارد) */}
+                      <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                        <label className="text-[11px] font-medium text-slate-600 flex items-center justify-between">
+                          <span>تم و استایل حواله خروج:</span>
+                          <span className="text-[10px] text-amber-700 font-bold">
+                            {(formData.telegramExitSlipTemplate || 'standard') === 'simple' ? 'استایل ساده و بهینه' : 'استایل رسمی و استاندارد'}
+                          </span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, telegramExitSlipTemplate: 'standard' }))}
+                            className={`p-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                              (formData.telegramExitSlipTemplate || 'standard') === 'standard'
+                                ? 'border-amber-600 bg-amber-50/70 text-amber-900 ring-1 ring-amber-500/30'
+                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                              <span>استایل استاندارد</span>
+                            </div>
+                            <span className="text-[9.5px] font-normal text-slate-500 text-center">
+                              کادربندی بارگیری، پلاک و امضا
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, telegramExitSlipTemplate: 'simple' }))}
+                            className={`p-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                              formData.telegramExitSlipTemplate === 'simple'
+                                ? 'border-amber-600 bg-amber-50/70 text-amber-900 ring-1 ring-amber-500/30'
+                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <FileText className="w-3.5 h-3.5 text-amber-600" />
+                              <span>استایل ساده</span>
+                            </div>
+                            <span className="text-[9.5px] font-normal text-slate-500 text-center">
+                              اقلام و مقادیر متمرکز، خوانا و سریع
+                            </span>
                           </button>
                         </div>
                       </div>

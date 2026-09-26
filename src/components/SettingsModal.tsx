@@ -967,10 +967,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
                             <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                               <Receipt className="w-3.5 h-3.5 text-[#229ED9]" />
-                              <span>کاغذ فاکتور فروش در تلگرام</span>
+                              <span>فاکتور فروش در تلگرام</span>
                             </span>
                             <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
-                              {(formData.telegramInvoicePageSize || 'a4').toUpperCase()} - {formData.telegramInvoiceOrientation === 'landscape' ? 'افقی' : 'عمودی'}
+                              {(formData.telegramInvoicePageSize || 'a4').toUpperCase()} - {formData.telegramInvoiceOrientation === 'landscape' ? 'افقی' : 'عمودی'} - {(formData.telegramInvoiceTemplate || 'standard') === 'simple' ? 'ساده' : 'استاندارد'}
                             </span>
                           </div>
 
@@ -1033,6 +1033,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               </button>
                             </div>
                           </div>
+
+                          {/* Template / Style (ساده یا استاندارد) */}
+                          <div className="space-y-1 pt-1 border-t border-slate-100">
+                            <label className="text-[11px] font-medium text-slate-600 block">استایل و قالب فاکتور:</label>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, telegramInvoiceTemplate: 'standard' }))}
+                                className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                  (formData.telegramInvoiceTemplate || 'standard') === 'standard'
+                                    ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-500/20'
+                                    : 'border-slate-200 bg-slate-50 text-slate-700'
+                                }`}
+                              >
+                                <Sparkles className="w-3 h-3 text-indigo-600" />
+                                <span>استاندارد</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, telegramInvoiceTemplate: 'simple' }))}
+                                className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                  formData.telegramInvoiceTemplate === 'simple'
+                                    ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-500/20'
+                                    : 'border-slate-200 bg-slate-50 text-slate-700'
+                                }`}
+                              >
+                                <FileText className="w-3 h-3 text-indigo-600" />
+                                <span>ساده</span>
+                              </button>
+                            </div>
+                          </div>
                         </div>
 
                         {/* Exit Slip Paper Config */}
@@ -1040,10 +1071,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
                             <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                               <Warehouse className="w-3.5 h-3.5 text-amber-600" />
-                              <span>کاغذ حواله خروج در تلگرام</span>
+                              <span>حواله خروج در تلگرام</span>
                             </span>
                             <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
-                              {(formData.telegramExitSlipPageSize || 'a4').toUpperCase()} - {formData.telegramExitSlipOrientation === 'landscape' ? 'افقی' : 'عمودی'}
+                              {(formData.telegramExitSlipPageSize || 'a4').toUpperCase()} - {formData.telegramExitSlipOrientation === 'landscape' ? 'افقی' : 'عمودی'} - {(formData.telegramExitSlipTemplate || 'standard') === 'simple' ? 'ساده' : 'استاندارد'}
                             </span>
                           </div>
 
@@ -1103,6 +1134,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               >
                                 <div className="w-3.5 h-2.5 border-2 border-current rounded-2xs" />
                                 <span>افقی</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Template / Style (ساده یا استاندارد) */}
+                          <div className="space-y-1 pt-1 border-t border-slate-100">
+                            <label className="text-[11px] font-medium text-slate-600 block">استایل و قالب حواله:</label>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, telegramExitSlipTemplate: 'standard' }))}
+                                className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                  (formData.telegramExitSlipTemplate || 'standard') === 'standard'
+                                    ? 'border-amber-600 bg-amber-50 text-amber-900 ring-1 ring-amber-500/20'
+                                    : 'border-slate-200 bg-slate-50 text-slate-700'
+                                }`}
+                              >
+                                <Sparkles className="w-3 h-3 text-amber-600" />
+                                <span>استاندارد</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, telegramExitSlipTemplate: 'simple' }))}
+                                className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                  formData.telegramExitSlipTemplate === 'simple'
+                                    ? 'border-amber-600 bg-amber-50 text-amber-900 ring-1 ring-amber-500/20'
+                                    : 'border-slate-200 bg-slate-50 text-slate-700'
+                                }`}
+                              >
+                                <FileText className="w-3 h-3 text-amber-600" />
+                                <span>ساده</span>
                               </button>
                             </div>
                           </div>

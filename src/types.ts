@@ -259,6 +259,9 @@ export interface StoreSettings {
   telegramInvoiceOrientation?: 'portrait' | 'landscape'; // جهت کاغذ فاکتور ارسالی (عمودی یا افقی)
   telegramExitSlipPageSize?: 'a4' | 'a5'; // سایز کاغذ حواله خروج ارسالی به تلگرام (A4 یا A5)
   telegramExitSlipOrientation?: 'portrait' | 'landscape'; // جهت کاغذ حواله خروج ارسالی (عمودی یا افقی)
+  // تم و استایل قالب ارسال خودکار به تلگرام (ساده یا استاندارد)
+  telegramInvoiceTemplate?: 'simple' | 'standard'; // تم و استایل فاکتور ارسالی به تلگرام (ساده یا استاندارد)
+  telegramExitSlipTemplate?: 'simple' | 'standard'; // تم و استایل حواله خروج ارسالی به تلگرام (ساده یا استاندارد)
   telegramCaptionTemplate?: string; // الگوی متن کپشن تلگرام (اختیاری)
 }
 

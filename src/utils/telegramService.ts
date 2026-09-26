@@ -6,7 +6,9 @@ import { toPersianDigits, formatPrice, getCurrentJalaliTime } from './jalali';
 import { generatePdfBlob } from './pdfHelper';
 import { StorageService } from './storage';
 import { SimpleInvoiceLayout } from '../components/SimpleInvoiceLayout';
+import { StandardInvoiceLayout } from '../components/StandardInvoiceLayout';
 import { SimpleExitSlipLayout } from '../components/SimpleExitSlipLayout';
+import { StandardExitSlipLayout } from '../components/StandardExitSlipLayout';
 
 export async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -235,6 +237,9 @@ export async function generateInvoicePdfBlob(
 
   const root = createRoot(container);
   try {
+    const invoiceTemplate = settings?.telegramInvoiceTemplate || 'standard';
+    const InvoiceComponent = invoiceTemplate === 'simple' ? SimpleInvoiceLayout : StandardInvoiceLayout;
+
     flushSync(() => {
       root.render(
         React.createElement(
@@ -244,7 +249,7 @@ export async function generateInvoicePdfBlob(
             'data-invoice-id': invoice.id,
             style: { width: containerWidth, minHeight: containerMinHeight, backgroundColor: '#ffffff', padding: isA5 ? '16px' : '24px' },
           },
-          React.createElement(SimpleInvoiceLayout, {
+          React.createElement(InvoiceComponent, {
             invoice,
             settings: settings as StoreSettings,
             pageSize,
@@ -351,6 +356,9 @@ export async function generateExitSlipPdfBlob(
 
   const root = createRoot(container);
   try {
+    const exitSlipTemplate = settings?.telegramExitSlipTemplate || 'standard';
+    const ExitSlipComponent = exitSlipTemplate === 'simple' ? SimpleExitSlipLayout : StandardExitSlipLayout;
+
     flushSync(() => {
       root.render(
         React.createElement(
@@ -360,7 +368,7 @@ export async function generateExitSlipPdfBlob(
             'data-invoice-id': invoice.id,
             style: { width: containerWidth, minHeight: containerMinHeight, backgroundColor: '#ffffff', padding: isA5 ? '16px' : '24px' },
           },
-          React.createElement(SimpleExitSlipLayout, {
+          React.createElement(ExitSlipComponent, {
             invoice,
             settings: settings as StoreSettings,
             slipLog,
