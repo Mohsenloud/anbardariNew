@@ -191,24 +191,32 @@ export async function generateInvoicePdfBlob(
     ? `پیش_فاکتور_${invoice.invoiceNumber}.pdf`
     : `فاکتور_فروش_${invoice.invoiceNumber}.pdf`;
   const quality = (settings?.pdfInvoiceQuality as any) || 'standard';
+  const pageSize = settings?.telegramInvoicePageSize || 'a4';
+  const orientation = settings?.telegramInvoiceOrientation || 'portrait';
+  const isA5 = pageSize === 'a5';
+  const isLandscape = orientation === 'landscape';
 
-  // If printable-invoice element is already in the DOM, active and matches this invoice:
-  const existingElement = document.getElementById('printable-invoice');
-  const isInvoiceActiveInDom =
-    existingElement &&
-    existingElement.getAttribute('data-invoice-id') === invoice.id &&
-    existingElement.innerHTML.length > 100;
-
-  if (isInvoiceActiveInDom) {
-    return await generatePdfBlob('printable-invoice', filename, {
-      pageSize: 'a4',
-      orientation: 'portrait',
-      documentType: 'invoice',
-      quality,
-    });
+  let containerWidth = '820px';
+  let containerMinHeight = '1175px';
+  if (isA5) {
+    if (isLandscape) {
+      containerWidth = '900px';
+      containerMinHeight = '625px';
+    } else {
+      containerWidth = '620px';
+      containerMinHeight = '892px';
+    }
+  } else {
+    if (isLandscape) {
+      containerWidth = '1180px';
+      containerMinHeight = '824px';
+    } else {
+      containerWidth = '820px';
+      containerMinHeight = '1175px';
+    }
   }
 
-  // Otherwise, create an offscreen container in the DOM:
+  // Create an offscreen container in the DOM:
   // Positioned at (0, 0), behind the app, fully accessible for html2canvas
   const container = document.createElement('div');
   const containerId = `telegram-offscreen-invoice-${Date.now()}`;
@@ -216,8 +224,8 @@ export async function generateInvoicePdfBlob(
   container.style.position = 'fixed';
   container.style.left = '0px';
   container.style.top = '0px';
-  container.style.width = '820px';
-  container.style.minHeight = '1175px';
+  container.style.width = containerWidth;
+  container.style.minHeight = containerMinHeight;
   container.style.backgroundColor = '#ffffff';
   container.style.zIndex = '-99999';
   container.style.pointerEvents = 'none';
@@ -234,13 +242,13 @@ export async function generateInvoicePdfBlob(
           {
             id: 'printable-invoice-offscreen',
             'data-invoice-id': invoice.id,
-            style: { width: '820px', minHeight: '1175px', backgroundColor: '#ffffff', padding: '24px' },
+            style: { width: containerWidth, minHeight: containerMinHeight, backgroundColor: '#ffffff', padding: isA5 ? '16px' : '24px' },
           },
           React.createElement(SimpleInvoiceLayout, {
             invoice,
             settings: settings as StoreSettings,
-            pageSize: 'a4',
-            orientation: 'portrait',
+            pageSize,
+            orientation,
           })
         )
       );
@@ -255,8 +263,8 @@ export async function generateInvoicePdfBlob(
     }
 
     const result = await generatePdfBlob(containerId, filename, {
-      pageSize: 'a4',
-      orientation: 'portrait',
+      pageSize,
+      orientation,
       documentType: 'invoice',
       quality,
     });
@@ -292,32 +300,40 @@ export async function generateExitSlipPdfBlob(
   const settings = StorageService.getSettings() || passedSettings;
   const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}.pdf`;
   const quality = (settings?.pdfExitSlipQuality as any) || 'high';
+  const pageSize = settings?.telegramExitSlipPageSize || 'a4';
+  const orientation = settings?.telegramExitSlipOrientation || 'portrait';
+  const isA5 = pageSize === 'a5';
+  const isLandscape = orientation === 'landscape';
 
-  // If printable-exit-slip element is already in the DOM and active for this invoice:
-  const existingElement = document.getElementById('printable-exit-slip');
-  const isExitSlipActiveInDom =
-    existingElement &&
-    existingElement.getAttribute('data-invoice-id') === invoice.id &&
-    existingElement.innerHTML.length > 100;
-
-  if (isExitSlipActiveInDom) {
-    return await generatePdfBlob('printable-exit-slip', filename, {
-      pageSize: 'a4',
-      orientation: 'portrait',
-      documentType: 'exit_slip',
-      quality,
-    });
+  let containerWidth = '820px';
+  let containerMinHeight = '1175px';
+  if (isA5) {
+    if (isLandscape) {
+      containerWidth = '900px';
+      containerMinHeight = '625px';
+    } else {
+      containerWidth = '620px';
+      containerMinHeight = '892px';
+    }
+  } else {
+    if (isLandscape) {
+      containerWidth = '1180px';
+      containerMinHeight = '824px';
+    } else {
+      containerWidth = '820px';
+      containerMinHeight = '1175px';
+    }
   }
 
-  // Otherwise, create an offscreen container in the DOM:
+  // Create an offscreen container in the DOM:
   const container = document.createElement('div');
   const containerId = `telegram-offscreen-exit-slip-${Date.now()}`;
   container.id = containerId;
   container.style.position = 'fixed';
   container.style.left = '0px';
   container.style.top = '0px';
-  container.style.width = '820px';
-  container.style.minHeight = '1175px';
+  container.style.width = containerWidth;
+  container.style.minHeight = containerMinHeight;
   container.style.backgroundColor = '#ffffff';
   container.style.zIndex = '-99999';
   container.style.pointerEvents = 'none';
@@ -342,7 +358,7 @@ export async function generateExitSlipPdfBlob(
           {
             id: 'printable-exit-slip-offscreen',
             'data-invoice-id': invoice.id,
-            style: { width: '820px', minHeight: '1175px', backgroundColor: '#ffffff', padding: '24px' },
+            style: { width: containerWidth, minHeight: containerMinHeight, backgroundColor: '#ffffff', padding: isA5 ? '16px' : '24px' },
           },
           React.createElement(SimpleExitSlipLayout, {
             invoice,
@@ -353,8 +369,8 @@ export async function generateExitSlipPdfBlob(
             issuedTime,
             originWarehouseName,
             totalUnits,
-            pageSize: 'a4',
-            orientation: 'portrait',
+            pageSize,
+            orientation,
           })
         )
       );
@@ -368,8 +384,8 @@ export async function generateExitSlipPdfBlob(
     }
 
     const result = await generatePdfBlob(containerId, filename, {
-      pageSize: 'a4',
-      orientation: 'portrait',
+      pageSize,
+      orientation,
       documentType: 'exit_slip',
       quality,
     });

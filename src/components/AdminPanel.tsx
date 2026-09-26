@@ -2404,6 +2404,183 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </label>
                 </div>
 
+                {/* 4.1 Telegram PDF Paper Size & Orientation Controls */}
+                <div className="pt-3 border-t border-slate-200/80 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <h5 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                      <FileText className="w-4 h-4 text-indigo-600" />
+                      <span>تنظیمات سایز و حالت کاغذ (افقی / عمودی) برای ارسال خودکار به تلگرام</span>
+                    </h5>
+                    <span className="text-[11px] text-slate-500">
+                      انتخاب قطع کاغذ و جهت صفحه خروجی PDF ارسالی به ربات
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {/* Invoice Paper Config */}
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Receipt className="w-3.5 h-3.5 text-[#229ED9]" />
+                          <span>کاغذ فاکتور فروش ارسالی به تلگرام</span>
+                        </span>
+                        <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
+                          {(formData.telegramInvoicePageSize || 'a4').toUpperCase()} - {formData.telegramInvoiceOrientation === 'landscape' ? 'افقی' : 'عمودی'}
+                        </span>
+                      </div>
+
+                      {/* Size Selector */}
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-medium text-slate-600 block">
+                          قطع و سایز کاغذ:
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, telegramInvoicePageSize: 'a4' }))}
+                            className={`p-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              (formData.telegramInvoicePageSize || 'a4') === 'a4'
+                                ? 'border-[#229ED9] bg-[#229ED9]/10 text-[#006699] ring-1 ring-[#229ED9]/30'
+                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>A4 (قطع استاندارد)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, telegramInvoicePageSize: 'a5' }))}
+                            className={`p-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              formData.telegramInvoicePageSize === 'a5'
+                                ? 'border-[#229ED9] bg-[#229ED9]/10 text-[#006699] ring-1 ring-[#229ED9]/30'
+                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>A5 (قطع نیم‌برگ)</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Orientation Selector */}
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-medium text-slate-600 block">
+                          جهت قرارگیری صفحه (عمودی / افقی):
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, telegramInvoiceOrientation: 'portrait' }))}
+                            className={`p-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              (formData.telegramInvoiceOrientation || 'portrait') === 'portrait'
+                                ? 'border-emerald-600 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500/30'
+                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <div className="w-2.5 h-3.5 border-2 border-current rounded-2xs shrink-0" />
+                            <span>عمودی (Portrait)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, telegramInvoiceOrientation: 'landscape' }))}
+                            className={`p-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              formData.telegramInvoiceOrientation === 'landscape'
+                                ? 'border-emerald-600 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500/30'
+                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <div className="w-3.5 h-2.5 border-2 border-current rounded-2xs shrink-0" />
+                            <span>افقی (Landscape)</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Exit Slip Paper Config */}
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Warehouse className="w-3.5 h-3.5 text-amber-600" />
+                          <span>کاغذ حواله خروج انبار در تلگرام</span>
+                        </span>
+                        <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
+                          {(formData.telegramExitSlipPageSize || 'a4').toUpperCase()} - {formData.telegramExitSlipOrientation === 'landscape' ? 'افقی' : 'عمودی'}
+                        </span>
+                      </div>
+
+                      {/* Size Selector */}
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-medium text-slate-600 block">
+                          قطع و سایز کاغذ:
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, telegramExitSlipPageSize: 'a4' }))}
+                            className={`p-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              (formData.telegramExitSlipPageSize || 'a4') === 'a4'
+                                ? 'border-amber-600 bg-amber-50 text-amber-900 ring-1 ring-amber-500/30'
+                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>A4 (قطع استاندارد)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, telegramExitSlipPageSize: 'a5' }))}
+                            className={`p-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              formData.telegramExitSlipPageSize === 'a5'
+                                ? 'border-amber-600 bg-amber-50 text-amber-900 ring-1 ring-amber-500/30'
+                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>A5 (قطع نیم‌برگ)</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Orientation Selector */}
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-medium text-slate-600 block">
+                          جهت قرارگیری صفحه (عمودی / افقی):
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, telegramExitSlipOrientation: 'portrait' }))}
+                            className={`p-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              (formData.telegramExitSlipOrientation || 'portrait') === 'portrait'
+                                ? 'border-emerald-600 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500/30'
+                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <div className="w-2.5 h-3.5 border-2 border-current rounded-2xs shrink-0" />
+                            <span>عمودی (Portrait)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, telegramExitSlipOrientation: 'landscape' }))}
+                            className={`p-2 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              formData.telegramExitSlipOrientation === 'landscape'
+                                ? 'border-emerald-600 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500/30'
+                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <div className="w-3.5 h-2.5 border-2 border-current rounded-2xs shrink-0" />
+                            <span>افقی (Landscape)</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Helpful Note */}
                 <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 text-emerald-900 text-[11px] flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />

@@ -467,6 +467,10 @@ const initialSettings: StoreSettings = {
   telegramAutoSendExitSlip: false,
   telegramAutoSendInboundReceipt: false,
   telegramAutoSendCustomerDirect: true,
+  telegramInvoicePageSize: 'a4',
+  telegramInvoiceOrientation: 'portrait',
+  telegramExitSlipPageSize: 'a4',
+  telegramExitSlipOrientation: 'portrait',
   telegramCaptionTemplate: '',
 };
 

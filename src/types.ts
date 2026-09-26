@@ -254,6 +254,11 @@ export interface StoreSettings {
   telegramAutoSendExitSlip?: boolean; // ارسال خودکار فایل PDF حواله خروج پس از تایید تحویل و بارگیری بار
   telegramAutoSendInboundReceipt?: boolean; // ارسال خودکار رسید ورود انبار پس از تایید و شمارش انباردار
   telegramAutoSendCustomerDirect?: boolean; // اولویت ارسال به تلگرام اختصاصی مشتری در صورت ثبت چت‌آیدی مشتری
+  // تنظیمات سایز و جهت کاغذ در ارسال خودکار به تلگرام
+  telegramInvoicePageSize?: 'a4' | 'a5'; // سایز کاغذ فاکتور ارسالی به تلگرام (A4 یا A5)
+  telegramInvoiceOrientation?: 'portrait' | 'landscape'; // جهت کاغذ فاکتور ارسالی (عمودی یا افقی)
+  telegramExitSlipPageSize?: 'a4' | 'a5'; // سایز کاغذ حواله خروج ارسالی به تلگرام (A4 یا A5)
+  telegramExitSlipOrientation?: 'portrait' | 'landscape'; // جهت کاغذ حواله خروج ارسالی (عمودی یا افقی)
   telegramCaptionTemplate?: string; // الگوی متن کپشن تلگرام (اختیاری)
 }
 
