@@ -22,7 +22,10 @@ import {
   DirectTransferReturnRecord,
   SavedVehicle,
   CustomerTransaction,
-  CustomerLedgerEntry
+  CustomerLedgerEntry,
+  PublicCustomerRemittance,
+  PublicCustomerDeposit,
+  PublicCustomerLedger
 } from '../types';
 import { getCurrentJalaliDate, getCurrentJalaliTime } from './jalali';
 import {
@@ -1765,6 +1768,10 @@ export const StorageService = {
     storeName?: string;
     storeLogo?: string;
     invoiceNumber?: string;
+    customerInvoices?: Invoice[];
+    deposits?: PublicCustomerDeposit[];
+    remittances?: PublicCustomerRemittance[];
+    customerLedger?: PublicCustomerLedger;
   }> {
     try {
       const pinParam = pin ? `?pin=${encodeURIComponent(pin.trim())}` : '';
@@ -1788,11 +1795,142 @@ export const StorageService = {
             };
           }
         }
+
+        const customerId = match.customerId;
+        const customerNameNorm = (match.customerName || '').trim().toLowerCase();
+        const customerPhoneNorm = (match.customerPhone || '').replace(/[^0-9]/g, '');
+
+        const isMatchCustomer = (cId?: string, cName?: string, cPhone?: string) => {
+          if (customerId && cId && cId === customerId) return true;
+          if (customerNameNorm && cName && cName.trim().toLowerCase() === customerNameNorm) return true;
+          if (customerPhoneNorm && cPhone) {
+            const pClean = cPhone.replace(/[^0-9]/g, '');
+            if (pClean && pClean === customerPhoneNorm) return true;
+          }
+          return false;
+        };
+
+        const customerInvoices = localInvoices
+          .filter((inv) => isMatchCustomer(inv.customerId, inv.customerName, inv.customerPhone))
+          .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+        const localTxns = this.getCustomerTransactions();
+        const directDeposits: PublicCustomerDeposit[] = localTxns
+          .filter((tx) => isMatchCustomer(tx.customerId, tx.customerName))
+          .map((tx) => ({
+            id: tx.id,
+            type: tx.type,
+            amount: tx.amount,
+            date: tx.date,
+            title: tx.title || (tx.type === 'deposit' ? 'واریز وجه به حساب' : 'ثبت بدهی دستی'),
+            paymentMethod: tx.paymentMethod,
+            trackingNumber: tx.trackingNumber,
+            bankName: tx.bankName,
+            chequeDueDate: tx.chequeDueDate,
+            invoiceNumber: tx.invoiceNumber,
+            notes: tx.notes,
+          }));
+
+        const invoicePayments: PublicCustomerDeposit[] = localInvoices
+          .filter((inv) => isMatchCustomer(inv.customerId, inv.customerName, inv.customerPhone) && Number(inv.paidAmount) > 0)
+          .map((inv) => ({
+            id: `inv-pay-${inv.id}`,
+            type: 'deposit' as const,
+            amount: Number(inv.paidAmount) || 0,
+            date: inv.date,
+            title: `پرداخت وجه فاکتور ${inv.invoiceNumber}`,
+            paymentMethod: inv.paymentMethod,
+            trackingNumber: inv.chequeNumber,
+            bankName: inv.transferDescription ? 'حساب بانکی' : '',
+            chequeDueDate: inv.chequeDueDate,
+            invoiceNumber: inv.invoiceNumber,
+            notes: inv.transferDescription || inv.notes,
+          }));
+
+        const allDeposits = [...directDeposits, ...invoicePayments].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+        const exitSlipRemittances: PublicCustomerRemittance[] = localInvoices
+          .filter((inv) => isMatchCustomer(inv.customerId, inv.customerName, inv.customerPhone) && inv.exitSlip && (inv.exitSlip.slipNumber || inv.exitSlip.isDelivered || inv.exitSlip.deliveredAt))
+          .map((inv) => {
+            const es = inv.exitSlip!;
+            return {
+              id: `es-${inv.id}`,
+              remittanceNumber: es.slipNumber || `حواله-${inv.invoiceNumber}`,
+              sourceType: 'invoice_exit_slip' as const,
+              invoiceNumber: inv.invoiceNumber,
+              invoiceId: inv.id,
+              date: es.deliveredAt || inv.date,
+              receiverName: es.receiverName || inv.customerName,
+              receiverPhone: es.receiverPhone || inv.customerPhone,
+              vehicleInfo: es.vehicleInfo,
+              deliveredBy: es.deliveredBy,
+              deliveryNotes: es.deliveryNotes,
+              status: es.isDelivered ? ('delivered' as const) : ('dispatched' as const),
+              statusTitle: es.isDelivered ? 'تحویل داده شده به مشتری' : 'صادر شده / در حال ارسال',
+              items: (inv.items || []).map((it) => ({
+                productName: it.productName || it.name || '',
+                quantity: it.quantity,
+                unit: it.unit || 'عدد',
+              })),
+            };
+          });
+
+        const localTransfers = this.getDirectTransfers();
+        const directTransferRemittances: PublicCustomerRemittance[] = localTransfers
+          .filter((trf) => isMatchCustomer(undefined, trf.receiverName, trf.receiverPhone))
+          .map((trf) => ({
+            id: `trf-${trf.id}`,
+            remittanceNumber: trf.transferNumber || trf.id,
+            sourceType: 'direct_transfer' as const,
+            invoiceNumber: '',
+            invoiceId: '',
+            date: trf.dispatchedAt || trf.createdAt,
+            receiverName: trf.receiverName,
+            receiverPhone: trf.receiverPhone,
+            vehicleInfo: trf.dispatchVehicleInfo,
+            deliveredBy: trf.dispatchedBy,
+            deliveryNotes: trf.dispatchNotes || trf.title,
+            status: trf.status === 'returned' ? ('returned' as const) : ('dispatched' as const),
+            statusTitle: trf.status === 'returned' ? 'عودت داده شده' : 'ارسال شده به مشتری/پروژه',
+            items: (trf.items || []).map((it) => ({
+              productName: it.productName || '',
+              quantity: it.quantity,
+              unit: it.unit || 'عدد',
+            })),
+          }));
+
+        const allRemittances = [...exitSlipRemittances, ...directTransferRemittances].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+        const nonProformas = customerInvoices.filter((inv) => !inv.isProforma);
+        const totalPurchases = nonProformas.reduce((sum, inv) => sum + (inv.finalTotal || 0), 0);
+        const totalPaidOnInvoices = nonProformas.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+        const standaloneDepositsSum = directDeposits.filter((t) => t.type === 'deposit').reduce((sum, t) => sum + (t.amount || 0), 0);
+        const standaloneDebtsSum = directDeposits.filter((t) => t.type === 'debt').reduce((sum, t) => sum + (t.amount || 0), 0);
+
+        const totalDebit = totalPurchases + standaloneDebtsSum;
+        const totalCredit = totalPaidOnInvoices + standaloneDepositsSum;
+        const netBalance = totalDebit - totalCredit;
+
+        const customerLedger: PublicCustomerLedger = {
+          customerName: match.customerName,
+          customerPhone: match.customerPhone,
+          customerAddress: match.customerAddress,
+          totalInvoicesCount: customerInvoices.length,
+          totalPurchases,
+          totalPaid: totalCredit,
+          balance: netBalance,
+          balanceStatus: netBalance > 0 ? 'debtor' : netBalance < 0 ? 'creditor' : 'settled',
+        };
+
         return {
           success: true,
           invoice: match,
           settings: this.getSettings(),
           shareLink: match.shareLink,
+          customerInvoices,
+          deposits: allDeposits,
+          remittances: allRemittances,
+          customerLedger,
         };
       }
       return {

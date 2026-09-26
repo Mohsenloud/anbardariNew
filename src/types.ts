@@ -121,6 +121,54 @@ export interface InvoiceShareLink {
   allowPdfDownload?: boolean; // آیا به مشتری اجازه دانلود مستقیم فایل PDF و چاپ داده شود؟
 }
 
+export interface PublicCustomerRemittanceItem {
+  productName: string;
+  quantity: number;
+  unit: string;
+}
+
+export interface PublicCustomerRemittance {
+  id: string;
+  remittanceNumber: string;
+  sourceType: 'invoice_exit_slip' | 'direct_transfer';
+  invoiceNumber?: string;
+  invoiceId?: string;
+  date: string;
+  receiverName?: string;
+  receiverPhone?: string;
+  vehicleInfo?: string;
+  deliveredBy?: string;
+  deliveryNotes?: string;
+  status: 'dispatched' | 'delivered' | 'returned';
+  statusTitle: string;
+  items: PublicCustomerRemittanceItem[];
+}
+
+export interface PublicCustomerDeposit {
+  id: string;
+  type: 'deposit' | 'debt';
+  amount: number;
+  date: string;
+  title: string;
+  paymentMethod?: string;
+  trackingNumber?: string;
+  bankName?: string;
+  chequeDueDate?: string;
+  invoiceNumber?: string;
+  notes?: string;
+}
+
+export interface PublicCustomerLedger {
+  customerName: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  totalInvoicesCount: number;
+  totalPurchases: number;
+  totalPaid: number;
+  balance: number;
+  balanceStatus: 'debtor' | 'settled' | 'creditor';
+}
+
 export interface Invoice {
   id: string;
   invoiceNumber: string;
