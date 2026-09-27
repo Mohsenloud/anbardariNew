@@ -232,32 +232,64 @@ const DEFAULT_INITIAL_DATA = {
     'کابل و رابط',
   ],
   settings: {
-    storeName: 'فروشگاه و توزیع سپهر',
-    storePhone: '۰۲۱-۵۵۴۴۳۳۲۲',
-    storeAddress: 'تهران، خیابان امیرکبیر، کوچه بهار، پلاک ۲۴',
-    storeCity: 'تهران',
-    storeLogo: '',
-    storeNationalId: '',
-    storePostalCode: '',
-    storeTagline: 'توزیع‌کننده قطعات یدکی و اقلام مصرفی خودرو',
-    taxPercent: 9,
-    enableTax: false,
-    enableDiscount: true,
+    appName: 'سیستم فاکتور و انبارداری',
+    showStoreEditionBadge: true,
+    storeName: 'بازرگانی و سیستم‌های دیجیتال سپهر',
+    tagline: 'توزیع‌کننده مستقیم کالای دیجیتال، تجهیزات اداری و شبکه',
+    sellerName: 'حمیدرضا سپهری',
+    phone: '۰۲۱-۸۸۲۲۳۳۴۴',
+    mobile: '۰۹۱۲۳۴۵۶۷۸۹',
+    economicCode: '۴۱۱۴۸۷۹۵۴۳۲۱',
+    nationalCode: '۱۰۱۰۹۸۷۶۵۴۳',
+    address: 'تهران، خیابان ولیعصر، تقاطع طالقانی، مجتمع نور، واحد ۲۰۴',
+    postalCode: '۱۴۱۵۸۳۳۶۵۴',
+    invoiceFooterText: 'از خرید و اعتماد شما صمیمانه سپاسگزاریم. کالاهای دارای گارانتی تا ۲۴ ساعت پس از تحویل دارای مهلت تست سلامت می‌باشند.',
     currency: 'تومان',
-    invoiceNumberPrefix: 'SP-',
-    currentInvoiceNumber: 1001,
-    invoiceFooterNote: 'از خرید شما صمیمانه متشکریم. اجناس برقی و مرجوعی پس از ۲۴ ساعت تعویض نمی‌گردد.',
-    primaryColor: 'emerald',
-    defaultTemplate: 'standard',
-    enableThermalPrint: true,
+
+    // کنترل اجزا و ماژول‌ها
     enableInventory: true,
     enableCustomers: true,
     enableReports: true,
-    autoDeductStock: true,
-    preventNegativeStock: false,
     showLowStockAlerts: true,
-    paperSize: 'a4',
-    enableExitSlipPrint: true,
+    showHeaderClock: true,
+
+    // رفتار فاکتورساز
+    autoDeductStock: true,
+    allowNegativeStock: false,
+    enableItemDiscount: true,
+    enableInvoiceDiscount: true,
+    taxEnabled: false,
+    taxPercent: 10,
+    officialTaxPercent: 10,
+    autoApplyOfficialTax: true,
+    enableDueDate: true,
+    enableInvoiceNotes: true,
+    autoPrintAfterSave: false,
+
+    // قالب‌های مجاز چاپ
+    enableStandardTemplate: true,
+    enableOfficialTemplate: true,
+    enableThermalTemplate: true,
+    enableSimpleTemplate: true,
+    defaultTemplate: 'standard',
+    enableSimpleExitSlipTemplate: true,
+    defaultExitSlipTemplate: 'standard',
+
+    // روش‌های مجاز پرداخت
+    enableChequePayment: true,
+    enableCashPayment: true,
+    enableTransferPayment: true,
+    enablePosPayment: true,
+    enableCreditPayment: true,
+
+    // شبکه اجتماعی و پیام‌رسان‌ها
+    socialShareUrl: '',
+    socialChannelTitle: 'کانال هماهنگی و انبارداری',
+    telegramUsername: '',
+    whatsappNumber: '',
+    eitaaChannel: '',
+    baleChannel: '',
+
     warehouses: [
       { id: 'wh-1', name: 'انبار مرکزی', code: 'WH-01', address: 'تهران، جاده مخصوص، کیلومتر ۱۲، سوله شماره ۴', phone: '۰۲۱-۵۵۴۴۳۳۲۲', managerName: 'مرتضی اکبری', isDefault: true },
       { id: 'wh-2', name: 'انبار شعبه ۱', code: 'WH-02', address: 'تهران، خیابان امیرکبیر، کوچه بهار، پلاک ۲۴', phone: '۰۲۱-۳۳۴۴۵۵۶۶', managerName: 'علی رضایی', isDefault: false },
@@ -985,6 +1017,7 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         mergedSettings = {
           ...(currentDb.settings || {}),
           ...incomingData.settings,
+          updatedAt: incomingData.settings.updatedAt || nowIso,
         };
         if (Array.isArray(incomingData.settings.warehouses)) {
           mergedSettings.warehouses = incomingData.settings.warehouses;

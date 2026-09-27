@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Invoice, StoreSettings, AppUser, Product, Customer } from '../types';
 import { formatPrice, toPersianDigits, formatNumber } from '../utils/jalali';
 import { exportInvoicesToCsv } from '../utils/csvExport';
+import { exportInvoicesListToExcel } from '../utils/excelHelper';
 import { StorageService } from '../utils/storage';
 import { CustomerExportModal } from './CustomerExportModal';
 import { InvoiceQuickDetailsModal } from './InvoiceQuickDetailsModal';
@@ -83,9 +84,45 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   onBatchUpdatePaymentStatus,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
-  const [docTypeFilter, setDocTypeFilter] = useState<'all' | 'regular' | 'proforma'>('all');
-  const [sortBy, setSortBy] = useState<SortOption>('date-desc');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>(() => {
+    try {
+      return (localStorage.getItem('sepehr_invoices_status_filter') as any) || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+  const [docTypeFilter, setDocTypeFilter] = useState<'all' | 'regular' | 'proforma'>(() => {
+    try {
+      return (localStorage.getItem('sepehr_invoices_doctype_filter') as any) || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+  const [sortBy, setSortBy] = useState<SortOption>(() => {
+    try {
+      return (localStorage.getItem('sepehr_invoices_sort_by') as any) || 'date-desc';
+    } catch {
+      return 'date-desc';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sepehr_invoices_status_filter', statusFilter);
+    } catch {}
+  }, [statusFilter]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sepehr_invoices_doctype_filter', docTypeFilter);
+    } catch {}
+  }, [docTypeFilter]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sepehr_invoices_sort_by', sortBy);
+    } catch {}
+  }, [sortBy]);
   
   // Modals state
   const [quickDetailsInvoice, setQuickDetailsInvoice] = useState<Invoice | null>(null);
@@ -392,27 +429,41 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                         type="button"
                         onClick={() => {
                           setIsToolsOpen(false);
-                          const filterLabel = statusFilter === 'all' ? 'همه' : statusFilter === 'paid' ? 'تسویه_شده' : statusFilter === 'partial' ? 'اقساطی' : 'نسیه';
-                          exportInvoicesToCsv(filteredInvoices, settings, `گزارش_فاکتورها_${filterLabel}_${filteredInvoices.length}_فقره`);
+                          setCustomerExportSelected(null);
+                          setIsCustomerExportModalOpen(true);
                         }}
-                        disabled={filteredInvoices.length === 0}
-                        className="w-full px-3.5 py-2 flex items-center gap-2 hover:bg-slate-50 text-slate-700 font-medium transition-colors cursor-pointer disabled:opacity-50"
+                        className="w-full px-3.5 py-2.5 flex items-center gap-2 hover:bg-emerald-50 text-emerald-900 font-bold transition-colors cursor-pointer"
                       >
                         <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                        <span>خروجی اکسل لیست جاری ({toPersianDigits(filteredInvoices.length)})</span>
+                        <span>اکسپورت اکسل و PDF فاکتورها و حواله‌ها</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => {
                           setIsToolsOpen(false);
-                          setCustomerExportSelected(null);
-                          setIsCustomerExportModalOpen(true);
+                          const filterLabel = statusFilter === 'all' ? 'همه' : statusFilter === 'paid' ? 'تسویه_شده' : statusFilter === 'partial' ? 'اقساطی' : 'نسیه';
+                          exportInvoicesListToExcel(filteredInvoices, settings, undefined, `فاکتورها_و_حواله_ها_${filterLabel}_${filteredInvoices.length}_سند`);
                         }}
-                        className="w-full px-3.5 py-2 flex items-center gap-2 hover:bg-purple-50 text-purple-800 font-medium transition-colors cursor-pointer"
+                        disabled={filteredInvoices.length === 0}
+                        className="w-full px-3.5 py-2 flex items-center gap-2 hover:bg-slate-50 text-slate-700 font-medium transition-colors cursor-pointer disabled:opacity-50"
                       >
-                        <FileSpreadsheet className="w-4 h-4 text-purple-600" />
-                        <span>خروجی کلیه اسناد و حواله‌های یک شخص</span>
+                        <Download className="w-4 h-4 text-emerald-600" />
+                        <span>دانلود مستقیم اکسل (XLSX) لیست جاری ({toPersianDigits(filteredInvoices.length)})</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsToolsOpen(false);
+                          const filterLabel = statusFilter === 'all' ? 'همه' : statusFilter === 'paid' ? 'تسویه_شده' : statusFilter === 'partial' ? 'اقساطی' : 'نسیه';
+                          exportInvoicesToCsv(filteredInvoices, settings, `گزارش_فاکتورها_${filterLabel}_${filteredInvoices.length}_فقره`);
+                        }}
+                        disabled={filteredInvoices.length === 0}
+                        className="w-full px-3.5 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-slate-500 font-normal text-[11px] transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-slate-400" />
+                        <span>خروجی فرمت متنی CSV (نرم‌افزارهای حسابداری)</span>
                       </button>
                     </>
                   )}

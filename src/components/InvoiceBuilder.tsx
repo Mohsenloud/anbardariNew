@@ -103,13 +103,28 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     }
   };
 
+  // Persistent Draft Key
+  const DRAFT_KEY = 'sepehr_invoice_builder_draft';
+
+  // Read draft helper safely
+  const getSavedDraft = () => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return null;
+  };
+  const savedDraft = !editingInvoice ? getSavedDraft() : null;
+
   const [invoiceType, setInvoiceType] = useState<'standard' | 'official' | 'thermal' | 'simple'>(() => {
     if (editingInvoice) return editingInvoice.type || 'standard';
+    if (savedDraft?.invoiceType) return savedDraft.invoiceType;
     return settings.defaultTemplate || 'standard';
   });
 
   const [invoiceDate, setInvoiceDate] = useState<string>(() => {
     if (editingInvoice) return editingInvoice.date;
+    if (savedDraft?.invoiceDate) return savedDraft.invoiceDate;
     return getCurrentJalaliDate();
   });
 
@@ -118,22 +133,27 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     if (editingInvoice && editingInvoice.customerId && editingInvoice.customerId !== 'guest') {
       return editingInvoice.customerId;
     }
+    if (savedDraft?.selectedCustomerId) return savedDraft.selectedCustomerId;
     return '';
   });
   const [customerName, setCustomerName] = useState<string>(() => {
     if (editingInvoice) return editingInvoice.customerName || 'متفرقه';
+    if (savedDraft?.customerName) return savedDraft.customerName;
     return 'متفرقه';
   });
   const [customerPhone, setCustomerPhone] = useState<string>(() => {
     if (editingInvoice) return editingInvoice.customerPhone || '';
+    if (savedDraft?.customerPhone) return savedDraft.customerPhone;
     return '';
   });
   const [customerAddress, setCustomerAddress] = useState<string>(() => {
     if (editingInvoice) return editingInvoice.customerAddress || '';
+    if (savedDraft?.customerAddress) return savedDraft.customerAddress;
     return '';
   });
   const [customerNationalId, setCustomerNationalId] = useState<string>(() => {
     if (editingInvoice) return editingInvoice.customerNationalId || '';
+    if (savedDraft?.customerNationalId) return savedDraft.customerNationalId;
     return '';
   });
 
@@ -144,6 +164,9 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
         ...it,
         id: it.id || `row-${idx + 1}`,
       }));
+    }
+    if (savedDraft?.items && Array.isArray(savedDraft.items) && savedDraft.items.length > 0) {
+      return savedDraft.items;
     }
     return [];
   });
@@ -162,12 +185,14 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   // Tax & Discount & Payments
   const [taxEnabled, setTaxEnabled] = useState<boolean>(() => {
     if (editingInvoice) return editingInvoice.taxRate > 0;
+    if (savedDraft?.taxEnabled !== undefined) return savedDraft.taxEnabled;
     const initialTpl = settings.defaultTemplate || 'standard';
     if (initialTpl === 'official' && autoApplyOfficialTax) return true;
     return settings.taxEnabled;
   });
   const [taxRate, setTaxRate] = useState<number>(() => {
     if (editingInvoice && editingInvoice.taxRate > 0) return editingInvoice.taxRate;
+    if (savedDraft?.taxRate !== undefined) return savedDraft.taxRate;
     const initialTpl = editingInvoice ? (editingInvoice.type || 'standard') : (settings.defaultTemplate || 'standard');
     if (initialTpl === 'official' && autoApplyOfficialTax) return officialTaxPercent;
     return settings.taxPercent || 10;
@@ -190,10 +215,12 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       const itemsDisc = editingInvoice.items?.reduce((s, it) => s + (it.discount || 0), 0) || 0;
       return Math.max(0, (editingInvoice.totalDiscount || 0) - itemsDisc);
     }
+    if (savedDraft?.extraDiscount !== undefined) return savedDraft.extraDiscount;
     return 0;
   });
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(() => {
     if (editingInvoice) return editingInvoice.paymentMethod || 'cash';
+    if (savedDraft?.paymentMethod) return savedDraft.paymentMethod;
     if (settings.enableCashPayment !== false) return 'cash';
     if (settings.enableChequePayment) return 'cheque';
     if (settings.enableTransferPayment !== false) return 'transfer';
@@ -201,25 +228,28 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   });
   const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid' | 'partial'>(() => {
     if (editingInvoice) return editingInvoice.paymentStatus || 'paid';
+    if (savedDraft?.paymentStatus) return savedDraft.paymentStatus;
     return 'paid';
   });
   const [paidAmount, setPaidAmount] = useState<number>(() => {
     if (editingInvoice) return editingInvoice.paidAmount ?? (editingInvoice.paymentStatus === 'paid' ? editingInvoice.finalTotal : 0);
+    if (savedDraft?.paidAmount !== undefined) return savedDraft.paidAmount;
     return 0;
   });
   const [notes, setNotes] = useState<string>(() => {
     if (editingInvoice) return editingInvoice.notes || '';
+    if (savedDraft?.notes) return savedDraft.notes;
     return '';
   });
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   // Cheque Fields
-  const [chequeNumber, setChequeNumber] = useState<string>(() => editingInvoice?.chequeNumber || '');
-  const [chequeDueDate, setChequeDueDate] = useState<string>(() => editingInvoice?.chequeDueDate || '');
-  const [chequeName, setChequeName] = useState<string>(() => editingInvoice?.chequeName || '');
+  const [chequeNumber, setChequeNumber] = useState<string>(() => editingInvoice?.chequeNumber || savedDraft?.chequeNumber || '');
+  const [chequeDueDate, setChequeDueDate] = useState<string>(() => editingInvoice?.chequeDueDate || savedDraft?.chequeDueDate || '');
+  const [chequeName, setChequeName] = useState<string>(() => editingInvoice?.chequeName || savedDraft?.chequeName || '');
 
   // Transfer Fields
-  const [transferDescription, setTransferDescription] = useState<string>(() => editingInvoice?.transferDescription || '');
+  const [transferDescription, setTransferDescription] = useState<string>(() => editingInvoice?.transferDescription || savedDraft?.transferDescription || '');
 
   // Modals state
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState<boolean>(false);
@@ -284,6 +314,61 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   const subtotal = useMemo(() => {
     return items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
   }, [items]);
+
+  // Persist invoice draft so user's work is never lost on reload or tab switch
+  useEffect(() => {
+    if (!editingInvoice) {
+      try {
+        if (items.length > 0 || customerName !== 'متفرقه' || customerPhone || notes || extraDiscount > 0) {
+          const draft = {
+            invoiceType,
+            invoiceDate,
+            selectedCustomerId,
+            customerName,
+            customerPhone,
+            customerAddress,
+            customerNationalId,
+            items,
+            taxEnabled,
+            taxRate,
+            extraDiscount,
+            paymentMethod,
+            paymentStatus,
+            paidAmount,
+            notes,
+            chequeNumber,
+            chequeDueDate,
+            chequeName,
+            transferDescription,
+          };
+          localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+        } else {
+          localStorage.removeItem(DRAFT_KEY);
+        }
+      } catch {}
+    }
+  }, [
+    editingInvoice,
+    invoiceType,
+    invoiceDate,
+    selectedCustomerId,
+    customerName,
+    customerPhone,
+    customerAddress,
+    customerNationalId,
+    items,
+    taxEnabled,
+    taxRate,
+    extraDiscount,
+    paymentMethod,
+    paymentStatus,
+    paidAmount,
+    notes,
+    chequeNumber,
+    chequeDueDate,
+    chequeName,
+    transferDescription,
+  ]);
 
   const rowDiscounts = useMemo(() => {
     return items.reduce((sum, item) => sum + (item.discount || 0), 0);
@@ -699,6 +784,9 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     if (editingInvoice && onUpdateInvoice) {
       onUpdateInvoice(editingInvoice, newInvoice, shouldPrint || !!settings.autoPrintAfterSave);
     } else {
+      try {
+        localStorage.removeItem(DRAFT_KEY);
+      } catch {}
       onSaveInvoice(newInvoice, shouldPrint || !!settings.autoPrintAfterSave);
     }
   };
@@ -812,6 +900,9 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     if (items.length === 0) return;
     if (window.confirm('آیا از حذف کلیه اقلام فاکتور جاری اطمینان دارید؟')) {
       setItems([]);
+      try {
+        localStorage.removeItem(DRAFT_KEY);
+      } catch {}
     }
   };
 

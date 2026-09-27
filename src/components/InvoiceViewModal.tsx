@@ -46,7 +46,14 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   onEditInvoice,
 }) => {
   const defaultTpl = invoice?.type || settings.defaultTemplate || 'standard';
-  const [template, setTemplate] = useState<'standard' | 'official' | 'thermal' | 'simple'>(defaultTpl);
+  const [template, setTemplate] = useState<'standard' | 'official' | 'thermal' | 'simple'>(() => {
+    if (invoice?.type) return invoice.type;
+    try {
+      const saved = localStorage.getItem('sepehr_last_view_template');
+      if (saved) return saved as any;
+    } catch {}
+    return defaultTpl;
+  });
   const [copied, setCopied] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [showSocialModal, setShowSocialModal] = useState(false);
@@ -56,8 +63,21 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   const [notification, setNotification] = useState<string | null>(null);
 
   useEffect(() => {
-    if (invoice) setActiveInvoice(invoice);
+    if (invoice) {
+      setActiveInvoice(invoice);
+      if (invoice.type) {
+        setTemplate(invoice.type);
+      }
+    }
   }, [invoice]);
+
+  useEffect(() => {
+    try {
+      if (template) {
+        localStorage.setItem('sepehr_last_view_template', template);
+      }
+    } catch {}
+  }, [template]);
 
   // Paper format & orientation settings (persisted in localStorage)
   const [pageSize, setPageSize] = useState<'a4' | 'a5'>(() => {

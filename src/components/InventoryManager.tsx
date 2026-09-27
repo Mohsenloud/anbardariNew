@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Product, ProductVariant, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData, InboundReceipt, InboundReceiptItem, DirectTransfer, Customer } from '../types';
 import { toPersianDigits, toEnglishDigits, getCurrentJalaliDate, getCurrentJalaliTime, formatPrice, formatNumber, formatThousands } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
-import { exportProductsToExcel } from '../utils/excelHelper';
+import { exportProductsToExcel, exportExitSlipsListToExcel } from '../utils/excelHelper';
 import { ExcelImportModal } from './ExcelImportModal';
 import { ExitSlipModal } from './ExitSlipModal';
 import { ExitSlipDeliveryModal } from './ExitSlipDeliveryModal';
@@ -115,8 +115,32 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     }
   }, [initialSubTab]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'in_stock' | 'low_stock' | 'out_of_stock'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>(() => {
+    try {
+      return localStorage.getItem('sepehr_inventory_category') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+  const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'in_stock' | 'low_stock' | 'out_of_stock'>(() => {
+    try {
+      return (localStorage.getItem('sepehr_inventory_stock_filter') as any) || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sepehr_inventory_category', selectedCategory);
+    } catch {}
+  }, [selectedCategory]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sepehr_inventory_stock_filter', stockStatusFilter);
+    } catch {}
+  }, [stockStatusFilter]);
 
   // Direct Transfers (خروج و ورود بدون فاکتور - امانی/تعمیرات)
   const [directTransfers, setDirectTransfers] = useState<DirectTransfer[]>(() => StorageService.getDirectTransfers());
@@ -1741,7 +1765,23 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                   ثبت تاییدیه تحویل بار توسط انباردار، ثبت مشخصات ماشین و شماره تماس راننده، به همراه چاپ فیزیکی و سوابق
                 </p>
               </div>
-              <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  id="direct-export-slips-excel-btn"
+                  onClick={() => {
+                    exportExitSlipsListToExcel(invoices, exitSlipLogs, settings, {
+                      filter: exitSlipFilter,
+                      searchQuery: exitSlipSearch,
+                    });
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                  title="دانلود مستقیم فایل اکسل (XLSX) حواله‌های خروج انبار"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>دانلود اکسل حواله‌ها (XLSX)</span>
+                </button>
+
                 <button
                   type="button"
                   id="export-customer-slips-from-inventory-btn"
@@ -1749,13 +1789,14 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     setCustomerExportSelected(null);
                     setIsCustomerExportModalOpen(true);
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-                  title="خروجی اکسل فاکتورها و حواله‌های خروج انبار یک شخص با تمام جزییات"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                  title="اکسپورت اکسل و PDF فاکتورها و حواله‌های خروج با ستون‌های تاریخ، شماره فاکتور و حواله، نوع و مقدار جنس"
                 >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600" />
-                  <span>اکسپورت اسناد و حواله‌های شخص</span>
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>اکسپورت اکسل و PDF فاکتورها و حواله‌ها</span>
                 </button>
-                <div className="text-xs text-slate-500 font-mono">
+
+                <div className="text-xs text-slate-500 font-mono hidden sm:inline-block mr-1">
                   نمایش {toPersianDigits(filteredExitSlips.length)} از {toPersianDigits(invoices.length)} حواله
                 </div>
               </div>

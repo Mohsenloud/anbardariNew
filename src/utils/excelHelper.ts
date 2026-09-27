@@ -285,7 +285,7 @@ export function exportCustomersToExcel(customers: Customer[]): void {
  * خروجی اکسل چند شیته جامع شامل: خلاصه حساب، ریز اقلام فاکتورها، حواله‌های خروج انبار و سرجمع اسناد
  */
 export interface ExportPersonOptions {
-  customer: Customer;
+  customer?: Customer | null;
   invoices: Invoice[];
   exitSlipLogs?: Record<string, ExitSlipData>;
   currency?: string;
@@ -293,6 +293,7 @@ export interface ExportPersonOptions {
   dateTo?: string;
   docType?: 'all' | 'regular' | 'proforma';
   deliveryStatus?: 'all' | 'delivered' | 'pending';
+  searchQuery?: string;
 }
 
 export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOptions): {
@@ -304,14 +305,36 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
 } {
   const { customer, currency = 'تومان' } = options;
   const exitSlipLogs = options.exitSlipLogs || StorageService.getExitSlipLogs();
+  const isAllCustomers = !customer || customer.id === 'all';
 
   // 1. Filter customer invoices
-  let customerInvoices = options.invoices.filter((inv) =>
-    (inv.customerId && inv.customerId === customer.id) ||
-    (inv.customerName && inv.customerName.trim().toLowerCase() === customer.name.trim().toLowerCase())
-  );
+  let customerInvoices = options.invoices.filter((inv) => {
+    if (isAllCustomers) return true;
+    return (
+      (inv.customerId && inv.customerId === customer.id) ||
+      (inv.customerName && inv.customerName.trim().toLowerCase() === customer.name.trim().toLowerCase())
+    );
+  });
 
   // 2. Apply filters
+  if (options.searchQuery && options.searchQuery.trim()) {
+    const q = options.searchQuery.trim().toLowerCase();
+    customerInvoices = customerInvoices.filter((inv) => {
+      const slip = exitSlipLogs[inv.id];
+      const slipNum = slip?.slipNumber || '';
+      return (
+        inv.invoiceNumber.toLowerCase().includes(q) ||
+        slipNum.toLowerCase().includes(q) ||
+        inv.customerName.toLowerCase().includes(q) ||
+        (inv.customerPhone && inv.customerPhone.includes(q)) ||
+        (inv.notes && inv.notes.toLowerCase().includes(q)) ||
+        (slip?.receiverName && slip.receiverName.toLowerCase().includes(q)) ||
+        (slip?.vehicleInfo && slip.vehicleInfo.toLowerCase().includes(q)) ||
+        inv.items.some((it) => it.productName.toLowerCase().includes(q) || (it.variantName && it.variantName.toLowerCase().includes(q)))
+      );
+    });
+  }
+
   if (options.dateFrom && options.dateFrom.trim()) {
     const from = options.dateFrom.trim();
     customerInvoices = customerInvoices.filter((i) => i.date >= from);
@@ -333,7 +356,7 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
   }
 
   // Sort descending by date, then invoiceNumber
-  customerInvoices.sort((a, b) => b.date.localeCompare(a.date));
+  customerInvoices.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.invoiceNumber || '').localeCompare(a.invoiceNumber || ''));
 
   // Compute stats
   const regularCount = customerInvoices.filter((i) => !i.isProforma).length;
@@ -364,15 +387,14 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
   const wb = XLSX.utils.book_new();
 
   // ----------------------------------------------------
-  // Sheet 1: خلاصه پرونده و گردش حساب مشتری
+  // Sheet 1: خلاصه پرونده و گردش حساب
   // ----------------------------------------------------
   const summaryRows = [
-    { 'عنوان شاخص': 'نام طرف حساب / خریدار', 'مقدار / توضیحات': customer.name },
-    { 'عنوان شاخص': 'شماره تماس', 'مقدار / توضیحات': customer.phone || '—' },
-    { 'عنوان شاخص': 'کد ملی یا شناسه اقتصادی', 'مقدار / توضیحات': customer.nationalId || '—' },
-    { 'عنوان شاخص': 'نشانی و آدرس', 'مقدار / توضیحات': customer.address || '—' },
-    { 'عنوان شاخص': 'یادداشت پرونده مشتری', 'مقدار / توضیحات': customer.notes || '—' },
-    { 'عنوان شاخص': 'تاریخ عضویت / پرونده', 'مقدار / توضیحات': customer.createdAt || '—' },
+    { 'عنوان شاخص': 'محدوده گزارش', 'مقدار / توضیحات': isAllCustomers ? 'گزارش تجمیعی کلیه مشتریان و طرف‌های حساب' : customer?.name || 'مشتری' },
+    { 'عنوان شاخص': 'شماره تماس', 'مقدار / توضیحات': isAllCustomers ? 'کلیه شماره‌ها' : (customer?.phone || '—') },
+    { 'عنوان شاخص': 'کد ملی یا شناسه اقتصادی', 'مقدار / توضیحات': isAllCustomers ? '—' : (customer?.nationalId || '—') },
+    { 'عنوان شاخص': 'نشانی و آدرس', 'مقدار / توضیحات': isAllCustomers ? '—' : (customer?.address || '—') },
+    { 'عنوان شاخص': 'یادداشت پرونده', 'مقدار / توضیحات': isAllCustomers ? '—' : (customer?.notes || '—') },
     { 'عنوان شاخص': 'تاریخ استخراج گزارش', 'مقدار / توضیحات': getCurrentJalaliDate() },
     { 'عنوان شاخص': 'واحد پولی سیستم', 'مقدار / توضیحات': currency },
     { 'عنوان شاخص': '------------------------------------', 'مقدار / توضیحات': '------------------------------------' },
@@ -385,7 +407,7 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
     { 'عنوان شاخص': `مبلغ نهایی قابل پرداخت (${currency})`, 'مقدار / توضیحات': totalFinal },
     { 'عنوان شاخص': `مجموع مبالغ واریز و تسویه شده (${currency})`, 'مقدار / توضیحات': totalPaid },
     { 'عنوان شاخص': `مانده بدهی تسویه نشده (${currency})`, 'مقدار / توضیحات': balanceDue },
-    { 'عنوان شاخص': 'وضعیت کلی مالی مشتری', 'مقدار / توضیحات': balanceDue <= 0 ? 'تسویه کامل (بی‌حساب)' : `بدهکار به مبلغ ${balanceDue.toLocaleString('fa-IR')} ${currency}` },
+    { 'عنوان شاخص': 'وضعیت کلی مالی', 'مقدار / توضیحات': balanceDue <= 0 ? 'تسویه کامل (بی‌حساب)' : `بدهکار به مبلغ ${balanceDue.toLocaleString('fa-IR')} ${currency}` },
     { 'عنوان شاخص': '------------------------------------', 'مقدار / توضیحات': '------------------------------------' },
     { 'عنوان شاخص': 'تعداد کل حواله‌های خروج انبار', 'مقدار / توضیحات': customerInvoices.length },
     { 'عنوان شاخص': 'تعداد بارهای تحویل‌شده به خریدار', 'مقدار / توضیحات': deliveredCount },
@@ -399,7 +421,7 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
   XLSX.utils.book_append_sheet(wb, wsSummary, 'خلاصه_پرونده_و_حساب');
 
   // ----------------------------------------------------
-  // Sheet 2: ریز اقلام فاکتورها (با تمام جزئیات تجاری)
+  // Sheet 2: ریز اقلام فاکتورها و حواله‌ها (با ستون‌های درخواستی: تاریخ، شماره فاکتور، شماره حواله، نوع و مقدار جنس)
   // ----------------------------------------------------
   const itemRows: any[] = [];
   let itemCounter = 1;
@@ -414,15 +436,16 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
     if (inv.items.length === 0) {
       itemRows.push({
         'ردیف': itemCounter++,
+        'تاریخ': inv.date,
         'شماره فاکتور': inv.invoiceNumber,
-        'نوع سند': docTypeFa,
-        'تاریخ فاکتور': inv.date,
-        'کد کالا': '—',
-        'بارکد کالا': '—',
-        'شرح کالا یا خدمات': '(بدون قلم کالا)',
+        'شماره حواله خروج': slipNum,
+        'طرف حساب / خریدار': inv.customerName || 'مشتری گذری',
+        'نوع و نام جنس': '(بدون قلم کالا)',
         'تنوع / مدل': '—',
-        'تعداد': 0,
-        'واحد': '—',
+        'مقدار جنس': 0,
+        'واحد سنجش': '—',
+        'نوع سند': docTypeFa,
+        'کد کالا': '—',
         [`فی واحد (${currency})`]: 0,
         [`تخفیف ردیف (${currency})`]: 0,
         [`مبلغ کل ردیف (${currency})`]: 0,
@@ -430,23 +453,26 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
         [`مبلغ پرداختی فاکتور (${currency})`]: inv.paidAmount || 0,
         [`مانده فاکتور (${currency})`]: Math.max(0, inv.finalTotal - (inv.paidAmount || 0)),
         'شیوه پرداخت': payMethodFa,
-        'شماره حواله خروج انبار': slipNum,
         'وضعیت تحویل فیزیکی بار': slip.isDelivered ? 'تحویل شد' : 'در انتظار تحویل',
+        'تاریخ و ساعت تحویل': slip.deliveredAt || '—',
+        'نام راننده / گیرنده': slip.receiverName || '—',
+        'مشخصات خودرو': slip.vehicleInfo || '—',
         'توضیحات فاکتور': inv.notes || '',
       });
     } else {
       for (const it of inv.items) {
         itemRows.push({
           'ردیف': itemCounter++,
+          'تاریخ': inv.date,
           'شماره فاکتور': inv.invoiceNumber,
-          'نوع سند': docTypeFa,
-          'تاریخ فاکتور': inv.date,
-          'کد کالا': it.productCode || '—',
-          'بارکد کالا': it.barcode || '—',
-          'شرح کالا یا خدمات': it.productName,
+          'شماره حواله خروج': slipNum,
+          'طرف حساب / خریدار': inv.customerName || 'مشتری گذری',
+          'نوع و نام جنس': it.productName,
           'تنوع / مدل': it.variantName || '—',
-          'تعداد': it.quantity,
-          'واحد': it.unit || 'عدد',
+          'مقدار جنس': it.quantity,
+          'واحد سنجش': it.unit || 'عدد',
+          'نوع سند': docTypeFa,
+          'کد کالا': it.productCode || '—',
           [`فی واحد (${currency})`]: it.unitPrice,
           [`تخفیف ردیف (${currency})`]: it.discount || 0,
           [`مبلغ کل ردیف (${currency})`]: it.total,
@@ -454,8 +480,10 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
           [`مبلغ پرداختی فاکتور (${currency})`]: inv.paidAmount || 0,
           [`مانده فاکتور (${currency})`]: Math.max(0, inv.finalTotal - (inv.paidAmount || 0)),
           'شیوه پرداخت': payMethodFa,
-          'شماره حواله خروج انبار': slipNum,
           'وضعیت تحویل فیزیکی بار': slip.isDelivered ? 'تحویل شد' : 'در انتظار تحویل',
+          'تاریخ و ساعت تحویل': slip.deliveredAt || '—',
+          'نام راننده / گیرنده': slip.receiverName || '—',
+          'مشخصات خودرو': slip.vehicleInfo || '—',
           'توضیحات فاکتور': inv.notes || '',
         });
       }
@@ -465,15 +493,16 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
   const wsItems = XLSX.utils.json_to_sheet(itemRows);
   wsItems['!cols'] = [
     { wch: 8 },  // ردیف
+    { wch: 13 }, // تاریخ
     { wch: 16 }, // شماره فاکتور
-    { wch: 16 }, // نوع سند
-    { wch: 13 }, // تاریخ فاکتور
-    { wch: 14 }, // کد کالا
-    { wch: 15 }, // بارکد
-    { wch: 32 }, // شرح کالا
+    { wch: 18 }, // شماره حواله خروج
+    { wch: 25 }, // خریدار
+    { wch: 32 }, // نوع و نام جنس
     { wch: 16 }, // تنوع
-    { wch: 10 }, // تعداد
-    { wch: 10 }, // واحد
+    { wch: 12 }, // مقدار جنس
+    { wch: 12 }, // واحد
+    { wch: 16 }, // نوع سند
+    { wch: 14 }, // کد کالا
     { wch: 16 }, // فی واحد
     { wch: 14 }, // تخفیف
     { wch: 18 }, // مبلغ کل ردیف
@@ -481,15 +510,17 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
     { wch: 16 }, // مبلغ پرداختی
     { wch: 16 }, // مانده فاکتور
     { wch: 18 }, // شیوه پرداخت
-    { wch: 20 }, // شماره حواله خروج
     { wch: 18 }, // وضعیت تحویل بار
+    { wch: 20 }, // تاریخ تحویل
+    { wch: 20 }, // راننده
+    { wch: 20 }, // خودرو
     { wch: 30 }, // توضیحات فاکتور
   ];
   wsItems['!views'] = [{ rightToLeft: true }];
-  XLSX.utils.book_append_sheet(wb, wsItems, 'ریز_اقلام_فاکتورها');
+  XLSX.utils.book_append_sheet(wb, wsItems, 'ریز_اقلام_فاکتورها_و_حواله_ها');
 
   // ----------------------------------------------------
-  // Sheet 3: حواله‌های خروج انبار با جزییات تحویل و لجستیک (فقط فاکتورهای قطعی)
+  // Sheet 3: حواله‌های خروج انبار با جزییات تحویل و لجستیک
   // ----------------------------------------------------
   const slipRows: any[] = [];
   let slipCounter = 1;
@@ -504,15 +535,15 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
     if (inv.items.length === 0) {
       slipRows.push({
         'ردیف': slipCounter++,
+        'تاریخ حواله': inv.date,
         'شماره حواله خروج (بیجک)': slipNum,
         'شماره فاکتور متناظر': inv.invoiceNumber,
-        'نوع فاکتور': docTypeFa,
-        'تاریخ حواله': inv.date,
-        'کد کالا': '—',
-        'نام کالای تحویلی': '(بدون قلم کالا)',
+        'نام طرف حساب / خریدار': inv.customerName || 'مشتری گذری',
+        'نوع جنس / نام کالای تحویلی': '(بدون قلم کالا)',
         'تنوع / مدل کالا': '—',
-        'تعداد تحویلی': 0,
+        'مقدار تحویلی': 0,
         'واحد سنجش': '—',
+        'نوع فاکتور': docTypeFa,
         'وضعیت تحویل فیزیکی بار': isDeliveredFa,
         'تاریخ و ساعت تحویل': slip.deliveredAt || '—',
         'انباردار تحویل‌دهنده': slip.deliveredBy || '—',
@@ -522,21 +553,20 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
         'شماره بارنامه / یادداشت خروج': slip.deliveryNotes || '—',
         'وضعیت چاپ برگه خروج': printStatusFa,
         'زمان آخرین چاپ': slip.lastPrintedAt || '—',
-        'نام مشتری در سند': inv.customerName,
       });
     } else {
       for (const it of inv.items) {
         slipRows.push({
           'ردیف': slipCounter++,
+          'تاریخ حواله': inv.date,
           'شماره حواله خروج (بیجک)': slipNum,
           'شماره فاکتور متناظر': inv.invoiceNumber,
-          'نوع فاکتور': docTypeFa,
-          'تاریخ حواله': inv.date,
-          'کد کالا': it.productCode || '—',
-          'نام کالای تحویلی': it.productName,
+          'نام طرف حساب / خریدار': inv.customerName || 'مشتری گذری',
+          'نوع جنس / نام کالای تحویلی': it.productName,
           'تنوع / مدل کالا': it.variantName || '—',
-          'تعداد تحویلی': it.quantity,
+          'مقدار تحویلی': it.quantity,
           'واحد سنجش': it.unit || 'عدد',
+          'نوع فاکتور': docTypeFa,
           'وضعیت تحویل فیزیکی بار': isDeliveredFa,
           'تاریخ و ساعت تحویل': slip.deliveredAt || '—',
           'انباردار تحویل‌دهنده': slip.deliveredBy || '—',
@@ -546,7 +576,6 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
           'شماره بارنامه / یادداشت خروج': slip.deliveryNotes || '—',
           'وضعیت چاپ برگه خروج': printStatusFa,
           'زمان آخرین چاپ': slip.lastPrintedAt || '—',
-          'نام مشتری در سند': inv.customerName,
         });
       }
     }
@@ -555,15 +584,15 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
   const wsSlips = XLSX.utils.json_to_sheet(slipRows);
   wsSlips['!cols'] = [
     { wch: 8 },  // ردیف
+    { wch: 13 }, // تاریخ حواله
     { wch: 22 }, // شماره حواله خروج
     { wch: 18 }, // شماره فاکتور
-    { wch: 14 }, // نوع فاکتور
-    { wch: 13 }, // تاریخ حواله
-    { wch: 14 }, // کد کالا
-    { wch: 32 }, // نام کالا
+    { wch: 25 }, // نام طرف حساب
+    { wch: 32 }, // نوع جنس
     { wch: 16 }, // تنوع
-    { wch: 12 }, // تعداد
-    { wch: 10 }, // واحد
+    { wch: 14 }, // مقدار تحویلی
+    { wch: 12 }, // واحد
+    { wch: 14 }, // نوع فاکتور
     { wch: 20 }, // وضعیت تحویل
     { wch: 20 }, // تاریخ و ساعت تحویل
     { wch: 18 }, // انباردار
@@ -573,7 +602,6 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
     { wch: 26 }, // شماره بارنامه
     { wch: 20 }, // وضعیت چاپ
     { wch: 20 }, // آخرین زمان چاپ
-    { wch: 22 }, // نام مشتری
   ];
   wsSlips['!views'] = [{ rightToLeft: true }];
   XLSX.utils.book_append_sheet(wb, wsSlips, 'حواله_های_خروج_انبار');
@@ -592,9 +620,11 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
 
     return {
       'ردیف': idx + 1,
-      'شماره فاکتور': inv.invoiceNumber,
-      'نوع سند': docTypeFa,
       'تاریخ فاکتور': inv.date,
+      'شماره فاکتور': inv.invoiceNumber,
+      'شماره حواله خروج انبار': slipNum,
+      'نام طرف حساب / خریدار': inv.customerName || 'مشتری گذری',
+      'نوع سند': docTypeFa,
       'تاریخ سررسید': inv.dueDate || '—',
       'تعداد ردیف کالا': itemsCount,
       'مجموع تعداد اقلام': totalQty,
@@ -607,7 +637,6 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
       'وضعیت پرداخت': payStatusFa,
       'روش پرداخت': payMethodFa,
       'اطلاعات چک / واریز': inv.chequeNumber ? `چک ش: ${inv.chequeNumber}` : (inv.transferDescription || '—'),
-      'شماره حواله خروج انبار': slipNum,
       'وضعیت تحویل بار': slip.isDelivered ? 'تحویل شد' : 'در انتظار تحویل',
       'تاریخ تحویل بار': slip.deliveredAt || '—',
       'راننده / تحویل‌گیرنده': slip.receiverName || '—',
@@ -619,9 +648,11 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
   const wsOverview = XLSX.utils.json_to_sheet(invoiceOverviewRows);
   wsOverview['!cols'] = [
     { wch: 8 },  // ردیف
-    { wch: 16 }, // شماره فاکتور
-    { wch: 14 }, // نوع سند
     { wch: 13 }, // تاریخ
+    { wch: 16 }, // شماره فاکتور
+    { wch: 20 }, // شماره حواله
+    { wch: 25 }, // خریدار
+    { wch: 14 }, // نوع سند
     { wch: 13 }, // سررسید
     { wch: 14 }, // تعداد ردیف
     { wch: 15 }, // مجموع تعداد
@@ -634,7 +665,6 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
     { wch: 14 }, // وضعیت پرداخت
     { wch: 18 }, // روش پرداخت
     { wch: 22 }, // چک / واریز
-    { wch: 20 }, // شماره حواله
     { wch: 18 }, // وضعیت تحویل
     { wch: 18 }, // تاریخ تحویل
     { wch: 20 }, // راننده
@@ -645,7 +675,7 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
   XLSX.utils.book_append_sheet(wb, wsOverview, 'لیست_کلی_فاکتورها');
 
   // Generate File Name
-  const safeName = customer.name.replace(/[/\\:*?"<>|]/g, '_').trim();
+  const safeName = isAllCustomers ? 'کلیه_اسناد_و_حواله_ها' : (customer?.name.replace(/[/\\:*?"<>|]/g, '_').trim() || 'شخص');
   const safeDate = getCurrentJalaliDate().replace(/\//g, '-');
   const fileName = `فاکتورها_و_حواله_های_${safeName}_${safeDate}.xlsx`;
 
@@ -658,6 +688,291 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
     exportedSlipsCount: slipRows.length,
     fileName,
   };
+}
+
+/**
+ * EXPORT EXIT SLIPS DIRECTLY TO EXCEL
+ */
+export function exportExitSlipsListToExcel(
+  invoices: Invoice[],
+  exitSlipLogs: Record<string, ExitSlipData>,
+  settings: StoreSettings,
+  options?: {
+    filter?: string;
+    searchQuery?: string;
+  }
+): { success: boolean; count: number; fileName: string } {
+  const wb = XLSX.utils.book_new();
+  const currency = settings.currency || 'تومان';
+  const today = getCurrentJalaliDate();
+
+  let filteredInvoices = invoices.filter((i) => !i.isProforma);
+
+  if (options?.searchQuery && options.searchQuery.trim()) {
+    const q = options.searchQuery.trim().toLowerCase();
+    filteredInvoices = filteredInvoices.filter((inv) => {
+      const slip = exitSlipLogs[inv.id];
+      const slipNum = slip?.slipNumber || inv.invoiceNumber;
+      return (
+        slipNum.toLowerCase().includes(q) ||
+        inv.invoiceNumber.toLowerCase().includes(q) ||
+        inv.customerName.toLowerCase().includes(q) ||
+        (slip?.receiverName && slip.receiverName.toLowerCase().includes(q)) ||
+        (slip?.vehicleInfo && slip.vehicleInfo.toLowerCase().includes(q)) ||
+        inv.items.some((it) => it.productName.toLowerCase().includes(q))
+      );
+    });
+  }
+
+  if (options?.filter === 'delivered') {
+    filteredInvoices = filteredInvoices.filter((inv) => Boolean(exitSlipLogs[inv.id]?.isDelivered));
+  } else if (options?.filter === 'pending_delivery') {
+    filteredInvoices = filteredInvoices.filter((inv) => !Boolean(exitSlipLogs[inv.id]?.isDelivered));
+  } else if (options?.filter === 'unprinted') {
+    filteredInvoices = filteredInvoices.filter((inv) => !exitSlipLogs[inv.id] || exitSlipLogs[inv.id].printCount === 0);
+  } else if (options?.filter === 'printed') {
+    filteredInvoices = filteredInvoices.filter((inv) => Boolean(exitSlipLogs[inv.id]?.printCount > 0));
+  }
+
+  // Sort descending by date
+  filteredInvoices.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  // Detailed rows containing columns: تاریخ, شماره حواله, شماره فاکتور, نوع و مقدار جنس
+  const rows: any[] = [];
+  let counter = 1;
+
+  for (const inv of filteredInvoices) {
+    const slip = exitSlipLogs[inv.id] || { invoiceId: inv.id, printCount: 0, history: [] };
+    const slipNum = slip.slipNumber || inv.invoiceNumber;
+    const isDeliveredFa = slip.isDelivered ? 'بار تحویل شد' : 'در انتظار تحویل انبار';
+
+    if (inv.items.length === 0) {
+      rows.push({
+        'ردیف': counter++,
+        'تاریخ': inv.date,
+        'شماره حواله خروج': slipNum,
+        'شماره فاکتور متناظر': inv.invoiceNumber,
+        'طرف حساب / خریدار': inv.customerName,
+        'نوع و شرح جنس': '(بدون قلم کالا)',
+        'تنوع / مدل': '—',
+        'مقدار جنس': 0,
+        'واحد سنجش': '—',
+        'وضعیت تحویل بار': isDeliveredFa,
+        'تاریخ و ساعت تحویل': slip.deliveredAt || '—',
+        'انباردار': slip.deliveredBy || '—',
+        'نام راننده': slip.receiverName || '—',
+        'تلفن راننده': slip.receiverPhone || '—',
+        'مشخصات ماشین': slip.vehicleInfo || '—',
+        'بارنامه و توضیحات': slip.deliveryNotes || '—',
+      });
+    } else {
+      for (const it of inv.items) {
+        rows.push({
+          'ردیف': counter++,
+          'تاریخ': inv.date,
+          'شماره حواله خروج': slipNum,
+          'شماره فاکتور متناظر': inv.invoiceNumber,
+          'طرف حساب / خریدار': inv.customerName,
+          'نوع و شرح جنس': it.productName,
+          'تنوع / مدل': it.variantName || '—',
+          'مقدار جنس': it.quantity,
+          'واحد سنجش': it.unit || 'عدد',
+          'وضعیت تحویل بار': isDeliveredFa,
+          'تاریخ و ساعت تحویل': slip.deliveredAt || '—',
+          'انباردار': slip.deliveredBy || '—',
+          'نام راننده': slip.receiverName || '—',
+          'تلفن راننده': slip.receiverPhone || '—',
+          'مشخصات ماشین': slip.vehicleInfo || '—',
+          'بارنامه و توضیحات': slip.deliveryNotes || '—',
+        });
+      }
+    }
+  }
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 8 },  // ردیف
+    { wch: 13 }, // تاریخ
+    { wch: 20 }, // شماره حواله
+    { wch: 18 }, // شماره فاکتور
+    { wch: 25 }, // خریدار
+    { wch: 32 }, // نوع و شرح جنس
+    { wch: 16 }, // مدل
+    { wch: 14 }, // مقدار
+    { wch: 12 }, // واحد
+    { wch: 20 }, // وضعیت تحویل
+    { wch: 20 }, // ساعت تحویل
+    { wch: 18 }, // انباردار
+    { wch: 20 }, // راننده
+    { wch: 16 }, // تلفن
+    { wch: 22 }, // ماشین
+    { wch: 25 }, // بارنامه
+  ];
+  ws['!views'] = [{ rightToLeft: true }];
+  XLSX.utils.book_append_sheet(wb, ws, 'حواله_های_خروج_انبار');
+
+  const safeDate = today.replace(/\//g, '-');
+  const fileName = `گزارش_حواله_های_خروج_انبار_${safeDate}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+
+  return { success: true, count: rows.length, fileName };
+}
+
+/**
+ * EXPORT INVOICES LIST DIRECTLY TO EXCEL (XLSX)
+ */
+export function exportInvoicesListToExcel(
+  invoices: Invoice[],
+  settings: StoreSettings,
+  exitSlipLogs?: Record<string, ExitSlipData>,
+  filenamePrefix = 'گزارش_فاکتورها'
+): { success: boolean; count: number; fileName: string } {
+  const wb = XLSX.utils.book_new();
+  const currency = settings.currency || 'تومان';
+  const today = getCurrentJalaliDate();
+  const slips = exitSlipLogs || StorageService.getExitSlipLogs();
+
+  // Sheet 1: Detailed Items
+  const itemRows: any[] = [];
+  let itemCounter = 1;
+
+  for (const inv of invoices) {
+    const slip = slips[inv.id] || { invoiceId: inv.id, printCount: 0, history: [] };
+    const slipNum = slip.slipNumber || inv.invoiceNumber;
+    const payStatusFa = inv.paymentStatus === 'paid' ? 'تسویه کامل' : inv.paymentStatus === 'partial' ? 'تسویه ناقص' : 'پرداخت نشده';
+    const payMethodFa = inv.paymentMethod === 'pos' ? 'کارتخوان' : inv.paymentMethod === 'cash' ? 'نقدی' : inv.paymentMethod === 'transfer' ? 'واریز به حساب / کارت' : inv.paymentMethod === 'cheque' ? 'چک' : 'اعتباری / نسیه';
+    const docTypeFa = inv.isProforma ? 'پیش‌فاکتور' : 'فاکتور رسمی';
+
+    if (inv.items.length === 0) {
+      itemRows.push({
+        'ردیف': itemCounter++,
+        'تاریخ': inv.date,
+        'شماره فاکتور': inv.invoiceNumber,
+        'شماره حواله خروج': slipNum,
+        'طرف حساب / خریدار': inv.customerName || 'مشتری گذری',
+        'تلفن خریدار': inv.customerPhone || '—',
+        'نوع و شرح جنس': '(بدون قلم کالا)',
+        'تنوع / مدل': '—',
+        'مقدار جنس': 0,
+        'واحد سنجش': '—',
+        'نوع سند': docTypeFa,
+        [`فی واحد (${currency})`]: 0,
+        [`مبلغ کل (${currency})`]: 0,
+        'وضعیت تسویه': payStatusFa,
+        [`مبلغ دریافتی (${currency})`]: inv.paidAmount || 0,
+        [`مانده بدهی (${currency})`]: Math.max(0, inv.finalTotal - (inv.paidAmount || 0)),
+        'روش پرداخت': payMethodFa,
+        'وضعیت تحویل بار': slip.isDelivered ? 'تحویل شد' : 'در انتظار تحویل',
+        'توضیحات': inv.notes || '',
+      });
+    } else {
+      for (const it of inv.items) {
+        itemRows.push({
+          'ردیف': itemCounter++,
+          'تاریخ': inv.date,
+          'شماره فاکتور': inv.invoiceNumber,
+          'شماره حواله خروج': slipNum,
+          'طرف حساب / خریدار': inv.customerName || 'مشتری گذری',
+          'تلفن خریدار': inv.customerPhone || '—',
+          'نوع و شرح جنس': it.productName,
+          'تنوع / مدل': it.variantName || '—',
+          'مقدار جنس': it.quantity,
+          'واحد سنجش': it.unit || 'عدد',
+          'نوع سند': docTypeFa,
+          [`فی واحد (${currency})`]: it.unitPrice,
+          [`مبلغ کل (${currency})`]: it.total,
+          'وضعیت تسویه': payStatusFa,
+          [`مبلغ دریافتی (${currency})`]: inv.paidAmount || 0,
+          [`مانده بدهی (${currency})`]: Math.max(0, inv.finalTotal - (inv.paidAmount || 0)),
+          'روش پرداخت': payMethodFa,
+          'وضعیت تحویل بار': slip.isDelivered ? 'تحویل شد' : 'در انتظار تحویل',
+          'توضیحات': inv.notes || '',
+        });
+      }
+    }
+  }
+
+  const wsItems = XLSX.utils.json_to_sheet(itemRows);
+  wsItems['!cols'] = [
+    { wch: 8 },  // ردیف
+    { wch: 13 }, // تاریخ
+    { wch: 16 }, // شماره فاکتور
+    { wch: 18 }, // شماره حواله
+    { wch: 25 }, // خریدار
+    { wch: 16 }, // تلفن
+    { wch: 32 }, // نوع جنس
+    { wch: 16 }, // مدل
+    { wch: 12 }, // مقدار
+    { wch: 12 }, // واحد
+    { wch: 14 }, // نوع سند
+    { wch: 16 }, // فی واحد
+    { wch: 18 }, // مبلغ کل
+    { wch: 14 }, // وضعیت تسویه
+    { wch: 16 }, // پرداختی
+    { wch: 16 }, // مانده
+    { wch: 16 }, // روش پرداخت
+    { wch: 18 }, // وضعیت تحویل
+    { wch: 30 }, // توضیحات
+  ];
+  wsItems['!views'] = [{ rightToLeft: true }];
+  XLSX.utils.book_append_sheet(wb, wsItems, 'ریز_اقلام_فاکتورها_و_حواله_ها');
+
+  // Sheet 2: Invoices Overview
+  const invoiceOverviewRows = invoices.map((inv, idx) => {
+    const slip = slips[inv.id] || { invoiceId: inv.id, printCount: 0, history: [] };
+    const slipNum = slip.slipNumber || inv.invoiceNumber;
+    const payStatusFa = inv.paymentStatus === 'paid' ? 'تسویه کامل' : inv.paymentStatus === 'partial' ? 'تسویه ناقص' : 'پرداخت نشده';
+    const payMethodFa = inv.paymentMethod === 'pos' ? 'کارتخوان' : inv.paymentMethod === 'cash' ? 'نقدی' : inv.paymentMethod === 'transfer' ? 'واریز به حساب / کارت' : inv.paymentMethod === 'cheque' ? 'چک' : 'اعتباری / نسیه';
+    const docTypeFa = inv.isProforma ? 'پیش‌فاکتور' : 'فاکتور رسمی';
+    const totalQty = inv.items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+
+    return {
+      'ردیف': idx + 1,
+      'تاریخ فاکتور': inv.date,
+      'شماره فاکتور': inv.invoiceNumber,
+      'شماره حواله خروج': slipNum,
+      'خریدار / طرف حساب': inv.customerName || 'مشتری گذری',
+      'تلفن خریدار': inv.customerPhone || '—',
+      'نوع سند': docTypeFa,
+      'تعداد اقلام': inv.items.length,
+      'مجموع تعداد فیزیکی': totalQty,
+      [`مبلغ قابل پرداخت (${currency})`]: inv.finalTotal,
+      [`مبلغ پرداختی (${currency})`]: inv.paidAmount || 0,
+      [`مانده بدهی (${currency})`]: Math.max(0, inv.finalTotal - (inv.paidAmount || 0)),
+      'وضعیت پرداخت': payStatusFa,
+      'روش پرداخت': payMethodFa,
+      'وضعیت تحویل انبار': slip.isDelivered ? 'تحویل شد' : 'در انتظار تحویل',
+      'توضیحات فاکتور': inv.notes || '',
+    };
+  });
+
+  const wsOverview = XLSX.utils.json_to_sheet(invoiceOverviewRows);
+  wsOverview['!cols'] = [
+    { wch: 8 },  // ردیف
+    { wch: 13 }, // تاریخ
+    { wch: 16 }, // شماره فاکتور
+    { wch: 18 }, // شماره حواله
+    { wch: 25 }, // خریدار
+    { wch: 16 }, // تلفن
+    { wch: 14 }, // نوع سند
+    { wch: 12 }, // تعداد اقلام
+    { wch: 16 }, // مجموع تعداد
+    { wch: 18 }, // مبلغ
+    { wch: 16 }, // پرداختی
+    { wch: 16 }, // مانده
+    { wch: 14 }, // وضعیت پرداخت
+    { wch: 16 }, // روش پرداخت
+    { wch: 18 }, // وضعیت تحویل
+    { wch: 30 }, // توضیحات
+  ];
+  wsOverview['!views'] = [{ rightToLeft: true }];
+  XLSX.utils.book_append_sheet(wb, wsOverview, 'سرجمع_فاکتورها');
+
+  const safeDate = today.replace(/\//g, '-');
+  const fileName = `${filenamePrefix}_${safeDate}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+
+  return { success: true, count: invoices.length, fileName };
 }
 
 /**

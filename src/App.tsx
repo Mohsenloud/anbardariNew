@@ -75,10 +75,23 @@ export default function App() {
     const saved = localStorage.getItem('sepehr_last_tab');
     return saved || 'dashboard';
   });
-  const [inventorySubTab, setInventorySubTab] = useState<'items' | 'inbound-receipts' | 'exit-slips' | 'direct-transfers' | 'movements'>('items');
+  const [inventorySubTab, setInventorySubTab] = useState<'items' | 'inbound-receipts' | 'exit-slips' | 'direct-transfers' | 'movements'>(() => {
+    const saved = localStorage.getItem('sepehr_inventory_subtab');
+    return (saved as any) || 'items';
+  });
   const [selectedInboundReceiptId, setSelectedInboundReceiptId] = useState<string | null>(null);
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
-  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(() => {
+    try {
+      const savedId = localStorage.getItem('sepehr_editing_invoice_id');
+      if (savedId) {
+        const allInvs = StorageService.getInvoices();
+        const found = allInvs.find((i) => i.id === savedId);
+        if (found) return found;
+      }
+    } catch {}
+    return null;
+  });
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [loginTargetUser, setLoginTargetUser] = useState<AppUser | null>(null);
@@ -112,6 +125,20 @@ export default function App() {
       localStorage.setItem('sepehr_last_tab', activeTab);
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (inventorySubTab) {
+      localStorage.setItem('sepehr_inventory_subtab', inventorySubTab);
+    }
+  }, [inventorySubTab]);
+
+  useEffect(() => {
+    if (editingInvoice) {
+      localStorage.setItem('sepehr_editing_invoice_id', editingInvoice.id);
+    } else {
+      localStorage.removeItem('sepehr_editing_invoice_id');
+    }
+  }, [editingInvoice]);
 
   useEffect(() => {
     // Initial app opening: restore authenticated user session if present

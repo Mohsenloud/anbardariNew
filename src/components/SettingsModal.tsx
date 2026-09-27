@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StoreSettings } from '../types';
 import { StorageService } from '../utils/storage';
 import { 
@@ -60,6 +60,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [formData, setFormData] = useState<StoreSettings>({ ...settings });
   const [importStatus, setImportStatus] = useState<string>('');
+
+  useEffect(() => {
+    if (isOpen && settings) {
+      setFormData({ ...settings });
+    }
+  }, [isOpen, settings]);
 
   // Telegram Bot testing states
   const [isTestingBot, setIsTestingBot] = useState(false);

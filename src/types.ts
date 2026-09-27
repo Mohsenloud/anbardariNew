@@ -248,6 +248,7 @@ export interface StoreSettings {
   postalCode: string;
   invoiceFooterText: string;
   currency: 'تومان' | 'ریال';
+  updatedAt?: string; // تاریخ و زمان آخرین تغییر تنظیمات
 
   // کنترل اجزا و ماژول‌های اصلی برنامه
   enableInventory: boolean; // ماژول انبارداری و کاردکس

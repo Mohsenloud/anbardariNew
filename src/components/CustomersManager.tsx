@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Customer, Invoice, StoreSettings, AppUser, CustomerTransaction } from '../types';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
@@ -87,8 +87,32 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
     return (localStorage.getItem('customers_view_mode') as 'table' | 'grid') || 'table';
   });
-  const [statusFilter, setStatusFilter] = useState<'all' | 'debtors' | 'creditors' | 'settled'>('all');
-  const [sortBy, setSortBy] = useState<'name-asc' | 'debt-desc' | 'orders-desc' | 'newest'>('name-asc');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'debtors' | 'creditors' | 'settled'>(() => {
+    try {
+      return (localStorage.getItem('sepehr_customers_status_filter') as any) || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+  const [sortBy, setSortBy] = useState<'name-asc' | 'debt-desc' | 'orders-desc' | 'newest'>(() => {
+    try {
+      return (localStorage.getItem('sepehr_customers_sort_by') as any) || 'name-asc';
+    } catch {
+      return 'name-asc';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sepehr_customers_status_filter', statusFilter);
+    } catch {}
+  }, [statusFilter]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sepehr_customers_sort_by', sortBy);
+    } catch {}
+  }, [sortBy]);
 
   const handleToggleViewMode = (mode: 'table' | 'grid') => {
     setViewMode(mode);

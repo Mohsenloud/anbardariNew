@@ -96,9 +96,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const canAccessFullAdmin = !currentUser || currentUser.permissions.canAccessAdmin;
   const canManageUsers = !currentUser || currentUser.permissions.canManageUsers;
 
-  const [activeSection, setActiveSection] = useState<'overview' | 'invoices' | 'logs' | 'warehouses' | 'modules' | 'invoice' | 'templates' | 'telegram' | 'weblink' | 'store' | 'users' | 'data'>(
-    canAccessFullAdmin ? 'overview' : 'users'
-  );
+  const [activeSection, setActiveSection] = useState<'overview' | 'invoices' | 'logs' | 'warehouses' | 'modules' | 'invoice' | 'templates' | 'telegram' | 'weblink' | 'store' | 'users' | 'data'>(() => {
+    try {
+      const saved = localStorage.getItem('sepehr_admin_active_section');
+      if (saved) return saved as any;
+    } catch {}
+    return canAccessFullAdmin ? 'overview' : 'users';
+  });
+
+  useEffect(() => {
+    try {
+      if (activeSection) {
+        localStorage.setItem('sepehr_admin_active_section', activeSection);
+      }
+    } catch {}
+  }, [activeSection]);
+
+  useEffect(() => {
+    if (settings) {
+      setFormData({ ...settings });
+    }
+  }, [settings]);
   const [adminInvoiceSearch, setAdminInvoiceSearch] = useState('');
   const [adminInvoiceStatus, setAdminInvoiceStatus] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
   const [saveSuccess, setSaveSuccess] = useState(false);

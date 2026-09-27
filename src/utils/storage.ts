@@ -987,9 +987,26 @@ export const StorageService = {
         }
 
         if (d.settings && typeof d.settings === 'object') {
-          if (!isRecentSave) {
-            const currentLocal = this.getSettings();
-            const mergedSettings = {
+          const currentLocal = this.getSettings();
+          const localUpdated = currentLocal.updatedAt ? new Date(currentLocal.updatedAt).getTime() : 0;
+          const remoteUpdated = d.settings.updatedAt ? new Date(d.settings.updatedAt).getTime() : 0;
+
+          // Never revert local user modifications back to older/empty server defaults
+          if (isRecentSave || (localUpdated >= remoteUpdated && localUpdated > 0)) {
+            const preservedSettings: StoreSettings = {
+              ...initialSettings,
+              ...d.settings,
+              ...currentLocal,
+            };
+            if (Array.isArray(currentLocal.warehouses) && currentLocal.warehouses.length > 0) {
+              preservedSettings.warehouses = currentLocal.warehouses;
+            }
+            localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(preservedSettings));
+            if (!isRecentSave) {
+              this.pushToServer({ settings: preservedSettings });
+            }
+          } else {
+            const mergedSettings: StoreSettings = {
               ...initialSettings,
               ...currentLocal,
               ...d.settings,
@@ -2181,6 +2198,7 @@ export const StorageService = {
     const merged: StoreSettings = {
       ...existing,
       ...settings,
+      updatedAt: new Date().toISOString(),
     };
     if (merged.pdfSyncQuality && merged.pdfInvoiceQuality) {
       merged.pdfExitSlipQuality = merged.pdfInvoiceQuality;
