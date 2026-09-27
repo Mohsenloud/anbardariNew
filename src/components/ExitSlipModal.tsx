@@ -161,35 +161,30 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
   const [statusNotification, setStatusNotification] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // Paper format & orientation settings (strictly defaults to A4 portrait for warehouse exit slip)
-  const [pageSize, setPageSize] = useState<'a4' | 'a5'>('a4');
-  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
+  // Paper format, orientation & template settings (persisted across sessions via StorageService)
+  const [pageSize, setPageSize] = useState<'a4' | 'a5'>(() => {
+    return StorageService.getExitSlipPrintPreferences().pageSize;
+  });
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>(() => {
+    return StorageService.getExitSlipPrintPreferences().orientation;
+  });
 
   // Exit Slip Template: 'standard' or 'simple'
   const [template, setTemplate] = useState<'standard' | 'simple'>(() => {
-    try {
-      const saved = localStorage.getItem('exit_slip_template');
-      if (saved === 'simple' || saved === 'standard') return saved;
-    } catch {}
-    return settings.defaultExitSlipTemplate || 'standard';
+    const prefs = StorageService.getExitSlipPrintPreferences();
+    return prefs.template || settings.defaultExitSlipTemplate || 'standard';
   });
 
   useEffect(() => {
-    try {
-      localStorage.setItem('exit_slip_template', template);
-    } catch {}
+    StorageService.saveExitSlipPrintPreferences({ template });
   }, [template]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('exit_slip_paper_size', pageSize);
-    } catch {}
+    StorageService.saveExitSlipPrintPreferences({ pageSize });
   }, [pageSize]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('exit_slip_orientation', orientation);
-    } catch {}
+    StorageService.saveExitSlipPrintPreferences({ orientation });
   }, [orientation]);
 
   // Proportional layout helpers

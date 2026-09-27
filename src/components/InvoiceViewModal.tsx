@@ -45,14 +45,10 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   onConvertProforma,
   onEditInvoice,
 }) => {
-  const defaultTpl = invoice?.type || settings.defaultTemplate || 'standard';
   const [template, setTemplate] = useState<'standard' | 'official' | 'thermal' | 'simple'>(() => {
-    if (invoice?.type) return invoice.type;
-    try {
-      const saved = localStorage.getItem('sepehr_last_view_template');
-      if (saved) return saved as any;
-    } catch {}
-    return defaultTpl;
+    const prefs = StorageService.getInvoicePrintPreferences();
+    if (prefs.template) return prefs.template;
+    return invoice?.type || settings.defaultTemplate || 'standard';
   });
   const [copied, setCopied] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
@@ -65,46 +61,31 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   useEffect(() => {
     if (invoice) {
       setActiveInvoice(invoice);
-      if (invoice.type) {
-        setTemplate(invoice.type);
-      }
     }
   }, [invoice]);
 
   useEffect(() => {
-    try {
-      if (template) {
-        localStorage.setItem('sepehr_last_view_template', template);
-      }
-    } catch {}
+    if (template) {
+      StorageService.saveInvoicePrintPreferences({ template });
+    }
   }, [template]);
 
-  // Paper format & orientation settings (persisted in localStorage)
+  // Paper format & orientation settings (persisted in localStorage and StorageService)
   const [pageSize, setPageSize] = useState<'a4' | 'a5'>(() => {
-    try {
-      return (localStorage.getItem('invoice_paper_size') as 'a4' | 'a5') || 'a4';
-    } catch {
-      return 'a4';
-    }
+    const prefs = StorageService.getInvoicePrintPreferences();
+    return prefs.pageSize || 'a4';
   });
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>(() => {
-    try {
-      return (localStorage.getItem('invoice_orientation') as 'portrait' | 'landscape') || 'portrait';
-    } catch {
-      return 'portrait';
-    }
+    const prefs = StorageService.getInvoicePrintPreferences();
+    return prefs.orientation || 'portrait';
   });
 
   useEffect(() => {
-    try {
-      localStorage.setItem('invoice_paper_size', pageSize);
-    } catch {}
+    StorageService.saveInvoicePrintPreferences({ pageSize });
   }, [pageSize]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('invoice_orientation', orientation);
-    } catch {}
+    StorageService.saveInvoicePrintPreferences({ orientation });
   }, [orientation]);
 
   if (!invoice) return null;

@@ -25,6 +25,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { DirectTransfer, StoreSettings, PdfQualityPreset } from '../types';
+import { StorageService } from '../utils/storage';
 import { exportElementToPdf, printElementDirectly, printElementInNewWindow, PDF_QUALITY_PRESETS } from '../utils/pdfHelper';
 import { toPersianDigits, getCurrentJalaliDate, getCurrentJalaliTime } from '../utils/jalali';
 import { parseVehicleInfo, MiniIranPlate } from './IranPlatePicker';
@@ -44,14 +45,22 @@ export const DirectTransferPrintModal: React.FC<DirectTransferPrintModalProps> =
   settings,
   autoExportPdf = false,
 }) => {
-  const [pageSize, setPageSize] = useState<'a4' | 'a5'>('a4');
-  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
+  const [pageSize, setPageSize] = useState<'a4' | 'a5'>(() => {
+    return StorageService.getExitSlipPrintPreferences().pageSize;
+  });
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>(() => {
+    return StorageService.getExitSlipPrintPreferences().orientation;
+  });
   const [quality, setQuality] = useState<PdfQualityPreset>(settings.pdfExitSlipQuality || 'high');
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [statusNotification, setStatusNotification] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
   const hasAutoExported = useRef(false);
+
+  useEffect(() => {
+    StorageService.saveExitSlipPrintPreferences({ pageSize, orientation });
+  }, [pageSize, orientation]);
 
   useEffect(() => {
     if (isOpen && autoExportPdf && transfer && !hasAutoExported.current) {

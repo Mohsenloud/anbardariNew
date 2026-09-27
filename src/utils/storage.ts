@@ -67,7 +67,29 @@ const STORAGE_KEYS = {
   SAVED_VEHICLES: 'factor_app_saved_vehicles_v1',
   CUSTOMER_TRANSACTIONS: 'factor_app_customer_transactions_v1',
   CATEGORIES: 'factor_app_categories_v1',
+  INVOICE_PRINT_PREFERENCES: 'factor_app_invoice_print_prefs_v1',
+  EXIT_SLIP_PRINT_PREFERENCES: 'factor_app_exit_slip_print_prefs_v1',
+  EXPORT_MODAL_PREFERENCES: 'factor_app_export_modal_prefs_v1',
 };
+
+export interface InvoicePrintPreferences {
+  template: 'standard' | 'official' | 'thermal' | 'simple';
+  pageSize: 'a4' | 'a5';
+  orientation: 'portrait' | 'landscape';
+}
+
+export interface ExitSlipPrintPreferences {
+  template: 'standard' | 'simple';
+  pageSize: 'a4' | 'a5';
+  orientation: 'portrait' | 'landscape';
+}
+
+export interface ExportModalPreferences {
+  pdfOrientation: 'landscape' | 'portrait';
+  activePreviewTab: 'items' | 'invoices' | 'slips';
+  docTypeFilter: 'all' | 'regular' | 'proforma';
+  deliveryFilter: 'all' | 'delivered' | 'pending';
+}
 
 export interface AppTombstones {
   invoices: string[];
@@ -2209,6 +2231,126 @@ export const StorageService = {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(merged));
     this.notifyChange();
     this.pushToServer({ settings: merged });
+  },
+
+  // -------------------------------------------------------------
+  // PRINT & PDF EXPORT PREFERENCES PERSISTENCE
+  // ماندگاری آخرین وضعیت تنظیمات چاپ و خروجی PDF در فاکتورها و حواله‌های خروج
+  // -------------------------------------------------------------
+  getInvoicePrintPreferences(): InvoicePrintPreferences {
+    const settings = this.getSettings();
+    let template: 'standard' | 'official' | 'thermal' | 'simple' = settings.defaultTemplate || 'standard';
+    let pageSize: 'a4' | 'a5' = 'a4';
+    let orientation: 'portrait' | 'landscape' = 'portrait';
+
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.INVOICE_PRINT_PREFERENCES);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.template) template = parsed.template;
+          if (parsed.pageSize) pageSize = parsed.pageSize;
+          if (parsed.orientation) orientation = parsed.orientation;
+        }
+      } else {
+        const legTpl = localStorage.getItem('sepehr_last_view_template');
+        if (legTpl === 'standard' || legTpl === 'official' || legTpl === 'thermal' || legTpl === 'simple') {
+          template = legTpl;
+        }
+        const legSize = localStorage.getItem('invoice_paper_size');
+        if (legSize === 'a4' || legSize === 'a5') pageSize = legSize;
+        const legOrient = localStorage.getItem('invoice_orientation');
+        if (legOrient === 'portrait' || legOrient === 'landscape') orientation = legOrient;
+      }
+    } catch {}
+
+    return { template, pageSize, orientation };
+  },
+
+  saveInvoicePrintPreferences(prefs: Partial<InvoicePrintPreferences>): void {
+    try {
+      const current = this.getInvoicePrintPreferences();
+      const updated: InvoicePrintPreferences = { ...current, ...prefs };
+      localStorage.setItem(STORAGE_KEYS.INVOICE_PRINT_PREFERENCES, JSON.stringify(updated));
+      if (prefs.template) localStorage.setItem('sepehr_last_view_template', prefs.template);
+      if (prefs.pageSize) localStorage.setItem('invoice_paper_size', prefs.pageSize);
+      if (prefs.orientation) localStorage.setItem('invoice_orientation', prefs.orientation);
+    } catch (e) {
+      console.warn('Failed to save invoice print preferences:', e);
+    }
+  },
+
+  getExitSlipPrintPreferences(): ExitSlipPrintPreferences {
+    const settings = this.getSettings();
+    let template: 'standard' | 'simple' = settings.defaultExitSlipTemplate || 'standard';
+    let pageSize: 'a4' | 'a5' = 'a4';
+    let orientation: 'portrait' | 'landscape' = 'portrait';
+
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.EXIT_SLIP_PRINT_PREFERENCES);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.template) template = parsed.template;
+          if (parsed.pageSize) pageSize = parsed.pageSize;
+          if (parsed.orientation) orientation = parsed.orientation;
+        }
+      } else {
+        const legTpl = localStorage.getItem('exit_slip_template');
+        if (legTpl === 'standard' || legTpl === 'simple') template = legTpl;
+        const legSize = localStorage.getItem('exit_slip_paper_size');
+        if (legSize === 'a4' || legSize === 'a5') pageSize = legSize;
+        const legOrient = localStorage.getItem('exit_slip_orientation');
+        if (legOrient === 'portrait' || legOrient === 'landscape') orientation = legOrient;
+      }
+    } catch {}
+
+    return { template, pageSize, orientation };
+  },
+
+  saveExitSlipPrintPreferences(prefs: Partial<ExitSlipPrintPreferences>): void {
+    try {
+      const current = this.getExitSlipPrintPreferences();
+      const updated: ExitSlipPrintPreferences = { ...current, ...prefs };
+      localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_PRINT_PREFERENCES, JSON.stringify(updated));
+      if (prefs.template) localStorage.setItem('exit_slip_template', prefs.template);
+      if (prefs.pageSize) localStorage.setItem('exit_slip_paper_size', prefs.pageSize);
+      if (prefs.orientation) localStorage.setItem('exit_slip_orientation', prefs.orientation);
+    } catch (e) {
+      console.warn('Failed to save exit slip print preferences:', e);
+    }
+  },
+
+  getExportModalPreferences(): ExportModalPreferences {
+    let pdfOrientation: 'landscape' | 'portrait' = 'landscape';
+    let activePreviewTab: 'items' | 'invoices' | 'slips' = 'items';
+    let docTypeFilter: 'all' | 'regular' | 'proforma' = 'all';
+    let deliveryFilter: 'all' | 'delivered' | 'pending' = 'all';
+
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.EXPORT_MODAL_PREFERENCES);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.pdfOrientation) pdfOrientation = parsed.pdfOrientation;
+          if (parsed.activePreviewTab) activePreviewTab = parsed.activePreviewTab;
+          if (parsed.docTypeFilter) docTypeFilter = parsed.docTypeFilter;
+          if (parsed.deliveryFilter) deliveryFilter = parsed.deliveryFilter;
+        }
+      }
+    } catch {}
+
+    return { pdfOrientation, activePreviewTab, docTypeFilter, deliveryFilter };
+  },
+
+  saveExportModalPreferences(prefs: Partial<ExportModalPreferences>): void {
+    try {
+      const current = this.getExportModalPreferences();
+      const updated: ExportModalPreferences = { ...current, ...prefs };
+      localStorage.setItem(STORAGE_KEYS.EXPORT_MODAL_PREFERENCES, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to save export modal preferences:', e);
+    }
   },
 
   getUsers(): AppUser[] {

@@ -55,12 +55,30 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
   const [itemSearch, setItemSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [docTypeFilter, setDocTypeFilter] = useState<'all' | 'regular' | 'proforma'>('all');
-  const [deliveryFilter, setDeliveryFilter] = useState<'all' | 'delivered' | 'pending'>('all');
-  const [activePreviewTab, setActivePreviewTab] = useState<'items' | 'invoices' | 'slips'>('items');
-  const [pdfOrientation, setPdfOrientation] = useState<'landscape' | 'portrait'>('landscape');
+  const [docTypeFilter, setDocTypeFilter] = useState<'all' | 'regular' | 'proforma'>(() => {
+    return StorageService.getExportModalPreferences().docTypeFilter;
+  });
+  const [deliveryFilter, setDeliveryFilter] = useState<'all' | 'delivered' | 'pending'>(() => {
+    return StorageService.getExportModalPreferences().deliveryFilter;
+  });
+  const [activePreviewTab, setActivePreviewTab] = useState<'items' | 'invoices' | 'slips'>(() => {
+    return StorageService.getExportModalPreferences().activePreviewTab;
+  });
+  const [pdfOrientation, setPdfOrientation] = useState<'landscape' | 'portrait'>(() => {
+    return StorageService.getExportModalPreferences().pdfOrientation;
+  });
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [downloadSuccessMessage, setDownloadSuccessMessage] = useState<string | null>(null);
+
+  // Persist export modal preferences
+  React.useEffect(() => {
+    StorageService.saveExportModalPreferences({
+      pdfOrientation,
+      activePreviewTab,
+      docTypeFilter,
+      deliveryFilter,
+    });
+  }, [pdfOrientation, activePreviewTab, docTypeFilter, deliveryFilter]);
 
   // Sync initialCustomerId when modal opens
   React.useEffect(() => {
