@@ -89,6 +89,7 @@ export interface ExportModalPreferences {
   activePreviewTab: 'items' | 'invoices' | 'slips';
   docTypeFilter: 'all' | 'regular' | 'proforma';
   deliveryFilter: 'all' | 'delivered' | 'pending';
+  reportType?: 'exit_slips' | 'invoices';
 }
 
 export interface AppTombstones {
@@ -2326,6 +2327,7 @@ export const StorageService = {
     let activePreviewTab: 'items' | 'invoices' | 'slips' = 'items';
     let docTypeFilter: 'all' | 'regular' | 'proforma' = 'all';
     let deliveryFilter: 'all' | 'delivered' | 'pending' = 'all';
+    let reportType: 'exit_slips' | 'invoices' = 'exit_slips';
 
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.EXPORT_MODAL_PREFERENCES);
@@ -2336,11 +2338,12 @@ export const StorageService = {
           if (parsed.activePreviewTab) activePreviewTab = parsed.activePreviewTab;
           if (parsed.docTypeFilter) docTypeFilter = parsed.docTypeFilter;
           if (parsed.deliveryFilter) deliveryFilter = parsed.deliveryFilter;
+          if (parsed.reportType) reportType = parsed.reportType;
         }
       }
     } catch {}
 
-    return { pdfOrientation, activePreviewTab, docTypeFilter, deliveryFilter };
+    return { pdfOrientation, activePreviewTab, docTypeFilter, deliveryFilter, reportType };
   },
 
   saveExportModalPreferences(prefs: Partial<ExportModalPreferences>): void {

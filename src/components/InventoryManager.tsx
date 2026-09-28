@@ -3099,6 +3099,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           setCustomerExportSelected(null);
         }}
         initialCustomerId={customerExportSelected?.id}
+        initialReportType="exit_slips"
         customers={customersList}
         invoices={invoices || []}
         settings={settings}

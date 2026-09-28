@@ -1438,6 +1438,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           setCustomerExportSelected(null);
         }}
         initialCustomerId={customerExportSelected?.id}
+        initialReportType="invoices"
         customers={customersList}
         invoices={invoices}
         settings={settings}

@@ -23,7 +23,9 @@ import {
   Loader2,
   Sparkles,
   Layers,
-  Building2
+  Building2,
+  ShieldCheck,
+  Receipt
 } from 'lucide-react';
 import { Customer, Invoice, ExitSlipData, StoreSettings } from '../types';
 import { exportPersonInvoicesAndExitSlipsToExcel } from '../utils/excelHelper';
@@ -38,6 +40,7 @@ interface CustomerExportModalProps {
   invoices: Invoice[];
   exitSlipLogs?: Record<string, ExitSlipData>;
   initialCustomerId?: string | null;
+  initialReportType?: 'exit_slips' | 'invoices';
   settings: StoreSettings;
 }
 
@@ -48,6 +51,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
   invoices,
   exitSlipLogs: propExitSlipLogs,
   initialCustomerId,
+  initialReportType,
   settings,
 }) => {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(initialCustomerId || 'all');
@@ -55,6 +59,13 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
   const [itemSearch, setItemSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  
+  // Document type for PDF/Print report: 'exit_slips' (NO PRICE COLUMN) or 'invoices' (WITH PRICE COLUMN)
+  const [reportType, setReportType] = useState<'exit_slips' | 'invoices'>(() => {
+    if (initialReportType) return initialReportType;
+    return StorageService.getExportModalPreferences().reportType || 'exit_slips';
+  });
+
   const [docTypeFilter, setDocTypeFilter] = useState<'all' | 'regular' | 'proforma'>(() => {
     return StorageService.getExportModalPreferences().docTypeFilter;
   });
@@ -70,17 +81,18 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [downloadSuccessMessage, setDownloadSuccessMessage] = useState<string | null>(null);
 
-  // Persist export modal preferences
+  // Persist export modal preferences whenever they change
   React.useEffect(() => {
     StorageService.saveExportModalPreferences({
       pdfOrientation,
       activePreviewTab,
       docTypeFilter,
       deliveryFilter,
+      reportType,
     });
-  }, [pdfOrientation, activePreviewTab, docTypeFilter, deliveryFilter]);
+  }, [pdfOrientation, activePreviewTab, docTypeFilter, deliveryFilter, reportType]);
 
-  // Sync initialCustomerId when modal opens
+  // Sync initialCustomerId and initialReportType when modal opens
   React.useEffect(() => {
     if (initialCustomerId) {
       setSelectedCustomerId(initialCustomerId);
@@ -88,6 +100,12 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
       setSelectedCustomerId('all');
     }
   }, [initialCustomerId, isOpen]);
+
+  React.useEffect(() => {
+    if (initialReportType) {
+      setReportType(initialReportType);
+    }
+  }, [initialReportType, isOpen]);
 
   // Logs source
   const exitSlipLogs = useMemo(() => {
@@ -337,7 +355,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
     });
 
     if (result.success) {
-      setDownloadSuccessMessage(`فایل اکسل چند شیته با ${toPersianDigits(result.exportedInvoicesCount)} فاکتور، ${toPersianDigits(result.exportedItemsCount)} ردیف کالا و ${toPersianDigits(result.exportedSlipsCount)} حواله خروج با موفقیت دریافت شد.`);
+      setDownloadSuccessMessage(`فایل اکسل جامع چند شیته با ${toPersianDigits(result.exportedInvoicesCount)} فاکتور، ${toPersianDigits(result.exportedItemsCount)} ردیف کالا و ${toPersianDigits(result.exportedSlipsCount)} حواله خروج با موفقیت دریافت شد.`);
       setTimeout(() => {
         setDownloadSuccessMessage(null);
       }, 6000);
@@ -348,18 +366,24 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
   const handleExportPdf = async () => {
     if (detailedReportItems.length === 0) return;
     setIsGeneratingPdf(true);
+
     try {
-      const customerLabel = isAllCustomers ? 'کلیه_اسناد_و_حواله_ها' : (currentCustomer?.name.replace(/[/\\:*?"<>|]/g, '_') || 'شخص');
-      const filename = `گزارش_فاکتورها_و_حواله_های_خروج_${customerLabel}_${getCurrentJalaliDate().replace(/\//g, '-')}.pdf`;
+      const customerLabel = isAllCustomers ? 'کلیه_اسناد' : (currentCustomer?.name.replace(/[/\\:*?"<>|]/g, '_') || 'شخص');
+      const safeDate = getCurrentJalaliDate().replace(/\//g, '-');
+      const filename = reportType === 'exit_slips'
+        ? `گزارش_رسمی_حواله_های_خروج_انبار_${customerLabel}_${safeDate}.pdf`
+        : `گزارش_رسمی_فاکتورهای_فروش_${customerLabel}_${safeDate}.pdf`;
       
       const res = await exportElementToPdf('invoices-slips-pdf-report-canvas', filename, {
         pageSize: 'a4',
         orientation: pdfOrientation,
         quality: 'high',
+        documentType: reportType === 'exit_slips' ? 'exit_slip' : 'invoice',
       });
 
       if (res.success) {
-        setDownloadSuccessMessage(`فایل PDF گزارش رسمی فاکتورها، حواله‌های خروج و اقلام (${toPersianDigits(detailedReportItems.length)} ردیف) با موفقیت دانلود شد.`);
+        const typeLabel = reportType === 'exit_slips' ? 'حواله‌های خروج انبار (فاقد قیمت)' : 'فاکتورهای فروش (همراه با ستون قیمت)';
+        setDownloadSuccessMessage(`فایل PDF رسمی ${typeLabel} با موفقیت دانلود شد (${toPersianDigits(detailedReportItems.length)} ردیف کالایی).`);
         setTimeout(() => setDownloadSuccessMessage(null), 6000);
       } else {
         alert(res.error || 'خطا در تولید فایل PDF');
@@ -375,8 +399,12 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
   // Handle Direct Print
   const handlePrint = () => {
     if (detailedReportItems.length === 0) return;
-    const customerLabel = isAllCustomers ? 'کلیه اسناد و حواله‌های خروج' : (currentCustomer?.name || 'مشتری');
-    printElementInNewWindow('invoices-slips-pdf-report-canvas', `گزارش فاکتورها و حواله‌های خروج - ${customerLabel}`, {
+    const customerLabel = isAllCustomers ? 'کلیه اسناد' : (currentCustomer?.name || 'مشتری');
+    const printTitle = reportType === 'exit_slips'
+      ? `گزارش رسمی حواله‌های خروج انبار (فاقد قیمت) - ${customerLabel}`
+      : `گزارش رسمی فاکتورهای فروش - ${customerLabel}`;
+
+    printElementInNewWindow('invoices-slips-pdf-report-canvas', printTitle, {
       pageSize: 'a4',
       orientation: pdfOrientation,
     });
@@ -411,226 +439,256 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-emerald-100/90 mt-0.5">
-                استخراج رسمی و جامع اسناد در قالب فایل اکسل چند شیته (XLSX) و گزارش استاندارد پی‌دی‌اف (PDF) با فونت فارسی
+                خروجی جامع برای کلیه طرف‌های حساب یا مشتری خاص • ستون‌های استاندارد تحویل انبار و فاکتور فروش
               </p>
             </div>
           </div>
-
           <button
-            id="close-customer-export-modal"
             onClick={onClose}
-            className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
-            title="بستن"
+            className="p-2 rounded-xl text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-          {/* Success Banner */}
-          {downloadSuccessMessage && (
-            <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl flex items-center gap-2.5 text-xs font-semibold animate-in fade-in">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+        {/* Download Success Banner */}
+        {downloadSuccessMessage && (
+          <div className="bg-emerald-500 text-white px-4 py-2.5 text-xs font-bold flex items-center justify-between shadow-inner">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{downloadSuccessMessage}</span>
             </div>
-          )}
+            <button
+              onClick={() => setDownloadSuccessMessage(null)}
+              className="text-white/80 hover:text-white text-xs cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
-          {/* Customer Selection Row */}
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/90 space-y-3">
+        {/* Modal Body */}
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-slate-800 flex-1">
+          {/* Customer Selector Bar */}
+          <div className="bg-slate-50 rounded-2xl p-3.5 sm:p-4 border border-slate-200 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <label htmlFor="customer-selector" className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <User className="w-4 h-4 text-emerald-700" />
-                <span>محدوده گزارش (طرف حساب / خریدار):</span>
-              </label>
-
-              {/* Search in dropdown if many */}
-              {combinedCustomers.length > 5 && (
-                <div className="relative w-full sm:w-64">
-                  <Search className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    id="search-customer-input"
-                    type="text"
-                    value={customerSearch}
-                    onChange={(e) => setCustomerSearch(e.target.value)}
-                    placeholder="جستجوی نام شخص یا تلفن..."
-                    className="w-full pl-3 pr-8 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                  />
-                  {customerSearch && (
-                    <button
-                      onClick={() => setCustomerSearch('')}
-                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              )}
+              <div className="flex items-center gap-2 font-bold text-slate-800 text-sm">
+                <User className="w-4 h-4 text-emerald-600" />
+                <span>دامنه گزارش (طرف حساب یا کلیه اسناد):</span>
+              </div>
+              <span className="text-xs text-slate-500 font-mono">
+                {toPersianDigits(filteredCustomerInvoices.length)} سند منطبق با فیلترها
+              </span>
             </div>
 
-            {/* Select Dropdown */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {/* Dropdown Customer Selector */}
+              <div className="sm:col-span-2">
                 <select
-                  id="customer-selector"
+                  id="customer-export-select"
                   value={selectedCustomerId}
-                  onChange={(e) => setSelectedCustomerId(e.target.value)}
-                  className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 shadow-2xs"
+                  onChange={(e) => {
+                    setSelectedCustomerId(e.target.value);
+                  }}
+                  className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 shadow-2xs"
                 >
                   <option value="all">
-                    🌟 کلیه طرف‌های حساب و خریداران (گزارش تجمیعی کل {toPersianDigits(invoices.length)} فاکتور و حواله)
+                    🌐 کلیه مشتریان و طرف‌های حساب (گزارش تجمیعی کل اسناد و حواله‌های خروج انبار)
                   </option>
-                  {filteredCustomerList.map((c) => {
-                    const count = invoices.filter(
-                      (inv) =>
-                        inv.customerId === c.id ||
-                        (inv.customerName && inv.customerName.trim().toLowerCase() === c.name.trim().toLowerCase())
-                    ).length;
-                    return (
+                  <optgroup label="مشتریان و طرف‌های حساب ثبت‌شده">
+                    {filteredCustomerList.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name} {c.phone ? `(${toPersianDigits(c.phone)})` : ''} — {toPersianDigits(count)} فاکتور
+                        {c.name} {c.phone ? `(${toPersianDigits(c.phone)})` : ''} {c.nationalId ? `[کد: ${toPersianDigits(c.nationalId)}]` : ''}
                       </option>
-                    );
-                  })}
+                    ))}
+                  </optgroup>
                 </select>
               </div>
 
-              {/* Quick Customer / Scope Card */}
-              {isAllCustomers ? (
-                <div className="bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-200 text-xs flex items-center justify-between text-emerald-900 font-bold">
-                  <div className="flex items-center gap-1.5">
-                    <Building2 className="w-4 h-4 text-emerald-700" />
-                    <span>محدوده: کل فروشگاه و انبار (کلیه خریداران و اسناد)</span>
-                  </div>
-                  <span className="text-[11px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-mono">
-                    {toPersianDigits(invoices.length)} سند فعال
-                  </span>
+              {/* Quick search input for customer list */}
+              <div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={customerSearch}
+                    onChange={(e) => setCustomerSearch(e.target.value)}
+                    placeholder="جستجوی نام یا تلفن مشتری..."
+                    className="w-full pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 </div>
-              ) : currentCustomer ? (
-                <div className="bg-white p-2.5 rounded-xl border border-slate-200 text-xs flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-600">
+              </div>
+            </div>
+
+            {/* Selected Customer Details Chip */}
+            {currentCustomer && (
+              <div className="p-2.5 bg-white rounded-xl border border-slate-200 text-xs flex flex-wrap items-center gap-x-4 gap-y-1.5 text-slate-600">
+                <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{currentCustomer.name}</span>
+                </div>
+                {currentCustomer.phone && (
                   <div className="flex items-center gap-1">
-                    <User className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="font-bold text-slate-900">{currentCustomer.name}</span>
+                    <Phone className="w-3 h-3 text-slate-400" />
+                    <span className="font-mono">{toPersianDigits(currentCustomer.phone)}</span>
                   </div>
-                  {currentCustomer.phone && (
-                    <div className="flex items-center gap-1 font-mono text-[11px]">
-                      <Phone className="w-3 h-3 text-slate-400" />
-                      <span>{toPersianDigits(currentCustomer.phone)}</span>
-                    </div>
-                  )}
-                  {currentCustomer.nationalId && (
-                    <div className="flex items-center gap-1 font-mono text-[11px]">
-                      <CreditCard className="w-3 h-3 text-slate-400" />
-                      <span>کد ملی: {toPersianDigits(currentCustomer.nationalId)}</span>
-                    </div>
-                  )}
-                  {currentCustomer.address && (
-                    <div className="flex items-center gap-1 text-[11px] truncate max-w-full">
-                      <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                      <span className="truncate">{currentCustomer.address}</span>
-                    </div>
-                  )}
+                )}
+                {currentCustomer.nationalId && (
+                  <div className="flex items-center gap-1">
+                    <CreditCard className="w-3 h-3 text-slate-400" />
+                    <span>کد ملی/اقتصادی: <strong className="font-mono text-slate-700">{toPersianDigits(currentCustomer.nationalId)}</strong></span>
+                  </div>
+                )}
+                {currentCustomer.address && (
+                  <div className="flex items-center gap-1 text-[11px] text-slate-500 max-w-sm truncate">
+                    <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                    <span>{currentCustomer.address}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* KEY TOGGLE: OFFICIAL PDF / PRINT DOCUMENT TYPE */}
+          {/* CRITICAL: In Exit Slips (حواله خروج), NO price column exists. Only in Invoices (فاکتورها) price column exists! */}
+          <div className="bg-gradient-to-r from-amber-50 via-slate-50 to-indigo-50 p-3 sm:p-3.5 rounded-2xl border-2 border-indigo-200/80 shadow-2xs space-y-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white shadow-xs ${
+                  reportType === 'exit_slips' ? 'bg-amber-600' : 'bg-indigo-700'
+                }`}>
+                  {reportType === 'exit_slips' ? <Truck className="w-4 h-4" /> : <Receipt className="w-4 h-4" />}
                 </div>
-              ) : null}
-            </div>
-          </div>
+                <div>
+                  <div className="font-black text-xs sm:text-sm text-slate-900 flex items-center gap-2">
+                    <span>نوع سند در اکسپورت PDF رسمی و چاپ:</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      reportType === 'exit_slips'
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                        : 'bg-indigo-100 text-indigo-900 border border-indigo-300'
+                    }`}>
+                      {reportType === 'exit_slips' ? 'حواله خروج (فاقد ستون قیمت)' : 'فاکتور فروش (با ستون قیمت)'}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    {reportType === 'exit_slips'
+                      ? 'در خروجی حواله خروج، ستون قیمت و مبالغ حذف شده و فقط مشخصات فیزیکی کالا، مقادیر، تحویل‌گیرنده و خودرو درج می‌شود.'
+                      : 'در خروجی فاکتورها، ستون‌های فی (قیمت واحد)، مبلغ کل ردیف و جمع کل مبالغ مالی به صورت کامل درج می‌شود.'}
+                  </div>
+                </div>
+              </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {/* Total Invoices */}
-            <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3 text-right">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-[11px] font-semibold">تعداد فاکتورها</span>
-                <FileText className="w-4 h-4 text-blue-600" />
-              </div>
-              <div className="text-lg font-black text-slate-900">
-                {toPersianDigits(stats.totalInvoices)}{' '}
-                <span className="text-xs font-normal text-slate-500">سند</span>
-              </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">
-                {toPersianDigits(stats.regularInvoices)} رسمی / {toPersianDigits(stats.proformaInvoices)} پیش‌فاکتور
-              </div>
-            </div>
+              {/* Toggle Switch */}
+              <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-300 shadow-xs self-stretch sm:self-auto justify-center">
+                <button
+                  id="report-type-exit-slips-btn"
+                  type="button"
+                  onClick={() => setReportType('exit_slips')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    reportType === 'exit_slips'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                  title="سند رسمی خروج کالا از انبار (فاقد ستون قیمت)"
+                >
+                  <Truck className="w-3.5 h-3.5" />
+                  <span>حواله خروج انبار (فاقد قیمت)</span>
+                </button>
 
-            {/* Total Items & Physical Qty */}
-            <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3 text-right">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-[11px] font-semibold">تعداد و مقدار کل کالاها</span>
-                <Package className="w-4 h-4 text-indigo-600" />
-              </div>
-              <div className="text-lg font-black text-indigo-900">
-                {toPersianDigits(stats.totalPhysicalQty)}{' '}
-                <span className="text-xs font-normal text-slate-500">واحد کالا</span>
-              </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">
-                در {toPersianDigits(stats.totalItemsCount)} ردیف قلم جنس
-              </div>
-            </div>
-
-            {/* Warehouse Exit Slips */}
-            <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3 text-right">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-[11px] font-semibold">حواله‌های خروج انبار</span>
-                <Truck className="w-4 h-4 text-amber-600" />
-              </div>
-              <div className="text-lg font-black text-slate-900">
-                {toPersianDigits(stats.totalInvoices)}{' '}
-                <span className="text-xs font-normal text-slate-500">حواله</span>
-              </div>
-              <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1">
-                <span className="text-emerald-700 font-bold">{toPersianDigits(stats.deliveredSlips)} تحویل شد</span>
-                <span>/</span>
-                <span className="text-amber-700 font-bold">{toPersianDigits(stats.pendingSlips)} در انتظار</span>
-              </div>
-            </div>
-
-            {/* Total Financial Volume */}
-            <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3 text-right">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-[11px] font-semibold">جمع مبالغ اسناد</span>
-                <CreditCard className="w-4 h-4 text-emerald-600" />
-              </div>
-              <div className="text-base sm:text-lg font-black text-emerald-700">
-                {toPersianDigits(formatPrice(stats.totalFinal, ''))}{' '}
-                <span className="text-[10px] font-bold text-slate-500">{settings.currency}</span>
-              </div>
-              <div className="text-[10px] text-slate-500 mt-0.5">
-                مانده بدهی: {toPersianDigits(formatPrice(stats.balanceDue, ''))}
+                <button
+                  id="report-type-invoices-btn"
+                  type="button"
+                  onClick={() => setReportType('invoices')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    reportType === 'invoices'
+                      ? 'bg-indigo-700 text-white shadow-xs'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                  title="سند رسمی فاکتور فروش (همراه با ستون قیمت و مبالغ)"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>فاکتورهای فروش (با ستون قیمت)</span>
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Filters Row */}
-          <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+          {/* Aggregate Stat Badges */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <span className="text-[11px] text-slate-500 block mb-0.5">تعداد کل اسناد:</span>
+              <strong className="text-base font-black text-slate-900 font-mono">
+                {toPersianDigits(stats.totalInvoices)}
+              </strong>
+              <span className="text-[10px] text-slate-400 mr-1.5">
+                ({toPersianDigits(stats.regularInvoices)} رسمی / {toPersianDigits(stats.proformaInvoices)} پیش‌فاکتور)
+              </span>
+            </div>
+
+            <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-xl">
+              <span className="text-[11px] text-blue-700 block mb-0.5">کل اقلام فیزیکی:</span>
+              <strong className="text-base font-black text-blue-950 font-mono">
+                {toPersianDigits(stats.totalPhysicalQty)} واحد
+              </strong>
+              <span className="text-[10px] text-blue-600 mr-1.5">
+                ({toPersianDigits(detailedReportItems.length)} سطر کالایی)
+              </span>
+            </div>
+
+            <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl">
+              <span className="text-[11px] text-amber-700 block mb-0.5">وضعیت حواله‌های خروج:</span>
+              <strong className="text-base font-black text-amber-950 font-mono">
+                {toPersianDigits(stats.deliveredSlips)} تحویل شد
+              </strong>
+              <span className="text-[10px] text-amber-600 mr-1.5">
+                ({toPersianDigits(stats.pendingSlips)} در انتظار)
+              </span>
+            </div>
+
+            <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl">
+              <span className="text-[11px] text-emerald-700 block mb-0.5">
+                {reportType === 'exit_slips' ? 'کنترل فیزیکی انبار:' : `جمع کل مبالغ فاکتورها:`}
+              </span>
+              <strong className="text-base font-black text-emerald-950 font-mono">
+                {reportType === 'exit_slips' 
+                  ? 'فاقد بار مالی' 
+                  : toPersianDigits(formatPrice(stats.totalFinal, settings.currency))}
+              </strong>
+              <span className="text-[10px] text-emerald-600 mr-1.5">
+                {reportType === 'exit_slips' ? '(فقط گردش کالا)' : `مانده: ${toPersianDigits(formatPrice(stats.balanceDue, ''))}`}
+              </span>
+            </div>
+          </div>
+
+          {/* Filters Section */}
+          <div className="bg-white rounded-xl p-3 sm:p-4 border border-slate-200/90 shadow-xs space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
                 <Filter className="w-3.5 h-3.5 text-slate-500" />
-                <span>فیلترهای گزارش جهت استخراج اکسل و PDF:</span>
+                <span>فیلترهای پیشرفته تاریخ، کالا و نوع سند:</span>
               </div>
 
-              {/* PDF Orientation Picker */}
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-slate-500 text-[11px]">جهت صفحه PDF:</span>
-                <div className="flex bg-slate-100 p-0.5 rounded-lg">
-                  <button
-                    type="button"
-                    onClick={() => setPdfOrientation('landscape')}
-                    className={`px-2 py-1 rounded text-[11px] font-bold transition-all cursor-pointer ${
-                      pdfOrientation === 'landscape' ? 'bg-white text-indigo-900 shadow-2xs' : 'text-slate-500'
-                    }`}
-                  >
-                    افقی (Landscape - پیشنهادی)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPdfOrientation('portrait')}
-                    className={`px-2 py-1 rounded text-[11px] font-bold transition-all cursor-pointer ${
-                      pdfOrientation === 'portrait' ? 'bg-white text-indigo-900 shadow-2xs' : 'text-slate-500'
-                    }`}
-                  >
-                    عمودی (Portrait)
-                  </button>
-                </div>
+              {/* PDF Orientation Selector */}
+              <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg">
+                <span className="text-[11px] text-slate-600 px-1 font-semibold">جهت کاغذ PDF:</span>
+                <button
+                  type="button"
+                  onClick={() => setPdfOrientation('landscape')}
+                  className={`px-2 py-1 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                    pdfOrientation === 'landscape' ? 'bg-white text-indigo-900 shadow-2xs' : 'text-slate-500'
+                  }`}
+                >
+                  افقی (Landscape - استاندارد جدول)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPdfOrientation('portrait')}
+                  className={`px-2 py-1 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                    pdfOrientation === 'portrait' ? 'bg-white text-indigo-900 shadow-2xs' : 'text-slate-500'
+                  }`}
+                >
+                  عمودی (Portrait)
+                </button>
               </div>
             </div>
 
@@ -735,20 +793,25 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                   onClick={() => setActivePreviewTab('items')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
                     activePreviewTab === 'items'
-                      ? 'bg-indigo-700 text-white shadow-xs'
+                      ? (reportType === 'exit_slips' ? 'bg-amber-600 text-white shadow-xs' : 'bg-indigo-700 text-white shadow-xs')
                       : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
                   <Layers className="w-3.5 h-3.5" />
-                  <span>ریز اقلام و ستون‌های PDF ({toPersianDigits(detailedReportItems.length)} قلم)</span>
+                  <span>
+                    ریز اقلام و ستون‌های خروجی PDF ({toPersianDigits(detailedReportItems.length)} قلم)
+                  </span>
                 </button>
 
                 <button
                   id="preview-tab-invoices"
-                  onClick={() => setActivePreviewTab('invoices')}
+                  onClick={() => {
+                    setActivePreviewTab('invoices');
+                    setReportType('invoices');
+                  }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
                     activePreviewTab === 'invoices'
-                      ? 'bg-emerald-700 text-white shadow-xs'
+                      ? 'bg-indigo-700 text-white shadow-xs'
                       : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
@@ -758,7 +821,10 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
 
                 <button
                   id="preview-tab-slips"
-                  onClick={() => setActivePreviewTab('slips')}
+                  onClick={() => {
+                    setActivePreviewTab('slips');
+                    setReportType('exit_slips');
+                  }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
                     activePreviewTab === 'slips'
                       ? 'bg-amber-600 text-white shadow-xs'
@@ -771,7 +837,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
               </div>
 
               <div className="text-[11px] text-slate-500">
-                پیش‌نمایش زنده ستون‌های گزارش قبل از دانلود
+                پیش‌نمایش زنده ستون‌های رسمی گزارش قبل از دریافت PDF
               </div>
             </div>
 
@@ -783,19 +849,34 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                     <tr className="border-b border-slate-200">
                       <th className="p-2.5 w-12 text-center">ردیف</th>
                       <th className="p-2.5 w-24">تاریخ</th>
-                      <th className="p-2.5 w-28">شماره فاکتور</th>
-                      <th className="p-2.5 w-28">شماره حواله</th>
-                      <th className="p-2.5 w-36">خریدار / طرف حساب</th>
-                      <th className="p-2.5">نوع و شرح جنس (کالا)</th>
-                      <th className="p-2.5 w-24 text-center">مقدار جنس</th>
-                      <th className="p-2.5 w-24 text-center">وضعیت تحویل</th>
-                      <th className="p-2.5 w-28 text-left">مبلغ ({settings.currency})</th>
+                      {reportType === 'exit_slips' ? (
+                        <>
+                          <th className="p-2.5 w-28 text-amber-900">شماره حواله</th>
+                          <th className="p-2.5 w-28">شماره فاکتور</th>
+                          <th className="p-2.5 w-36">تحویل‌گیرنده / طرف حساب</th>
+                          <th className="p-2.5">نوع و شرح جنس (کالا)</th>
+                          <th className="p-2.5 w-24 text-center">مقدار جنس</th>
+                          <th className="p-2.5 w-24 text-center">وضعیت تحویل</th>
+                          <th className="p-2.5 w-36 text-center">راننده / خودرو</th>
+                        </>
+                      ) : (
+                        <>
+                          <th className="p-2.5 w-28">شماره فاکتور</th>
+                          <th className="p-2.5 w-28">شماره حواله</th>
+                          <th className="p-2.5 w-36">خریدار / طرف حساب</th>
+                          <th className="p-2.5">نوع و شرح جنس (کالا)</th>
+                          <th className="p-2.5 w-20 text-center">مقدار</th>
+                          <th className="p-2.5 w-24 text-left">فی واحد ({settings.currency})</th>
+                          <th className="p-2.5 w-28 text-left">مبلغ کل ({settings.currency})</th>
+                          <th className="p-2.5 w-20 text-center">وضعیت تسویه</th>
+                        </>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {detailedReportItems.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="p-8 text-center text-slate-400">
+                        <td colSpan={reportType === 'exit_slips' ? 9 : 10} className="p-8 text-center text-slate-400">
                           هیچ موردی مطابق فیلترهای انتخابی یافت نشد.
                         </td>
                       </tr>
@@ -804,36 +885,110 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                         <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
                           <td className="p-2 text-center text-slate-500 font-mono">{toPersianDigits(idx + 1)}</td>
                           <td className="p-2 font-mono text-slate-700">{toPersianDigits(item.date)}</td>
-                          <td className="p-2 font-mono font-bold text-slate-900">{toPersianDigits(item.invoiceNumber)}</td>
-                          <td className="p-2 font-mono text-indigo-700 font-bold">{toPersianDigits(item.slipNumber)}</td>
-                          <td className="p-2 font-semibold text-slate-800 truncate max-w-[140px]">{item.customerName}</td>
-                          <td className="p-2">
-                            <span className="font-bold text-slate-900">{item.productName}</span>
-                            {item.variantName && (
-                              <span className="text-[10px] text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded mr-1">
-                                {item.variantName}
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-2 text-center font-bold text-slate-900">
-                            {toPersianDigits(item.quantity)}{' '}
-                            <span className="text-[10px] text-slate-500 font-normal">{item.unit}</span>
-                          </td>
-                          <td className="p-2 text-center">
-                            <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                              item.isDelivered ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                            }`}>
-                              {item.isDelivered ? 'تحویل شد' : 'در انتظار'}
-                            </span>
-                          </td>
-                          <td className="p-2 text-left font-mono font-bold text-slate-900">
-                            {toPersianDigits(formatPrice(item.total, ''))}
-                          </td>
+
+                          {reportType === 'exit_slips' ? (
+                            // EXIT SLIP COLUMNS - STRICTLY NO PRICE / FEE COLUMN
+                            <>
+                              <td className="p-2 font-mono text-amber-700 font-bold">{toPersianDigits(item.slipNumber)}</td>
+                              <td className="p-2 font-mono text-slate-700">{toPersianDigits(item.invoiceNumber)}</td>
+                              <td className="p-2 font-semibold text-slate-800 truncate max-w-[140px]">{item.customerName}</td>
+                              <td className="p-2">
+                                <span className="font-bold text-slate-900">{item.productName}</span>
+                                {item.variantName && (
+                                  <span className="text-[10px] text-amber-700 bg-amber-50 px-1 py-0.5 rounded mr-1">
+                                    {item.variantName}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2 text-center font-bold text-slate-900">
+                                {toPersianDigits(item.quantity)}{' '}
+                                <span className="text-[10px] text-slate-500 font-normal">{item.unit}</span>
+                              </td>
+                              <td className="p-2 text-center">
+                                <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                  item.isDelivered ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                                }`}>
+                                  {item.isDelivered ? 'تحویل شد' : 'در انتظار'}
+                                </span>
+                              </td>
+                              <td className="p-2 text-center text-[11px] text-slate-600">
+                                {item.receiverName || item.vehicleInfo ? (
+                                  <span>{item.receiverName || ''}{item.vehicleInfo ? ` (${item.vehicleInfo})` : ''}</span>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                              </td>
+                            </>
+                          ) : (
+                            // INVOICE COLUMNS - WITH PRICE, UNIT PRICE AND FINANCIAL SUMS
+                            <>
+                              <td className="p-2 font-mono font-bold text-slate-900">{toPersianDigits(item.invoiceNumber)}</td>
+                              <td className="p-2 font-mono text-indigo-700 font-bold">{toPersianDigits(item.slipNumber)}</td>
+                              <td className="p-2 font-semibold text-slate-800 truncate max-w-[140px]">{item.customerName}</td>
+                              <td className="p-2">
+                                <span className="font-bold text-slate-900">{item.productName}</span>
+                                {item.variantName && (
+                                  <span className="text-[10px] text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded mr-1">
+                                    {item.variantName}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2 text-center font-bold text-slate-900">
+                                {toPersianDigits(item.quantity)}{' '}
+                                <span className="text-[10px] text-slate-500 font-normal">{item.unit}</span>
+                              </td>
+                              <td className="p-2 text-left font-mono text-slate-700 text-[11px]">
+                                {toPersianDigits(formatPrice(item.unitPrice, ''))}
+                              </td>
+                              <td className="p-2 text-left font-mono font-bold text-slate-900">
+                                {toPersianDigits(formatPrice(item.total, ''))}
+                              </td>
+                              <td className="p-2 text-center">
+                                <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                  item.paymentStatus === 'paid'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : item.paymentStatus === 'partial'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-rose-100 text-rose-800'
+                                }`}>
+                                  {item.paymentStatus === 'paid' ? 'تسویه' : item.paymentStatus === 'partial' ? 'ناقص' : 'پرداخت‌نشده'}
+                                </span>
+                              </td>
+                            </>
+                          )}
                         </tr>
                       ))
                     )}
                   </tbody>
                 </table>
+
+                {/* Footer Notice for preview */}
+                <div className={`p-2.5 text-[11px] font-semibold flex items-center justify-between border-t ${
+                  reportType === 'exit_slips'
+                    ? 'bg-amber-50 text-amber-950 border-amber-200'
+                    : 'bg-indigo-50 text-indigo-950 border-indigo-200'
+                }`}>
+                  <div className="flex items-center gap-1.5">
+                    {reportType === 'exit_slips' ? (
+                      <>
+                        <ShieldCheck className="w-4 h-4 text-amber-700" />
+                        <span>سند رسمی حواله خروج انبار: فاقد هرگونه ستون قیمت و گردش مالی (صرفاً کنترل فیزیکی کالا و لجستیک تحویل)</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-4 h-4 text-indigo-700" />
+                        <span>گزارش رسمی فاکتورها: همراه با ستون‌های مالی، فی واحد کالا، مبالغ ردیف و جمع کل مبالغ</span>
+                      </>
+                    )}
+                  </div>
+                  <div>
+                    {reportType === 'exit_slips' ? (
+                      <span>مجموع اقلام تحویلی انبار: <strong>{toPersianDigits(stats.totalPhysicalQty)} واحد</strong></span>
+                    ) : (
+                      <span>جمع کل مبالغ فاکتورها: <strong>{toPersianDigits(formatPrice(stats.totalFinal, settings.currency))}</strong></span>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -963,7 +1118,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                 <span>فرمت اکسل جامع (XLSX):</span>
               </div>
               <p className="text-[11px] text-emerald-900/90 leading-relaxed">
-                شامل ۴ شیت تفکیک‌شده (خلاصه پرونده و حساب، ریز اقلام کالاها با قیمت و فی، حواله‌های خروج انبار با مشخصات راننده و خودرو، و سرجمع کلی فاکتورها)
+                شامل ۴ شیت تفکیک‌شده (خلاصه پرونده، ریز اقلام فاکتورها، حواله‌های خروج انبار بدون قیمت با مشخصات راننده و خودرو، و سرجمع کلی)
               </p>
             </div>
 
@@ -973,7 +1128,8 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                 <span>فرمت رسمی PDF و پرینت مستقیم:</span>
               </div>
               <p className="text-[11px] text-indigo-900/90 leading-relaxed">
-                شامل جدول شیک و اداری با ستون‌های درخواستی: <strong>تاریخ، شماره فاکتور و حواله، نام طرف حساب، نوع و شرح جنس، مقدار و واحد جنس</strong>، وضعیت تحویل و سرجمع مقادیر
+                <strong>حواله خروج انبار:</strong> ستون‌های تاریخ، شماره حواله و فاکتور، نوع و مقدار جنس، تحویل‌گیرنده و خودرو (فاقد ستون قیمت)<br />
+                <strong>فاکتورهای فروش:</strong> ستون‌های تاریخ، شماره فاکتور، نوع و مقدار کالا، قیمت واحد و مبلغ کل
               </p>
             </div>
           </div>
@@ -984,9 +1140,9 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
           <div className="text-xs text-slate-600 flex items-center gap-2">
             <span>
               {isAllCustomers ? (
-                <>مجموع کل اسناد: <strong className="text-slate-900">{toPersianDigits(filteredCustomerInvoices.length)} فاکتور و حواله</strong> ({toPersianDigits(detailedReportItems.length)} قلم کالا)</>
+                <>مجموع کل اسناد: <strong className="text-slate-900">{toPersianDigits(filteredCustomerInvoices.length)} سند</strong> ({toPersianDigits(detailedReportItems.length)} قلم کالا)</>
               ) : currentCustomer ? (
-                <>طرف حساب: <strong className="text-slate-900">{currentCustomer.name}</strong> ({toPersianDigits(filteredCustomerInvoices.length)} فاکتور و حواله)</>
+                <>طرف حساب: <strong className="text-slate-900">{currentCustomer.name}</strong> ({toPersianDigits(filteredCustomerInvoices.length)} سند)</>
               ) : null}
             </span>
           </div>
@@ -1020,8 +1176,16 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
               type="button"
               onClick={handleExportPdf}
               disabled={detailedReportItems.length === 0 || isGeneratingPdf}
-              className="px-4 py-2 text-xs font-black text-white bg-indigo-700 hover:bg-indigo-800 disabled:bg-slate-300 disabled:cursor-not-allowed rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-              title="دانلود فایل PDF گزارش ستون‌های تاریخ، شماره فاکتور و حواله، نوع و مقدار جنس"
+              className={`px-4 py-2 text-xs font-black text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:bg-slate-300 disabled:cursor-not-allowed ${
+                reportType === 'exit_slips'
+                  ? 'bg-amber-600 hover:bg-amber-700'
+                  : 'bg-indigo-700 hover:bg-indigo-800'
+              }`}
+              title={
+                reportType === 'exit_slips'
+                  ? 'دانلود فایل PDF رسمی حواله‌های خروج انبار (فاقد ستون قیمت)'
+                  : 'دانلود فایل PDF رسمی فاکتورهای فروش (با ستون قیمت و مبالغ)'
+              }
             >
               {isGeneratingPdf ? (
                 <>
@@ -1031,7 +1195,9 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
               ) : (
                 <>
                   <FileDown className="w-4 h-4" />
-                  <span>اکسپورت PDF رسمی</span>
+                  <span>
+                    {reportType === 'exit_slips' ? 'اکسپورت PDF حواله خروج (بدون قیمت)' : 'اکسپورت PDF رسمی فاکتورها (با قیمت)'}
+                  </span>
                 </>
               )}
             </button>
@@ -1053,6 +1219,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
 
         {/* ========================================================================= */}
         {/* HIDDEN / OFFSCREEN FULL-FIDELITY PDF REPORT CONTAINER FOR HTML2CANVAS */}
+        {/* In Exit Slips (حواله خروج): NO PRICE COLUMN! Only in Invoices (فاکتورها) price column exists! */}
         {/* ========================================================================= */}
         <div style={{ position: 'absolute', left: '-9999px', top: '0', zIndex: -100 }}>
           <div
@@ -1074,15 +1241,56 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                   <h1 style={{ fontSize: '20px', fontWeight: '900', margin: '0 0 4px 0', color: '#0f172a' }}>
                     {settings.storeName || 'سامانه مدیریت انبار و فاکتورها'}
                   </h1>
-                  <h2 style={{ fontSize: '14px', fontWeight: '700', margin: 0, color: '#4338ca' }}>
-                    گزارش تجمیعی فاکتورها و حواله‌های خروج انبار
+                  <h2 style={{ 
+                    fontSize: '14px', 
+                    fontWeight: '700', 
+                    margin: 0, 
+                    color: reportType === 'exit_slips' ? '#b45309' : '#3730a3',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    {reportType === 'exit_slips' ? (
+                      <>
+                        <span>گزارش رسمی حواله‌های خروج کالا از انبار</span>
+                        <span style={{ 
+                          fontSize: '11px', 
+                          fontWeight: 'normal', 
+                          backgroundColor: '#fef3c7', 
+                          color: '#92400e', 
+                          padding: '2px 8px', 
+                          borderRadius: '4px',
+                          border: '1px solid #fde68a'
+                        }}>
+                          (سند رسمی انبارداری و تحویل کالا - فاقد هرگونه قیمت و بار مالی)
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span>گزارش رسمی اقلام و فاکتورهای فروش</span>
+                        <span style={{ 
+                          fontSize: '11px', 
+                          fontWeight: 'normal', 
+                          backgroundColor: '#e0e7ff', 
+                          color: '#3730a3', 
+                          padding: '2px 8px', 
+                          borderRadius: '4px',
+                          border: '1px solid #c7d2fe'
+                        }}>
+                          (گزارش مالی و حسابداری فروش کالا و خدمات)
+                        </span>
+                      </>
+                    )}
                   </h2>
                 </div>
 
                 <div style={{ textAlign: 'left', fontSize: '11px', color: '#475569' }}>
                   <div>تاریخ گزارش: <strong>{toPersianDigits(getCurrentJalaliDate())}</strong></div>
                   <div>ساعت صدور: <strong>{toPersianDigits(getCurrentJalaliTime())}</strong></div>
-                  <div>واحد پولی: <strong>{settings.currency || 'تومان'}</strong></div>
+                  <div>نوع سند: <strong>{reportType === 'exit_slips' ? 'برگه‌های خروج انبار' : 'فاکتورهای فروش'}</strong></div>
+                  {reportType === 'invoices' && (
+                    <div>واحد پولی: <strong>{settings.currency || 'تومان'}</strong></div>
+                  )}
                 </div>
               </div>
 
@@ -1099,29 +1307,55 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                 fontSize: '11px'
               }}>
                 <div>
-                  طرف حساب: <strong style={{ color: '#0f172a' }}>{isAllCustomers ? 'کلیه طرف‌های حساب و خریداران (گزارش عمومی)' : currentCustomer?.name}</strong>
+                  طرف حساب: <strong style={{ color: '#0f172a' }}>{isAllCustomers ? 'کلیه طرف‌های حساب و متقاضیان (گزارش عمومی)' : currentCustomer?.name}</strong>
                   {currentCustomer?.phone && <span> — تلفن: {toPersianDigits(currentCustomer.phone)}</span>}
                   {currentCustomer?.nationalId && <span> — کد اقتصادی/ملی: {toPersianDigits(currentCustomer.nationalId)}</span>}
                 </div>
                 <div>
-                  تعداد کل اسناد: <strong>{toPersianDigits(filteredCustomerInvoices.length)} فاکتور</strong> | مجموع اقلام: <strong>{toPersianDigits(stats.totalPhysicalQty)} واحد</strong> ({toPersianDigits(detailedReportItems.length)} سطر)
+                  {reportType === 'exit_slips' ? (
+                    <>
+                      تعداد حواله‌ها: <strong>{toPersianDigits(filteredCustomerInvoices.length)} فقره</strong> | مجموع اقلام فیزیکی: <strong>{toPersianDigits(stats.totalPhysicalQty)} واحد</strong> ({toPersianDigits(detailedReportItems.length)} سطر کالایی)
+                    </>
+                  ) : (
+                    <>
+                      تعداد فاکتورها: <strong>{toPersianDigits(filteredCustomerInvoices.length)} فقره</strong> | اقلام: <strong>{toPersianDigits(stats.totalPhysicalQty)} واحد</strong> | جمع کل مبالغ: <strong>{toPersianDigits(formatPrice(stats.totalFinal, settings.currency))}</strong>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Official Report Table with exact requested columns */}
+            {/* Official Report Table */}
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px', direction: 'rtl' }}>
               <thead>
-                <tr style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
+                <tr style={{ backgroundColor: reportType === 'exit_slips' ? '#1e293b' : '#0f172a', color: '#ffffff' }}>
                   <th style={{ border: '1px solid #0f172a', padding: '6px 4px', textAlign: 'center', width: '32px' }}>ردیف</th>
                   <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'center', width: '70px' }}>تاریخ</th>
-                  <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'center', width: '75px' }}>شماره فاکتور</th>
-                  <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'center', width: '80px' }}>شماره حواله</th>
-                  <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'right', width: '110px' }}>خریدار / طرف حساب</th>
-                  <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'right' }}>نوع و شرح جنس (کالا)</th>
-                  <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'center', width: '75px' }}>مقدار جنس</th>
-                  <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'center', width: '70px' }}>وضعیت تحویل</th>
-                  <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'left', width: '85px' }}>مبلغ ردیف</th>
+                  
+                  {reportType === 'exit_slips' ? (
+                    // EXIT SLIPS HEADER: STRICTLY NO PRICE COLUMN
+                    <>
+                      <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'center', width: '85px' }}>شماره حواله خروج</th>
+                      <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'center', width: '75px' }}>شماره فاکتور</th>
+                      <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'right', width: '120px' }}>تحویل‌گیرنده / خریدار</th>
+                      <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'right' }}>نوع و شرح جنس (کالا)</th>
+                      <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'center', width: '80px' }}>مقدار و واحد</th>
+                      <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'center', width: '75px' }}>وضعیت تحویل</th>
+                      <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'right', width: '110px' }}>مشخصات راننده / خودرو</th>
+                    </>
+                  ) : (
+                    // INVOICES HEADER: WITH UNIT PRICE AND ROW TOTAL AMOUNT
+                    <>
+                      <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'center', width: '75px' }}>شماره فاکتور</th>
+                      <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'center', width: '75px' }}>شماره حواله</th>
+                      <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'right', width: '110px' }}>خریدار / طرف حساب</th>
+                      <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'right' }}>نوع و شرح جنس (کالا)</th>
+                      <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'center', width: '65px' }}>مقدار جنس</th>
+                      <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'left', width: '75px' }}>فی واحد ({settings.currency})</th>
+                      <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'left', width: '85px' }}>مبلغ کل ردیف</th>
+                      <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'center', width: '70px' }}>وضعیت تسویه</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -1139,52 +1373,114 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                     <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'center', fontFamily: 'monospace' }}>
                       {toPersianDigits(item.date)}
                     </td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'center', fontWeight: 'bold', fontFamily: 'monospace' }}>
-                      {toPersianDigits(item.invoiceNumber)}
-                    </td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'center', fontWeight: 'bold', color: '#3730a3', fontFamily: 'monospace' }}>
-                      {toPersianDigits(item.slipNumber)}
-                    </td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'right', fontWeight: 'bold' }}>
-                      {item.customerName}
-                    </td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'right' }}>
-                      <span style={{ fontWeight: 'bold', color: '#0f172a' }}>{item.productName}</span>
-                      {item.variantName ? <span style={{ color: '#4338ca', fontSize: '9px', marginRight: '4px' }}>({item.variantName})</span> : null}
-                    </td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'center', fontWeight: 'bold' }}>
-                      {toPersianDigits(item.quantity)} {item.unit}
-                    </td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'center' }}>
-                      <span style={{ 
-                        color: item.isDelivered ? '#065f46' : '#92400e',
-                        fontWeight: 'bold',
-                        fontSize: '9px'
-                      }}>
-                        {item.isDelivered ? 'تحویل شد' : 'در انتظار'}
-                      </span>
-                    </td>
-                    <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'left', fontFamily: 'monospace', fontWeight: 'bold' }}>
-                      {toPersianDigits(formatPrice(item.total, ''))}
-                    </td>
+
+                    {reportType === 'exit_slips' ? (
+                      // EXIT SLIP ROW CELLS - STRICTLY NO PRICE OR FEE!
+                      <>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'center', fontWeight: 'bold', color: '#b45309', fontFamily: 'monospace' }}>
+                          {toPersianDigits(item.slipNumber)}
+                        </td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'center', fontFamily: 'monospace', color: '#475569' }}>
+                          {toPersianDigits(item.invoiceNumber)}
+                        </td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'right', fontWeight: 'bold' }}>
+                          {item.customerName}
+                        </td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'right' }}>
+                          <span style={{ fontWeight: 'bold', color: '#0f172a' }}>{item.productName}</span>
+                          {item.variantName ? <span style={{ color: '#b45309', fontSize: '9px', marginRight: '4px' }}>({item.variantName})</span> : null}
+                        </td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'center', fontWeight: 'bold' }}>
+                          {toPersianDigits(item.quantity)} {item.unit}
+                        </td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'center' }}>
+                          <span style={{ 
+                            color: item.isDelivered ? '#065f46' : '#92400e',
+                            fontWeight: 'bold',
+                            fontSize: '9px'
+                          }}>
+                            {item.isDelivered ? 'تحویل شد' : 'در انتظار'}
+                          </span>
+                        </td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'right', fontSize: '9px', color: '#475569' }}>
+                          {item.receiverName || item.vehicleInfo ? (
+                            <span>{item.receiverName || ''}{item.vehicleInfo ? ` - ${item.vehicleInfo}` : ''}</span>
+                          ) : (
+                            <span>—</span>
+                          )}
+                        </td>
+                      </>
+                    ) : (
+                      // INVOICE ROW CELLS - WITH UNIT PRICE AND ROW TOTAL
+                      <>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'center', fontWeight: 'bold', fontFamily: 'monospace' }}>
+                          {toPersianDigits(item.invoiceNumber)}
+                        </td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'center', fontWeight: 'bold', color: '#3730a3', fontFamily: 'monospace' }}>
+                          {toPersianDigits(item.slipNumber)}
+                        </td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'right', fontWeight: 'bold' }}>
+                          {item.customerName}
+                        </td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'right' }}>
+                          <span style={{ fontWeight: 'bold', color: '#0f172a' }}>{item.productName}</span>
+                          {item.variantName ? <span style={{ color: '#4338ca', fontSize: '9px', marginRight: '4px' }}>({item.variantName})</span> : null}
+                        </td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'center', fontWeight: 'bold' }}>
+                          {toPersianDigits(item.quantity)} {item.unit}
+                        </td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'left', fontFamily: 'monospace', color: '#334155' }}>
+                          {toPersianDigits(formatPrice(item.unitPrice, ''))}
+                        </td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'left', fontFamily: 'monospace', fontWeight: 'bold' }}>
+                          {toPersianDigits(formatPrice(item.total, ''))}
+                        </td>
+                        <td style={{ border: '1px solid #cbd5e1', padding: '5px', textAlign: 'center', fontSize: '9px', fontWeight: 'bold' }}>
+                          <span style={{
+                            color: item.paymentStatus === 'paid' ? '#065f46' : item.paymentStatus === 'partial' ? '#92400e' : '#9f1239'
+                          }}>
+                            {item.paymentStatus === 'paid' ? 'تسویه کامل' : item.paymentStatus === 'partial' ? 'تسویه ناقص' : 'پرداخت‌نشده'}
+                          </span>
+                        </td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr style={{ backgroundColor: '#e2e8f0', fontWeight: '900', fontSize: '11px' }}>
-                  <td colSpan={6} style={{ border: '1px solid #94a3b8', padding: '8px', textAlign: 'right' }}>
-                    جمع کل اقلام فیزیکی و مبالغ گزارش ({toPersianDigits(detailedReportItems.length)} سطر):
-                  </td>
-                  <td style={{ border: '1px solid #94a3b8', padding: '8px', textAlign: 'center', color: '#0f172a' }}>
-                    {toPersianDigits(stats.totalPhysicalQty)} واحد
-                  </td>
-                  <td style={{ border: '1px solid #94a3b8', padding: '8px', textAlign: 'center', color: '#065f46', fontSize: '10px' }}>
-                    {toPersianDigits(stats.deliveredSlips)} تحویل شد
-                  </td>
-                  <td style={{ border: '1px solid #94a3b8', padding: '8px', textAlign: 'left', color: '#0f172a', fontFamily: 'monospace' }}>
-                    {toPersianDigits(formatPrice(stats.totalFinal, ''))}
-                  </td>
-                </tr>
+                {reportType === 'exit_slips' ? (
+                  // EXIT SLIPS FOOTER: NO FINANCIAL TOTALS!
+                  <tr style={{ backgroundColor: '#f1f5f9', fontWeight: '900', fontSize: '11px' }}>
+                    <td colSpan={6} style={{ border: '1px solid #94a3b8', padding: '8px', textAlign: 'right' }}>
+                      مجموع کل اقلام فیزیکی تحویل شده از انبار ({toPersianDigits(detailedReportItems.length)} سطر کالایی):
+                    </td>
+                    <td style={{ border: '1px solid #94a3b8', padding: '8px', textAlign: 'center', color: '#0f172a' }}>
+                      {toPersianDigits(stats.totalPhysicalQty)} واحد
+                    </td>
+                    <td style={{ border: '1px solid #94a3b8', padding: '8px', textAlign: 'center', color: '#065f46', fontSize: '10px' }}>
+                      {toPersianDigits(stats.deliveredSlips)} تحویل شد
+                    </td>
+                    <td style={{ border: '1px solid #94a3b8', padding: '8px', textAlign: 'center', color: '#64748b', fontSize: '10px' }}>
+                      (فاقد گردش مالی)
+                    </td>
+                  </tr>
+                ) : (
+                  // INVOICES FOOTER: WITH FINANCIAL TOTALS
+                  <tr style={{ backgroundColor: '#e2e8f0', fontWeight: '900', fontSize: '11px' }}>
+                    <td colSpan={6} style={{ border: '1px solid #94a3b8', padding: '8px', textAlign: 'right' }}>
+                      جمع کل اقلام فیزیکی و مبالغ فاکتورها ({toPersianDigits(detailedReportItems.length)} سطر):
+                    </td>
+                    <td style={{ border: '1px solid #94a3b8', padding: '8px', textAlign: 'center', color: '#0f172a' }}>
+                      {toPersianDigits(stats.totalPhysicalQty)} واحد
+                    </td>
+                    <td colSpan={2} style={{ border: '1px solid #94a3b8', padding: '8px', textAlign: 'left', color: '#0f172a', fontFamily: 'monospace' }}>
+                      {toPersianDigits(formatPrice(stats.totalFinal, settings.currency))}
+                    </td>
+                    <td style={{ border: '1px solid #94a3b8', padding: '8px', textAlign: 'center', color: '#065f46', fontSize: '10px' }}>
+                      {toPersianDigits(stats.regularInvoices)} رسمی / {toPersianDigits(stats.proformaInvoices)} پیش‌فاکتور
+                    </td>
+                  </tr>
+                )}
               </tfoot>
             </table>
 
@@ -1200,18 +1496,37 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
               fontSize: '11px',
               color: '#334155'
             }}>
-              <div>
-                <div style={{ fontWeight: 'bold', marginBottom: '35px' }}>مسئول صدور و حسابداری</div>
-                <div style={{ color: '#94a3b8', fontSize: '10px' }}>امضا و تاریخ</div>
-              </div>
-              <div>
-                <div style={{ fontWeight: 'bold', marginBottom: '35px' }}>مسئول انبار و تحویل کالا</div>
-                <div style={{ color: '#94a3b8', fontSize: '10px' }}>امضا و تاریخ</div>
-              </div>
-              <div>
-                <div style={{ fontWeight: 'bold', marginBottom: '35px' }}>تاییدیه مدیریت مجموعه</div>
-                <div style={{ color: '#94a3b8', fontSize: '10px' }}>مهر و امضا</div>
-              </div>
+              {reportType === 'exit_slips' ? (
+                <>
+                  <div>
+                    <div style={{ fontWeight: 'bold', marginBottom: '35px' }}>مسئول انبار و تحویل کالا</div>
+                    <div style={{ color: '#94a3b8', fontSize: '10px' }}>امضا و تاریخ تحویل</div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 'bold', marginBottom: '35px' }}>راننده / تحویل‌گیرنده بار</div>
+                    <div style={{ color: '#94a3b8', fontSize: '10px' }}>امضا و اثر انگشت</div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 'bold', marginBottom: '35px' }}>تاییدیه سرپرست انبار و مدیریت</div>
+                    <div style={{ color: '#94a3b8', fontSize: '10px' }}>مهر و امضا</div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <div style={{ fontWeight: 'bold', marginBottom: '35px' }}>کارشناس صدور و فروش</div>
+                    <div style={{ color: '#94a3b8', fontSize: '10px' }}>امضا و تاریخ</div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 'bold', marginBottom: '35px' }}>امور مالی و حسابداری</div>
+                    <div style={{ color: '#94a3b8', fontSize: '10px' }}>امضا و تاییدیه مالی</div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 'bold', marginBottom: '35px' }}>تاییدیه مدیریت مجموعه</div>
+                    <div style={{ color: '#94a3b8', fontSize: '10px' }}>مهر و امضا</div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
