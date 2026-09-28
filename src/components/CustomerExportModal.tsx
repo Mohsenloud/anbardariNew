@@ -371,7 +371,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
       const customerLabel = isAllCustomers ? 'کلیه_اسناد' : (currentCustomer?.name.replace(/[/\\:*?"<>|]/g, '_') || 'شخص');
       const safeDate = getCurrentJalaliDate().replace(/\//g, '-');
       const filename = reportType === 'exit_slips'
-        ? `گزارش_رسمی_حواله_های_خروج_انبار_${customerLabel}_${safeDate}.pdf`
+        ? `گزارش_حواله_های_خروج_کالا_از_انبار_${customerLabel}_${safeDate}.pdf`
         : `گزارش_رسمی_فاکتورهای_فروش_${customerLabel}_${safeDate}.pdf`;
       
       const res = await exportElementToPdf('invoices-slips-pdf-report-canvas', filename, {
@@ -382,7 +382,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
       });
 
       if (res.success) {
-        const typeLabel = reportType === 'exit_slips' ? 'حواله‌های خروج انبار (فاقد قیمت)' : 'فاکتورهای فروش (همراه با ستون قیمت)';
+        const typeLabel = reportType === 'exit_slips' ? 'حواله‌های خروج انبار' : 'فاکتورهای فروش (همراه با ستون قیمت)';
         setDownloadSuccessMessage(`فایل PDF رسمی ${typeLabel} با موفقیت دانلود شد (${toPersianDigits(detailedReportItems.length)} ردیف کالایی).`);
         setTimeout(() => setDownloadSuccessMessage(null), 6000);
       } else {
@@ -401,7 +401,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
     if (detailedReportItems.length === 0) return;
     const customerLabel = isAllCustomers ? 'کلیه اسناد' : (currentCustomer?.name || 'مشتری');
     const printTitle = reportType === 'exit_slips'
-      ? `گزارش رسمی حواله‌های خروج انبار (فاقد قیمت) - ${customerLabel}`
+      ? `گزارش حواله های خروج کالا از انبار - ${customerLabel}`
       : `گزارش رسمی فاکتورهای فروش - ${customerLabel}`;
 
     printElementInNewWindow('invoices-slips-pdf-report-canvas', printTitle, {
@@ -1268,20 +1268,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                             gap: '8px'
                           }}>
                             {reportType === 'exit_slips' ? (
-                              <>
-                                <span>گزارش رسمی حواله‌های خروج کالا از انبار</span>
-                                <span style={{ 
-                                  fontSize: '11px', 
-                                  fontWeight: 'normal', 
-                                  backgroundColor: '#fef3c7', 
-                                  color: '#92400e', 
-                                  padding: '2px 8px', 
-                                  borderRadius: '4px',
-                                  border: '1px solid #fde68a'
-                                }}>
-                                  (سند رسمی انبارداری و تحویل کالا - فاقد هرگونه قیمت و بار مالی)
-                                </span>
-                              </>
+                              <span>گزارش حواله های خروج کالا از انبار</span>
                             ) : (
                               <>
                                 <span>گزارش رسمی اقلام و فاکتورهای فروش</span>
