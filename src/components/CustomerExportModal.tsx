@@ -1226,7 +1226,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
             id="invoices-slips-pdf-report-canvas"
             dir="rtl"
             style={{
-              width: pdfOrientation === 'landscape' ? '1140px' : '820px',
+              width: pdfOrientation === 'landscape' ? '1180px' : '820px',
               backgroundColor: '#ffffff',
               padding: '24px',
               fontFamily: "'Vazirmatn', -apple-system, BlinkMacSystemFont, sans-serif",
@@ -1234,100 +1234,117 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
               boxSizing: 'border-box',
             }}
           >
-            {/* Report Header */}
-            <div style={{ borderBottom: '2px solid #0f172a', paddingBottom: '14px', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <h1 style={{ fontSize: '20px', fontWeight: '900', margin: '0 0 4px 0', color: '#0f172a' }}>
-                    {settings.storeName || 'سامانه مدیریت انبار و فاکتورها'}
-                  </h1>
-                  <h2 style={{ 
-                    fontSize: '14px', 
-                    fontWeight: '700', 
-                    margin: 0, 
-                    color: reportType === 'exit_slips' ? '#b45309' : '#3730a3',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}>
-                    {reportType === 'exit_slips' ? (
-                      <>
-                        <span>گزارش رسمی حواله‌های خروج کالا از انبار</span>
-                        <span style={{ 
-                          fontSize: '11px', 
-                          fontWeight: 'normal', 
-                          backgroundColor: '#fef3c7', 
-                          color: '#92400e', 
-                          padding: '2px 8px', 
-                          borderRadius: '4px',
-                          border: '1px solid #fde68a'
-                        }}>
-                          (سند رسمی انبارداری و تحویل کالا - فاقد هرگونه قیمت و بار مالی)
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span>گزارش رسمی اقلام و فاکتورهای فروش</span>
-                        <span style={{ 
-                          fontSize: '11px', 
-                          fontWeight: 'normal', 
-                          backgroundColor: '#e0e7ff', 
-                          color: '#3730a3', 
-                          padding: '2px 8px', 
-                          borderRadius: '4px',
-                          border: '1px solid #c7d2fe'
-                        }}>
-                          (گزارش مالی و حسابداری فروش کالا و خدمات)
-                        </span>
-                      </>
-                    )}
-                  </h2>
-                </div>
-
-                <div style={{ textAlign: 'left', fontSize: '11px', color: '#475569' }}>
-                  <div>تاریخ گزارش: <strong>{toPersianDigits(getCurrentJalaliDate())}</strong></div>
-                  <div>ساعت صدور: <strong>{toPersianDigits(getCurrentJalaliTime())}</strong></div>
-                  <div>نوع سند: <strong>{reportType === 'exit_slips' ? 'برگه‌های خروج انبار' : 'فاکتورهای فروش'}</strong></div>
-                  {reportType === 'invoices' && (
-                    <div>واحد پولی: <strong>{settings.currency || 'تومان'}</strong></div>
-                  )}
-                </div>
-              </div>
-
-              {/* Sub-header Scope Banner */}
-              <div style={{ 
-                marginTop: '10px', 
-                padding: '8px 12px', 
-                backgroundColor: '#f8fafc', 
-                borderRadius: '8px', 
-                border: '1px solid #e2e8f0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontSize: '11px'
-              }}>
-                <div>
-                  طرف حساب: <strong style={{ color: '#0f172a' }}>{isAllCustomers ? 'کلیه طرف‌های حساب و متقاضیان (گزارش عمومی)' : currentCustomer?.name}</strong>
-                  {currentCustomer?.phone && <span> — تلفن: {toPersianDigits(currentCustomer.phone)}</span>}
-                  {currentCustomer?.nationalId && <span> — کد اقتصادی/ملی: {toPersianDigits(currentCustomer.nationalId)}</span>}
-                </div>
-                <div>
-                  {reportType === 'exit_slips' ? (
-                    <>
-                      تعداد حواله‌ها: <strong>{toPersianDigits(filteredCustomerInvoices.length)} فقره</strong> | مجموع اقلام فیزیکی: <strong>{toPersianDigits(stats.totalPhysicalQty)} واحد</strong> ({toPersianDigits(detailedReportItems.length)} سطر کالایی)
-                    </>
-                  ) : (
-                    <>
-                      تعداد فاکتورها: <strong>{toPersianDigits(filteredCustomerInvoices.length)} فقره</strong> | اقلام: <strong>{toPersianDigits(stats.totalPhysicalQty)} واحد</strong> | جمع کل مبالغ: <strong>{toPersianDigits(formatPrice(stats.totalFinal, settings.currency))}</strong>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Official Report Table */}
+            {/* Official Report Table with Persistent Repeating Header */}
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px', direction: 'rtl' }}>
-              <thead>
+              <thead data-pdf-thead="true">
+                {/* 1. Official Report Document Header inside thead (Preserved on ALL pages in PDF export and print) */}
+                <tr className="pdf-doc-header-row" style={{ backgroundColor: '#ffffff', color: '#0f172a' }}>
+                  <th
+                    colSpan={reportType === 'exit_slips' ? 9 : 10}
+                    style={{
+                      padding: '0 0 14px 0',
+                      border: 'none',
+                      fontWeight: 'normal',
+                      textAlign: 'right',
+                    }}
+                  >
+                    <div
+                      data-pdf-header="true"
+                      className="export-report-header"
+                      style={{ borderBottom: '2px solid #0f172a', paddingBottom: '14px', marginBottom: '8px' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div>
+                          <h1 style={{ fontSize: '20px', fontWeight: '900', margin: '0 0 4px 0', color: '#0f172a' }}>
+                            {settings.storeName || 'سامانه مدیریت انبار و فاکتورها'}
+                          </h1>
+                          <h2 style={{ 
+                            fontSize: '14px', 
+                            fontWeight: '700', 
+                            margin: 0, 
+                            color: reportType === 'exit_slips' ? '#b45309' : '#3730a3',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                          }}>
+                            {reportType === 'exit_slips' ? (
+                              <>
+                                <span>گزارش رسمی حواله‌های خروج کالا از انبار</span>
+                                <span style={{ 
+                                  fontSize: '11px', 
+                                  fontWeight: 'normal', 
+                                  backgroundColor: '#fef3c7', 
+                                  color: '#92400e', 
+                                  padding: '2px 8px', 
+                                  borderRadius: '4px',
+                                  border: '1px solid #fde68a'
+                                }}>
+                                  (سند رسمی انبارداری و تحویل کالا - فاقد هرگونه قیمت و بار مالی)
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span>گزارش رسمی اقلام و فاکتورهای فروش</span>
+                                <span style={{ 
+                                  fontSize: '11px', 
+                                  fontWeight: 'normal', 
+                                  backgroundColor: '#e0e7ff', 
+                                  color: '#3730a3', 
+                                  padding: '2px 8px', 
+                                  borderRadius: '4px',
+                                  border: '1px solid #c7d2fe'
+                                }}>
+                                  (گزارش مالی و حسابداری فروش کالا و خدمات)
+                                </span>
+                              </>
+                            )}
+                          </h2>
+                        </div>
+
+                        <div style={{ textAlign: 'left', fontSize: '11px', color: '#475569' }}>
+                          <div>تاریخ گزارش: <strong>{toPersianDigits(getCurrentJalaliDate())}</strong></div>
+                          <div>ساعت صدور: <strong>{toPersianDigits(getCurrentJalaliTime())}</strong></div>
+                          <div>نوع سند: <strong>{reportType === 'exit_slips' ? 'برگه‌های خروج انبار' : 'فاکتورهای فروش'}</strong></div>
+                          {reportType === 'invoices' && (
+                            <div>واحد پولی: <strong>{settings.currency || 'تومان'}</strong></div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Sub-header Scope Banner */}
+                      <div style={{ 
+                        marginTop: '10px', 
+                        padding: '8px 12px', 
+                        backgroundColor: '#f8fafc', 
+                        borderRadius: '8px', 
+                        border: '1px solid #e2e8f0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '11px'
+                      }}>
+                        <div>
+                          طرف حساب: <strong style={{ color: '#0f172a' }}>{isAllCustomers ? 'کلیه طرف‌های حساب و متقاضیان (گزارش عمومی)' : currentCustomer?.name}</strong>
+                          {currentCustomer?.phone && <span> — تلفن: {toPersianDigits(currentCustomer.phone)}</span>}
+                          {currentCustomer?.nationalId && <span> — کد اقتصادی/ملی: {toPersianDigits(currentCustomer.nationalId)}</span>}
+                        </div>
+                        <div>
+                          {reportType === 'exit_slips' ? (
+                            <>
+                              تعداد حواله‌ها: <strong>{toPersianDigits(filteredCustomerInvoices.length)} فقره</strong> | مجموع اقلام فیزیکی: <strong>{toPersianDigits(stats.totalPhysicalQty)} واحد</strong> ({toPersianDigits(detailedReportItems.length)} سطر کالایی)
+                            </>
+                          ) : (
+                            <>
+                              تعداد فاکتورها: <strong>{toPersianDigits(filteredCustomerInvoices.length)} فقره</strong> | اقلام: <strong>{toPersianDigits(stats.totalPhysicalQty)} واحد</strong> | جمع کل مبالغ: <strong>{toPersianDigits(formatPrice(stats.totalFinal, settings.currency))}</strong>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </th>
+                </tr>
+
+                {/* 2. Official Table Column Headers */}
                 <tr style={{ backgroundColor: reportType === 'exit_slips' ? '#1e293b' : '#0f172a', color: '#ffffff' }}>
                   <th style={{ border: '1px solid #0f172a', padding: '6px 4px', textAlign: 'center', width: '32px' }}>ردیف</th>
                   <th style={{ border: '1px solid #0f172a', padding: '6px', textAlign: 'center', width: '70px' }}>تاریخ</th>

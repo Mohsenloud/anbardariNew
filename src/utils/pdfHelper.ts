@@ -2,6 +2,14 @@ import html2canvas from 'html2canvas-pro';
 import jsPDF from 'jspdf';
 import { StorageService } from './storage';
 import { PdfQualityPreset } from '../types';
+import { toPersianDigits } from './jalali';
+
+export interface LayoutMeta {
+  headerBottomPx: number;
+  rowBottomsPx: number[];
+  footerTopPx: number;
+  rootWidthPx: number;
+}
 
 export interface PdfQualityProfile {
   preset: PdfQualityPreset;
@@ -95,6 +103,229 @@ export function resolvePdfQuality(options?: PdfExportOptions): {
 }
 
 /**
+ * Assembles a multi-page jsPDF document from an html2canvas result, ensuring:
+ * 1. Single page fits perfectly if content height is within standard bounds.
+ * 2. Multi-page documents repeat the complete header (store name, title, customer banner, and table headers) at the top of every page.
+ * 3. Page breaks occur cleanly at table row boundaries (avoiding cutting text mid-row).
+ * 4. Persian page numbers (e.g., "صفحه ۲ از ۳") are added to every page.
+ */
+export function buildPdfDocumentFromCanvas(
+  canvas: HTMLCanvasElement,
+  layoutMeta: LayoutMeta,
+  options?: PdfExportOptions
+): jsPDF {
+  const paperSize = options?.pageSize || 'a4';
+  const orientation = options?.orientation || 'portrait';
+  const isA5 = paperSize === 'a5';
+  const marginMm = isA5 ? 3.5 : 4.5;
+
+  const pdf = new jsPDF({
+    orientation,
+    unit: 'mm',
+    format: paperSize,
+    compress: true,
+  });
+
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const usableWidth = pageWidth - marginMm * 2;
+  const usableHeight = pageHeight - marginMm * 2;
+
+  const { compression: jpegCompression } = resolvePdfQuality(options);
+
+  const pxPerMm = canvas.width / usableWidth;
+  const fullPageHeightPx = Math.floor(usableHeight * pxPerMm);
+
+  // If content fits comfortably on a single page, render full single page coverage
+  if (canvas.height <= fullPageHeightPx * 1.15) {
+    const imgData = canvas.toDataURL('image/jpeg', jpegCompression);
+    pdf.addImage(imgData, 'JPEG', marginMm, marginMm, usableWidth, usableHeight, undefined, 'FAST');
+    return pdf;
+  }
+
+  // Multi-page document handling: Repeat header on all pages & avoid cutting rows
+  const scaleRatio = canvas.width / (layoutMeta.rootWidthPx || 1);
+  let headerCanvasPx = Math.round(layoutMeta.headerBottomPx * scaleRatio);
+  const rowBottomsCanvasPx = layoutMeta.rowBottomsPx.map((y) => Math.round(y * scaleRatio));
+
+  // Cap header height to at most 55% of the page
+  const maxHeaderPx = Math.floor(fullPageHeightPx * 0.55);
+  if (headerCanvasPx > maxHeaderPx) {
+    headerCanvasPx = maxHeaderPx;
+  }
+
+  const hasValidHeader = headerCanvasPx >= 25;
+  const badgeHeightPx = 28;
+
+  if (hasValidHeader) {
+    // 1. Extract header canvas
+    const headerCanvas = document.createElement('canvas');
+    headerCanvas.width = canvas.width;
+    headerCanvas.height = headerCanvasPx;
+    const hCtx = headerCanvas.getContext('2d');
+    if (hCtx) {
+      hCtx.fillStyle = '#ffffff';
+      hCtx.fillRect(0, 0, headerCanvas.width, headerCanvas.height);
+      hCtx.drawImage(
+        canvas,
+        0, 0, canvas.width, headerCanvasPx,
+        0, 0, canvas.width, headerCanvasPx
+      );
+    }
+    const headerImgData = headerCanvas.toDataURL('image/jpeg', jpegCompression);
+    const headerHeightMm = (headerCanvasPx * usableWidth) / canvas.width;
+
+    // Available height for content beneath the header on pages 2+
+    const contentAvailHeightPx = fullPageHeightPx - headerCanvasPx - badgeHeightPx;
+
+    // 2. Partition canvas rows into pages
+    interface PageSlice {
+      startY: number;
+      endY: number;
+      isFirstPage: boolean;
+    }
+    const pages: PageSlice[] = [];
+
+    // Page 1: Starts at 0 (naturally contains header). Content ends at best row cut <= fullPageHeightPx - badgeHeightPx
+    const page1Target = fullPageHeightPx - badgeHeightPx;
+    let page1Cut = page1Target;
+    if (rowBottomsCanvasPx.length > 0) {
+      const validRows = rowBottomsCanvasPx.filter((rb) => rb > headerCanvasPx && rb <= page1Target);
+      if (validRows.length > 0) {
+        page1Cut = validRows[validRows.length - 1];
+      }
+    }
+    pages.push({ startY: 0, endY: page1Cut, isFirstPage: true });
+
+    let currentY = page1Cut;
+    while (currentY < canvas.height) {
+      const target = currentY + contentAvailHeightPx;
+      if (target >= canvas.height) {
+        pages.push({ startY: currentY, endY: canvas.height, isFirstPage: false });
+        break;
+      }
+
+      let bestCut = target;
+      if (rowBottomsCanvasPx.length > 0) {
+        const validRows = rowBottomsCanvasPx.filter((rb) => rb > currentY && rb <= target);
+        if (validRows.length > 0) {
+          bestCut = validRows[validRows.length - 1];
+        }
+      }
+
+      // Safety guard against non-advancing slice
+      if (bestCut <= currentY) {
+        bestCut = Math.min(target, canvas.height);
+      }
+
+      pages.push({ startY: currentY, endY: bestCut, isFirstPage: false });
+      currentY = bestCut;
+    }
+
+    const totalPages = pages.length;
+
+    // 3. Render each page
+    for (let i = 0; i < pages.length; i++) {
+      if (i > 0) {
+        pdf.addPage();
+      }
+      const page = pages[i];
+      const pageNumText = `صفحه ${toPersianDigits(i + 1)} از ${toPersianDigits(totalPages)}`;
+
+      if (page.isFirstPage) {
+        // Page 1: Render slice from 0 to page.endY
+        const sliceHeightPx = page.endY;
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = sliceHeightPx + badgeHeightPx;
+        const sCtx = sliceCanvas.getContext('2d');
+        if (sCtx) {
+          sCtx.fillStyle = '#ffffff';
+          sCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+          sCtx.drawImage(
+            canvas,
+            0, 0, canvas.width, sliceHeightPx,
+            0, 0, canvas.width, sliceHeightPx
+          );
+
+          // Page badge
+          sCtx.fillStyle = '#64748b';
+          sCtx.font = "bold 13px 'Vazirmatn', -apple-system, sans-serif";
+          sCtx.textAlign = 'left';
+          sCtx.fillText(pageNumText, 24, sliceHeightPx + 18);
+
+          const sliceImgData = sliceCanvas.toDataURL('image/jpeg', jpegCompression);
+          const sliceHeightMm = ((sliceHeightPx + badgeHeightPx) * usableWidth) / canvas.width;
+          pdf.addImage(sliceImgData, 'JPEG', marginMm, marginMm, usableWidth, sliceHeightMm, undefined, 'FAST');
+        }
+      } else {
+        // Page 2+:
+        // A. Repeat preserved header at top
+        pdf.addImage(headerImgData, 'JPEG', marginMm, marginMm, usableWidth, headerHeightMm, undefined, 'FAST');
+
+        // B. Render slice content below header
+        const sliceContentHeightPx = page.endY - page.startY;
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = sliceContentHeightPx + badgeHeightPx;
+        const sCtx = sliceCanvas.getContext('2d');
+        if (sCtx) {
+          sCtx.fillStyle = '#ffffff';
+          sCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+          sCtx.drawImage(
+            canvas,
+            0, page.startY, canvas.width, sliceContentHeightPx,
+            0, 0, canvas.width, sliceContentHeightPx
+          );
+
+          // Page badge
+          sCtx.fillStyle = '#64748b';
+          sCtx.font = "bold 13px 'Vazirmatn', -apple-system, sans-serif";
+          sCtx.textAlign = 'left';
+          sCtx.fillText(pageNumText, 24, sliceContentHeightPx + 18);
+
+          const sliceImgData = sliceCanvas.toDataURL('image/jpeg', jpegCompression);
+          const sliceHeightMm = ((sliceContentHeightPx + badgeHeightPx) * usableWidth) / canvas.width;
+          pdf.addImage(sliceImgData, 'JPEG', marginMm, marginMm + headerHeightMm, usableWidth, sliceHeightMm, undefined, 'FAST');
+        }
+      }
+    }
+  } else {
+    // Fallback: Uniform slicing if no header could be determined
+    const sliceHeightPx = fullPageHeightPx;
+    let yOffsetPx = 0;
+    let isFirstPage = true;
+
+    while (yOffsetPx < canvas.height) {
+      if (!isFirstPage) {
+        pdf.addPage();
+      }
+      const currentSliceHeightPx = Math.min(sliceHeightPx, canvas.height - yOffsetPx);
+      const sliceCanvas = document.createElement('canvas');
+      sliceCanvas.width = canvas.width;
+      sliceCanvas.height = currentSliceHeightPx;
+      const sliceCtx = sliceCanvas.getContext('2d');
+      if (sliceCtx) {
+        sliceCtx.fillStyle = '#ffffff';
+        sliceCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+        sliceCtx.drawImage(
+          canvas,
+          0, yOffsetPx, canvas.width, currentSliceHeightPx,
+          0, 0, canvas.width, currentSliceHeightPx
+        );
+        const sliceImgData = sliceCanvas.toDataURL('image/jpeg', jpegCompression);
+        const sliceHeightMm = (currentSliceHeightPx * usableWidth) / canvas.width;
+        pdf.addImage(sliceImgData, 'JPEG', marginMm, marginMm, usableWidth, sliceHeightMm, undefined, 'FAST');
+      }
+      yOffsetPx += sliceHeightPx;
+      isFirstPage = false;
+    }
+  }
+
+  return pdf;
+}
+
+/**
  * Exports a DOM element to a PDF configured with user quality settings.
  * Supports configurable page format (A4 or A5) and orientation (portrait or landscape).
  */
@@ -137,7 +368,14 @@ export const exportElementToPdf = async (
     }
   }
 
-  const { scale: renderScale, compression: jpegCompression } = resolvePdfQuality(options);
+  const { scale: renderScale } = resolvePdfQuality(options);
+
+  const layoutMeta: LayoutMeta = {
+    headerBottomPx: 0,
+    rowBottomsPx: [],
+    footerTopPx: 0,
+    rootWidthPx: targetWidthPx,
+  };
 
   try {
     // 0. Ensure all web fonts (especially Persian Vazirmatn) are completely loaded before capturing
@@ -313,7 +551,7 @@ export const exportElementToPdf = async (
         });
 
         // Ensure 3-column signature boxes render side-by-side
-        const sigs = clonedElement.querySelector('.exit-slip-signatures');
+        const sigs = clonedElement.querySelector('.exit-slip-signatures, .export-report-signatures');
         if (sigs) {
           (sigs as HTMLElement).style.setProperty('display', 'grid', 'important');
           (sigs as HTMLElement).style.setProperty('grid-template-columns', 'repeat(3, minmax(0, 1fr))', 'important');
@@ -334,70 +572,42 @@ export const exportElementToPdf = async (
           (termsGrid as HTMLElement).style.setProperty('display', 'grid', 'important');
           (termsGrid as HTMLElement).style.setProperty('grid-template-columns', 'repeat(2, minmax(0, 1fr))', 'important');
         }
+
+        // Measure layout metadata for multi-page header preservation
+        const rootRect = clonedElement.getBoundingClientRect();
+        layoutMeta.rootWidthPx = rootRect.width || clonedElement.offsetWidth || targetWidthPx;
+
+        const theadEl = clonedElement.querySelector('table thead') as HTMLElement | null;
+        const explicitHeaderEl = clonedElement.querySelector(
+          '[data-pdf-header="true"], .export-report-header, .invoice-header, .exit-slip-header, .exit-slip-header-row'
+        ) as HTMLElement | null;
+
+        if (theadEl) {
+          const theadRect = theadEl.getBoundingClientRect();
+          layoutMeta.headerBottomPx = Math.max(0, theadRect.bottom - rootRect.top);
+        } else if (explicitHeaderEl) {
+          const hRect = explicitHeaderEl.getBoundingClientRect();
+          layoutMeta.headerBottomPx = Math.max(0, hRect.bottom - rootRect.top);
+        }
+
+        const trList = Array.from(clonedElement.querySelectorAll('table tbody tr')) as HTMLElement[];
+        layoutMeta.rowBottomsPx = trList.map((tr) => {
+          const rRect = tr.getBoundingClientRect();
+          return Math.max(0, rRect.bottom - rootRect.top);
+        });
+
+        const footerEl = clonedElement.querySelector(
+          'table tfoot, .export-report-signatures, .exit-slip-signatures, .invoice-signatures, [data-pdf-footer="true"]'
+        ) as HTMLElement | null;
+        if (footerEl) {
+          const fRect = footerEl.getBoundingClientRect();
+          layoutMeta.footerTopPx = Math.max(0, fRect.top - rootRect.top);
+        }
       },
     });
 
-    // 2. High-quality JPEG dataURL with configured compression
-    const imgData = canvas.toDataURL('image/jpeg', jpegCompression);
-    
-    // 3. Create PDF with Deflate compression enabled and user-chosen format/orientation (default A4 portrait)
-    const pdf = new jsPDF({
-      orientation: orientation,
-      unit: 'mm',
-      format: paperSize,
-      compress: true,
-    });
-
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = marginMm;
-    const usableWidth = pageWidth - margin * 2;
-    const usableHeight = pageHeight - margin * 2;
-    const contentWidth = usableWidth;
-    const contentHeight = (canvas.height * contentWidth) / canvas.width;
-
-    if (contentHeight <= usableHeight * 1.25) {
-      // Document fills the entire usable area of the page completely (no blank voids, full page coverage)
-      pdf.addImage(imgData, 'JPEG', margin, margin, usableWidth, usableHeight, undefined, 'FAST');
-    } else {
-      // Multi-page canvas slicing spanning 100% usable width (no horizontal shrinkage)
-      const pxPerMm = canvas.width / usableWidth;
-      const sliceHeightPx = Math.floor(usableHeight * pxPerMm);
-      let yOffsetPx = 0;
-      let isFirstPage = true;
-
-      while (yOffsetPx < canvas.height) {
-        if (!isFirstPage) {
-          pdf.addPage();
-        }
-        const currentSliceHeightPx = Math.min(sliceHeightPx, canvas.height - yOffsetPx);
-        const sliceCanvas = document.createElement('canvas');
-        sliceCanvas.width = canvas.width;
-        sliceCanvas.height = currentSliceHeightPx;
-        const sliceCtx = sliceCanvas.getContext('2d');
-        if (sliceCtx) {
-          sliceCtx.fillStyle = '#ffffff';
-          sliceCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-          sliceCtx.drawImage(
-            canvas,
-            0,
-            yOffsetPx,
-            canvas.width,
-            currentSliceHeightPx,
-            0,
-            0,
-            canvas.width,
-            currentSliceHeightPx
-          );
-          const sliceImgData = sliceCanvas.toDataURL('image/jpeg', jpegCompression);
-          const sliceHeightMm = (currentSliceHeightPx * usableWidth) / canvas.width;
-          pdf.addImage(sliceImgData, 'JPEG', margin, margin, usableWidth, sliceHeightMm, undefined, 'FAST');
-        }
-        yOffsetPx += sliceHeightPx;
-        isFirstPage = false;
-      }
-    }
-
+    // 2. Assemble PDF (repeating header on every page in multi-page mode)
+    const pdf = buildPdfDocumentFromCanvas(canvas, layoutMeta, options);
     const safeFilename = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
     pdf.save(safeFilename);
     return { success: true };
@@ -450,7 +660,14 @@ export const generatePdfBlob = async (
     }
   }
 
-  const { scale: renderScale, compression: jpegCompression } = resolvePdfQuality(options);
+  const { scale: renderScale } = resolvePdfQuality(options);
+
+  const layoutMeta: LayoutMeta = {
+    headerBottomPx: 0,
+    rowBottomsPx: [],
+    footerTopPx: 0,
+    rootWidthPx: targetWidthPx,
+  };
 
   try {
     // Ensure all web fonts (especially Persian Vazirmatn) are completely loaded before capturing
@@ -627,13 +844,15 @@ export const generatePdfBlob = async (
           (tbl as HTMLElement).style.setProperty('table-layout', 'auto', 'important');
         });
 
-        const sigs = clonedElement.querySelector('.exit-slip-signatures');
+        // Ensure 3-column signature boxes render side-by-side
+        const sigs = clonedElement.querySelector('.exit-slip-signatures, .export-report-signatures');
         if (sigs) {
           (sigs as HTMLElement).style.setProperty('display', 'grid', 'important');
           (sigs as HTMLElement).style.setProperty('grid-template-columns', 'repeat(3, minmax(0, 1fr))', 'important');
           (sigs as HTMLElement).style.setProperty('gap', '10px', 'important');
         }
 
+        // Ensure 2-column info cards render side-by-side
         const infoDeck = clonedElement.querySelector('.exit-slip-info-deck');
         if (infoDeck) {
           (infoDeck as HTMLElement).style.setProperty('display', 'grid', 'important');
@@ -641,72 +860,48 @@ export const generatePdfBlob = async (
           (infoDeck as HTMLElement).style.setProperty('gap', '10px', 'important');
         }
 
+        // Ensure terms render 2 columns
         const termsGrid = clonedElement.querySelector('.exit-slip-terms-grid');
         if (termsGrid) {
           (termsGrid as HTMLElement).style.setProperty('display', 'grid', 'important');
           (termsGrid as HTMLElement).style.setProperty('grid-template-columns', 'repeat(2, minmax(0, 1fr))', 'important');
         }
+
+        // Measure layout metadata for multi-page header preservation
+        const rootRect = clonedElement.getBoundingClientRect();
+        layoutMeta.rootWidthPx = rootRect.width || clonedElement.offsetWidth || targetWidthPx;
+
+        const theadEl = clonedElement.querySelector('table thead') as HTMLElement | null;
+        const explicitHeaderEl = clonedElement.querySelector(
+          '[data-pdf-header="true"], .export-report-header, .invoice-header, .exit-slip-header, .exit-slip-header-row'
+        ) as HTMLElement | null;
+
+        if (theadEl) {
+          const theadRect = theadEl.getBoundingClientRect();
+          layoutMeta.headerBottomPx = Math.max(0, theadRect.bottom - rootRect.top);
+        } else if (explicitHeaderEl) {
+          const hRect = explicitHeaderEl.getBoundingClientRect();
+          layoutMeta.headerBottomPx = Math.max(0, hRect.bottom - rootRect.top);
+        }
+
+        const trList = Array.from(clonedElement.querySelectorAll('table tbody tr')) as HTMLElement[];
+        layoutMeta.rowBottomsPx = trList.map((tr) => {
+          const rRect = tr.getBoundingClientRect();
+          return Math.max(0, rRect.bottom - rootRect.top);
+        });
+
+        const footerEl = clonedElement.querySelector(
+          'table tfoot, .export-report-signatures, .exit-slip-signatures, .invoice-signatures, [data-pdf-footer="true"]'
+        ) as HTMLElement | null;
+        if (footerEl) {
+          const fRect = footerEl.getBoundingClientRect();
+          layoutMeta.footerTopPx = Math.max(0, fRect.top - rootRect.top);
+        }
       },
     });
 
-    const imgData = canvas.toDataURL('image/jpeg', jpegCompression);
-    const pdf = new jsPDF({
-      orientation: orientation,
-      unit: 'mm',
-      format: paperSize,
-      compress: true,
-    });
-
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = marginMm;
-    const usableWidth = pageWidth - margin * 2;
-    const usableHeight = pageHeight - margin * 2;
-    const contentWidth = usableWidth;
-    const contentHeight = (canvas.height * contentWidth) / canvas.width;
-
-    if (contentHeight <= usableHeight * 1.25) {
-      // Document fills the entire usable area of the page completely (no blank voids, full page coverage)
-      pdf.addImage(imgData, 'JPEG', margin, margin, usableWidth, usableHeight, undefined, 'FAST');
-    } else {
-      // Multi-page canvas slicing spanning 100% usable width (no horizontal shrinkage)
-      const pxPerMm = canvas.width / usableWidth;
-      const sliceHeightPx = Math.floor(usableHeight * pxPerMm);
-      let yOffsetPx = 0;
-      let isFirstPage = true;
-
-      while (yOffsetPx < canvas.height) {
-        if (!isFirstPage) {
-          pdf.addPage();
-        }
-        const currentSliceHeightPx = Math.min(sliceHeightPx, canvas.height - yOffsetPx);
-        const sliceCanvas = document.createElement('canvas');
-        sliceCanvas.width = canvas.width;
-        sliceCanvas.height = currentSliceHeightPx;
-        const sliceCtx = sliceCanvas.getContext('2d');
-        if (sliceCtx) {
-          sliceCtx.fillStyle = '#ffffff';
-          sliceCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-          sliceCtx.drawImage(
-            canvas,
-            0,
-            yOffsetPx,
-            canvas.width,
-            currentSliceHeightPx,
-            0,
-            0,
-            canvas.width,
-            currentSliceHeightPx
-          );
-          const sliceImgData = sliceCanvas.toDataURL('image/jpeg', jpegCompression);
-          const sliceHeightMm = (currentSliceHeightPx * usableWidth) / canvas.width;
-          pdf.addImage(sliceImgData, 'JPEG', margin, margin, usableWidth, sliceHeightMm, undefined, 'FAST');
-        }
-        yOffsetPx += sliceHeightPx;
-        isFirstPage = false;
-      }
-    }
-
+    // 2. Assemble PDF (repeating header on every page in multi-page mode)
+    const pdf = buildPdfDocumentFromCanvas(canvas, layoutMeta, options);
     const safeFilename = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
     const blob = pdf.output('blob');
     let file: File | undefined;
@@ -755,6 +950,20 @@ export const printElementDirectly = (
         @page {
           size: ${paperSize.toUpperCase()} ${orientation} !important;
           margin: ${marginMm}mm !important;
+        }
+        thead {
+          display: table-header-group !important;
+        }
+        tfoot {
+          display: table-footer-group !important;
+        }
+        tr {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+        table {
+          page-break-inside: auto !important;
+          break-inside: auto !important;
         }
       }
     `;
@@ -895,6 +1104,20 @@ export const printElementInNewWindow = (
             @page {
               size: ${paperSize.toUpperCase()} ${orientation};
               margin: ${marginMm}mm;
+            }
+            thead {
+              display: table-header-group !important;
+            }
+            tfoot {
+              display: table-footer-group !important;
+            }
+            tr {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            table {
+              page-break-inside: auto !important;
+              break-inside: auto !important;
             }
           }
         </style>
