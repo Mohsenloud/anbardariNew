@@ -503,6 +503,16 @@ const initialSettings: StoreSettings = {
   telegramExitSlipOrientation: 'portrait',
   telegramExitSlipTemplate: 'standard',
   telegramCaptionTemplate: '',
+
+  // تنظیمات هوش مصنوعی و ویس تلگرام
+  aiProvider: 'gemini',
+  aiApiKey: '',
+  aiModel: 'gemini-3.8-flash',
+  aiBaseUrl: '',
+  aiVoiceInboundEnabled: true,
+  aiVoiceAutoMatchProducts: true,
+  aiVoiceRequireAdminApproval: true,
+  aiCustomPrompt: '',
 };
 
 const initialActivityLogs: ActivityLog[] = [
@@ -1343,6 +1353,31 @@ export const StorageService = {
     this.notifyChange();
   },
 
+  reorderCategories(newOrderedCategories: string[]): void {
+    this.saveCategories(newOrderedCategories);
+  },
+
+  batchAssignCategory(productIds: string[], targetCategory: string): number {
+    const cleanCategory = targetCategory.trim() || 'عمومی';
+    const products = this.getProducts();
+    const idSet = new Set(productIds);
+    let updatedCount = 0;
+
+    const updatedProducts = products.map((p) => {
+      if (idSet.has(p.id)) {
+        updatedCount++;
+        return { ...p, category: cleanCategory };
+      }
+      return p;
+    });
+
+    if (updatedCount > 0) {
+      this.saveProducts(updatedProducts);
+      this.notifyChange();
+    }
+    return updatedCount;
+  },
+
   addCategory(name: string): boolean {
     const clean = name.trim();
     if (!clean) return false;
@@ -1400,6 +1435,64 @@ export const StorageService = {
     }
     this.notifyChange();
     return true;
+  },
+
+  /**
+   * Batch update prices for all products in a given category by a percentage
+   * Useful for inflation or category-wide supplier price adjustments
+   */
+  batchRepriceCategory(
+    categoryName: string,
+    targetPrice: 'sellPrice' | 'buyPrice' | 'both',
+    percentChange: number,
+    roundTo: number = 1000
+  ): { count: number; changedCount: number } {
+    const products = this.getProducts();
+    const factor = 1 + percentChange / 100;
+    let changedCount = 0;
+    let categoryProductCount = 0;
+
+    const round = (val: number, step: number) => {
+      if (step <= 1) return Math.round(val);
+      return Math.round(val / step) * step;
+    };
+
+    const updated = products.map((p) => {
+      if (p.category === categoryName) {
+        categoryProductCount++;
+        let newSell = p.sellPrice;
+        let newBuy = p.buyPrice ?? p.purchasePrice;
+
+        if (targetPrice === 'sellPrice' || targetPrice === 'both') {
+          if (typeof p.sellPrice === 'number' && p.sellPrice > 0) {
+            newSell = Math.max(0, round(p.sellPrice * factor, roundTo));
+          }
+        }
+        if (targetPrice === 'buyPrice' || targetPrice === 'both') {
+          const curBuy = p.buyPrice ?? p.purchasePrice;
+          if (typeof curBuy === 'number' && curBuy > 0) {
+            newBuy = Math.max(0, round(curBuy * factor, roundTo));
+          }
+        }
+
+        if (newSell !== p.sellPrice || newBuy !== (p.buyPrice ?? p.purchasePrice)) {
+          changedCount++;
+          return {
+            ...p,
+            sellPrice: newSell,
+            buyPrice: newBuy,
+            purchasePrice: newBuy,
+          };
+        }
+      }
+      return p;
+    });
+
+    if (changedCount > 0) {
+      this.saveProducts(updated);
+      this.notifyChange();
+    }
+    return { count: categoryProductCount, changedCount };
   },
 
   getCustomers(): Customer[] {

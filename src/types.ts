@@ -336,6 +336,16 @@ export interface StoreSettings {
   webInvoiceAllowPdfDownload?: boolean; // اجازه دانلود فایل PDF در صفحه وب توسط مشتری
   webInvoiceRequirePinDefault?: boolean; // الزام پیش‌فرض ورود پین‌کد برای مشاهده فاکتور
   webInvoiceCustomDomain?: string; // دامنه اختصاصی یا پیشوند آدرس لینک وب (اختیاری)
+
+  // تنظیمات هوش مصنوعی (AI Engine) جهت تبدیل ویس تلگرام و ثبت خودکار ورودی کالا
+  aiProvider?: 'gemini' | 'openai' | 'custom'; // ارائه‌دهنده سرویس هوش مصنوعی (جمینای، اوپن‌ای‌آی یا سرور شخصی)
+  aiApiKey?: string; // کلید دسترسی API هوش مصنوعی (Gemini API Key یا OpenAI Key)
+  aiModel?: string; // مدل هوش مصنوعی (پیش‌فرض جمینای: gemini-3.8-flash)
+  aiBaseUrl?: string; // آدرس سفارشی سرور هوش مصنوعی برای داکر / لوکال / ارائه‌دهنده‌های ایرانی
+  aiVoiceInboundEnabled?: boolean; // فعال بودن پردازش پیام‌های صوتی تلگرام و ثبت حواله ورود
+  aiVoiceAutoMatchProducts?: boolean; // تطبیق هوشمند نام کالا در ویس با انبار موجود
+  aiVoiceRequireAdminApproval?: boolean; // ثبت در وضعیت در انتظار تایید مدیر بدون افزایش آنی موجودی (پیش‌فرض: true)
+  aiCustomPrompt?: string; // دستورالعمل تکمیلی برای هوش مصنوعی در استخراج اقلام
 }
 
 export type PdfQualityPreset = 'economy' | 'standard' | 'high' | 'ultra';
@@ -487,6 +497,14 @@ export interface InboundReceipt {
   totalDiscrepancy: number;
   notes?: string;
   warehouseNotes?: string; // یادداشت و گزارش انباردار
+  source?: 'purchase_invoice' | 'telegram_voice' | 'manual'; // منبع صدور حواله ورود
+  voiceTranscription?: string; // متن پیاده‌سازی شده ویس توسط هوش مصنوعی
+  voiceSender?: {
+    userId?: number | string;
+    username?: string;
+    firstName?: string;
+    chatId?: number | string;
+  };
   createdAt: string;
 }
 

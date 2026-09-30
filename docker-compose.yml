@@ -50,6 +50,10 @@ services:
       - PGPASSWORD=ManaSecurePass_2026!
       - PGHOST=postgres
       - PGPORT=5432
+      # تنظیمات اختیاری تلگرام و هوش مصنوعی (همچنین از طریق پنل مدیریت قابل تنظیم است)
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
 
 volumes:
   postgres_data:

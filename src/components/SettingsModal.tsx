@@ -37,11 +37,13 @@ import {
   Eye,
   EyeOff,
   MessageSquare,
-  Globe
+  Globe,
+  Mic,
+  Cpu
 } from 'lucide-react';
 import { PdfQualityPreset } from '../types';
 import { PDF_QUALITY_PRESETS } from '../utils/pdfHelper';
-import { testTelegramBotConnection, testTelegramMessage } from '../utils/telegramService';
+import { testTelegramBotConnection, testTelegramMessage, testAiConnection } from '../utils/telegramService';
 
 interface SettingsModalProps {
   settings: StoreSettings;
@@ -77,6 +79,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isTestingMsg, setIsTestingMsg] = useState(false);
   const [msgTestResult, setMsgTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [showBotToken, setShowBotToken] = useState(false);
+
+  // AI Voice settings states
+  const [showAiApiKey, setShowAiApiKey] = useState(false);
+  const [isTestingAi, setIsTestingAi] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleTestAiConnection = async () => {
+    setIsTestingAi(true);
+    setAiTestResult(null);
+    try {
+      const res = await testAiConnection({
+        provider: formData.aiProvider || 'gemini',
+        apiKey: formData.aiApiKey,
+        model: formData.aiModel,
+        baseUrl: formData.aiBaseUrl,
+      });
+      if (res.success) {
+        setAiTestResult({ success: true, message: res.message || 'اتصال به API هوش مصنوعی برقرار شد.' });
+      } else {
+        setAiTestResult({ success: false, message: res.error || 'خطا در ارتباط با سرویس هوش مصنوعی.' });
+      }
+    } catch (e: any) {
+      setAiTestResult({ success: false, message: 'خطا در برقراری ارتباط: ' + (e?.message || '') });
+    } finally {
+      setIsTestingAi(false);
+    }
+  };
 
   const handleTestBotConnection = async () => {
     if (!formData.telegramBotToken?.trim()) {
@@ -1220,6 +1249,158 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           </div>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Section 2.9.5: AI Voice Assistant Settings (هوش مصنوعی و ویس تلگرام) */}
+            <div className="space-y-4 pt-4 border-t border-slate-200">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center">
+                    <Mic className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 text-sm">
+                      هوش مصنوعی و تبدیل ویس تلگرام به رسید ورود کالا
+                    </h4>
+                    <span className="text-[11px] text-slate-500">
+                      تنظیم کلید API هوش مصنوعی (Gemini، OpenAI یا سرور شخصی VPS) برای ثبت خودکار اقلام ورودی
+                    </span>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors">
+                  <span className="text-xs font-bold text-slate-700">فعال بودن تبدیل ویس</span>
+                  <input
+                    type="checkbox"
+                    checked={formData.aiVoiceInboundEnabled !== false}
+                    onChange={(e) => setFormData(prev => ({ ...prev, aiVoiceInboundEnabled: e.target.checked }))}
+                    className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300"
+                  />
+                </label>
+              </div>
+
+              {formData.aiVoiceInboundEnabled !== false && (
+                <div className="space-y-4 bg-purple-50/30 p-4 rounded-2xl border border-purple-200">
+                  {/* Provider Selection */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 block">ارائه‌دهنده هوش مصنوعی (AI Provider):</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, aiProvider: 'gemini', aiModel: 'gemini-3.8-flash' }))}
+                        className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
+                          (formData.aiProvider || 'gemini') === 'gemini'
+                            ? 'bg-purple-100/70 border-purple-400 text-purple-900 font-bold'
+                            : 'bg-white border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        <div className="text-xs">گوگل جمینای (Gemini)</div>
+                        <div className="text-[10px] text-slate-500 font-normal">پردازش صوتی سریع و دقیق</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, aiProvider: 'openai', aiModel: 'gpt-4o-mini' }))}
+                        className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
+                          formData.aiProvider === 'openai'
+                            ? 'bg-purple-100/70 border-purple-400 text-purple-900 font-bold'
+                            : 'bg-white border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        <div className="text-xs">اوپن‌ای‌آی (Whisper + GPT)</div>
+                        <div className="text-[10px] text-slate-500 font-normal">Whisper API + gpt-4o-mini</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, aiProvider: 'custom', aiModel: 'custom-model' }))}
+                        className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
+                          formData.aiProvider === 'custom'
+                            ? 'bg-purple-100/70 border-purple-400 text-purple-900 font-bold'
+                            : 'bg-white border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        <div className="text-xs">سرور شخصی / داکر (Custom)</div>
+                        <div className="text-[10px] text-slate-500 font-normal">ارائه‌دهنده لوکال یا ایرانی</div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* API Key */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 block">
+                      کلید API هوش مصنوعی (API Key):
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type={showAiApiKey ? 'text' : 'password'}
+                          dir="ltr"
+                          placeholder={(formData.aiProvider || 'gemini') === 'gemini' ? 'AIzaSy... (یا خالی در صورت وجود GEMINI_API_KEY در داکر)' : 'sk-proj-...'}
+                          value={formData.aiApiKey || ''}
+                          onChange={(e) => {
+                            setFormData(prev => ({ ...prev, aiApiKey: e.target.value }));
+                            if (aiTestResult) setAiTestResult(null);
+                          }}
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left outline-none focus:border-purple-500 pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAiApiKey(!showAiApiKey)}
+                          className="absolute right-3 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          {showAiApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleTestAiConnection}
+                        disabled={isTestingAi}
+                        className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                      >
+                        {isTestingAi ? 'در حال بررسی...' : 'تست اتصال API'}
+                      </button>
+                    </div>
+
+                    {aiTestResult && (
+                      <div className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 ${
+                        aiTestResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
+                      }`}>
+                        {aiTestResult.success ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
+                        <span>{aiTestResult.message}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Model & Base URL */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-700 block mb-1">نام مدل هوش مصنوعی:</label>
+                      <input
+                        type="text"
+                        dir="ltr"
+                        placeholder={(formData.aiProvider || 'gemini') === 'gemini' ? 'gemini-3.8-flash' : 'gpt-4o-mini'}
+                        value={formData.aiModel || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, aiModel: e.target.value }))}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-mono outline-none focus:border-purple-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-700 block mb-1">آدرس Base URL (ویژه سرور داکر / اختصاصی):</label>
+                      <input
+                        type="text"
+                        dir="ltr"
+                        placeholder="https://api.openai.com/v1"
+                        value={formData.aiBaseUrl || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, aiBaseUrl: e.target.value }))}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-mono outline-none focus:border-purple-500"
+                      />
                     </div>
                   </div>
                 </div>

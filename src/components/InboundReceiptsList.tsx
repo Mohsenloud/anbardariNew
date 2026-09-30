@@ -39,7 +39,7 @@ export const InboundReceiptsList: React.FC<InboundReceiptsListProps> = ({
   initialSelectedReceiptId,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'has_discrepancy'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'has_discrepancy' | 'voice'>('all');
 
   // Modals state
   const [verifyingReceipt, setVerifyingReceipt] = useState<InboundReceipt | null>(() => {
@@ -65,6 +65,8 @@ export const InboundReceiptsList: React.FC<InboundReceiptsListProps> = ({
       matchesStatus = receipt.status === 'confirmed';
     } else if (statusFilter === 'has_discrepancy') {
       matchesStatus = receipt.status === 'has_discrepancy';
+    } else if (statusFilter === 'voice') {
+      matchesStatus = receipt.source === 'telegram_voice';
     }
 
     return matchesSearch && matchesStatus;
@@ -73,6 +75,7 @@ export const InboundReceiptsList: React.FC<InboundReceiptsListProps> = ({
   const pendingCount = inboundReceipts.filter((r) => r.status === 'pending_verification').length;
   const discrepancyCount = inboundReceipts.filter((r) => r.status === 'has_discrepancy').length;
   const confirmedCount = inboundReceipts.filter((r) => r.status === 'confirmed').length;
+  const voiceCount = inboundReceipts.filter((r) => r.source === 'telegram_voice').length;
 
   return (
     <div className="space-y-4">
@@ -176,6 +179,20 @@ export const InboundReceiptsList: React.FC<InboundReceiptsListProps> = ({
           >
             دارای مغایرت ({toPersianDigits(discrepancyCount)})
           </button>
+          {voiceCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setStatusFilter('voice')}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                statusFilter === 'voice'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+              }`}
+            >
+              <span>🎙️ ویس تلگرام</span>
+              <span>({toPersianDigits(voiceCount)})</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -221,17 +238,33 @@ export const InboundReceiptsList: React.FC<InboundReceiptsListProps> = ({
                       <span className="font-mono font-black text-sm text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">
                         {toPersianDigits(receipt.receiptNumber)}
                       </span>
-                      <span className="text-xs text-slate-500 font-medium">
-                        (متناظر با فاکتور خرید{' '}
-                        <strong className="text-slate-900 font-mono">
-                          {toPersianDigits(receipt.purchaseInvoiceNumber)}
-                        </strong>
-                        )
-                      </span>
+                      {receipt.source === 'telegram_voice' ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 border border-sky-200">
+                          <span>🎙️ ورودی صوتی تلگرام</span>
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-500 font-medium">
+                          (متناظر با فاکتور خرید{' '}
+                          <strong className="text-slate-900 font-mono">
+                            {toPersianDigits(receipt.purchaseInvoiceNumber)}
+                          </strong>
+                          )
+                        </span>
+                      )}
                       <span className="font-bold text-slate-900 text-sm truncate">
                         {receipt.supplierName}
                       </span>
                     </div>
+
+                    {receipt.voiceTranscription && (
+                      <div className="mt-2 text-xs text-sky-900 bg-sky-50/80 p-2 rounded-xl border border-sky-200 flex items-start gap-1.5">
+                        <span className="shrink-0">🎙️</span>
+                        <div className="leading-relaxed">
+                          <span className="font-bold text-sky-950">صوت ارسالی تلگرام: </span>
+                          <span className="italic">«{receipt.voiceTranscription}»</span>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-2 text-xs text-slate-600">
                       <div>

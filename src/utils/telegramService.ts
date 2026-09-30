@@ -744,3 +744,104 @@ export async function autoSendInboundReceiptToTelegram(
   }
 }
 
+/**
+ * Test AI Provider Connection & API Key
+ */
+export async function testAiConnection(params: {
+  provider: 'gemini' | 'openai' | 'custom';
+  apiKey?: string;
+  model?: string;
+  baseUrl?: string;
+}): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+  provider?: string;
+  model?: string;
+}> {
+  try {
+    const res = await fetch('/api/ai/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    const data = await res.json();
+    return data;
+  } catch (err: any) {
+    return {
+      success: false,
+      error: 'خطا در ارتباط با سرور برنامه: ' + (err?.message || ''),
+    };
+  }
+}
+
+/**
+ * Register Telegram Webhook for receiving voice messages
+ */
+export async function setTelegramWebhook(botToken: string, webhookUrl: string): Promise<{
+  ok: boolean;
+  description?: string;
+  result?: boolean;
+}> {
+  try {
+    const res = await fetch('/api/telegram/set-webhook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ botToken, webhookUrl }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { ok: false, description: err?.message || 'خطا در اتصال به سرور' };
+  }
+}
+
+/**
+ * Get current Telegram Webhook Info
+ */
+export async function getTelegramWebhookInfo(botToken: string): Promise<{
+  ok: boolean;
+  result?: {
+    url: string;
+    has_custom_certificate: boolean;
+    pending_update_count: number;
+    last_error_date?: number;
+    last_error_message?: string;
+  };
+  description?: string;
+}> {
+  try {
+    const res = await fetch(`/api/telegram/webhook-info?botToken=${encodeURIComponent(botToken)}`);
+    return await res.json();
+  } catch (err: any) {
+    return { ok: false, description: err?.message || 'خطا در دریافت وضعیت وبهوک' };
+  }
+}
+
+/**
+ * Test voice audio processing directly with AI
+ */
+export async function processVoiceDirectly(audioBase64: string, mimeType = 'audio/ogg'): Promise<{
+  success: boolean;
+  transcript?: string;
+  supplierName?: string;
+  items?: Array<{
+    productName: string;
+    quantity: number;
+    unit?: string;
+    notes?: string;
+    matchedProductId?: string;
+  }>;
+  error?: string;
+}> {
+  try {
+    const res = await fetch('/api/ai/process-voice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audioBase64, mimeType }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'خطا در پردازش صدا' };
+  }
+}
+

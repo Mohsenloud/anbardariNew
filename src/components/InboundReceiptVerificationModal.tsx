@@ -118,8 +118,13 @@ export const InboundReceiptVerificationModal: React.FC<InboundReceiptVerificatio
               <Package className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-base sm:text-lg font-black text-white">
-                شمارش و تایید ورود کالا به انبار
+              <h2 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                <span>شمارش و تایید ورود کالا به انبار</span>
+                {receipt.source === 'telegram_voice' && (
+                  <span className="bg-sky-400/30 text-white border border-sky-300/40 text-[11px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                    <span>🎙️ ثبت صوتی از تلگرام</span>
+                  </span>
+                )}
               </h2>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-emerald-100 mt-1">
                 <span>
@@ -129,14 +134,23 @@ export const InboundReceiptVerificationModal: React.FC<InboundReceiptVerificatio
                   </strong>
                 </span>
                 <span>•</span>
-                <span>
-                  فاکتور خرید:{' '}
-                  <strong className="text-white font-mono">
-                    {toPersianDigits(receipt.purchaseInvoiceNumber)}
-                  </strong>
-                </span>
+                {receipt.source === 'telegram_voice' ? (
+                  <span>
+                    ارسال‌کننده ویس:{' '}
+                    <strong className="text-white">
+                      {receipt.voiceSender?.firstName || receipt.supplierName || 'کاربر تلگرام'}
+                    </strong>
+                  </span>
+                ) : (
+                  <span>
+                    فاکتور خرید:{' '}
+                    <strong className="text-white font-mono">
+                      {toPersianDigits(receipt.purchaseInvoiceNumber)}
+                    </strong>
+                  </span>
+                )}
                 <span>•</span>
-                <span>تامین‌کننده: {receipt.supplierName}</span>
+                <span>مبدأ / طرف‌حساب: {receipt.supplierName}</span>
               </div>
             </div>
           </div>
@@ -151,6 +165,30 @@ export const InboundReceiptVerificationModal: React.FC<InboundReceiptVerificatio
 
         {/* Content & Form */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+          {/* Voice Transcription Box if created from voice */}
+          {receipt.voiceTranscription && (
+            <div className="p-4 bg-sky-50 border border-sky-200 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-sky-950">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-base">🎙️</span>
+                  <span>متن پیاده‌سازی شده ویس تلگرام (هوش مصنوعی):</span>
+                </div>
+                {receipt.voiceSender?.firstName && (
+                  <span className="text-[11px] font-normal text-sky-800 bg-sky-100 px-2 py-0.5 rounded-lg">
+                    فرستنده: {receipt.voiceSender.firstName} {receipt.voiceSender.username ? `(@${receipt.voiceSender.username})` : ''}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-sky-900 bg-white/80 p-3 rounded-xl border border-sky-100 font-medium leading-relaxed italic">
+                «{receipt.voiceTranscription}»
+              </p>
+              <div className="text-[11px] text-sky-700 flex items-center gap-1">
+                <span>💡</span>
+                <span>اقلام زیر توسط هوش مصنوعی از این پیام صوتی استخراج شده است. لطفاً تعداد و مشخصات را بررسی و در صورت نیاز اصلاح فرمایید.</span>
+              </div>
+            </div>
+          )}
+
           {/* Quick Actions & Status Banner */}
           <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs">
             <div className="flex items-center gap-2">
