@@ -52,6 +52,8 @@ export const ProductModal: React.FC<ProductModalProps> = ({
 
   // Category Dropdown & Combobox State
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [categorySearchQuery, setCategorySearchQuery] = useState('');
+  const [isSearchingCategory, setIsSearchingCategory] = useState(false);
   const categoryContainerRef = useRef<HTMLDivElement>(null);
   const categoryInputRef = useRef<HTMLInputElement>(null);
 
@@ -65,18 +67,25 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     return unique;
   }, [categories]);
 
-  // Filtered categories based on user typed value
+  // Filtered categories: shows ALL categories on click/open, and only filters when user actively types
   const filteredCategories = useMemo(() => {
-    const query = (product.category || '').trim().toLowerCase();
-    if (!query) return safeCategories;
+    if (!isSearchingCategory) {
+      return safeCategories;
+    }
+    const query = categorySearchQuery.trim().toLowerCase();
+    if (!query) {
+      return safeCategories;
+    }
     return safeCategories.filter((c) => c.toLowerCase().includes(query));
-  }, [safeCategories, product.category]);
+  }, [safeCategories, isSearchingCategory, categorySearchQuery]);
 
   // Click outside listener for category dropdown
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (categoryContainerRef.current && !categoryContainerRef.current.contains(e.target as Node)) {
         setIsCategoryDropdownOpen(false);
+        setIsSearchingCategory(false);
+        setCategorySearchQuery('');
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -222,10 +231,23 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                       id="product-modal-category"
                       value={product.category || ''}
                       autoComplete="off"
-                      onFocus={() => setIsCategoryDropdownOpen(true)}
-                      onClick={() => setIsCategoryDropdownOpen(true)}
+                      onFocus={() => {
+                        setIsCategoryDropdownOpen(true);
+                        setIsSearchingCategory(false);
+                        setCategorySearchQuery('');
+                        categoryInputRef.current?.select();
+                      }}
+                      onClick={() => {
+                        setIsCategoryDropdownOpen(true);
+                        setIsSearchingCategory(false);
+                        setCategorySearchQuery('');
+                        categoryInputRef.current?.select();
+                      }}
                       onChange={(e) => {
-                        onUpdateProduct({ ...product, category: e.target.value });
+                        const val = e.target.value;
+                        onUpdateProduct({ ...product, category: val });
+                        setCategorySearchQuery(val);
+                        setIsSearchingCategory(true);
                         setIsCategoryDropdownOpen(true);
                       }}
                       placeholder="کلیک برای مشاهده لیست یا جستجو و تایپ..."
@@ -241,11 +263,13 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                           onClick={(e) => {
                             e.stopPropagation();
                             onUpdateProduct({ ...product, category: '' });
+                            setCategorySearchQuery('');
+                            setIsSearchingCategory(false);
                             setIsCategoryDropdownOpen(true);
                             categoryInputRef.current?.focus();
                           }}
                           className="p-1 text-slate-400 hover:text-slate-600 rounded-md transition-colors cursor-pointer"
-                          title="پاک کردن متن برای دیدن همه دسته‌ها"
+                          title="پاک کردن و مشاهده همه دسته‌ها"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
@@ -257,10 +281,12 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                         onClick={(e) => {
                           e.stopPropagation();
                           setIsCategoryDropdownOpen((prev) => !prev);
+                          setIsSearchingCategory(false);
+                          setCategorySearchQuery('');
                           categoryInputRef.current?.focus();
                         }}
                         className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                        title="باز و بسته کردن فهرست دسته‌ها"
+                        title="مشاهده فهرست کامل دسته‌ها"
                       >
                         <ChevronDown
                           className={`w-4 h-4 transition-transform duration-200 ${
@@ -276,8 +302,8 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                     <div className="absolute z-30 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
                       {/* Top Header of Dropdown */}
                       <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
-                        <span>انتخاب دسته‌بندی کالا:</span>
-                        <span>{toPersianDigits(safeCategories.length)} دسته‌بندی موجود</span>
+                        <span>{isSearchingCategory && categorySearchQuery.trim() ? 'نتایج جستجو:' : 'انتخاب دسته‌بندی کالا:'}</span>
+                        <span>{toPersianDigits(filteredCategories.length)} دسته‌بندی {isSearchingCategory && categorySearchQuery.trim() ? 'یافت شد' : 'موجود'}</span>
                       </div>
 
                       {/* Categories Scrollable List */}
@@ -294,6 +320,8 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                                   e.preventDefault();
                                   onUpdateProduct({ ...product, category: c });
                                   setIsCategoryDropdownOpen(false);
+                                  setIsSearchingCategory(false);
+                                  setCategorySearchQuery('');
                                 }}
                                 className={`w-full text-right px-3 py-2 text-xs rounded-xl flex items-center justify-between transition-colors cursor-pointer ${
                                   isSelected
@@ -314,25 +342,29 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                           })
                         ) : (
                           <div className="px-3 py-2.5 text-center text-xs text-slate-500">
-                            دسته‌بندی با عنوان «{product.category}» پیدا نشد.
+                            دسته‌بندی با عنوان «{categorySearchQuery || product.category}» پیدا نشد.
                           </div>
                         )}
 
                         {/* Option to create new category with typed text if not exists */}
-                        {product.category &&
+                        {isSearchingCategory &&
+                          categorySearchQuery.trim() &&
                           !safeCategories.some(
-                            (c) => c.toLowerCase() === (product.category || '').trim().toLowerCase()
+                            (c) => c.toLowerCase() === categorySearchQuery.trim().toLowerCase()
                           ) && (
                             <button
                               type="button"
                               onMouseDown={(e) => {
                                 e.preventDefault();
+                                onUpdateProduct({ ...product, category: categorySearchQuery.trim() });
                                 setIsCategoryDropdownOpen(false);
+                                setIsSearchingCategory(false);
+                                setCategorySearchQuery('');
                               }}
                               className="w-full text-right px-3 py-2.5 mt-1 text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl flex items-center gap-2 font-bold border border-emerald-200 transition-colors cursor-pointer"
                             >
                               <Plus className="w-4 h-4 text-emerald-600 shrink-0" />
-                              <span>ثبت به عنوان دسته جدید: «{product.category}»</span>
+                              <span>ثبت به عنوان دسته جدید: «{categorySearchQuery.trim()}»</span>
                             </button>
                           )}
                       </div>
@@ -344,6 +376,8 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                           onMouseDown={(e) => {
                             e.preventDefault();
                             setIsCategoryDropdownOpen(false);
+                            setIsSearchingCategory(false);
+                            setCategorySearchQuery('');
                             onOpenCategoryManager();
                           }}
                           className="w-full text-center px-3 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5"
