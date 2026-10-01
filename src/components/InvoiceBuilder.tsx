@@ -1774,10 +1774,10 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                           <th className="py-3 px-4">شرح کالا یا خدمت</th>
                           <th className="py-3 px-3 w-24">کد کالا</th>
                           <th className="py-3 px-3 w-20 text-center">موجودی</th>
-                          <th className="py-3 px-3 w-32">قیمت واحد (ریال)</th>
+                          <th className="py-3 px-3 w-36">قیمت واحد ({settings.currency || 'تومان'})</th>
                           <th className="py-3 px-3 w-36 text-center">تعداد / مقدار</th>
                           <th className="py-3 px-3 w-28">تخفیف ردیف</th>
-                          <th className="py-3 px-4 w-36">مبلغ کل (ریال)</th>
+                          <th className="py-3 px-4 w-36">مبلغ کل ({settings.currency || 'تومان'})</th>
                           <th className="py-3 px-3 text-center w-12">حذف</th>
                         </tr>
                       </thead>
@@ -1836,9 +1836,23 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                                 )}
                               </td>
 
-                              {/* Unit Price */}
-                              <td className="py-3 px-3 font-bold text-slate-800">
-                                {formatPrice(item.unitPrice)}
+                              {/* Unit Price & Price/Discount Edit Button */}
+                              <td className="py-3 px-3">
+                                <div className="flex flex-col gap-1 items-start">
+                                  <span className="font-bold text-slate-800 font-mono text-xs">
+                                    {formatPrice(item.unitPrice)}
+                                  </span>
+                                  {/* Desktop Edit Unit Price & Discount Button */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenMobileEditItem(item)}
+                                    className="text-[10px] text-blue-700 bg-blue-50 hover:bg-blue-100 hover:border-blue-300 px-2 py-0.5 rounded-lg border border-blue-200/80 font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs whitespace-nowrap"
+                                    title="تغییر قیمت واحد یا تخفیف ردیف"
+                                  >
+                                    <Pencil className="w-2.5 h-2.5 text-blue-600" />
+                                    <span>{item.discount ? `تخفیف: ${formatPrice(item.discount)}` : 'تخفیف / قیمت'}</span>
+                                  </button>
+                                </div>
                               </td>
 
                               {/* Quantity Editor with +/- and direct input */}
@@ -2070,9 +2084,23 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                               {formatPrice(prod.sellPrice)}
                             </div>
                             {existing ? (
-                              <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-full inline-block mt-1">
-                                {toPersianDigits(existing.quantity)} در فاکتور
-                              </span>
+                              <div className="flex flex-col items-end gap-1 mt-1">
+                                <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-full inline-block">
+                                  {toPersianDigits(existing.quantity)} در فاکتور
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenMobileEditItem(existing);
+                                  }}
+                                  className="text-[9.5px] text-blue-700 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded-md border border-blue-200/80 font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs whitespace-nowrap"
+                                  title="تغییر قیمت واحد یا تخفیف این کالا در فاکتور"
+                                >
+                                  <Pencil className="w-2.5 h-2.5 text-blue-600" />
+                                  <span>تخفیف / قیمت</span>
+                                </button>
+                              </div>
                             ) : (
                               <span className="text-[10px] text-slate-400 group-hover:text-emerald-600 font-bold inline-flex items-center gap-0.5 mt-1">
                                 <Plus className="w-3 h-3" /> افزودن
@@ -4210,7 +4238,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   dir="ltr"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold pointer-events-none">
-                  ریال
+                  {settings.currency || 'تومان'}
                 </span>
               </div>
             </div>
@@ -4234,7 +4262,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   dir="ltr"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold pointer-events-none">
-                  ریال
+                  {settings.currency || 'تومان'}
                 </span>
               </div>
             </div>
