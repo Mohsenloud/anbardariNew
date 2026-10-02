@@ -1549,55 +1549,6 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               </button>
             </div>
 
-            {/* Quick Template Switcher */}
-            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200/80 text-xs font-bold shrink-0">
-              <button
-                type="button"
-                onClick={() => handleSelectInvoiceType('standard')}
-                className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  invoiceType === 'standard' ? 'bg-white text-emerald-800 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
-                }`}
-                title="فاکتور استاندارد A4/A5"
-              >
-                استاندارد
-              </button>
-              <button
-                type="button"
-                id="btn-quick-tpl-official"
-                onClick={() => handleSelectInvoiceType('official')}
-                className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                  invoiceType === 'official' ? 'bg-emerald-600 text-white shadow-2xs font-black' : 'text-slate-600 hover:text-slate-900'
-                }`}
-                title="فاکتور رسمی دارایی (افزودن خودکار درصد ارزش افزوده)"
-              >
-                <Building2 className="w-3.5 h-3.5" />
-                <span>رسمی</span>
-                <span className={`text-[10px] px-1 py-0.2 rounded font-mono ${invoiceType === 'official' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
-                  {toPersianDigits(taxEnabled ? taxRate : officialTaxPercent)}٪
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSelectInvoiceType('simple')}
-                className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  invoiceType === 'simple' ? 'bg-white text-emerald-800 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
-                }`}
-                title="فاکتور ساده و خوانا"
-              >
-                ساده
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSelectInvoiceType('thermal')}
-                className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  invoiceType === 'thermal' ? 'bg-white text-emerald-800 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
-                }`}
-                title="فیش پرینتر ۸۰ میلی‌متری"
-              >
-                فیش
-              </button>
-            </div>
-
             {/* Document Settings */}
             <button
               type="button"
