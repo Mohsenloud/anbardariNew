@@ -296,7 +296,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       code: nextCode,
       barcode: nextBarcode,
       name: '',
-      category: 'عمومی',
+      category: '',
       unit: 'عدد',
       buyPrice: 0,
       sellPrice: 0,

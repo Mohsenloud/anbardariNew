@@ -250,7 +250,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                         setIsSearchingCategory(true);
                         setIsCategoryDropdownOpen(true);
                       }}
-                      placeholder="کلیک برای مشاهده لیست یا جستجو و تایپ..."
+                      placeholder="انتخاب یا تایپ دسته‌بندی کالا (پیش‌فرض: عمومی)..."
                       className="w-full bg-slate-50/70 border border-slate-300 rounded-xl px-3.5 py-2.5 pl-14 text-sm text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all font-medium cursor-text"
                     />
 
@@ -302,8 +302,23 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                     <div className="absolute z-30 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
                       {/* Top Header of Dropdown */}
                       <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
-                        <span>{isSearchingCategory && categorySearchQuery.trim() ? 'نتایج جستجو:' : 'انتخاب دسته‌بندی کالا:'}</span>
-                        <span>{toPersianDigits(filteredCategories.length)} دسته‌بندی {isSearchingCategory && categorySearchQuery.trim() ? 'یافت شد' : 'موجود'}</span>
+                        <div className="flex items-center gap-2">
+                          <span>{isSearchingCategory && categorySearchQuery.trim() ? 'نتایج جستجو:' : 'فهرست کامل دسته‌بندی‌ها:'}</span>
+                          {isSearchingCategory && categorySearchQuery.trim() && (
+                            <button
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setIsSearchingCategory(false);
+                                setCategorySearchQuery('');
+                              }}
+                              className="text-emerald-700 font-bold hover:underline"
+                            >
+                              (نمایش همه دسته‌ها)
+                            </button>
+                          )}
+                        </div>
+                        <span>{toPersianDigits(filteredCategories.length)} دسته‌بندی</span>
                       </div>
 
                       {/* Categories Scrollable List */}

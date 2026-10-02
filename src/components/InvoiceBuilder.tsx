@@ -792,7 +792,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   };
 
   // Desktop specific states
-  const [desktopSidebarTab, setDesktopSidebarTab] = useState<'catalog' | 'checkout'>('catalog');
+  const [desktopSidebarTab, setDesktopSidebarTab] = useState<'catalog' | 'checkout'>('checkout');
   const [desktopCatalogSearch, setDesktopCatalogSearch] = useState<string>('');
   const [desktopCatalogCategory, setDesktopCatalogCategory] = useState<string>('all');
 
@@ -947,39 +947,44 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
         id="invoice-builder-mobile-card"
         className="lg:hidden max-w-xl mx-auto w-full flex flex-col bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden min-h-[calc(100dvh-5rem)] flex-1"
       >
-        {/* ================= 1. TOP HEADER ================= */}
-        <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 border-b border-slate-100 bg-white sticky top-0 z-20 shrink-0">
-          {/* Right side (RTL): Back / Cancel or Title */}
-          <div className="flex items-center gap-2 min-w-0">
-            {onCancel && (
-              <button
-                type="button"
-                onClick={onCancel}
-                title="بازگشت"
-                className="w-8 h-8 rounded-xl border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition-colors shrink-0 cursor-pointer active:scale-95"
-              >
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            )}
-            <div className="min-w-0">
-              <h1 className="text-sm sm:text-base font-black text-slate-900 tracking-tight truncate">
-                {isEditing ? 'ویرایش فاکتور' : isProforma ? 'پیش‌فاکتور فروش' : 'صدور فاکتور'}
-              </h1>
-              <div className="text-[10px] text-slate-400 font-medium">
-                شماره: <span className="font-bold text-slate-700">{invoiceNumber}</span>
+        {/* ================= 1. TOP HEADER (TWO ROWS ON MOBILE) ================= */}
+        <div className="border-b border-slate-200/90 bg-white sticky top-0 z-20 shrink-0 shadow-2xs">
+          {/* Row 1: Back Button, Title, Invoice # & Type Switcher */}
+          <div className="flex items-center justify-between px-3 pt-2.5 pb-2 border-b border-slate-100/80">
+            {/* Title & Document Identity */}
+            <div className="flex items-center gap-2 min-w-0">
+              {onCancel && (
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  title="بازگشت"
+                  className="w-8 h-8 rounded-xl border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition-colors shrink-0 cursor-pointer active:scale-95"
+                >
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
+              <div className="flex items-center gap-1.5 min-w-0">
+                <h1 className="text-sm sm:text-base font-black text-slate-900 tracking-tight whitespace-nowrap">
+                  {isEditing ? 'ویرایش فاکتور فروش' : isProforma ? 'پیش‌فاکتور فروش' : 'صدور فاکتور فروش'}
+                </h1>
+                <span className="text-[11px] font-mono font-bold bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded-md border border-slate-200/60 shrink-0">
+                  #{invoiceNumber}
+                </span>
+                {isProforma && (
+                  <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-1.5 py-0.2 rounded-md border border-indigo-200 shrink-0">
+                    پیش‌نویس
+                  </span>
+                )}
               </div>
             </div>
-          </div>
 
-          {/* Left side: Action items (Toggle, Search, Settings, Continue) */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
             {/* Invoice vs Proforma Quick Toggle */}
-            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/80 text-[10px] sm:text-[11px] font-bold">
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/80 text-[10px] sm:text-[11px] font-bold shrink-0">
               <button
                 type="button"
                 id="btn-mobile-type-invoice"
                 onClick={() => handleToggleProforma(false)}
-                className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                   !isProforma
                     ? 'bg-white text-emerald-700 shadow-xs font-black'
                     : 'text-slate-500 hover:text-slate-700'
@@ -991,7 +996,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 type="button"
                 id="btn-mobile-type-proforma"
                 onClick={() => handleToggleProforma(true)}
-                className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                   isProforma
                     ? 'bg-indigo-600 text-white shadow-xs font-black'
                     : 'text-slate-500 hover:text-slate-700'
@@ -1000,42 +1005,59 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 پیش‌فاکتور
               </button>
             </div>
+          </div>
 
-            {/* In-Invoice Items Search Toggle */}
-            <button
-              type="button"
-              id="btn-toggle-search-items"
-              onClick={() => setIsSearchOpen(!isSearchOpen)}
-              title="جستجوی اقلام داخل فاکتور"
-              className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-                isSearchOpen ? 'bg-sky-100 text-sky-600' : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <Search className="w-4 h-4 stroke-[2.2]" />
-            </button>
+          {/* Row 2: Date, Print Template & Action Buttons */}
+          <div className="flex items-center justify-between px-3 py-1.5 bg-slate-50/70">
+            {/* Meta Info: Date and Template */}
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
+              <span className="font-mono text-slate-700 font-bold">{invoiceDate}</span>
+              <span>•</span>
+              <span className="text-slate-700 font-bold">
+                {invoiceType === 'standard' ? 'قالب استاندارد' : invoiceType === 'official' ? 'قالب رسمی' : invoiceType === 'simple' ? 'قالب ساده' : 'فیش پرینتر'}
+              </span>
+            </div>
 
-            {/* Document Settings Button */}
-            <button
-              type="button"
-              id="btn-invoice-settings-options"
-              onClick={() => setIsSettingsModalOpen(true)}
-              title="مشخصات و تنظیمات سند"
-              className="w-8 h-8 rounded-xl bg-amber-400 hover:bg-amber-500 active:scale-95 text-slate-950 flex items-center justify-center shadow-xs transition-all cursor-pointer"
-            >
-              <GraduationCap className="w-4 h-4 stroke-[2.4]" />
-            </button>
+            {/* Quick Actions (Search, Settings, Checkout CTA) */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* In-Invoice Items Search Toggle */}
+              <button
+                type="button"
+                id="btn-toggle-search-items"
+                onClick={() => setIsSearchOpen(!isSearchOpen)}
+                title="جستجوی اقلام داخل فاکتور"
+                className={`h-7 px-2 rounded-lg flex items-center gap-1 text-[11px] font-bold transition-all cursor-pointer border ${
+                  isSearchOpen ? 'bg-sky-100 text-sky-700 border-sky-300' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                <Search className="w-3.5 h-3.5 stroke-[2.2]" />
+                <span className="hidden xs:inline">جستجو</span>
+              </button>
 
-            {/* Continue to checkout top button */}
-            <button
-              type="button"
-              id="btn-invoice-continue-top"
-              onClick={handleProceedToCheckout}
-              className="flex items-center gap-0.5 px-2.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-xs font-black transition-all cursor-pointer shadow-xs"
-              title="ادامه و تسویه"
-            >
-              <span>تسویه</span>
-              <ChevronLeft className="w-3.5 h-3.5 stroke-[2.8]" />
-            </button>
+              {/* Document Settings Button */}
+              <button
+                type="button"
+                id="btn-invoice-settings-options"
+                onClick={() => setIsSettingsModalOpen(true)}
+                title="مشخصات و تنظیمات سند"
+                className="h-7 px-2 rounded-lg bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-800 border border-amber-200/80 flex items-center gap-1 text-[11px] font-bold transition-all cursor-pointer"
+              >
+                <GraduationCap className="w-3.5 h-3.5 text-amber-700" />
+                <span>تنظیمات</span>
+              </button>
+
+              {/* Continue to checkout top button */}
+              <button
+                type="button"
+                id="btn-invoice-continue-top"
+                onClick={handleProceedToCheckout}
+                className="h-7 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[11px] font-black transition-all cursor-pointer shadow-xs shadow-emerald-600/20 flex items-center gap-1"
+                title="تسویه و ثبت فاکتور"
+              >
+                <span>تسویه</span>
+                <ChevronLeft className="w-3.5 h-3.5 stroke-[2.8]" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1273,21 +1295,18 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                           )}
                         </div>
 
-                        <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                        <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5 flex-wrap">
                           <span>قیمت واحد:</span>
-                          <span className="font-bold text-slate-800">{formatPrice(item.unitPrice)}</span>
-                          {item.unit && <span className="text-slate-400 font-normal">({item.unit})</span>}
-
-                          {/* Mobile Edit Unit Price & Discount Button */}
                           <button
                             type="button"
                             onClick={() => handleOpenMobileEditItem(item)}
-                            className="text-[10px] text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg border border-blue-200/80 font-bold flex items-center gap-1 cursor-pointer transition-colors mr-auto"
-                            title="تغییر قیمت واحد یا تخفیف ردیف"
+                            className="font-bold text-slate-800 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 px-2 py-0.5 rounded-lg border border-slate-200/80 hover:border-emerald-300 flex items-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95"
+                            title="کلیک جهت تغییر قیمت کالا در فاکتور"
                           >
-                            <Pencil className="w-2.5 h-2.5 text-blue-600" />
-                            <span>{item.discount ? `تخفیف: ${formatPrice(item.discount)}` : 'تخفیف / قیمت'}</span>
+                            <span>{formatPrice(item.unitPrice)}</span>
+                            <Pencil className="w-2.5 h-2.5 text-slate-400 hover:text-emerald-600" />
                           </button>
+                          {item.unit && <span className="text-slate-400 font-normal">({item.unit})</span>}
                         </div>
                       </div>
 
@@ -1457,14 +1476,15 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       {/* ========================================================================= */}
       <div className="hidden lg:flex flex-col min-h-[calc(100vh-5rem)] bg-white rounded-3xl border border-slate-200/90 shadow-xl overflow-hidden">
         {/* DESKTOP HEADER */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4 px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 bg-white sticky top-0 z-20">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 px-6 py-4 border-b border-slate-200 bg-white sticky top-0 z-20">
+          {/* Document Title & Meta Information */}
+          <div className="flex items-center gap-3.5 min-w-0">
             {onCancel && (
               <button
                 type="button"
                 onClick={onCancel}
                 title="بازگشت به داشبورد"
-                className="w-9 h-9 rounded-xl border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition-colors cursor-pointer shrink-0"
+                className="w-10 h-10 rounded-xl border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition-colors cursor-pointer shrink-0"
               >
                 <ArrowRight className="w-5 h-5" />
               </button>
@@ -1480,17 +1500,25 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-medium flex-wrap">
-                <span>شماره: <b className="text-slate-800 font-bold">{invoiceNumber}</b></span>
-                <span>•</span>
-                <span>تاریخ: <b className="text-slate-800 font-bold">{invoiceDate}</b></span>
-                <span>•</span>
-                <span>قالب چاپ: <b className="text-slate-800 font-bold">{invoiceType === 'standard' ? 'استاندارد A4/A5' : invoiceType === 'official' ? 'رسمی دارایی' : invoiceType === 'simple' ? 'ساده و خوانا' : 'حرارتی ۸ سانتی'}</b></span>
+              <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-500 font-medium flex-wrap">
+                <span className="inline-flex items-center gap-1 bg-slate-100/90 text-slate-700 px-2 py-0.5 rounded-md font-mono text-[11px] font-bold">
+                  <span className="text-slate-400">شماره:</span>
+                  <span>{invoiceNumber}</span>
+                </span>
+                <span className="inline-flex items-center gap-1 bg-slate-100/90 text-slate-700 px-2 py-0.5 rounded-md font-mono text-[11px] font-bold">
+                  <span className="text-slate-400">تاریخ:</span>
+                  <span>{invoiceDate}</span>
+                </span>
+                <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-md border border-emerald-200/60 text-[11px] font-bold">
+                  <span className="text-emerald-600/70">قالب چاپ:</span>
+                  <span>{invoiceType === 'standard' ? 'استاندارد A4/A5' : invoiceType === 'official' ? 'رسمی دارایی' : invoiceType === 'simple' ? 'ساده و خوانا' : 'حرارتی ۸ سانتی'}</span>
+                </span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center flex-wrap gap-2.5 w-full lg:w-auto justify-between lg:justify-end">
+          {/* Action Toolbar */}
+          <div className="flex items-center flex-wrap gap-2.5 justify-start xl:justify-end">
             {/* Invoice vs Proforma Toggle */}
             <div className="flex items-center p-0.5 bg-slate-100 rounded-xl border border-slate-200/80 text-xs font-bold shrink-0">
               <button
@@ -1578,32 +1606,6 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             >
               <GraduationCap className="w-4 h-4 text-amber-700" />
               <span>مشخصات سند و قالب</span>
-            </button>
-
-            <div className="w-px h-6 bg-slate-200 mx-1" />
-
-            {/* Quick Save Final [F9] */}
-            <button
-              type="button"
-              id="desktop-btn-save-final"
-              onClick={() => handleFinalSubmit(false)}
-              className="px-4 py-2 bg-[#1877f2] hover:bg-blue-600 active:scale-95 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer"
-            >
-              <Check className="w-4 h-4" />
-              <span>ثبت نهایی</span>
-              <kbd className="px-1.5 py-0.5 bg-white/20 rounded text-[10px] font-mono">F9</kbd>
-            </button>
-
-            {/* Quick Save & Print [F4] */}
-            <button
-              type="button"
-              id="desktop-btn-save-print"
-              onClick={() => handleFinalSubmit(true)}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs rounded-xl transition-all shadow-sm shadow-emerald-600/20 flex items-center gap-2 cursor-pointer"
-            >
-              <Printer className="w-4 h-4" />
-              <span>ثبت و چاپ فوری</span>
-              <kbd className="px-1.5 py-0.5 bg-white/20 rounded text-[10px] font-mono">F4</kbd>
             </button>
           </div>
         </div>
@@ -1770,15 +1772,13 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     <table className="w-full text-right border-collapse text-xs">
                       <thead>
                         <tr className="bg-slate-100/90 text-slate-700 font-black border-b border-slate-200 sticky top-0 z-10">
-                          <th className="py-3 px-3 text-center w-12">#</th>
+                          <th className="py-3 px-2 text-center w-10">#</th>
+                          <th className="py-3 px-3 w-28">کد کالا</th>
                           <th className="py-3 px-4">شرح کالا یا خدمت</th>
-                          <th className="py-3 px-3 w-24">کد کالا</th>
-                          <th className="py-3 px-3 w-20 text-center">موجودی</th>
                           <th className="py-3 px-3 w-36">قیمت واحد ({settings.currency || 'تومان'})</th>
-                          <th className="py-3 px-3 w-36 text-center">تعداد / مقدار</th>
-                          <th className="py-3 px-3 w-28">تخفیف ردیف</th>
+                          <th className="py-3 px-2 w-28 text-center">تعداد / مقدار</th>
                           <th className="py-3 px-4 w-36">مبلغ کل ({settings.currency || 'تومان'})</th>
-                          <th className="py-3 px-3 text-center w-12">حذف</th>
+                          <th className="py-3 px-1 text-center w-8"></th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
@@ -1793,14 +1793,24 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                               } hover:bg-slate-100/75 transition-colors`}
                             >
                               {/* Index */}
-                              <td className="py-3 px-3 text-center font-bold text-slate-400">
+                              <td className="py-3 px-2 text-center font-bold text-slate-400">
                                 {toPersianDigits(idx + 1)}
+                              </td>
+
+                              {/* Product Code */}
+                              <td className="py-3 px-3 text-slate-500 font-mono text-[11px]" dir="ltr">
+                                {item.productCode || '-'}
                               </td>
 
                               {/* Item name and variant */}
                               <td className="py-3 px-4">
-                                <div className="font-extrabold text-slate-900 text-xs">
-                                  {item.productName}
+                                <div className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5 flex-wrap">
+                                  <span>{item.productName}</span>
+                                  {isShortage && (
+                                    <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-1.5 py-0.2 rounded" title="موجودی انبار کمتر از این مقدار است">
+                                      کسری موجودی
+                                    </span>
+                                  )}
                                 </div>
                                 {item.variantName && (
                                   <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-1.5 py-0.5 rounded border border-purple-200 inline-block mt-0.5">
@@ -1814,58 +1824,22 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                                 )}
                               </td>
 
-                              {/* Product Code */}
-                              <td className="py-3 px-3 text-slate-500 font-mono text-[11px]" dir="ltr">
-                                {item.productCode || '-'}
-                              </td>
-
-                              {/* Stock */}
-                              <td className="py-3 px-3 text-center">
-                                {prod ? (
-                                  <span
-                                    className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                                      isShortage
-                                        ? 'bg-rose-100 text-rose-800'
-                                        : 'bg-slate-100 text-slate-700'
-                                    }`}
-                                  >
-                                    {toPersianDigits(prod.stock)} {prod.unit || ''}
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-400">-</span>
-                                )}
-                              </td>
-
-                              {/* Unit Price & Price/Discount Edit Button */}
+                              {/* Unit Price - Clickable to open Price Change Modal */}
                               <td className="py-3 px-3">
-                                <div className="flex flex-col gap-1 items-start">
-                                  <span className="font-bold text-slate-800 font-mono text-xs">
-                                    {formatPrice(item.unitPrice)}
-                                  </span>
-                                  {/* Desktop Edit Unit Price & Discount Button */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenMobileEditItem(item)}
-                                    className="text-[10px] text-blue-700 bg-blue-50 hover:bg-blue-100 hover:border-blue-300 px-2 py-0.5 rounded-lg border border-blue-200/80 font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs whitespace-nowrap"
-                                    title="تغییر قیمت واحد یا تخفیف ردیف"
-                                  >
-                                    <Pencil className="w-2.5 h-2.5 text-blue-600" />
-                                    <span>{item.discount ? `تخفیف: ${formatPrice(item.discount)}` : 'تخفیف / قیمت'}</span>
-                                  </button>
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenMobileEditItem(item)}
+                                  className="group/price inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-emerald-50 text-slate-800 hover:text-emerald-700 font-mono font-bold text-xs border border-slate-200/80 hover:border-emerald-300 transition-all cursor-pointer shadow-2xs active:scale-95 text-right"
+                                  title="جهت تغییر قیمت این کالا در فاکتور کلیک کنید"
+                                >
+                                  <span>{formatPrice(item.unitPrice)}</span>
+                                  <Pencil className="w-3 h-3 text-slate-400 group-hover/price:text-emerald-600 opacity-70 group-hover/price:opacity-100 transition-opacity shrink-0" />
+                                </button>
                               </td>
 
-                              {/* Quantity Editor with +/- and direct input */}
-                              <td className="py-3 px-3">
-                                <div className="flex items-center justify-center gap-1 bg-slate-100/90 rounded-xl p-1 border border-slate-200 w-fit mx-auto">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAdjustQuantity(item.id, -1)}
-                                    className="w-6 h-6 rounded-lg bg-white hover:bg-rose-50 hover:text-rose-600 text-slate-700 flex items-center justify-center transition-colors shadow-2xs font-bold cursor-pointer"
-                                  >
-                                    <Minus className="w-3 h-3" />
-                                  </button>
-
+                              {/* Quantity Editor - Simple Textbox */}
+                              <td className="py-3 px-2 text-center">
+                                <div className="inline-flex items-center justify-center gap-1">
                                   <input
                                     type="text"
                                     inputMode="numeric"
@@ -1888,30 +1862,14 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                                         handleSetQuantity(item.id, 1);
                                       }
                                     }}
-                                    className="w-12 h-6 bg-white/80 hover:bg-white focus:bg-white rounded border border-transparent focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-center font-extrabold text-xs text-slate-900 focus:outline-none transition-all"
-                                    title="جهت تغییر دستی تعداد، روی عدد کلیک کنید"
+                                    className="w-16 h-8 bg-slate-50 hover:bg-white focus:bg-white rounded-lg border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-center font-extrabold text-xs text-slate-900 outline-none transition-all shadow-2xs"
+                                    placeholder="۱"
                                   />
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAdjustQuantity(item.id, 1)}
-                                    className="w-6 h-6 rounded-lg bg-white hover:bg-emerald-50 hover:text-emerald-600 text-slate-700 flex items-center justify-center transition-colors shadow-2xs font-bold cursor-pointer"
-                                  >
-                                    <Plus className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              </td>
-
-                              {/* Discount Input */}
-                              <td className="py-3 px-3">
-                                <div className="w-24">
-                                  <NumericInput
-                                    min={0}
-                                    value={item.discount || ''}
-                                    onChange={(num) => handleSetItemDiscount(item.id, num)}
-                                    placeholder="۰"
-                                    className="w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-lg px-2 py-1 text-left font-bold text-xs text-slate-800 focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                                  />
+                                  {item.unit && (
+                                    <span className="text-[10px] text-slate-400 font-normal">
+                                      {item.unit}
+                                    </span>
+                                  )}
                                 </div>
                               </td>
 
@@ -1920,12 +1878,13 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                                 {formatPrice(item.total)}
                               </td>
 
-                              {/* Remove */}
-                              <td className="py-3 px-3 text-center">
+                              {/* Remove - Minimal width */}
+                              <td className="py-3 px-1 text-center w-8">
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveItem(item.id)}
-                                  className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors mx-auto cursor-pointer"
+                                  className="w-6 h-6 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors mx-auto cursor-pointer"
+                                  title="حذف ردیف"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1956,25 +1915,12 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
           {/* LEFT COLUMN: DESKTOP ASSISTANT - CATALOG & CHECKOUT (Col Span 4) */}
           <div className="col-span-4 flex flex-col gap-4">
-            {/* Sidebar Tabs */}
+            {/* Sidebar Tabs: Settlement/Checkout First (Default Active), then Catalog */}
             <div className="bg-white rounded-2xl p-1.5 border border-slate-200 shadow-xs flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => setDesktopSidebarTab('catalog')}
-                className={`flex-1 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  desktopSidebarTab === 'catalog'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <Boxes className="w-4 h-4" />
-                <span>کاتالوگ سریع اقلام</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setDesktopSidebarTab('checkout')}
-                className={`flex-1 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                className={`flex-1 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                   desktopSidebarTab === 'checkout'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-slate-600 hover:bg-slate-100'
@@ -1983,10 +1929,25 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <FileText className="w-4 h-4" />
                 <span>تسویه و ثبت فاکتور</span>
                 {items.length > 0 && (
-                  <span className="w-5 h-5 rounded-full bg-white/20 text-white text-[10px] flex items-center justify-center font-bold">
-                    {items.length}
+                  <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold ${
+                    desktopSidebarTab === 'checkout' ? 'bg-white text-emerald-800' : 'bg-emerald-100 text-emerald-800'
+                  }`}>
+                    {toPersianDigits(items.length)}
                   </span>
                 )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDesktopSidebarTab('catalog')}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  desktopSidebarTab === 'catalog'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <Boxes className="w-4 h-4" />
+                <span>کاتالوگ سریع اقلام</span>
               </button>
             </div>
 
@@ -2080,26 +2041,29 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                           </div>
 
                           <div className="text-left shrink-0 pl-1">
-                            <div className="font-black text-slate-900 text-xs">
-                              {formatPrice(prod.sellPrice)}
-                            </div>
+                            {existing ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenMobileEditItem(existing);
+                                }}
+                                className="font-black text-xs text-emerald-700 hover:text-emerald-800 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                                title="کلیک برای تغییر قیمت در فاکتور"
+                              >
+                                <span>{formatPrice(existing.unitPrice)}</span>
+                                <Pencil className="w-2.5 h-2.5 text-emerald-600" />
+                              </button>
+                            ) : (
+                              <div className="font-black text-slate-900 text-xs">
+                                {formatPrice(prod.sellPrice)}
+                              </div>
+                            )}
                             {existing ? (
                               <div className="flex flex-col items-end gap-1 mt-1">
                                 <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-full inline-block">
                                   {toPersianDigits(existing.quantity)} در فاکتور
                                 </span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenMobileEditItem(existing);
-                                  }}
-                                  className="text-[9.5px] text-blue-700 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded-md border border-blue-200/80 font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs whitespace-nowrap"
-                                  title="تغییر قیمت واحد یا تخفیف این کالا در فاکتور"
-                                >
-                                  <Pencil className="w-2.5 h-2.5 text-blue-600" />
-                                  <span>تخفیف / قیمت</span>
-                                </button>
                               </div>
                             ) : (
                               <span className="text-[10px] text-slate-400 group-hover:text-emerald-600 font-bold inline-flex items-center gap-0.5 mt-1">
@@ -4193,51 +4157,92 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
         </div>
       )}
 
-      {/* MODAL 7: MOBILE QUICK ITEM PRICE & DISCOUNT EDIT */}
+      {/* MODAL 7: ITEM PRICE CHANGE MODAL */}
       {mobileEditingItem && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-sm p-5 shadow-2xl space-y-4 animate-in zoom-in-95">
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              setMobileEditingItem(null);
+            }
+          }}
+        >
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSaveMobileEditItem();
+            }}
+            className="bg-white rounded-3xl w-full max-w-sm p-5 shadow-2xl space-y-4 animate-in zoom-in-95"
+          >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
                   <Pencil className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-xs sm:text-sm font-black text-slate-900 truncate">
-                    {mobileEditingItem.productName}
+                  <h3 className="text-sm font-black text-slate-900 truncate">
+                    تغییر قیمت کالا در فاکتور
                   </h3>
-                  <div className="text-[10px] text-slate-400">
-                    تعداد: {toPersianDigits(mobileEditingItem.quantity)} {mobileEditingItem.unit || 'عدد'}
+                  <div className="text-[11px] text-slate-500 font-medium truncate">
+                    {mobileEditingItem.productName} ({toPersianDigits(mobileEditingItem.quantity)} {mobileEditingItem.unit || 'عدد'})
                   </div>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setMobileEditingItem(null)}
-                className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center shrink-0 cursor-pointer"
+                className="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center shrink-0 cursor-pointer transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Price Input */}
-            <div className="space-y-1">
-              <label className="block text-xs font-bold text-slate-700">
-                قیمت واحد:
-              </label>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-slate-700">
+                  قیمت واحد جدید:
+                </label>
+                {(() => {
+                  const catalogProd = products.find((p) => p.id === mobileEditingItem.productId);
+                  if (catalogProd && catalogProd.sellPrice !== mobileEditUnitPrice) {
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => setMobileEditUnitPrice(catalogProd.sellPrice)}
+                        className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+                        title="بازگردانی به قیمت پیش‌فرض انبار"
+                      >
+                        قیمت پایه انبار: {formatPrice(catalogProd.sellPrice)}
+                      </button>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
               <div className="relative">
                 <input
                   type="text"
                   inputMode="numeric"
+                  autoFocus
                   value={mobileEditUnitPrice ? toPersianDigits(mobileEditUnitPrice) : ''}
                   onChange={(e) => {
                     const clean = toEnglishDigits(e.target.value).replace(/\D/g, '');
                     setMobileEditUnitPrice(clean ? parseInt(clean, 10) : 0);
                   }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-left font-mono"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSaveMobileEditItem();
+                    }
+                  }}
+                  onFocus={(e) => e.target.select()}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-left font-mono"
                   dir="ltr"
+                  placeholder="۰"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-bold pointer-events-none">
+                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold pointer-events-none">
                   {settings.currency || 'تومان'}
                 </span>
               </div>
@@ -4246,7 +4251,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             {/* Discount Input */}
             <div className="space-y-1">
               <label className="block text-xs font-bold text-slate-700">
-                تخفیف این ردیف:
+                تخفیف این ردیف (اختیاری):
               </label>
               <div className="relative">
                 <input
@@ -4257,6 +4262,13 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     const clean = toEnglishDigits(e.target.value).replace(/\D/g, '');
                     setMobileEditDiscount(clean ? parseInt(clean, 10) : 0);
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSaveMobileEditItem();
+                    }
+                  }}
+                  onFocus={(e) => e.target.select()}
                   placeholder="۰"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-left font-mono"
                   dir="ltr"
@@ -4285,19 +4297,19 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               <button
                 type="button"
                 onClick={() => setMobileEditingItem(null)}
-                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 cursor-pointer"
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 cursor-pointer transition-colors"
               >
                 انصراف
               </button>
               <button
-                type="button"
-                onClick={handleSaveMobileEditItem}
-                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-xs cursor-pointer active:scale-95"
+                type="submit"
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-xs cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5"
               >
-                اعمال تغییرات
+                <Check className="w-4 h-4" />
+                <span>اعمال تغییر قیمت</span>
               </button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </div>
