@@ -271,24 +271,46 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {invoice.items.map((item, idx) => {
-                    const rowTotal = (Number(item.quantity) || 0) * (Number(item.price) || 0);
+                    const itemName = item.productName || item.name || 'کالای بدون نام';
+                    const itemCode = item.productCode || item.code;
+                    const itemPrice = typeof item.unitPrice === 'number' && !isNaN(item.unitPrice)
+                      ? item.unitPrice
+                      : typeof item.price === 'number' && !isNaN(item.price)
+                      ? item.price
+                      : 0;
+                    const rowTotal = typeof item.total === 'number' && item.total > 0
+                      ? item.total
+                      : (Number(item.quantity) || 0) * itemPrice;
+
                     return (
                       <tr key={item.id || idx} className={idx % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'}>
                         <td className="p-2.5 text-center text-slate-400 font-mono">{toPersianDigits(idx + 1)}</td>
                         <td className="p-2.5">
-                          <div className="font-bold text-slate-900">{item.name}</div>
-                          {item.variantName && (
-                            <div className="text-[10px] text-purple-700 font-medium mt-0.5">
-                              تنوع: {item.variantName}
-                            </div>
-                          )}
+                          <div className="font-bold text-slate-900">{itemName}</div>
+                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-500 flex-wrap">
+                            {itemCode && (
+                              <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">
+                                کد: {toPersianDigits(itemCode)}
+                              </span>
+                            )}
+                            {item.variantName && (
+                              <span className="text-purple-700 font-medium bg-purple-50 px-1.5 py-0.5 rounded">
+                                تنوع: {item.variantName}
+                              </span>
+                            )}
+                            {item.barcode && (
+                              <span className="font-mono text-slate-400">
+                                بارکد: {toPersianDigits(item.barcode)}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="p-2.5 text-center font-mono font-bold text-slate-800">
                           {toPersianDigits(item.quantity)}
                         </td>
                         <td className="p-2.5 text-center text-slate-500">{item.unit || 'عدد'}</td>
                         <td className="p-2.5 text-left font-mono text-slate-700">
-                          {formatPrice(item.price, settings.currency)}
+                          {formatPrice(itemPrice, settings.currency)}
                         </td>
                         <td className="p-2.5 text-left font-mono font-bold text-slate-900">
                           {formatPrice(rowTotal, settings.currency)}

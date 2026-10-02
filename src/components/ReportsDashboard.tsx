@@ -52,15 +52,16 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
   const productSalesMap: Record<string, { name: string; quantity: number; totalAmount: number }> = {};
   invoices.forEach((inv) => {
     inv.items.forEach((item) => {
-      if (!productSalesMap[item.productId]) {
-        productSalesMap[item.productId] = {
-          name: item.productName,
+      const pid = item.productId || item.productCode || item.code || item.id || (item.productName || item.name || 'item');
+      if (!productSalesMap[pid]) {
+        productSalesMap[pid] = {
+          name: item.productName || item.name || 'بدون نام',
           quantity: 0,
           totalAmount: 0,
         };
       }
-      productSalesMap[item.productId].quantity += item.quantity;
-      productSalesMap[item.productId].totalAmount += item.total;
+      productSalesMap[pid].quantity += (Number(item.quantity) || 0);
+      productSalesMap[pid].totalAmount += (Number(item.total) || ((Number(item.quantity) || 0) * (Number(item.unitPrice || item.price) || 0)));
     });
   });
 
