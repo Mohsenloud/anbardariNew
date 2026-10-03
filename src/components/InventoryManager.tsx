@@ -13,6 +13,7 @@ import { DirectTransfersList } from './DirectTransfersList';
 import { CategoryManagerModal } from './CategoryManagerModal';
 import { ProductDetailsModal } from './ProductDetailsModal';
 import { ProductModal } from './ProductModal';
+import { WarehouseStatsModal } from './WarehouseStatsModal';
 import { autoSendExitSlipPdfToTelegram } from '../utils/telegramService';
 import { ErrorBoundary } from './ErrorBoundary';
 import { NumericInput } from './NumericInput';
@@ -48,7 +49,8 @@ import {
   RefreshCw,
   Hash,
   FolderTree,
-  Tag
+  Tag,
+  BarChart3
 } from 'lucide-react';
 import {
   generateNextProductCode,
@@ -188,6 +190,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isVariantModalOpen, setIsVariantModalOpen] = useState(false);
+  const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   
   // Excel Import Modal State
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -864,15 +867,31 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           </span>
         </div>
 
-        <button
-          type="button"
-          id="mobile-quick-add-product-btn"
-          onClick={handleOpenNewProduct}
-          className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>کالای جدید</span>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            id="mobile-warehouse-stats-btn"
+            onClick={() => setIsStatsModalOpen(true)}
+            className="flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+            title="مشاهده آمار و وضعیت انبار"
+          >
+            <BarChart3 className="w-3.5 h-3.5 text-blue-600" />
+            <span>آمار</span>
+            {lowStockCount > 0 && (
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            id="mobile-quick-add-product-btn"
+            onClick={handleOpenNewProduct}
+            className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>کالای جدید</span>
+          </button>
+        </div>
       </div>
 
       {/* Top Header Card (Desktop & Tablet) */}
@@ -893,8 +912,25 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             </div>
           </div>
 
-          {/* Action Buttons (Categories, Excel Export/Import & New Product) */}
+          {/* Action Buttons (Stats Modal, Categories, Excel Export/Import & New Product) */}
           <div className="flex flex-wrap items-center gap-2 shrink-0 self-start md:self-auto">
+            {/* Warehouse Stats Summary Button */}
+            <button
+              type="button"
+              id="open-inventory-stats-modal-btn"
+              onClick={() => setIsStatsModalOpen(true)}
+              title="مشاهده آمار جامع موجودی، کسری‌ها و برگه‌های خروج در پنجره جداگانه"
+              className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 active:scale-95 text-blue-900 border border-blue-200/90 hover:border-blue-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+            >
+              <BarChart3 className="w-4 h-4 text-blue-600" />
+              <span>خلاصه آمار انبار</span>
+              {lowStockCount > 0 && (
+                <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full shadow-2xs">
+                  {toPersianDigits(lowStockCount)} کسری
+                </span>
+              )}
+            </button>
+
             {/* Category Management Button */}
             <button
               type="button"
@@ -1078,79 +1114,6 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Summary KPI Cards */}
-      {activeSubTab === 'exit-slips' ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-xs">
-            <span className="text-[11px] sm:text-xs text-slate-500 font-medium">کل برگه‌های خروج صادر شده</span>
-            <div className="text-lg sm:text-xl font-black text-slate-800 mt-1">
-              {toPersianDigits(invoices.length)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">حواله</span>
-            </div>
-          </div>
-
-          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-amber-200 bg-amber-50/40 shadow-xs">
-            <span className="text-[11px] sm:text-xs text-amber-800 font-medium">در انتظار پرینت و تحویل</span>
-            <div className="text-lg sm:text-xl font-black text-amber-700 mt-1 flex items-center gap-1.5 sm:gap-2">
-              <span>{formatNumber(unprintedSlipsCount)}</span>
-              {unprintedSlipsCount > 0 && (
-                <span className="text-[9px] sm:text-[10px] bg-amber-200/80 text-amber-900 font-bold px-1.5 py-0.5 rounded">
-                  اقدام فوری
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-emerald-200 bg-emerald-50/30 shadow-xs">
-            <span className="text-[11px] sm:text-xs text-emerald-800 font-medium">حواله‌های چاپ شده</span>
-            <div className="text-lg sm:text-xl font-black text-emerald-700 mt-1">
-              {formatNumber(printedSlipsCount)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">حواله</span>
-            </div>
-          </div>
-
-          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-xs">
-            <span className="text-[11px] sm:text-xs text-slate-500 font-medium">مجموع اقلام فیزیکی تحویلی</span>
-            <div className="text-lg sm:text-xl font-black text-blue-700 mt-1">
-              {formatNumber(totalDispatchedUnits)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">واحد</span>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-xs">
-            <span className="text-[11px] sm:text-xs text-slate-500 font-medium">تنوع کالا در سیستم</span>
-            <div className="text-lg sm:text-xl font-black text-slate-800 mt-1">
-              {formatNumber(totalItemsCount)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">ردیف</span>
-            </div>
-          </div>
-
-          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-xs">
-            <span className="text-[11px] sm:text-xs text-slate-500 font-medium">مجموع موجودی اقلام انبار</span>
-            <div className="text-lg sm:text-xl font-black text-blue-700 mt-1">
-              {formatNumber(totalStockUnits)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">واحد / عدد</span>
-            </div>
-          </div>
-
-          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-amber-200 bg-amber-50/40 shadow-xs">
-            <span className="text-[11px] sm:text-xs text-amber-800 font-medium">کالاهای رو به اتمام (نقطه سفارش)</span>
-            <div className="text-lg sm:text-xl font-black text-amber-700 mt-1 flex items-center gap-1.5 sm:gap-2">
-              <span>{formatNumber(lowStockCount)}</span>
-              {lowStockCount > 0 && (
-                <span className="text-[10px] sm:text-[11px] font-normal px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                  نیازمند شارژ
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-rose-200 bg-rose-50/40 shadow-xs">
-            <span className="text-[11px] sm:text-xs text-rose-800 font-medium">کالاهای ناموجود در انبار</span>
-            <div className="text-lg sm:text-xl font-black text-rose-700 mt-1">
-              {formatNumber(outOfStockCount)} <span className="text-[11px] sm:text-xs font-normal text-slate-400">قلم</span>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* SUBTAB 1: PRODUCTS LIST */}
       {activeSubTab === 'items' && (
@@ -2870,6 +2833,22 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           }}
         />
       )}
+
+      {/* WAREHOUSE STATS & KPI MODAL (پنجره مستقل خلاصه آمار انبار) */}
+      <WarehouseStatsModal
+        isOpen={isStatsModalOpen}
+        onClose={() => setIsStatsModalOpen(false)}
+        products={products}
+        invoices={invoices}
+        inboundReceipts={inboundReceipts}
+        directTransfers={directTransfers}
+        currency={settings.currency}
+        onNavigateSubTab={(subTab) => setActiveSubTab(subTab)}
+        onFilterLowStock={() => {
+          setActiveSubTab('items');
+          setStockStatusFilter('low_stock');
+        }}
+      />
     </div>
   );
 };

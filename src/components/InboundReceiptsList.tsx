@@ -15,7 +15,8 @@ import {
   Check, 
   Calendar,
   Building2,
-  FileSpreadsheet
+  FileSpreadsheet,
+  FileDown
 } from 'lucide-react';
 
 interface InboundReceiptsListProps {
@@ -344,14 +345,28 @@ export const InboundReceiptsList: React.FC<InboundReceiptsListProps> = ({
                       <span>{isPending ? 'شمارش و تایید ورود کالا' : 'ویرایش شمارش / مغایرت'}</span>
                     </button>
 
-                    {/* Print Slip Button */}
+                    {/* Preview & Print Button */}
                     <button
                       type="button"
+                      id={`btn-preview-inbound-${receipt.id}`}
                       onClick={() => setPrintingReceipt(receipt)}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                      title="پیش‌نمایش و چاپ حواله ورود کالا"
                     >
-                      <Printer className="w-3.5 h-3.5" />
-                      <span>چاپ حواله انبار</span>
+                      <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>پیش‌نمایش و چاپ</span>
+                    </button>
+
+                    {/* Quick PDF Button */}
+                    <button
+                      type="button"
+                      id={`btn-pdf-inbound-${receipt.id}`}
+                      onClick={() => setPrintingReceipt(receipt)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
+                      title="دانلود خروجی PDF حواله ورود کالا"
+                    >
+                      <FileDown className="w-3.5 h-3.5 text-indigo-600" />
+                      <span className="hidden sm:inline">PDF</span>
                     </button>
                   </div>
                 </div>
