@@ -958,6 +958,20 @@ export const printElementDirectly = (
     styleEl.innerHTML = `
       ${getPrintLayoutCssRules('#' + elementId)}
       @media print {
+        body.printing-active-element #${elementId},
+        body.printing-active-element #${elementId} * {
+          visibility: visible !important;
+        }
+        body.printing-active-element #${elementId} {
+          position: absolute !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: 0 !important;
+          border: none !important;
+          box-shadow: none !important;
+        }
         @page {
           size: ${paperSize.toUpperCase()} ${orientation} !important;
           margin: ${marginMm}mm !important;
