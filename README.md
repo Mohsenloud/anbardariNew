@@ -84,11 +84,44 @@
 
 ### ⚡ روش ۱: استقرار سریع با Docker Compose (پیشنهادی)
 
-در صورتی که روی سرور داکر نصب است، تنها با اجرای دستور زیر کل پروژه و دیتابیس PostgreSQL بالا می‌آید:
+برای راه‌اندازی سرور جدید از صفر تا استقرار کامل پروژه و پایگاه‌داده PostgreSQL، دستورات زیر را به ترتیب روی سرور اجرا کنید:
 
+#### ۱. نصب داکر و ابزارهای پیش‌نیاز سرور:
 ```bash
+# بروزرسانی مخازن
+apt update && apt upgrade -y
+
+# نصب بستههای مورد نیاز
+apt install -y curl apt-transport-https ca-certificates gnupg lsb-release
+
+# نصب سریع و رسمی Docker با اسکریپت رسمی
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+
+# نصب پلاگین docker compose (نسخه ۲)
+apt install -y docker-compose-plugin
+
+# نصب گیت
+apt update && apt install -y git
+```
+
+#### ۲. دریافت و کلون سورس پروژه:
+```bash
+mkdir -p /var/www/app
 cd /var/www/app
+git clone https://github.com/Mohsenloud/anbardariNew.git .
+```
+
+#### ۳. راه‌اندازی، بیلد و اجرای کانتینرها (یک‌خطی):
+```bash
 docker compose down && git pull origin main && docker compose up -d --build
+```
+
+یا اجرای مرحله‌به‌مرحله دستورات (جهت به‌روزرسانی‌های بعدی):
+```bash
+docker compose down
+git pull origin main
+docker compose up -d --build
 ```
 
 #### امکانات پیکربندی داکر:

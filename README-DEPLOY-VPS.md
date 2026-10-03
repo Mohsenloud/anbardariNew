@@ -49,39 +49,46 @@ git push -u origin main
 ssh root@YOUR_SERVER_IP
 ```
 
-دستورات زیر را برای به‌روزرسانی و نصب **Git** و **Docker** و **Docker Compose** اجرا کنید:
+دستورات زیر را برای به‌روزرسانی و نصب سریع و رسمی **Docker**، **Docker Compose** و **Git** اجرا کنید:
 
 ```bash
 # بروزرسانی مخازن
-sudo apt update && sudo apt upgrade -y
+apt update && apt upgrade -y
 
-# نصب ابزارهای پایه
-sudo apt install -y git curl ufw
+# نصب بستههای مورد نیاز
+apt install -y curl apt-transport-https ca-certificates gnupg lsb-release
 
-# نصب داکر و داکر کامپوز
-sudo apt install -y docker.io docker-compose-plugin
-sudo systemctl enable --now docker
+# نصب سریع و رسمی Docker با اسکریپت رسمی
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+
+# نصب پلاگین docker compose (نسخه ۲)
+apt install -y docker-compose-plugin
+
+# نصب گیت
+apt update && apt install -y git
 ```
 
 ---
 
 ## مرحله ۳: کلون و اجرای برنامه با Docker Compose
 
-1. یک پوشه کاری بسازید و پروژه را از گیت‌هاب دانلود کنید:
+۱. ساخت دایرکتوری و کلون مخزن گیت‌هاب:
 ```bash
-sudo mkdir -p /var/www
-cd /var/www
-git clone https://github.com/USERNAME/sepehr-invoice.git app
-cd app
+mkdir -p /var/www/app
+cd /var/www/app
+git clone https://github.com/Mohsenloud/anbardariNew.git .
 ```
 
-2. مجوز اجرایی به فایل آپدیت بدهید:
+۲. استقرار، بیلد و راه‌اندازی با Docker Compose:
 ```bash
-chmod +x deploy.sh
+docker compose down && git pull origin main && docker compose up -d --build
 ```
 
-3. کانتینر را بسازید و روشن کنید:
+یا اجرای تفکیک‌شده دستورات:
 ```bash
+docker compose down
+git pull origin main
 docker compose up -d --build
 ```
 
