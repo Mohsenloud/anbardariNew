@@ -28,6 +28,39 @@ export function gregorianToJalali(gy: number, gm: number, gd: number): [number, 
   return [jy, jm, jd];
 }
 
+export function jalaliToGregorian(jy: number, jm: number, jd: number): [number, number, number] {
+  let gy: number, gm: number, gd: number, days: number;
+  jy += 1595;
+  days = -355668 + (365 * jy) + (Math.floor(jy / 33) * 8) + Math.floor(((jy % 33) + 3) / 4) + jd + ((jm < 7) ? (jm - 1) * 31 : ((jm - 7) * 30) + 186);
+  gy = 400 * Math.floor(days / 146097);
+  days %= 146097;
+  if (days > 36524) {
+    gy += 100 * Math.floor(--days / 36524);
+    days %= 36524;
+    if (days >= 365) days++;
+  }
+  gy += 4 * Math.floor(days / 1461);
+  days %= 1461;
+  if (days > 365) {
+    gy += Math.floor((days - 1) / 365);
+    days = (days - 1) % 365;
+  }
+  gd = days + 1;
+  const sal_a = [0, 31, ((gy % 4 === 0 && gy % 100 !== 0) || (gy % 400 === 0)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  for (gm = 0; gm < 13 && gd > sal_a[gm]; gm++) gd -= sal_a[gm];
+  return [gy, gm, gd];
+}
+
+/**
+ * Returns the Iranian weekday index (0 = شنبه, 1 = یکشنبه, ..., 6 = جمعه)
+ * for the 1st day of the given Jalali year and month.
+ */
+export function getJalaliMonthStartWeekday(jy: number, jm: number): number {
+  const [gy, gm, gd] = jalaliToGregorian(jy, jm, 1);
+  const jsDay = new Date(gy, gm - 1, gd).getDay();
+  return (jsDay + 1) % 7;
+}
+
 export function getCurrentJalaliDate(): string {
   const now = new Date();
   const [jy, jm, jd] = gregorianToJalali(now.getFullYear(), now.getMonth() + 1, now.getDate());

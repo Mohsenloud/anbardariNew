@@ -174,9 +174,9 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                 <div>
-                  <span className="text-slate-500">نام شرکت / تامین‌کننده:</span>
-                  <div className="font-bold text-slate-900 mt-0.5">
-                    {invoice.supplierName}
+                  <span className="text-slate-500 block text-[11px]">نام شرکت / تامین‌کننده:</span>
+                  <div className="font-black text-slate-900 text-sm mt-0.5">
+                    {invoice.supplierName || 'تامین‌کننده عمومی / ثبت‌نشده'}
                   </div>
                 </div>
                 {invoice.supplierPhone && (

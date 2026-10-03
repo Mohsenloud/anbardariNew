@@ -305,8 +305,8 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
                       <span className="font-mono font-black text-sm text-slate-900 bg-slate-100 px-2.5 py-0.5 rounded-lg">
                         {toPersianDigits(inv.invoiceNumber)}
                       </span>
-                      <span className="font-bold text-slate-900 text-sm truncate">
-                        {inv.supplierName}
+                      <span className="font-extrabold text-slate-900 text-sm truncate">
+                        {inv.supplierName || 'تامین‌کننده / فروشنده ثبت‌نشده'}
                       </span>
                       <span className="text-xs text-slate-400 font-mono">
                         {toPersianDigits(inv.date)}
