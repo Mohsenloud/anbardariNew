@@ -27,6 +27,7 @@ import { MobileFloatingPWAInstall } from './components/MobileFloatingPWAInstall'
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { autoSendInvoicePdfToTelegram, autoSendInboundReceiptToTelegram } from './utils/telegramService';
 import { PublicWebInvoiceView } from './components/PublicWebInvoiceView';
+import { StandaloneLivePreviewView } from './components/StandaloneLivePreviewView';
 import { InvoiceShareLinkModal } from './components/InvoiceShareLinkModal';
 import { CheckCircle2, ShieldAlert } from 'lucide-react';
 
@@ -48,12 +49,24 @@ export default function App() {
     return null;
   };
 
+  // Detection for Standalone Live Preview in separate window / tab (?live-preview=1 or #live-preview)
+  const detectLivePreview = (): boolean => {
+    if (typeof window === 'undefined') return false;
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('live-preview') || urlParams.get('preview-window')) return true;
+    if (window.location.hash.includes('live-preview')) return true;
+    if (window.location.pathname.includes('/live-preview')) return true;
+    return false;
+  };
+
   const [publicInvoiceToken, setPublicInvoiceToken] = useState<string | null>(detectPublicToken);
+  const [isStandalonePreview, setIsStandalonePreview] = useState<boolean>(detectLivePreview);
   const [appShareLinkInvoice, setAppShareLinkInvoice] = useState<Invoice | null>(null);
 
   useEffect(() => {
     const handlePopState = () => {
       setPublicInvoiceToken(detectPublicToken());
+      setIsStandalonePreview(detectLivePreview());
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -1407,6 +1420,18 @@ export default function App() {
         onBackToApp={() => {
           window.history.pushState({}, '', '/');
           setPublicInvoiceToken(null);
+        }}
+      />
+    );
+  }
+
+  // 0.1 Dedicated Standalone Live Preview in separate window / browser tab
+  if (isStandalonePreview) {
+    return (
+      <StandaloneLivePreviewView
+        onBackToApp={() => {
+          window.history.pushState({}, '', '/');
+          setIsStandalonePreview(false);
         }}
       />
     );

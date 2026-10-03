@@ -346,7 +346,148 @@ export interface StoreSettings {
   aiVoiceAutoMatchProducts?: boolean; // تطبیق هوشمند نام کالا در ویس با انبار موجود
   aiVoiceRequireAdminApproval?: boolean; // ثبت در وضعیت در انتظار تایید مدیر بدون افزایش آنی موجودی (پیش‌فرض: true)
   aiCustomPrompt?: string; // دستورالعمل تکمیلی برای هوش مصنوعی در استخراج اقلام
+
+  // تنظیمات اختصاصی ابعاد، فونت‌ها و جدول چاپ و خروجی PDF (تعیین شده توسط مدیر)
+  printLayout?: PrintLayoutSettings;
 }
+
+export interface PrintLayoutSettings {
+  // ۱. مقیاس و سایز فونت‌ها (اندازه متن‌ها بر حسب پیکسل)
+  baseFontSize: number; // سایز فونت پایه کل فاکتور (۹ تا ۱۶)
+  headerTitleSize: number; // سایز عنوان فاکتور و نام فروشگاه (۱۲ تا ۲۶)
+  headerMetaSize: number; // سایز مشخصات خریدار، شماره و تاریخ (۹ تا ۱۴)
+  tableHeaderSize: number; // سایز عناوین ستون‌های جدول (۹ تا ۱۴)
+  tableBodySize: number; // سایز متون اقلام ردیف‌های جدول (۹ تا ۱۴)
+  totalsSize: number; // سایز مبالغ جمع کل و تسویه (۱۰ تا ۲۰)
+  notesFontSize: number; // سایز توضیحات، شروط و پاورقی (۸ تا ۱۳)
+
+  // ۲. ابعاد جدول، ردیف‌ها و ستون‌ها
+  tableRowPaddingY: number; // ارتفاع و پدینگ عمودی ردیف‌های جدول (۲ تا ۱۶ پیکسل)
+  tableCellPaddingX: number; // پدینگ افقی سلول‌های جدول (۲ تا ۱۲ پیکسل)
+  tableBorderStyle: 'bordered' | 'striped' | 'minimal' | 'modern'; // سبک خطوط جدول
+  tableBorderColor: string; // رنگ خطوط و کادرهای جدول
+  tableBorderWidth?: number; // ضخامت خطوط جدول (۰.۵، ۱، ۱.۵، ۲ پیکسل)
+  tableHeaderBg?: string; // رنگ پس‌زمینه سرستون‌های جدول
+  tableHeaderTextColor?: string; // رنگ متن سرستون‌های جدول
+  tableZebraStriping?: boolean; // نمایش سطرهای یک‌درمیان رنگی جدول
+
+  // عرض ستون‌های جدول (بر حسب پیکسل)
+  colWidthIndex: number; // ستون ردیف (#)
+  colWidthCode: number; // ستون کد کالا
+  colWidthQty: number; // ستون تعداد و مقدار
+  colWidthUnit: number; // ستون واحد سنجش
+  colWidthPrice: number; // ستون قیمت واحد
+  colWidthDiscount: number; // ستون تخفیف
+  colWidthTotal: number; // ستون مبلغ کل سطر
+
+  // ۳. حاشیه‌ها و فواصل صفحه
+  pageMarginMm: number; // حاشیه کاغذ در چاپ و PDF بر حسب میلی‌متر (۲ تا ۲۰)
+  sectionSpacing: 'compact' | 'normal' | 'relaxed'; // فاصله عمودی بین بخش‌ها
+  signatureBoxHeight: number; // ارتفاع کادر مهر و امضاها (۳۵ تا ۱۲۰ پیکسل)
+
+  // ۴. المان‌های بصری و رنگ‌بندی
+  themeColor: string; // رنگ تم و کادرها
+  showStoreLogo: boolean; // نمایش لوگوی فروشگاه در سربرگ
+  showItemCodeCol: boolean; // نمایش ستون کد کالا در چاپ
+  showItemUnitCol: boolean; // نمایش ستون واحد سنجش کالا در چاپ
+  showItemDiscountCol: boolean; // نمایش ستون تخفیف در جدول چاپ
+  showSignaturesBlock: boolean; // نمایش کادر مهر و امضای طرفین در پایین فاکتور
+  showTermsBlock: boolean; // نمایش کادر توضیحات و شروط در فاکتور
+  compactMode: boolean; // حالت فوق فشرده برای جا شدن بیشترین تعداد اقلام
+  customLogoUrl?: string; // تصویر یا لینک لوگوی سربرگ فاکتور
+  logoHeight?: number; // ارتفاع نمایش لوگو در سربرگ برحسب پیکسل (۲۴ تا ۷۲)
+  customFooterNotes?: string; // متن توضیحات، شروط فروش و پاورقی فاکتور
+}
+
+export const DEFAULT_PRINT_LAYOUT: PrintLayoutSettings = {
+  baseFontSize: 12,
+  headerTitleSize: 18,
+  headerMetaSize: 11,
+  tableHeaderSize: 11,
+  tableBodySize: 11,
+  totalsSize: 13,
+  notesFontSize: 10,
+
+  tableRowPaddingY: 6,
+  tableCellPaddingX: 8,
+  tableBorderStyle: 'bordered',
+  tableBorderColor: '#cbd5e1',
+  tableBorderWidth: 1,
+  tableHeaderBg: '#f8fafc',
+  tableHeaderTextColor: '#1e293b',
+  tableZebraStriping: true,
+
+  colWidthIndex: 38,
+  colWidthCode: 75,
+  colWidthQty: 60,
+  colWidthUnit: 55,
+  colWidthPrice: 95,
+  colWidthDiscount: 75,
+  colWidthTotal: 165,
+
+  pageMarginMm: 6,
+  sectionSpacing: 'normal',
+  signatureBoxHeight: 65,
+
+  themeColor: '#0f172a',
+  showStoreLogo: true,
+  logoHeight: 40,
+  showItemCodeCol: true,
+  showItemUnitCol: true,
+  showItemDiscountCol: true,
+  showSignaturesBlock: true,
+  showTermsBlock: true,
+  compactMode: false,
+  customFooterNotes: 'کالای فروخته شده در صورت سلامت فیزیکی تا ۲۴ ساعت دارای مهلت تست می‌باشد.',
+};
+
+// بهینه‌ترین و متوازن‌ترین چیدمان فاکتور با تناسب طلایی (Auto-Optimized Best Layout)
+export const OPTIMAL_PRINT_LAYOUT: PrintLayoutSettings = {
+  // ۱. مقیاس و سایز فونت‌ها بر اساس ارگونومی و استانداردهای چاپی حسابداری
+  baseFontSize: 12,
+  headerTitleSize: 18,
+  headerMetaSize: 11,
+  tableHeaderSize: 11,
+  tableBodySize: 11,
+  totalsSize: 14,
+  notesFontSize: 10,
+
+  // ۲. پدینگ و خطوط جدول برای جلوگیری کامل از شکست و کشیدگی متون
+  tableRowPaddingY: 6,
+  tableCellPaddingX: 8,
+  tableBorderStyle: 'bordered',
+  tableBorderColor: '#cbd5e1',
+  tableBorderWidth: 1,
+  tableHeaderBg: '#f8fafc',
+  tableHeaderTextColor: '#0f172a',
+  tableZebraStriping: true,
+
+  // عرض‌های متوازن ستون‌ها (A4 و A5) - تضمین عدم شکست مبالغ و کدها
+  colWidthIndex: 38,
+  colWidthCode: 75,
+  colWidthQty: 62,
+  colWidthUnit: 55,
+  colWidthPrice: 105,
+  colWidthDiscount: 80,
+  colWidthTotal: 175,
+
+  // ۳. حاشیه‌ها و فواصل صفحه (بیشترین فضای مفید چاپی بدون برش پرینترها)
+  pageMarginMm: 6,
+  sectionSpacing: 'normal',
+  signatureBoxHeight: 65,
+
+  // ۴. المان‌های بصری بهینه
+  themeColor: '#059669',
+  showStoreLogo: true,
+  logoHeight: 48,
+  showItemCodeCol: true,
+  showItemUnitCol: true,
+  showItemDiscountCol: true,
+  showSignaturesBlock: true,
+  showTermsBlock: true,
+  compactMode: false,
+  customFooterNotes: 'کالای فروخته شده در صورت سلامت فیزیکی تا ۲۴ ساعت دارای مهلت تست می‌باشد.',
+};
 
 export type PdfQualityPreset = 'economy' | 'standard' | 'high' | 'ultra';
 

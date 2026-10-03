@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Product, ProductVariant, Customer, Invoice, InvoiceItem, StoreSettings, PaymentMethod } from '../types';
+import { Product, ProductVariant, Customer, Invoice, InvoiceItem, StoreSettings, PaymentMethod, DEFAULT_PRINT_LAYOUT } from '../types';
 import { getCurrentJalaliDate, formatPrice, toPersianDigits, toEnglishDigits, formatNumber, formatThousands } from '../utils/jalali';
 import { NumericInput } from './NumericInput';
 import { 
@@ -41,9 +41,11 @@ import {
   Eye,
   Info,
   RefreshCw,
-  Building2
+  Building2,
+  ExternalLink
 } from 'lucide-react';
 import { StorageService } from '../utils/storage';
+import { broadcastLivePreview } from '../utils/livePreviewSync';
 import {
   generateNextProductCode,
   generateProductBarcode,
@@ -389,6 +391,45 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   const finalTotal = useMemo(() => {
     return taxableAmount + taxAmount;
   }, [taxableAmount, taxAmount]);
+
+  // Synchronize draft invoice to live preview window in 0ms!
+  useEffect(() => {
+    broadcastLivePreview({
+      mode: 'invoice_draft',
+      config: settings.printLayout || DEFAULT_PRINT_LAYOUT,
+      settings,
+      previewPageSize: 'a4',
+      previewOrientation: 'portrait',
+      sampleNotes: notes,
+      draftInvoice: {
+        invoiceNumber,
+        date: invoiceDate,
+        isProforma,
+        type: invoiceType,
+        customerName: customerName || 'متفرقه',
+        customerPhone,
+        customerAddress,
+        customerNationalId,
+        items: items.map(it => ({
+          productId: it.productId,
+          productName: it.productName,
+          quantity: it.quantity,
+          unit: it.unit,
+          unitPrice: it.unitPrice,
+          discount: it.discount,
+          total: it.total,
+          code: it.code
+        })),
+        subtotal,
+        totalDiscount,
+        totalTax: taxAmount,
+        finalTotal,
+        notes,
+        paymentMethod: paymentMethod === 'cash' ? 'نقدی' : paymentMethod === 'pos' ? 'کارت‌خوان (POS)' : paymentMethod === 'cheque' ? 'چک' : paymentMethod === 'credit' ? 'نسیه / اعتباری' : 'انتقال بانکی'
+      },
+      updatedAt: Date.now()
+    });
+  }, [items, customerName, customerPhone, customerAddress, customerNationalId, invoiceNumber, invoiceDate, isProforma, invoiceType, subtotal, totalDiscount, taxAmount, finalTotal, notes, paymentMethod, settings]);
 
   // Product Catalog Categories
   const categories = useMemo(() => {
@@ -796,6 +837,39 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   const [desktopCatalogSearch, setDesktopCatalogSearch] = useState<string>('');
   const [desktopCatalogCategory, setDesktopCatalogCategory] = useState<string>('all');
 
+  // Desktop Fast Item Search & Barcode Input in Workstation Toolbar
+  const [desktopFastSearch, setDesktopFastSearch] = useState<string>('');
+  const desktopFastSearchResults = useMemo(() => {
+    if (!desktopFastSearch.trim()) return [];
+    const q = desktopFastSearch.trim().toLowerCase();
+    return products
+      .filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          (p.code && p.code.toLowerCase().includes(q)) ||
+          (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+          (p.category && p.category.toLowerCase().includes(q))
+      )
+      .slice(0, 8);
+  }, [desktopFastSearch, products]);
+
+  const handleDesktopFastSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (desktopFastSearchResults.length > 0) {
+        const topMatch = desktopFastSearchResults[0];
+        if (topMatch.hasVariants && topMatch.variants && topMatch.variants.length > 0) {
+          setVariantPickerProduct(topMatch);
+        } else {
+          handleAddProduct(topMatch);
+        }
+        setDesktopFastSearch('');
+      }
+    } else if (e.key === 'Escape') {
+      setDesktopFastSearch('');
+    }
+  };
+
   // Filtered Products for Desktop Quick Catalog
   const desktopFilteredProducts = useMemo(() => {
     let list = products;
@@ -922,6 +996,9 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       if (e.key === 'F2') {
         e.preventDefault();
         setIsProductCatalogOpen(true);
+      } else if (e.key === 'F3') {
+        e.preventDefault();
+        setIsServiceModalOpen(true);
       } else if (e.key === 'F4') {
         e.preventDefault();
         handleFinalSubmit(true);
@@ -1155,11 +1232,22 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               type="button"
               id="btn-mobile-open-catalog-top"
               onClick={() => setIsProductCatalogOpen(true)}
-              className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 active:scale-95 shadow-xs cursor-pointer"
+              className="px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1 shrink-0 active:scale-95 shadow-xs cursor-pointer"
               title="مشاهده کاتالوگ انبار"
             >
-              <Package className="w-4 h-4 text-emerald-400" />
-              <span className="text-[11px] sm:text-xs">کاتالوگ</span>
+              <Package className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-[11px]">انبار</span>
+            </button>
+
+            <button
+              type="button"
+              id="btn-mobile-open-service-top"
+              onClick={() => setIsServiceModalOpen(true)}
+              className="px-2.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 font-bold text-xs flex items-center gap-1 shrink-0 active:scale-95 cursor-pointer"
+              title="ثبت خدمات یا آیتم متفرقه"
+            >
+              <Shapes className="w-3.5 h-3.5 text-purple-600" />
+              <span className="text-[11px]">خدمات</span>
             </button>
           </div>
 
@@ -1204,6 +1292,27 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             </div>
           )}
         </div>
+
+        {/* Mobile Items Mini Status Ribbon */}
+        {items.length > 0 && (
+          <div className="px-3.5 py-2 bg-slate-50/90 border-b border-slate-200/80 flex items-center justify-between text-xs font-bold text-slate-700 shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="bg-slate-200/80 text-slate-800 px-2 py-0.5 rounded-md font-mono font-black text-[11px]">
+                {toPersianDigits(items.length)} قلم
+              </span>
+              <span className="text-slate-400">•</span>
+              <span className="text-[11px] text-slate-600">
+                {toPersianDigits(items.reduce((s, it) => s + it.quantity, 0))} عدد
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-slate-400 font-normal">مبلغ کل:</span>
+              <span className="text-emerald-700 font-black text-xs font-mono" dir="ltr">
+                {formatPrice(finalTotal)}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Error banner */}
         {errorMessage && (
@@ -1476,7 +1585,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       {/* ========================================================================= */}
       <div className="hidden lg:flex flex-col min-h-[calc(100vh-5rem)] bg-white rounded-3xl border border-slate-200/90 shadow-xl overflow-hidden">
         {/* DESKTOP HEADER */}
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 px-6 py-4 border-b border-slate-200 bg-white sticky top-0 z-20">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3.5 px-6 py-3.5 border-b border-slate-200 bg-white sticky top-0 z-20 shadow-2xs">
           {/* Document Title & Meta Information */}
           <div className="flex items-center gap-3.5 min-w-0">
             {onCancel && (
@@ -1484,35 +1593,40 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 type="button"
                 onClick={onCancel}
                 title="بازگشت به داشبورد"
-                className="w-10 h-10 rounded-xl border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 transition-colors cursor-pointer shrink-0"
+                className="w-9 h-9 rounded-xl border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-600 hover:text-slate-900 transition-all cursor-pointer shrink-0 active:scale-95"
               >
-                <ArrowRight className="w-5 h-5" />
+                <ArrowRight className="w-4.5 h-4.5" />
               </button>
             )}
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-xl font-black text-slate-900 tracking-tight">
+                <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
                   {isEditing ? 'ویرایش فاکتور فروش' : isProforma ? 'پیش‌فاکتور فروش' : 'صدور فاکتور فروش'}
                 </h1>
                 {isProforma && (
-                  <span className="text-xs bg-indigo-50 text-indigo-700 font-bold px-2.5 py-0.5 rounded-lg border border-indigo-200">
+                  <span className="text-[11px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-lg border border-indigo-200">
                     پیش‌نویس (بدون کسر از موجودی)
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-500 font-medium flex-wrap">
-                <span className="inline-flex items-center gap-1 bg-slate-100/90 text-slate-700 px-2 py-0.5 rounded-md font-mono text-[11px] font-bold">
-                  <span className="text-slate-400">شماره:</span>
-                  <span>{invoiceNumber}</span>
+              <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-medium flex-wrap">
+                <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-800 px-2 py-0.5 rounded-lg font-['Vazirmatn'] text-[11px] font-bold border border-slate-200/60">
+                  <span className="text-slate-400 font-normal">شماره:</span>
+                  <span>{toPersianDigits(invoiceNumber)}</span>
                 </span>
-                <span className="inline-flex items-center gap-1 bg-slate-100/90 text-slate-700 px-2 py-0.5 rounded-md font-mono text-[11px] font-bold">
-                  <span className="text-slate-400">تاریخ:</span>
-                  <span>{invoiceDate}</span>
+                <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-800 px-2 py-0.5 rounded-lg font-['Vazirmatn'] text-[11px] font-bold border border-slate-200/60">
+                  <span className="text-slate-400 font-normal">تاریخ:</span>
+                  <span>{toPersianDigits(invoiceDate)}</span>
                 </span>
-                <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-md border border-emerald-200/60 text-[11px] font-bold">
-                  <span className="text-emerald-600/70">قالب چاپ:</span>
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsModalOpen(true)}
+                  className="inline-flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-lg border border-emerald-200/80 text-[11px] font-bold cursor-pointer transition-colors"
+                  title="کلیک برای تغییر مشخصات و قالب چاپ"
+                >
+                  <span className="text-emerald-600/80 font-normal">قالب چاپ:</span>
                   <span>{invoiceType === 'standard' ? 'استاندارد A4/A5' : invoiceType === 'official' ? 'رسمی دارایی' : invoiceType === 'simple' ? 'ساده و خوانا' : 'حرارتی ۸ سانتی'}</span>
-                </span>
+                </button>
               </div>
             </div>
           </div>
@@ -1520,7 +1634,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
           {/* Action Toolbar */}
           <div className="flex items-center flex-wrap gap-2.5 justify-start xl:justify-end">
             {/* Invoice vs Proforma Toggle */}
-            <div className="flex items-center p-0.5 bg-slate-100 rounded-xl border border-slate-200/80 text-xs font-bold shrink-0">
+            <div className="flex items-center p-0.5 bg-slate-100 rounded-xl border border-slate-200/90 text-xs font-bold shrink-0">
               <button
                 type="button"
                 id="btn-desktop-type-invoice"
@@ -1528,7 +1642,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                   !isProforma
                     ? 'bg-white text-emerald-700 shadow-xs font-black'
-                    : 'text-slate-500 hover:text-slate-800'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <FileText className="w-3.5 h-3.5" />
@@ -1541,7 +1655,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                   isProforma
                     ? 'bg-indigo-600 text-white shadow-xs font-black'
-                    : 'text-slate-500 hover:text-slate-800'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <FileText className="w-3.5 h-3.5" />
@@ -1553,7 +1667,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             <button
               type="button"
               onClick={() => setIsSettingsModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer"
+              className="h-9 px-3.5 rounded-xl bg-amber-50 hover:bg-amber-100/90 border border-amber-200/90 text-amber-900 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-95"
+              title="مشخصات سند و قالب فاکتور"
             >
               <GraduationCap className="w-4 h-4 text-amber-700" />
               <span>مشخصات سند و قالب</span>
@@ -1583,40 +1698,54 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
           {/* RIGHT COLUMN: INVOICE TABLE & FAST ADD (Col Span 8) */}
           <div className="col-span-8 flex flex-col gap-4">
             {/* 1. Customer Selection Card */}
-            <div className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-black">
+            <div className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3.5">
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200/60 flex items-center justify-center shrink-0 shadow-2xs">
                   <Contact className="w-5 h-5 stroke-[2.2]" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs text-slate-400 font-medium">طرف‌حساب فاکتور:</span>
-                    <span className="text-sm font-black text-slate-900">
-                      {customerName || 'مشتری متفرقه / گذری'}
+                    <span className="text-sm font-black text-slate-900 truncate">
+                      {customerName || 'مشتری متفرقه / گذری (نقدی)'}
                     </span>
-                    {selectedCustomerId && (
-                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-md">
-                        ثبت شده در سیستم
+                    {selectedCustomerId ? (
+                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-black px-2 py-0.5 rounded-md border border-emerald-200/80 flex items-center gap-1">
+                        <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+                        <span>ثبت شده در سیستم</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-md border border-slate-200">
+                        مشتری عمومی / فروش نقدی
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
-                    <span>شماره تماس: <b className="font-semibold">{customerPhone || 'نامشخص'}</b></span>
-                    {customerAddress && <span>• آدرس: {customerAddress.slice(0, 30)}...</span>}
+                  <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 flex-wrap">
+                    <span className="flex items-center gap-1">
+                      <span>شماره تماس:</span>
+                      <b className="font-mono font-semibold text-slate-700" dir="ltr">
+                        {customerPhone || 'نامشخص'}
+                      </b>
+                    </span>
+                    {customerAddress && (
+                      <span className="truncate max-w-xs text-slate-600">
+                        • آدرس: {customerAddress}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
                 <button
                   type="button"
                   onClick={() => {
                     setIsNewCustomerFormOpen(false);
                     setIsCustomerModalOpen(true);
                   }}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-white text-xs font-bold text-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-white text-xs font-extrabold text-slate-700 transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs hover:shadow-xs active:scale-95"
                 >
-                  <User className="w-3.5 h-3.5 text-slate-500" />
+                  <User className="w-4 h-4 text-slate-500" />
                   <span>انتخاب / تغییر مشتری</span>
                 </button>
                 <button
@@ -1625,60 +1754,154 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     setIsNewCustomerFormOpen(true);
                     setIsCustomerModalOpen(true);
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
                 >
-                  <UserPlus className="w-3.5 h-3.5" />
+                  <UserPlus className="w-4 h-4 text-emerald-400" />
                   <span>+ مشتری جدید</span>
                 </button>
               </div>
             </div>
 
-            {/* 2. Fast Item Addition Toolbar */}
-            <div className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs flex items-center justify-between gap-3">
-              {/* Action buttons */}
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <button
-                  type="button"
-                  id="btn-desktop-open-catalog"
-                  onClick={() => setIsProductCatalogOpen(true)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs flex items-center gap-2 transition-all shadow-xs cursor-pointer"
-                >
-                  <Package className="w-4 h-4 text-emerald-400" />
-                  <span>+ انتخاب کالا از کاتالوگ / انبار</span>
-                  <kbd className="px-1.5 py-0.5 bg-white/20 rounded text-[10px] font-mono">F2</kbd>
-                </button>
+            {/* 2. Fast Item Addition Toolbar (Optimized Layout for High-Productivity POS) */}
+            <div className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs flex flex-col gap-3">
+              {/* Top Row: Fast Search Bar + Direct Actions */}
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                {/* Search & Barcode Input with Autocomplete */}
+                <div className="relative flex-1 min-w-[280px]">
+                  <div className="relative flex items-center">
+                    <ScanLine className="w-4 h-4 text-emerald-600 absolute right-3.5 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={desktopFastSearch}
+                      onChange={(e) => setDesktopFastSearch(e.target.value)}
+                      onKeyDown={handleDesktopFastSearchKeyDown}
+                      placeholder="جستجوی سریع کالا / اسکن بارکد (نام، کد یا بارکد)... [Enter برای ثبت مستقیم]"
+                      className="w-full bg-slate-50 hover:bg-slate-100/60 focus:bg-white border border-slate-200 rounded-xl pr-10 pl-9 py-2 text-xs font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                    />
+                    {desktopFastSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setDesktopFastSearch('')}
+                        className="absolute left-3 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                        title="پاک کردن جستجو"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
 
-                <button
-                  type="button"
-                  id="btn-desktop-open-service"
-                  onClick={() => setIsServiceModalOpen(true)}
-                  className="px-4 py-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 font-extrabold text-xs flex items-center gap-2 transition-all cursor-pointer"
-                >
-                  <Shapes className="w-4 h-4 text-purple-600" />
-                  <span>+ افزودن آیتم خدماتی / بدون کالا</span>
-                </button>
+                  {/* Autocomplete Dropdown */}
+                  {desktopFastSearchResults.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-200 p-2 z-40 space-y-1 divide-y divide-slate-100 max-h-72 overflow-y-auto animate-in fade-in zoom-in-98 duration-100">
+                      <div className="px-2.5 py-1.5 text-[11px] font-black text-slate-500 flex items-center justify-between bg-slate-50 rounded-lg">
+                        <span>کالاهای منطبق با جستجو ({toPersianDigits(desktopFastSearchResults.length)} قلم):</span>
+                        <span className="text-[10px] text-slate-400">کلید Enter یا کلیک برای افزودن به فاکتور</span>
+                      </div>
+                      {desktopFastSearchResults.map((prod) => (
+                        <div
+                          key={prod.id}
+                          onClick={() => {
+                            if (prod.hasVariants && prod.variants && prod.variants.length > 0) {
+                              setVariantPickerProduct(prod);
+                            } else {
+                              handleAddProduct(prod);
+                            }
+                            setDesktopFastSearch('');
+                          }}
+                          className="p-2.5 hover:bg-emerald-50/80 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-colors group"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="font-black text-xs text-slate-900 group-hover:text-emerald-800 transition-colors">
+                              {prod.name}
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5 flex-wrap">
+                              {prod.code && <span className="font-mono bg-slate-100 px-1.5 py-0.2 rounded text-slate-700">#{prod.code}</span>}
+                              {prod.barcode && <span className="font-mono text-slate-400">بارکد: {prod.barcode}</span>}
+                              <span>•</span>
+                              <span>موجودی: <b className="text-slate-800">{toPersianDigits(prod.stock)} {prod.unit || ''}</b></span>
+                              <span>•</span>
+                              <span className="text-emerald-700 font-extrabold">{formatPrice(prod.sellPrice)}</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="px-3 py-1.5 bg-emerald-600 group-hover:bg-emerald-700 text-white text-[11px] font-black rounded-lg shrink-0 flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>افزودن</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Primary Action Buttons */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    id="btn-desktop-open-catalog"
+                    onClick={() => setIsProductCatalogOpen(true)}
+                    className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs flex items-center gap-2 transition-all shadow-xs cursor-pointer active:scale-95"
+                  >
+                    <Package className="w-4 h-4 text-emerald-400" />
+                    <span>+ کاتالوگ انبار</span>
+                    <kbd className="px-1.5 py-0.5 bg-white/20 rounded text-[10px] font-mono">F2</kbd>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="btn-desktop-open-service"
+                    onClick={() => setIsServiceModalOpen(true)}
+                    className="px-3.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                  >
+                    <Shapes className="w-4 h-4 text-purple-600" />
+                    <span>+ ثبت خدمات</span>
+                    <kbd className="px-1.5 py-0.5 bg-purple-200 text-purple-900 rounded text-[10px] font-mono">F3</kbd>
+                  </button>
+                </div>
               </div>
 
-              {/* Status and Clear button */}
-              <div className="flex items-center gap-3">
-                {items.length > 0 && (
-                  <div className="text-xs font-bold text-slate-500 hidden sm:flex items-center gap-1.5">
-                    <span>تعداد اقلام ثبت‌شده:</span>
-                    <strong className="text-slate-900 font-black font-mono bg-slate-100 px-2 py-0.5 rounded-md">
+              {/* Bottom Row: Information Stats Ribbon & Clear Button */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100 gap-3 flex-wrap">
+                {/* Stats Ribbon */}
+                <div className="flex items-center gap-2 text-xs flex-wrap">
+                  <div className="flex items-center gap-1.5 bg-slate-100/90 text-slate-700 px-2.5 py-1 rounded-lg font-bold border border-slate-200/80">
+                    <span className="text-slate-400 font-normal">تعداد اقلام:</span>
+                    <strong className="text-slate-900 font-black font-mono">
                       {toPersianDigits(items.length)}
                     </strong>
+                    <span className="text-[10px] text-slate-500">قلم</span>
                   </div>
-                )}
 
+                  <div className="flex items-center gap-1.5 bg-slate-100/90 text-slate-700 px-2.5 py-1 rounded-lg font-bold border border-slate-200/80">
+                    <span className="text-slate-400 font-normal">مجموع تعداد:</span>
+                    <strong className="text-slate-900 font-black font-mono">
+                      {toPersianDigits(items.reduce((acc, it) => acc + it.quantity, 0))}
+                    </strong>
+                    <span className="text-[10px] text-slate-500">واحد</span>
+                  </div>
+
+                  {subtotal > 0 && (
+                    <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-lg font-bold border border-emerald-200/60">
+                      <span className="text-emerald-600 font-normal">مجموع مبلغ ناخالص:</span>
+                      <strong className="text-emerald-900 font-black font-mono">
+                        {formatPrice(subtotal)}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+
+                {/* Clear Items Button */}
                 {items.length > 0 && (
                   <button
                     type="button"
                     onClick={handleClearAllItems}
                     title="پاکسازی تمامی اقلام فاکتور"
-                    className="px-3 py-2 rounded-xl hover:bg-rose-50 text-rose-600 border border-rose-200/80 transition-colors cursor-pointer text-xs font-bold flex items-center gap-1.5"
+                    className="px-3 py-1.5 rounded-xl hover:bg-rose-50 text-rose-600 border border-rose-200/80 hover:border-rose-300 transition-colors cursor-pointer text-xs font-black flex items-center gap-1.5 active:scale-95 shrink-0"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>پاکسازی اقلام</span>
+                    <span>پاکسازی کل فاکتور</span>
                   </button>
                 )}
               </div>
@@ -1788,9 +2011,17 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                                 </button>
                               </td>
 
-                              {/* Quantity Editor - Simple Textbox */}
+                              {/* Quantity Editor - Stepper & Direct Input */}
                               <td className="py-3 px-2 text-center">
-                                <div className="inline-flex items-center justify-center gap-1">
+                                <div className="inline-flex items-center justify-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/80 shadow-2xs">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAdjustQuantity(item.id, -1)}
+                                    className="w-6 h-6 rounded-md bg-white shadow-2xs text-slate-600 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors cursor-pointer active:scale-95"
+                                    title="کاهش تعداد"
+                                  >
+                                    <Minus className="w-3 h-3 stroke-[2.5]" />
+                                  </button>
                                   <input
                                     type="text"
                                     inputMode="numeric"
@@ -1813,11 +2044,19 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                                         handleSetQuantity(item.id, 1);
                                       }
                                     }}
-                                    className="w-16 h-8 bg-slate-50 hover:bg-white focus:bg-white rounded-lg border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-center font-extrabold text-xs text-slate-900 outline-none transition-all shadow-2xs"
+                                    className="w-11 h-6 bg-white rounded text-center font-black text-xs text-slate-900 outline-none border border-slate-200/60 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20"
                                     placeholder="۱"
                                   />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAdjustQuantity(item.id, 1)}
+                                    className="w-6 h-6 rounded-md bg-white shadow-2xs text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 flex items-center justify-center transition-colors cursor-pointer active:scale-95"
+                                    title="افزایش تعداد"
+                                  >
+                                    <Plus className="w-3 h-3 stroke-[2.5]" />
+                                  </button>
                                   {item.unit && (
-                                    <span className="text-[10px] text-slate-400 font-normal">
+                                    <span className="text-[10px] text-slate-500 font-bold px-1 hidden sm:inline">
                                       {item.unit}
                                     </span>
                                   )}

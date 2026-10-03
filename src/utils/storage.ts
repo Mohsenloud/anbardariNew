@@ -25,7 +25,8 @@ import {
   CustomerLedgerEntry,
   PublicCustomerRemittance,
   PublicCustomerDeposit,
-  PublicCustomerLedger
+  PublicCustomerLedger,
+  DEFAULT_PRINT_LAYOUT
 } from '../types';
 import { getCurrentJalaliDate, getCurrentJalaliTime } from './jalali';
 import {
@@ -513,6 +514,9 @@ const initialSettings: StoreSettings = {
   aiVoiceAutoMatchProducts: true,
   aiVoiceRequireAdminApproval: true,
   aiCustomPrompt: '',
+
+  // تنظیمات ابعاد، فونت‌ها و جدول چاپ و خروجی PDF
+  printLayout: DEFAULT_PRINT_LAYOUT,
 };
 
 const initialActivityLogs: ActivityLog[] = [
@@ -2302,6 +2306,10 @@ export const StorageService = {
       if (merged.autoApplyOfficialTax === undefined) {
         merged.autoApplyOfficialTax = true;
       }
+      merged.printLayout = {
+        ...DEFAULT_PRINT_LAYOUT,
+        ...(merged.printLayout || {}),
+      };
       return merged;
     } catch {
       return initialSettings;

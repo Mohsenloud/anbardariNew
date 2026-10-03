@@ -39,7 +39,8 @@ import {
   MessageSquare,
   Globe,
   Mic,
-  Cpu
+  Cpu,
+  Trash2
 } from 'lucide-react';
 import { PdfQualityPreset } from '../types';
 import { PDF_QUALITY_PRESETS } from '../utils/pdfHelper';
@@ -207,6 +208,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     reader.readAsText(file);
   };
 
+  // Handle store logo upload
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert('حجم فایل تصویر باید کمتر از ۲ مگابایت باشد.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        setFormData((prev) => ({ ...prev, logo: base64 }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   // Reset to default sample data
   const handleResetDefaults = () => {
     if (
@@ -295,6 +313,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     onChange={(e) => setFormData({ ...formData, sellerName: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                   />
+                </div>
+
+                {/* لوگوی اختصاصی فروشگاه */}
+                <div className="sm:col-span-2">
+                  <label className="block font-medium text-slate-700 mb-1">لوگوی اختصاصی فروشگاه (نمایش در سربرگ فاکتور و اسناد)</label>
+                  {formData.logo ? (
+                    <div className="flex items-center gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+                      <img 
+                        src={formData.logo} 
+                        alt="لوگوی فروشگاه" 
+                        className="w-14 h-14 object-contain bg-white rounded-lg border border-slate-200 p-1 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-slate-800">تصویر لوگو فعال است</div>
+                        <div className="text-[11px] text-slate-500">این نشان در سربرگ فاکتورهای چاپی و پورتال آنلاین مشتریان نمایش داده می‌شود.</div>
+                        <div className="flex items-center gap-3 mt-1.5">
+                          <label className="text-[11px] text-emerald-600 hover:text-emerald-700 font-semibold cursor-pointer">
+                            تغییر لوگو
+                            <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, logo: '' })}
+                            className="text-[11px] text-red-600 hover:text-red-700 font-semibold flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>حذف لوگو</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="flex items-center justify-center gap-2.5 border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-3.5 cursor-pointer bg-slate-50/60 hover:bg-emerald-50/20 transition-all text-slate-600">
+                      <Upload className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div className="text-center">
+                        <span className="text-xs font-bold text-slate-700">کلیک برای بارگذاری لوگوی فروشگاه</span>
+                        <span className="text-[10px] text-slate-500 block">فرمت‌های PNG، JPG، WebP، SVG (حداکثر ۲ مگابایت)</span>
+                      </div>
+                      <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                    </label>
+                  )}
                 </div>
 
                 <div className="sm:col-span-2">

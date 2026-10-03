@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import { StorageService } from './storage';
 import { PdfQualityPreset } from '../types';
 import { toPersianDigits } from './jalali';
+import { getPrintLayoutCssRules } from './printLayoutHelper';
 
 export interface LayoutMeta {
   headerBottomPx: number;
@@ -67,6 +68,7 @@ export interface PdfExportOptions {
   quality?: PdfQualityPreset;
   scale?: number;
   compression?: number;
+  marginMm?: number;
 }
 
 /**
@@ -927,7 +929,15 @@ export const printElementDirectly = (
 ): boolean => {
   const paperSize = options?.pageSize || 'a4';
   const orientation = options?.orientation || 'portrait';
-  const marginMm = paperSize === 'a5' ? 4 : 6;
+  
+  let resolvedMargin = options?.marginMm;
+  if (!resolvedMargin) {
+    try {
+      const s = StorageService.getSettings();
+      if (s?.printLayout?.pageMarginMm) resolvedMargin = s.printLayout.pageMarginMm;
+    } catch {}
+  }
+  const marginMm = resolvedMargin || (paperSize === 'a5' ? 4 : 6);
 
   const element = document.getElementById(elementId);
   if (!element) {
@@ -946,6 +956,7 @@ export const printElementDirectly = (
     const styleEl = document.createElement('style');
     styleEl.id = 'dynamic-direct-print-page-style';
     styleEl.innerHTML = `
+      ${getPrintLayoutCssRules('#' + elementId)}
       @media print {
         @page {
           size: ${paperSize.toUpperCase()} ${orientation} !important;
@@ -1003,7 +1014,15 @@ export const printElementInNewWindow = (
 
   const paperSize = options?.pageSize || 'a4';
   const orientation = options?.orientation || 'portrait';
-  const marginMm = paperSize === 'a5' ? 4 : 6;
+  
+  let resolvedMargin = options?.marginMm;
+  if (!resolvedMargin) {
+    try {
+      const s = StorageService.getSettings();
+      if (s?.printLayout?.pageMarginMm) resolvedMargin = s.printLayout.pageMarginMm;
+    } catch {}
+  }
+  const marginMm = resolvedMargin || (paperSize === 'a5' ? 4 : 6);
   const targetWidthPx = 
     paperSize === 'a5'
       ? (orientation === 'landscape' ? 850 : 600)
@@ -1035,6 +1054,7 @@ export const printElementInNewWindow = (
         <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
         ${styles}
         <style>
+          ${getPrintLayoutCssRules()}
           * {
             box-sizing: border-box;
             font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, sans-serif !important;

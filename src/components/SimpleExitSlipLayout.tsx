@@ -134,7 +134,7 @@ export const SimpleExitSlipLayout: React.FC<SimpleExitSlipLayoutProps> = ({
               <div className={`font-bold text-slate-700 ${
                 isA5Landscape ? 'text-[10px]' : isA5Portrait ? 'text-[11px]' : 'text-xs'
               }`}>
-                برگ خروج کالا از انبار (حواله تحویل فیزیکی اجناس)
+                حواله تحویل کالا (تحویل فیزیکی اجناس)
               </div>
             </div>
           </div>
@@ -144,26 +144,20 @@ export const SimpleExitSlipLayout: React.FC<SimpleExitSlipLayoutProps> = ({
             isA5Landscape ? 'px-2 py-0.5 min-w-[140px]' : isA5Portrait ? 'px-3 py-1 min-w-[160px]' : 'px-4 py-1.5 min-w-[190px]'
           }`}>
             <div className={`text-slate-500 font-semibold leading-none ${isA5Landscape ? 'text-[8.5px]' : 'text-[10px]'}`}>
-              شماره حواله خروج انبار
+              شماره حواله تحویل کالا
             </div>
             <div className={`font-black text-slate-950 tracking-wider font-['Vazirmatn'] my-0.5 ${
               isA5Landscape ? 'text-xs' : isA5Portrait ? 'text-sm' : 'text-base'
             }`}>
               {toPersianDigits(slipNumber)}
             </div>
-            {invoice.invoiceNumber && (
-              <div className={`text-slate-600 font-medium leading-none ${isA5Landscape ? 'text-[8.5px]' : 'text-[10px]'}`}>
-                عطف به فاکتور: <strong className="text-slate-800">{toPersianDigits(invoice.invoiceNumber)}</strong>
-              </div>
-            )}
           </div>
 
-          {/* چپ: تاریخ، ساعت، تلفن */}
+          {/* چپ: تاریخ، نوبت، تلفن */}
           <div className={`text-left text-slate-600 space-y-0.5 ${
             isA5Landscape ? 'text-[9px] min-w-[110px]' : isA5Portrait ? 'text-[10px] min-w-[130px]' : 'text-xs min-w-[150px]'
           }`}>
             <div>تاریخ: <strong className="text-slate-900 font-bold">{toPersianDigits(invoice.date)}</strong></div>
-            <div>ساعت: <strong className="text-slate-900 font-mono">{toPersianDigits(issuedTime)}</strong></div>
             <div>نوبت: <span className="font-semibold text-slate-800">{slipLog.printCount > 0 ? `نوبت ${toPersianDigits(slipLog.printCount + 1)}` : 'نسخه اول (اصل)'}</span></div>
             {settings.phone && <div>تلفن: <span className="font-mono text-slate-800">{toPersianDigits(settings.phone)}</span></div>}
           </div>

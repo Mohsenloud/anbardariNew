@@ -226,7 +226,7 @@ export function toEnglishDigits(str: number | string | null | undefined): string
 export function formatPrice(amount: number | null | undefined, currency = 'تومان', usePersianDigits = true): string {
   const safeAmount = Number(amount) || 0;
   const formatted = Math.round(safeAmount).toLocaleString('en-US');
-  const result = `${formatted} ${currency}`;
+  const result = currency ? `${formatted} ${currency}` : formatted;
   return usePersianDigits ? toPersianDigits(result) : result;
 }
 

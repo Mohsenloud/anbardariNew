@@ -9,6 +9,7 @@ import { ActivityLogsViewer } from './ActivityLogsViewer';
 import { BackupManager } from './BackupManager';
 import { WarehouseSettingsManager } from './WarehouseSettingsManager';
 import { CategoryManagerModal } from './CategoryManagerModal';
+import { PrintLayoutCustomizer } from './PrintLayoutCustomizer';
 import {
   testTelegramBotConnection,
   testTelegramMessage,
@@ -57,6 +58,7 @@ import {
   ChevronRight,
   FileDown,
   Sparkles,
+  Sliders,
   Send,
   Bot,
   Zap,
@@ -148,6 +150,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [webhookUrlInput, setWebhookUrlInput] = useState('');
   const [isSettingWebhook, setIsSettingWebhook] = useState(false);
   const [webhookStatus, setWebhookStatus] = useState<{ ok: boolean; message: string; info?: any } | null>(null);
+
+  // Print & PDF Layout Customization sub-tab
+  const [templatesSubTab, setTemplatesSubTab] = useState<'dimensions' | 'templates' | 'quality'>('dimensions');
 
   const handleTestAiConnection = async () => {
     setIsTestingAi(true);
@@ -430,7 +435,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           { id: 'logs', label: 'لاگ فعالیت و ردگیری رویدادها', icon: History },
           { id: 'modules', label: 'کنترل ماژول‌های سیستم', icon: SlidersHorizontal },
           { id: 'invoice', label: 'قوانین و رفتار فاکتورساز', icon: ReceiptText },
-          { id: 'templates', label: 'قالب‌های چاپ و کیفیت PDF', icon: Printer },
+          { id: 'templates', label: 'تنظیمات چاپ و خروجی PDF', icon: Printer },
           { id: 'telegram', label: 'ربات تلگرام (ارسال PDF)', icon: Send },
           { id: 'ai-voice', label: 'هوش مصنوعی و ویس تلگرام', icon: Mic },
           { id: 'weblink', label: 'نسخه آنلاین و لینک مشتری', icon: Globe },
@@ -1596,11 +1601,85 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           )}
 
-          {/* 4. TEMPLATES & PAYMENT METHODS (قالب‌های چاپ و روش‌های پرداخت) */}
+          {/* 4. TEMPLATES & PRINT / PDF CUSTOMIZER (تنظیمات چاپ و خروجی PDF) */}
           {activeSection === 'templates' && (
-            <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-8">
-              {/* Part A: Templates */}
-              <div className="space-y-4">
+            <div className="space-y-6">
+              {/* Navigation Sub-Tabs */}
+              <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setTemplatesSubTab('dimensions')}
+                  className={`flex-1 min-w-[210px] py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    templatesSubTab === 'dimensions'
+                      ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-200'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  <Sliders className="w-4 h-4" />
+                  <span>ابعاد، فونت‌ها و جدول چاپ (سایز ردیف، ستون و قلم)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTemplatesSubTab('templates')}
+                  className={`flex-1 min-w-[190px] py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    templatesSubTab === 'templates'
+                      ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-200'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>قالب‌های مجاز چاپ و روش‌های تسویه</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTemplatesSubTab('quality')}
+                  className={`flex-1 min-w-[190px] py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    templatesSubTab === 'quality'
+                      ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-200'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  <FileDown className="w-4 h-4" />
+                  <span>کیفیت و وضوح فایل خروجی PDF</span>
+                </button>
+
+                {/* Standalone Window Button */}
+                <a
+                  href={typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?live-preview=1` : '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs border border-slate-700 shrink-0"
+                  title="باز کردن پیش‌نمایش زنده در پنجره مستقل / مانیتور دوم با همگام‌سازی بلادرنگ"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>پنجره مستقل پیش‌نمایش</span>
+                </a>
+              </div>
+
+              {/* Sub-Tab 1: Dimensions, Fonts, Row & Column sizes (PrintLayoutCustomizer) */}
+              {templatesSubTab === 'dimensions' && (
+                <PrintLayoutCustomizer
+                  value={formData.printLayout}
+                  onChange={(newLayout) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      printLayout: newLayout,
+                      logo: newLayout.customLogoUrl !== undefined ? newLayout.customLogoUrl : prev.logo,
+                      invoiceFooterText: newLayout.customFooterNotes !== undefined ? newLayout.customFooterNotes : prev.invoiceFooterText,
+                    }));
+                  }}
+                  settings={formData}
+                  onSave={() => handleSave()}
+                />
+              )}
+
+              {/* Sub-Tab 2: Templates & Payment Methods */}
+              {templatesSubTab === 'templates' && (
+                <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-8 animate-in fade-in">
+                  {/* Part A: Templates */}
+                  <div className="space-y-4">
                 <div>
                   <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
                     <Printer className="w-5 h-5 text-emerald-600" />
@@ -1859,15 +1938,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                 </div>
               </div>
+            </div>
+          )}
 
-              {/* Part C: PDF Quality Settings for Invoices & Exit Slips */}
-              <div className="space-y-6 pt-6 border-t border-slate-100">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                      <FileDown className="w-5 h-5 text-indigo-600" />
-                      تنظیمات کیفیت فایل خروجی PDF (فاکتورها و حواله خروج انبار)
-                    </h3>
+              {/* Sub-Tab 3: PDF Quality Settings */}
+              {templatesSubTab === 'quality' && (
+                <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6 animate-in fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                        <FileDown className="w-5 h-5 text-indigo-600" />
+                        تنظیمات کیفیت فایل خروجی PDF (فاکتورها و حواله خروج انبار)
+                      </h3>
                     <p className="text-xs text-slate-500 mt-1">
                       میزان کیفیت تصویر، وضوح چاپ متون و حجم نهایی فایل‌های PDF را با توجه به سرعت اینترنت و نوع استفاده خود تنظیم نمایید.
                     </p>
@@ -2082,10 +2164,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+        )}
 
-          {/* 5. STORE IDENTITY (مشخصات فروشگاه و برند) */}
+        {/* 5. STORE IDENTITY (مشخصات فروشگاه و برند) */}
           {activeSection === 'store' && (
             <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
               <div>

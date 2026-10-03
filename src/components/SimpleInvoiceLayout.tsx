@@ -1,6 +1,7 @@
 import React from 'react';
 import { Invoice, StoreSettings } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
+import { getPrintLayoutCssVariables } from '../utils/printLayoutHelper';
 
 interface SimpleInvoiceLayoutProps {
   invoice: Invoice;
@@ -37,6 +38,7 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
 
   return (
     <div 
+      style={getPrintLayoutCssVariables(settings.printLayout, pageSize, orientation)}
       className={`simple-invoice-layout h-full flex-1 flex flex-col justify-between text-slate-900 font-sans leading-snug w-full ${
         isA5Landscape 
           ? 'space-y-1.5 text-[9.5px]' 
@@ -57,11 +59,24 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
         }`}>
           {/* راست: مشخصات فروشگاه */}
           <div className="flex items-center gap-2.5">
-            <span className={`rounded-lg bg-slate-900 text-white flex items-center justify-center font-black shrink-0 print:border print:border-slate-800 ${
-              isA5Landscape ? 'w-7 h-7 text-xs' : isA5Portrait ? 'w-8 h-8 text-sm' : 'w-9 h-9 text-base'
-            }`}>
-              {settings.storeName ? settings.storeName.charAt(0) : 'ف'}
-            </span>
+            {settings.printLayout?.showStoreLogo !== false && (
+              (settings.printLayout?.customLogoUrl || settings.logo) ? (
+                <img 
+                  src={settings.printLayout?.customLogoUrl || settings.logo} 
+                  alt={settings.storeName} 
+                  className={`object-contain bg-white rounded-lg border border-slate-200 shrink-0 ${
+                    isA5Landscape ? 'h-7 max-h-7 max-w-[80px]' : isA5Portrait ? 'h-8 max-h-8 max-w-[100px]' : 'h-10 max-h-10 max-w-[120px]'
+                  }`}
+                  style={settings.printLayout?.logoHeight ? { height: `${settings.printLayout.logoHeight}px`, maxHeight: `${settings.printLayout.logoHeight}px` } : undefined}
+                />
+              ) : (
+                <span className={`rounded-lg bg-slate-900 text-white flex items-center justify-center font-black shrink-0 print:border print:border-slate-800 ${
+                  isA5Landscape ? 'w-7 h-7 text-xs' : isA5Portrait ? 'w-8 h-8 text-sm' : 'w-9 h-9 text-base'
+                }`}>
+                  {settings.storeName ? settings.storeName.charAt(0) : 'ف'}
+                </span>
+              )
+            )}
             <div>
               <h1 className={`font-black text-slate-900 leading-tight ${
                 isA5Landscape ? 'text-sm' : isA5Portrait ? 'text-base' : isA4Landscape ? 'text-lg' : 'text-xl'
@@ -100,14 +115,14 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
             </div>
             <div className={`space-y-0.5 ${isA5Landscape ? 'text-[9px]' : isA5Portrait ? 'text-[10px]' : 'text-xs'}`}>
               <div className="flex justify-between items-center gap-2">
-                <span className="text-slate-600 font-medium">شماره سند:</span>
-                <span className="font-extrabold text-slate-900 tracking-wider font-['Vazirmatn']">
-                  {toPersianDigits(invoice.invoiceNumber)}
-                </span>
-              </div>
-              <div className="flex justify-between items-center gap-2">
                 <span className="text-slate-600 font-medium">تاریخ صدور:</span>
                 <span className="font-bold text-slate-900">{toPersianDigits(invoice.date)}</span>
+              </div>
+              <div className="flex justify-between items-center gap-2 pt-0.5">
+                <span className="text-slate-600 font-medium">شماره سند:</span>
+                <span className={`font-black text-slate-900 tracking-wider font-['Vazirmatn'] ${isA5Landscape ? 'text-[10px]' : isA5Portrait ? 'text-[11.5px]' : 'text-sm'}`}>
+                  {toPersianDigits(invoice.invoiceNumber)}
+                </span>
               </div>
               {invoice.dueDate && (
                 <div className="flex justify-between items-center gap-2">
@@ -219,16 +234,20 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
           <table className={`w-full text-right border-collapse ${tableFontSize}`}>
             <thead>
               <tr className="bg-slate-100 text-slate-900 font-bold border-b border-slate-700 divide-x divide-x-reverse divide-slate-400">
-                <th className={`${tableCellPy} ${tableCellPx} text-center w-8`}>ردیف</th>
-                <th className={`${tableCellPy} ${tableCellPx} text-center ${isA5 ? 'w-14' : 'w-20'}`}>کد کالا</th>
-                <th className={`${tableCellPy} ${tableCellPx} text-right`}>شرح کالا یا خدمات</th>
-                <th className={`${tableCellPy} ${tableCellPx} text-center ${isA5 ? 'w-12' : 'w-16'}`}>تعداد</th>
-                <th className={`${tableCellPy} ${tableCellPx} text-center ${isA5 ? 'w-10' : 'w-14'}`}>واحد</th>
-                <th className={`${tableCellPy} ${tableCellPx} text-left ${isA5 ? 'w-22' : 'w-28'}`}>قیمت واحد ({settings.currency})</th>
-                {hasDiscounts && (
-                  <th className={`${tableCellPy} ${tableCellPx} text-left ${isA5 ? 'w-16' : 'w-20'}`}>تخفیف</th>
+                <th className={`${tableCellPy} ${tableCellPx} text-center`} style={{ width: settings.printLayout?.colWidthIndex ? `${settings.printLayout.colWidthIndex}px` : '32px' }}>ردیف</th>
+                {settings.printLayout?.showItemCodeCol !== false && (
+                  <th className={`${tableCellPy} ${tableCellPx} text-center`} style={{ width: settings.printLayout?.colWidthCode ? `${settings.printLayout.colWidthCode}px` : (isA5 ? '56px' : '80px') }}>کد کالا</th>
                 )}
-                <th className={`${tableCellPy} ${tableCellPx} text-left ${isA5 ? 'w-24' : 'w-32'}`}>مبلغ کل ({settings.currency})</th>
+                <th className={`${tableCellPy} ${tableCellPx} text-right`}>شرح کالا یا خدمات</th>
+                <th className={`${tableCellPy} ${tableCellPx} text-center`} style={{ width: settings.printLayout?.colWidthQty ? `${settings.printLayout.colWidthQty}px` : (isA5 ? '48px' : '64px') }}>تعداد</th>
+                {settings.printLayout?.showItemUnitCol !== false && (
+                  <th className={`${tableCellPy} ${tableCellPx} text-center`} style={{ width: settings.printLayout?.colWidthUnit ? `${settings.printLayout.colWidthUnit}px` : (isA5 ? '40px' : '56px') }}>واحد</th>
+                )}
+                <th className={`${tableCellPy} ${tableCellPx} text-left`} style={{ width: settings.printLayout?.colWidthPrice ? `${settings.printLayout.colWidthPrice}px` : (isA5 ? '88px' : '112px') }}>قیمت واحد ({settings.currency})</th>
+                {hasDiscounts && settings.printLayout?.showItemDiscountCol !== false && (
+                  <th className={`${tableCellPy} ${tableCellPx} text-left`} style={{ width: settings.printLayout?.colWidthDiscount ? `${settings.printLayout.colWidthDiscount}px` : (isA5 ? '64px' : '80px') }}>تخفیف</th>
+                )}
+                <th className={`${tableCellPy} ${tableCellPx} text-left`} style={{ width: settings.printLayout?.colWidthTotal ? `${settings.printLayout.colWidthTotal}px` : (isA5 ? '135px' : '165px'), minWidth: isA5 ? '120px' : '150px' }}>مبلغ کل ({settings.currency})</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-300">
@@ -242,9 +261,11 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
                   <td className={`${tableCellPy} ${tableCellPx} text-center text-slate-700 font-medium font-['Vazirmatn']`}>
                     {toPersianDigits(idx + 1)}
                   </td>
-                  <td className={`${tableCellPy} ${tableCellPx} text-center text-slate-600 font-mono text-[10px]`}>
-                    {toPersianDigits(item.productCode || '---')}
-                  </td>
+                  {settings.printLayout?.showItemCodeCol !== false && (
+                    <td className={`${tableCellPy} ${tableCellPx} text-center text-slate-600 font-mono text-[10px]`}>
+                      {toPersianDigits(item.productCode || '---')}
+                    </td>
+                  )}
                   <td className={`${tableCellPy} ${tableCellPx} text-right`}>
                     <div className="font-bold text-slate-900">{item.productName}</div>
                     {item.variantName && (
@@ -256,18 +277,20 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
                   <td className={`${tableCellPy} ${tableCellPx} text-center font-black text-slate-900 font-['Vazirmatn']`}>
                     {toPersianDigits(item.quantity)}
                   </td>
-                  <td className={`${tableCellPy} ${tableCellPx} text-center text-slate-700`}>
-                    {item.unit || 'عدد'}
-                  </td>
+                  {settings.printLayout?.showItemUnitCol !== false && (
+                    <td className={`${tableCellPy} ${tableCellPx} text-center text-slate-700`}>
+                      {item.unit || 'عدد'}
+                    </td>
+                  )}
                   <td className={`${tableCellPy} ${tableCellPx} text-left font-medium text-slate-800 font-['Vazirmatn'] tabular-nums`}>
                     {formatPersianPrice(item.unitPrice)}
                   </td>
-                  {hasDiscounts && (
+                  {hasDiscounts && settings.printLayout?.showItemDiscountCol !== false && (
                     <td className={`${tableCellPy} ${tableCellPx} text-left text-slate-700 font-['Vazirmatn'] tabular-nums`}>
                       {(item.discount || 0) > 0 ? formatPersianPrice(item.discount || 0) : '۰'}
                     </td>
                   )}
-                  <td className={`${tableCellPy} ${tableCellPx} text-left font-black text-slate-900 font-['Vazirmatn'] tabular-nums`}>
+                  <td className={`${tableCellPy} ${tableCellPx} text-left font-black text-slate-900 font-['Vazirmatn'] tabular-nums`} style={{ width: settings.printLayout?.colWidthTotal ? `${settings.printLayout.colWidthTotal}px` : (isA5 ? '135px' : '165px'), minWidth: isA5 ? '120px' : '150px' }}>
                     {formatPersianPrice(item.total)}
                   </td>
                 </tr>
@@ -359,9 +382,11 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
             )}
 
             {/* متن پایانی و تشکر */}
-            <div className="text-slate-500 pt-0.5 border-t border-slate-200 text-[8.5px] sm:text-[9.5px]">
-              {settings.invoiceFooterText || 'از اعتماد و همکاری شما صمیمانه سپاسگزاریم.'}
-            </div>
+            {settings.printLayout?.showTermsBlock !== false && (
+              <div className="text-slate-500 pt-0.5 border-t border-slate-200 text-[8.5px] sm:text-[9.5px]">
+                {settings.printLayout?.customFooterNotes || settings.invoiceFooterText || 'از اعتماد و همکاری شما صمیمانه سپاسگزاریم.'}
+              </div>
+            )}
           </div>
 
           {/* ستون چپ: جدول محاسبات نهایی (Clean Totals Table) */}
@@ -438,33 +463,35 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
         </div>
 
         {/* محل مهر و امضای طرفین */}
-        <div className={`invoice-signatures pt-1.5 border-t-2 border-slate-700 grid grid-cols-2 gap-2.5 text-center ${
-          isA5Landscape ? 'text-[9px]' : isA5Portrait ? 'text-[10px]' : 'text-xs'
-        }`}>
-          <div className={`border border-slate-300 rounded-lg p-2 bg-slate-50/70 flex flex-col justify-between ${signatureHeight}`}>
-            <div>
-              <div className="font-black text-slate-900">مهر و امضای خریدار</div>
-              <div className="text-slate-600 mt-0.5 text-[9px] sm:text-[10px]">
-                {invoice.customerName || 'خریدار محترم'}
+        {settings.printLayout?.showSignaturesBlock !== false && (
+          <div className={`invoice-signatures pt-1.5 border-t-2 border-slate-700 grid grid-cols-2 gap-2.5 text-center ${
+            isA5Landscape ? 'text-[9px]' : isA5Portrait ? 'text-[10px]' : 'text-xs'
+          }`}>
+            <div className={`border border-slate-300 rounded-lg p-2 bg-slate-50/70 flex flex-col justify-between ${signatureHeight}`}>
+              <div>
+                <div className="font-black text-slate-900">مهر و امضای خریدار</div>
+                <div className="text-slate-600 mt-0.5 text-[9px] sm:text-[10px]">
+                  {invoice.customerName || 'خریدار محترم'}
+                </div>
+              </div>
+              <div className="border-t border-dashed border-slate-300 pt-1 text-[8.5px] text-slate-400">
+                کالا صحیح و سالم و مطابق فاکتور تحویل گرفته شد
               </div>
             </div>
-            <div className="border-t border-dashed border-slate-300 pt-1 text-[8.5px] text-slate-400">
-              کالا صحیح و سالم و مطابق فاکتور تحویل گرفته شد
-            </div>
-          </div>
 
-          <div className={`border border-slate-300 rounded-lg p-2 bg-slate-50/70 flex flex-col justify-between ${signatureHeight}`}>
-            <div>
-              <div className="font-black text-slate-900">مهر و امضای فروشنده</div>
-              <div className="text-slate-600 mt-0.5 text-[9px] sm:text-[10px]">
-                {settings.storeName}
+            <div className={`border border-slate-300 rounded-lg p-2 bg-slate-50/70 flex flex-col justify-between ${signatureHeight}`}>
+              <div>
+                <div className="font-black text-slate-900">مهر و امضای فروشنده</div>
+                <div className="text-slate-600 mt-0.5 text-[9px] sm:text-[10px]">
+                  {settings.storeName}
+                </div>
+              </div>
+              <div className="border-t border-dashed border-slate-300 pt-1 text-[8.5px] text-slate-400">
+                تایید صحت صدور فاکتور و ترخیص اجناس
               </div>
             </div>
-            <div className="border-t border-dashed border-slate-300 pt-1 text-[8.5px] text-slate-400">
-              تایید صحت صدور فاکتور و ترخیص اجناس
-            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
