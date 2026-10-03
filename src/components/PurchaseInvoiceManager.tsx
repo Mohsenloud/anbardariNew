@@ -26,7 +26,8 @@ import {
   PackageCheck,
   ArrowRight,
   Filter,
-  Check
+  Check,
+  Edit3
 } from 'lucide-react';
 
 interface PurchaseInvoiceManagerProps {
@@ -59,6 +60,7 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
 
   // Modals
   const [isNewPurchaseModalOpen, setIsNewPurchaseModalOpen] = useState(false);
+  const [editingPurchaseInvoice, setEditingPurchaseInvoice] = useState<PurchaseInvoice | null>(null);
   const [viewingPurchaseInvoice, setViewingPurchaseInvoice] = useState<PurchaseInvoice | null>(null);
   const [invoiceToDelete, setInvoiceToDelete] = useState<PurchaseInvoice | null>(null);
 
@@ -369,6 +371,17 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
                       </button>
                     )}
 
+                    {/* Edit Invoice */}
+                    <button
+                      type="button"
+                      onClick={() => setEditingPurchaseInvoice(inv)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 text-xs font-semibold transition-all cursor-pointer"
+                      title="ویرایش مشخصات و اقلام فاکتور خرید"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>ویرایش</span>
+                    </button>
+
                     {/* View/Print Invoice */}
                     <button
                       type="button"
@@ -396,17 +409,22 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
         </div>
       )}
 
-      {/* New Purchase Invoice Modal */}
-      {isNewPurchaseModalOpen && (
+      {/* New / Edit Purchase Invoice Modal */}
+      {(isNewPurchaseModalOpen || editingPurchaseInvoice) && (
         <NewPurchaseInvoiceModal
           products={products}
           settings={settings}
           currentUser={currentUser}
           previousSuppliers={previousSuppliers}
-          onClose={() => setIsNewPurchaseModalOpen(false)}
-          onSavePurchase={(newInv, newRec, newProds) => {
-            onSavePurchaseInvoice(newInv, newRec, newProds);
+          editingInvoice={editingPurchaseInvoice}
+          onClose={() => {
             setIsNewPurchaseModalOpen(false);
+            setEditingPurchaseInvoice(null);
+          }}
+          onSavePurchase={(savedInv, savedRec, newProds) => {
+            onSavePurchaseInvoice(savedInv, savedRec, newProds);
+            setIsNewPurchaseModalOpen(false);
+            setEditingPurchaseInvoice(null);
           }}
         />
       )}
@@ -418,6 +436,10 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
           settings={settings}
           currentUser={currentUser}
           onClose={() => setViewingPurchaseInvoice(null)}
+          onEdit={(inv) => {
+            setViewingPurchaseInvoice(null);
+            setEditingPurchaseInvoice(inv);
+          }}
           onOpenReceipt={(receiptId) => {
             if (onNavigateToWarehouseReceipt) {
               onNavigateToWarehouseReceipt(receiptId);

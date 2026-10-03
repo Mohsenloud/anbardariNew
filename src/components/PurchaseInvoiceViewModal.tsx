@@ -22,7 +22,8 @@ import {
   Check,
   Hash,
   Calendar,
-  Warehouse
+  Warehouse,
+  Edit3
 } from 'lucide-react';
 
 interface PurchaseInvoiceViewModalProps {
@@ -31,6 +32,7 @@ interface PurchaseInvoiceViewModalProps {
   currentUser?: AppUser;
   onClose: () => void;
   onOpenReceipt?: (receiptId: string) => void;
+  onEdit?: (invoice: PurchaseInvoice) => void;
 }
 
 export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> = ({
@@ -39,6 +41,7 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
   currentUser,
   onClose,
   onOpenReceipt,
+  onEdit,
 }) => {
   const [pageSize, setPageSize] = useState<'a4' | 'a5'>('a4');
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
@@ -264,6 +267,22 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
               >
                 <span>حواله انبار</span>
                 <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+              </button>
+            )}
+
+            {/* Edit Invoice Button */}
+            {onEdit && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onEdit(invoice);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all cursor-pointer"
+                title="ویرایش اقلام و مشخصات این فاکتور خرید"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>ویرایش فاکتور</span>
               </button>
             )}
 

@@ -1167,19 +1167,27 @@ export default function App() {
       newProductsCreated.forEach((p) => StorageService.saveProduct(p));
     }
 
+    const isEdit = purchaseInvoices.some((p) => p.id === newPurchaseInvoice.id);
+
     StorageService.savePurchaseInvoice(newPurchaseInvoice);
-    StorageService.saveInboundReceipt(newInboundReceipt);
+    if (newInboundReceipt) {
+      StorageService.saveInboundReceipt(newInboundReceipt);
+    }
     loadData(true);
 
     StorageService.logActivity({
       category: 'purchase',
-      actionType: 'create_purchase_invoice',
-      actionTitle: 'ثبت فاکتور خرید و صدور حواله ورود',
-      details: `ثبت فاکتور خرید ${newPurchaseInvoice.invoiceNumber} از «${newPurchaseInvoice.supplierName}» به مبلغ ${newPurchaseInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency} و صدور حواله ورود ${newInboundReceipt.receiptNumber}`,
+      actionType: isEdit ? 'edit_purchase_invoice' : 'create_purchase_invoice',
+      actionTitle: isEdit ? 'ویرایش فاکتور خرید' : 'ثبت فاکتور خرید و صدور حواله ورود',
+      details: isEdit 
+        ? `ویرایش فاکتور خرید ${newPurchaseInvoice.invoiceNumber} از «${newPurchaseInvoice.supplierName}» به مبلغ ${newPurchaseInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency}`
+        : `ثبت فاکتور خرید ${newPurchaseInvoice.invoiceNumber} از «${newPurchaseInvoice.supplierName}» به مبلغ ${newPurchaseInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency} و صدور حواله ورود ${newInboundReceipt.receiptNumber}`,
     });
 
     showToast(
-      `فاکتور خرید شماره ${newPurchaseInvoice.invoiceNumber} ثبت شد و حواله ورود ${newInboundReceipt.receiptNumber} به انبار ارسال گردید.`
+      isEdit
+        ? `تغییرات فاکتور خرید شماره ${newPurchaseInvoice.invoiceNumber} با موفقیت ذخیره شد.`
+        : `فاکتور خرید شماره ${newPurchaseInvoice.invoiceNumber} ثبت شد و حواله ورود ${newInboundReceipt.receiptNumber} به انبار ارسال گردید.`
     );
   };
 

@@ -647,6 +647,7 @@ export interface InboundReceipt {
     chatId?: number | string;
   };
   createdAt: string;
+  updatedAt?: string;
 }
 
 export type ActivityActionCategory = 

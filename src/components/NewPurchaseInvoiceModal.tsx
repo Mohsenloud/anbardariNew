@@ -45,6 +45,7 @@ interface NewPurchaseInvoiceModalProps {
   currentUser?: AppUser;
   lastInvoiceNumber?: string;
   previousSuppliers?: string[];
+  editingInvoice?: PurchaseInvoice | null;
   onClose: () => void;
   onSavePurchase: (
     purchaseInvoice: PurchaseInvoice,
@@ -59,24 +60,31 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
   currentUser,
   lastInvoiceNumber,
   previousSuppliers = [],
+  editingInvoice,
   onClose,
   onSavePurchase,
 }) => {
-  // Generate sequential numbers for invoice and warehouse receipt
-  const [invoiceNumber, setInvoiceNumber] = useState(() => StorageService.getNextPurchaseInvoiceNumber());
-  const [date, setDate] = useState(() => getCurrentJalaliDate());
-  const [dueDate, setDueDate] = useState('');
+  const isEditing = !!editingInvoice;
+
+  // Generate sequential numbers for invoice and warehouse receipt or use editingInvoice
+  const [invoiceNumber, setInvoiceNumber] = useState(() => 
+    editingInvoice?.invoiceNumber || StorageService.getNextPurchaseInvoiceNumber()
+  );
+  const [date, setDate] = useState(() => editingInvoice?.date || getCurrentJalaliDate());
+  const [dueDate, setDueDate] = useState(() => editingInvoice?.dueDate || '');
 
   // Supplier state
-  const [supplierName, setSupplierName] = useState('');
-  const [supplierPhone, setSupplierPhone] = useState('');
-  const [supplierAddress, setSupplierAddress] = useState('');
-  const [supplierEconomicCode, setSupplierEconomicCode] = useState('');
+  const [supplierName, setSupplierName] = useState(() => editingInvoice?.supplierName || '');
+  const [supplierPhone, setSupplierPhone] = useState(() => editingInvoice?.supplierPhone || '');
+  const [supplierAddress, setSupplierAddress] = useState(() => editingInvoice?.supplierAddress || '');
+  const [supplierEconomicCode, setSupplierEconomicCode] = useState(() => editingInvoice?.supplierEconomicCode || '');
 
   // Supplier dropdown search & details UI states
   const [isSupplierDropdownOpen, setIsSupplierDropdownOpen] = useState(false);
   const [supplierSearchInput, setSupplierSearchInput] = useState('');
-  const [showOptionalDetails, setShowOptionalDetails] = useState(false);
+  const [showOptionalDetails, setShowOptionalDetails] = useState(() => 
+    !!(editingInvoice && (editingInvoice.supplierPhone || editingInvoice.supplierAddress || editingInvoice.supplierEconomicCode || editingInvoice.dueDate))
+  );
   const supplierDropdownRef = useRef<HTMLDivElement>(null);
 
   // Close supplier dropdown when clicking outside
@@ -169,6 +177,9 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
 
   // Items in purchase invoice
   const [items, setItems] = useState<PurchaseInvoiceItem[]>(() => {
+    if (editingInvoice && editingInvoice.items && editingInvoice.items.length > 0) {
+      return editingInvoice.items;
+    }
     const firstProd = products[0];
     return [
       {
@@ -186,19 +197,23 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
   });
 
   // Financials
-  const [taxRate, setTaxRate] = useState<number>(0);
-  const [shippingCost, setShippingCost] = useState<number>(0);
-  const [overallDiscount, setOverallDiscount] = useState<number>(0);
+  const [taxRate, setTaxRate] = useState<number>(() => editingInvoice?.taxRate || 0);
+  const [shippingCost, setShippingCost] = useState<number>(() => editingInvoice?.shippingCost || 0);
+  const [overallDiscount, setOverallDiscount] = useState<number>(() => {
+    if (!editingInvoice) return 0;
+    const itemsDisc = editingInvoice.items?.reduce((s, it) => s + (it.discount || 0), 0) || 0;
+    return Math.max(0, (editingInvoice.totalDiscount || 0) - itemsDisc);
+  });
 
   // Payment configuration
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('paid');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('transfer');
-  const [paidAmount, setPaidAmount] = useState<number>(0);
-  const [chequeNumber, setChequeNumber] = useState('');
-  const [chequeDueDate, setChequeDueDate] = useState('');
-  const [chequeName, setChequeName] = useState('');
-  const [transferDescription, setTransferDescription] = useState('');
-  const [notes, setNotes] = useState('');
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(() => editingInvoice?.paymentStatus || 'paid');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(() => editingInvoice?.paymentMethod || 'transfer');
+  const [paidAmount, setPaidAmount] = useState<number>(() => editingInvoice?.paidAmount || 0);
+  const [chequeNumber, setChequeNumber] = useState(() => editingInvoice?.chequeNumber || '');
+  const [chequeDueDate, setChequeDueDate] = useState(() => editingInvoice?.chequeDueDate || '');
+  const [chequeName, setChequeName] = useState(() => editingInvoice?.chequeName || '');
+  const [transferDescription, setTransferDescription] = useState(() => editingInvoice?.transferDescription || '');
+  const [notes, setNotes] = useState(() => editingInvoice?.notes || '');
 
   // Quick product creation modal inside purchase
   const [isQuickProductModalOpen, setIsQuickProductModalOpen] = useState(false);
@@ -358,12 +373,45 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
       return;
     }
 
-    const purchaseId = `pur-${Date.now()}`;
-    const receiptId = `inb-${Date.now()}`;
+    const purchaseId = editingInvoice?.id || `pur-${Date.now()}`;
+    const receiptId = editingInvoice?.inboundReceiptId || `inb-${Date.now()}`;
     const receiptNumber = StorageService.getNextInboundReceiptNumber();
 
     // 1. Build Inbound Warehouse Receipt (GRN)
-    const inboundReceipt: InboundReceipt = {
+    let existingReceipt: InboundReceipt | undefined;
+    if (editingInvoice?.inboundReceiptId) {
+      try {
+        existingReceipt = StorageService.getInboundReceipts().find((r) => r.id === editingInvoice.inboundReceiptId);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    const inboundReceipt: InboundReceipt = existingReceipt ? {
+      ...existingReceipt,
+      purchaseInvoiceNumber: invoiceNumber.trim(),
+      supplierName: supplierName.trim(),
+      date,
+      items: items.map((item, idx) => {
+        const existingItem = existingReceipt?.items.find((ri) => ri.productId === item.productId);
+        const received = existingItem ? existingItem.receivedQuantity : 0;
+        return {
+          id: existingItem?.id || `rec-item-${Date.now()}-${idx}`,
+          productId: item.productId,
+          productName: item.productName,
+          productCode: item.productCode,
+          unit: item.unit,
+          expectedQuantity: item.quantity,
+          receivedQuantity: received,
+          discrepancy: received - item.quantity,
+          buyPrice: item.buyPrice,
+        };
+      }),
+      totalExpectedQuantity: items.reduce((sum, i) => sum + i.quantity, 0),
+      totalDiscrepancy: existingReceipt.items ? (existingReceipt.totalReceivedQuantity - items.reduce((sum, i) => sum + i.quantity, 0)) : -items.reduce((sum, i) => sum + i.quantity, 0),
+      notes: notes.trim() || existingReceipt.notes || `رسید ورود انبار متناظر با فاکتور خرید ${invoiceNumber.trim()}`,
+      updatedAt: new Date().toISOString(),
+    } : {
       id: receiptId,
       receiptNumber,
       purchaseInvoiceId: purchaseId,
@@ -414,9 +462,10 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
       chequeName: chequeName.trim() || undefined,
       transferDescription: transferDescription.trim() || undefined,
       notes: notes.trim() || undefined,
-      status: 'pending_receipt',
+      status: editingInvoice?.status || 'pending_receipt',
       inboundReceiptId: receiptId,
-      createdAt: new Date().toISOString(),
+      createdAt: editingInvoice?.createdAt || new Date().toISOString(),
+      updatedAt: isEditing ? new Date().toISOString() : undefined,
     };
 
     onSavePurchase(purchaseInvoice, inboundReceipt, createdNewProducts);
@@ -435,14 +484,14 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-sm sm:text-base font-black text-white">
-                  ثبت فاکتور خرید کالا
+                  {isEditing ? `ویرایش فاکتور خرید ${toPersianDigits(invoiceNumber)}` : 'ثبت فاکتور خرید کالا'}
                 </h2>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  ورود به انبار
+                  {isEditing ? 'حالت ویرایش' : 'ورود به انبار'}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                ثبت اقلام خریداری‌شده و صدور خودکار حواله ورود کالا جهت تایید انباردار
+                {isEditing ? 'اصلاح مشخصات فاکتور، اقلام و شرایط تسویه تامین‌کننده' : 'ثبت اقلام خریداری‌شده و صدور خودکار حواله ورود کالا جهت تایید انباردار'}
               </p>
             </div>
           </div>
@@ -1070,7 +1119,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
               className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-xs sm:text-sm shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
             >
               <Check className="w-4 h-4 stroke-[2.5]" />
-              <span>ثبت فاکتور خرید و صدور حواله ورود به انبار</span>
+              <span>{isEditing ? 'ذخیره تغییرات فاکتور خرید' : 'ثبت فاکتور خرید و صدور حواله ورود به انبار'}</span>
             </button>
           </div>
         </form>
