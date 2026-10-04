@@ -12,10 +12,11 @@ import {
   ExternalLink,
   MessageSquare,
   Building2,
-  User
+  User,
+  Zap
 } from 'lucide-react';
 import { StoreSettings } from '../types';
-import { isTelegramConfigured, sendPdfToTelegram } from '../utils/telegramService';
+import { isTelegramConfigured, sendPdfToTelegram, sendTelegramTextMessage } from '../utils/telegramService';
 import { toPersianDigits } from '../utils/jalali';
 
 interface TelegramSendPdfModalProps {
@@ -49,6 +50,9 @@ export const TelegramSendPdfModal: React.FC<TelegramSendPdfModalProps> = ({
   type DestinationType = 'default' | 'customer' | 'custom';
   const [destType, setDestType] = useState<DestinationType>(
     customerTelegramChatId ? 'customer' : 'default'
+  );
+  const [sendFormat, setSendFormat] = useState<'text_only' | 'pdf'>(
+    settings?.telegramSendMode === 'text_only' ? 'text_only' : 'pdf'
   );
   const [customChatId, setCustomChatId] = useState<string>('');
   const [caption, setCaption] = useState<string>(defaultCaption);
@@ -84,39 +88,62 @@ export const TelegramSendPdfModal: React.FC<TelegramSendPdfModalProps> = ({
     setStatus({ type: 'idle' });
 
     try {
-      // 1. Generate the PDF Blob
-      const pdfResult = await pdfBlobGenerator();
-      if (!pdfResult.success || !pdfResult.blob) {
-        setStatus({
-          type: 'error',
-          message: pdfResult.error || 'خطا در ایجاد فایل PDF برای ارسال.',
+      if (sendFormat === 'text_only') {
+        // ۱. ارسال فقط متنی بدون نیاز به ساخت فایل PDF (فوق‌سریع و بدون فیلتر)
+        const response = await sendTelegramTextMessage({
+          botToken: settings?.telegramBotToken,
+          chatId: targetChatId,
+          text: caption.trim() || defaultCaption,
         });
-        setIsSending(false);
-        return;
-      }
 
-      // 2. Send via server proxy to Telegram Bot API
-      const response = await sendPdfToTelegram({
-        botToken: settings?.telegramBotToken,
-        chatId: targetChatId,
-        pdfBlob: pdfResult.blob,
-        filename: defaultFilename,
-        caption: caption.trim(),
-      });
-
-      if (response.success) {
-        setStatus({
-          type: 'success',
-          message: response.message || 'فایل PDF با موفقیت به تلگرام ارسال شد.',
-        });
-        setTimeout(() => {
-          onClose();
-        }, 2200);
+        if (response.success) {
+          setStatus({
+            type: 'success',
+            message: 'گزارش متنی با موفقیت به تلگرام ارسال گردید.',
+          });
+          setTimeout(() => {
+            onClose();
+          }, 2000);
+        } else {
+          setStatus({
+            type: 'error',
+            message: response.error || 'ارسال متن به تلگرام ناموفق بود.',
+          });
+        }
       } else {
-        setStatus({
-          type: 'error',
-          message: response.error || 'ارسال به تلگرام ناموفق بود.',
+        // ۲. ارسال فایل PDF به همراه کپشن
+        const pdfResult = await pdfBlobGenerator();
+        if (!pdfResult.success || !pdfResult.blob) {
+          setStatus({
+            type: 'error',
+            message: pdfResult.error || 'خطا در ایجاد فایل PDF برای ارسال.',
+          });
+          setIsSending(false);
+          return;
+        }
+
+        const response = await sendPdfToTelegram({
+          botToken: settings?.telegramBotToken,
+          chatId: targetChatId,
+          pdfBlob: pdfResult.blob,
+          filename: defaultFilename,
+          caption: caption.trim(),
         });
+
+        if (response.success) {
+          setStatus({
+            type: 'success',
+            message: response.message || 'فایل PDF با موفقیت به تلگرام ارسال شد.',
+          });
+          setTimeout(() => {
+            onClose();
+          }, 2200);
+        } else {
+          setStatus({
+            type: 'error',
+            message: response.error || 'ارسال به تلگرام ناموفق بود.',
+          });
+        }
       }
     } catch (err: any) {
       setStatus({
@@ -322,14 +349,49 @@ export const TelegramSendPdfModal: React.FC<TelegramSendPdfModalProps> = ({
                 </div>
               </div>
 
-              {/* Caption Text Box */}
+              {/* Send Format Switcher (Text Only vs PDF) */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-700 block">
+                  فرمت ارسال به تلگرام:
+                </label>
+                <div className="p-1 bg-slate-100 rounded-xl flex items-center gap-1 border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setSendFormat('text_only')}
+                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      sendFormat === 'text_only'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>فقط گزارش متنی (سریع و بدون فیلتر)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSendFormat('pdf')}
+                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      sendFormat === 'pdf'
+                        ? 'bg-[#229ED9] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>ارسال فایل رسمی PDF</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Caption / Text Report Box */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="font-bold text-slate-700 flex items-center gap-1">
                     <MessageSquare className="w-3.5 h-3.5 text-slate-500" />
-                    <span>متن کپشن پیام ارسالی:</span>
+                    <span>{sendFormat === 'text_only' ? 'متن گزارش ارسالی به تلگرام:' : 'متن کپشن پیام ارسالی:'}</span>
                   </label>
-                  <span className="text-[10px] text-slate-400">همراه با فایل PDF ارسال می‌شود</span>
+                  <span className="text-[10px] text-slate-400">
+                    {sendFormat === 'text_only' ? 'متن به صورت پیام تلگرام ارسال می‌شود' : 'همراه با فایل PDF ارسال می‌شود'}
+                  </span>
                 </div>
                 <textarea
                   rows={4}
@@ -339,16 +401,28 @@ export const TelegramSendPdfModal: React.FC<TelegramSendPdfModalProps> = ({
                 />
               </div>
 
-              {/* PDF File Attachment Badge */}
-              <div className="p-2.5 bg-slate-100 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 text-slate-700">
-                  <FileText className="w-4 h-4 text-rose-600" />
-                  <span className="font-mono text-[11px] font-bold text-slate-800">{defaultFilename}</span>
+              {/* Format Badge */}
+              {sendFormat === 'pdf' ? (
+                <div className="p-2.5 bg-slate-100 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 text-slate-700">
+                    <FileText className="w-4 h-4 text-rose-600" />
+                    <span className="font-mono text-[11px] font-bold text-slate-800">{defaultFilename}</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
+                    فرمت استاندارد PDF
+                  </span>
                 </div>
-                <span className="text-[10px] text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
-                  فرمت استاندارد PDF
-                </span>
-              </div>
+              ) : (
+                <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-between text-xs text-emerald-800">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-emerald-600" />
+                    <span className="font-bold">ارسال متن خلاصه گزارش (بدون نیاز به ساخت PDF)</span>
+                  </div>
+                  <span className="text-[10px] bg-emerald-200/70 text-emerald-900 px-2 py-0.5 rounded font-bold">
+                    فوق‌سریع
+                  </span>
+                </div>
+              )}
 
               {/* Status Alert */}
               {status.type === 'error' && (
@@ -385,17 +459,26 @@ export const TelegramSendPdfModal: React.FC<TelegramSendPdfModalProps> = ({
               type="button"
               onClick={handleSend}
               disabled={isSending || status.type === 'success'}
-              className="w-full sm:w-auto px-5 py-2 rounded-xl bg-[#229ED9] hover:bg-[#1e8ec4] active:scale-98 text-white font-bold transition-all shadow-md shadow-blue-500/20 cursor-pointer flex items-center justify-center gap-2 text-xs disabled:opacity-50"
+              className={`w-full sm:w-auto px-5 py-2.5 rounded-xl text-white font-bold transition-all shadow-md active:scale-98 cursor-pointer flex items-center justify-center gap-2 text-xs disabled:opacity-50 ${
+                sendFormat === 'text_only'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20'
+                  : 'bg-[#229ED9] hover:bg-[#1e8ec4] shadow-blue-500/20'
+              }`}
             >
               {isSending ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>در حال ایجاد PDF و ارسال به تلگرام...</span>
+                  <span>{sendFormat === 'text_only' ? 'در حال ارسال پیام متنی به تلگرام...' : 'در حال ایجاد PDF و ارسال به تلگرام...'}</span>
                 </>
               ) : status.type === 'success' ? (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>ارسال شد!</span>
+                  <span>با موفقیت ارسال شد!</span>
+                </>
+              ) : sendFormat === 'text_only' ? (
+                <>
+                  <Zap className="w-4 h-4" />
+                  <span>ارسال مستقیم گزارش متنی به تلگرام</span>
                 </>
               ) : (
                 <>

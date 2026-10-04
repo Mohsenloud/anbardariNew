@@ -314,11 +314,18 @@ export interface StoreSettings {
   telegramBotEnabled?: boolean; // فعال بودن قابلیت ارسال مستقیم به تلگرام
   telegramBotToken?: string; // توکن ربات تلگرام (از @BotFather)
   telegramChatId?: string; // چت‌آیدی، شناسه گروه یا کانال پیش‌فرض تلگرام
-  telegramAutoSendInvoice?: boolean; // ارسال خودکار فایل PDF فاکتور پس از ثبت و تایید قطعی
+  telegramSendMode?: 'text_only' | 'pdf_with_caption' | 'both'; // حالت ارسال: فقط متن | PDF به همراه متن | هر دو
+  telegramAutoSendInvoice?: boolean; // ارسال خودکار فاکتور فروش پس از ثبت و تایید قطعی
+  telegramAutoSendProforma?: boolean; // ارسال خودکار پیش‌فاکتور به محض صدور
+  telegramAutoSendPurchaseInvoice?: boolean; // ارسال خودکار فاکتور خرید کالا به محض ثبت
   telegramAutoSendOnlyConfirmed?: boolean; // ارسال خودکار فاکتور فقط پس از تایید نهایی (عدم ارسال پیش‌فاکتور بدون تایید)
   telegramAutoSendOnProformaConvert?: boolean; // ارسال خودکار به محض تایید و تبدیل پیش‌فاکتور به فاکتور قطعی
-  telegramAutoSendExitSlip?: boolean; // ارسال خودکار فایل PDF حواله خروج پس از تایید تحویل و بارگیری بار
-  telegramAutoSendInboundReceipt?: boolean; // ارسال خودکار رسید ورود انبار پس از تایید و شمارش انباردار
+  telegramAutoSendExitSlip?: boolean; // ارسال خودکار حواله خروج
+  telegramAutoSendExitSlipIssue?: boolean; // ارسال خودکار به محض صدور حواله خروج
+  telegramAutoSendExitSlipConfirm?: boolean; // ارسال خودکار پس از تایید تحویل و خروج بار
+  telegramAutoSendInboundReceipt?: boolean; // ارسال خودکار حواله ورود انبار
+  telegramAutoSendInboundReceiptIssue?: boolean; // ارسال خودکار به محض ثبت فاکتور خرید و صدور حواله ورود
+  telegramAutoSendInboundReceiptConfirm?: boolean; // ارسال خودکار پس از تایید و شمارش انباردار
   telegramAutoSendCustomerDirect?: boolean; // اولویت ارسال به تلگرام اختصاصی مشتری در صورت ثبت چت‌آیدی مشتری
   // تنظیمات سایز و جهت کاغذ در ارسال خودکار به تلگرام
   telegramInvoicePageSize?: 'a4' | 'a5'; // سایز کاغذ فاکتور ارسالی به تلگرام (A4 یا A5)

@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { Invoice, ExitSlipData, StoreSettings, AppUser, InboundReceipt } from '../types';
+import { Invoice, ExitSlipData, StoreSettings, AppUser, InboundReceipt, PurchaseInvoice } from '../types';
 import { toPersianDigits, formatPrice, getCurrentJalaliTime } from './jalali';
 import { generatePdfBlob } from './pdfHelper';
 import { StorageService } from './storage';
@@ -72,6 +72,37 @@ export async function testTelegramMessage(
     return {
       success: false,
       error: 'خطا در ارسال پیام تستی: ' + (err?.message || ''),
+    };
+  }
+}
+
+export async function sendTelegramTextMessage(params: {
+  botToken?: string;
+  chatId?: string;
+  text: string;
+  parseMode?: 'HTML' | 'Markdown';
+}): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch('/api/telegram/send-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        botToken: params.botToken?.trim(),
+        chatId: params.chatId?.trim(),
+        text: params.text,
+        parse_mode: params.parseMode || 'HTML',
+      }),
+    });
+    const data = await res.json();
+    return data;
+  } catch (err: any) {
+    return {
+      success: false,
+      error: 'خطا در ارتباط با سرور: ' + (err?.message || ''),
     };
   }
 }
@@ -178,6 +209,186 @@ export function formatExitSlipTelegramCaption(
   lines.push('');
   lines.push('📎 <i>فایل رسمی PDF برگه خروج انبار ضمیمه گردید.</i>');
 
+  return lines.join('\n');
+}
+
+export function formatInboundReceiptTelegramCaption(
+  receipt: InboundReceipt,
+  settings?: StoreSettings
+): string {
+  const warehouse = settings?.originWarehouseName || 'انبار مرکزی';
+  const lines: string[] = [
+    `📥 <b>رسید ورود کالا به انبار - شماره #${receipt.receiptNumber}</b>`,
+    `🏢 <b>انبار مقصد:</b> ${warehouse}`,
+    `👤 <b>تامین‌کننده:</b> ${receipt.supplierName}`,
+  ];
+
+  if (receipt.purchaseInvoiceNumber) {
+    lines.push(`🧾 <b>فاکتور خرید متناظر:</b> ${toPersianDigits(receipt.purchaseInvoiceNumber)}`);
+  }
+
+  lines.push(`📦 <b>تعداد اقلام:</b> ${toPersianDigits(receipt.items?.length || 0)} قلم (${toPersianDigits(receipt.totalReceivedQuantity || receipt.totalExpectedQuantity || 0)} واحد)`);
+
+  if (receipt.verifiedBy) {
+    lines.push(`👨‍💼 <b>انباردار تاییدکننده:</b> ${receipt.verifiedBy}`);
+  }
+
+  if (receipt.verifiedDate) {
+    lines.push(`🕒 <b>تاریخ و ساعت تایید:</b> ${toPersianDigits(receipt.verifiedDate)}`);
+  }
+
+  lines.push('');
+  lines.push('📎 <i>فایل رسمی PDF رسید ورود انبار ضمیمه گردید.</i>');
+
+  return lines.join('\n');
+}
+
+/**
+ * گزارش متنی ساده و کوتاه فاکتور فروش
+ */
+export function formatInvoiceTextReport(invoice: Invoice, settings?: StoreSettings): string {
+  const store = settings?.storeName || 'سامانه حسابداری و بازرگانی';
+  const lines = [
+    `🧾 <b>گزارش ثبت فاکتور فروش</b>`,
+    `▫️ شماره فاکتور: <code>${toPersianDigits(invoice.invoiceNumber)}</code>`,
+    `▫️ خریدار: <b>${invoice.customerName}</b>`,
+    invoice.customerPhone ? `▫️ تلفن: <code>${toPersianDigits(invoice.customerPhone)}</code>` : '',
+    `▫️ تاریخ صدور: ${toPersianDigits(invoice.date)}`,
+    `▫️ تعداد اقلام: ${toPersianDigits(invoice.items.length)} قلم کالا`,
+    `▫️ مبلغ کل: <b>${toPersianDigits(formatPrice(invoice.finalTotal))} تومان</b>`,
+    `▫️ وضعیت پرداخت: ${invoice.paymentStatus === 'paid' ? '✅ تسویه کامل شده' : invoice.paymentStatus === 'partial' ? '⚠️ بیعانه / بخشی' : '⏳ نسیه / حساب دفتری'}`,
+    store ? `🏪 <i>${store}</i>` : '',
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+/**
+ * گزارش متنی ساده و کوتاه فاکتور خرید کالا
+ */
+export function formatPurchaseInvoiceTextReport(purchaseInvoice: PurchaseInvoice, settings?: StoreSettings): string {
+  const store = settings?.storeName || 'سامانه حسابداری و بازرگانی';
+  const currency = settings?.currency || 'تومان';
+  const paymentLabel = purchaseInvoice.paymentStatus === 'paid'
+    ? '✅ تسویه نقدی کامل'
+    : purchaseInvoice.paymentStatus === 'partial'
+      ? '⚠️ پرداخت بخشی / بیعانه'
+      : '⏳ حساب دفتری / نسیه';
+
+  const lines = [
+    `🛒 <b>گزارش ثبت فاکتور خرید کالا</b>`,
+    `▫️ شماره فاکتور: <code>${toPersianDigits(purchaseInvoice.invoiceNumber)}</code>`,
+    `▫️ تامین‌کننده: <b>${purchaseInvoice.supplierName}</b>`,
+    purchaseInvoice.supplierPhone ? `▫️ تلفن: <code>${toPersianDigits(purchaseInvoice.supplierPhone)}</code>` : '',
+    `▫️ تاریخ صدور: ${toPersianDigits(purchaseInvoice.date)}`,
+    `▫️ تعداد اقلام: ${toPersianDigits(purchaseInvoice.items?.length || 0)} قلم کالا`,
+    `▫️ مبلغ نهایی: <b>${toPersianDigits(formatPrice(purchaseInvoice.finalTotal))} ${currency}</b>`,
+    `▫️ وضعیت پرداخت: ${paymentLabel}`,
+    purchaseInvoice.inboundReceiptId ? `▫️ وضعیت انبار: 📦 حواله ورود به انبار صادر شد` : '',
+    purchaseInvoice.notes ? `▫️ توضیحات: <i>«${purchaseInvoice.notes}»</i>` : '',
+    store ? `🏪 <i>${store}</i>` : '',
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+/**
+ * گزارش متنی ساده و کوتاه پیش‌فاکتور
+ */
+export function formatProformaTextReport(invoice: Invoice, settings?: StoreSettings): string {
+  const store = settings?.storeName || 'سامانه حسابداری و بازرگانی';
+  const lines = [
+    `📑 <b>گزارش صدور پیش‌فاکتور</b>`,
+    `▫️ شماره: <code>${toPersianDigits(invoice.invoiceNumber)}</code>`,
+    `▫️ مشتری: <b>${invoice.customerName}</b>`,
+    invoice.customerPhone ? `▫️ تلفن: <code>${toPersianDigits(invoice.customerPhone)}</code>` : '',
+    `▫️ تاریخ صدور: ${toPersianDigits(invoice.date)}`,
+    `▫️ تعداد اقلام: ${toPersianDigits(invoice.items.length)} قلم کالا`,
+    `▫️ مبلغ برآورد: <b>${toPersianDigits(formatPrice(invoice.finalTotal))} تومان</b>`,
+    `▫️ وضعیت: ⏳ در انتظار تایید مشتری`,
+    store ? `🏪 <i>${store}</i>` : '',
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+/**
+ * گزارش متنی صدور حواله ورود کالا به انبار
+ */
+export function formatInboundReceiptIssueTextReport(receipt: InboundReceipt, settings?: StoreSettings): string {
+  const store = settings?.storeName || 'سامانه بازرگانی و انبارداری';
+  const warehouse = settings?.originWarehouseName || 'انبار مرکزی';
+  const lines = [
+    `📥 <b>گزارش صدور حواله ورود کالا به انبار</b>`,
+    `▫️ شماره حواله: <code>#${toPersianDigits(receipt.receiptNumber)}</code>`,
+    `▫️ تامین‌کننده: <b>${receipt.supplierName}</b>`,
+    `▫️ فاکتور خرید متناظر: <code>${toPersianDigits(receipt.purchaseInvoiceNumber)}</code>`,
+    `▫️ انبار مقصد: ${warehouse}`,
+    `▫️ تعداد اقلام وارده: ${toPersianDigits(receipt.items.length)} قلم (${toPersianDigits(receipt.totalExpectedQuantity)} واحد)`,
+    `▫️ تاریخ صدور: ${toPersianDigits(receipt.date)}`,
+    `▫️ وضعیت: ⏳ در انتظار شمارش و تایید انباردار`,
+    store ? `🏪 <i>${store}</i>` : '',
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+/**
+ * گزارش متنی تایید و تخلیه ورود کالا به انبار
+ */
+export function formatInboundReceiptConfirmTextReport(receipt: InboundReceipt, settings?: StoreSettings): string {
+  const store = settings?.storeName || 'سامانه بازرگانی و انبارداری';
+  const hasDiscrepancy = receipt.status === 'has_discrepancy' || receipt.totalDiscrepancy !== 0;
+  const lines = [
+    `✅ <b>گزارش تایید ورود و تخلیه کالا در انبار</b>`,
+    `▫️ شماره حواله: <code>#${toPersianDigits(receipt.receiptNumber)}</code>`,
+    `▫️ تامین‌کننده: <b>${receipt.supplierName}</b>`,
+    `▫️ فاکتور خرید: <code>${toPersianDigits(receipt.purchaseInvoiceNumber)}</code>`,
+    `▫️ وضعیت شمارش: ${hasDiscrepancy ? `⚠️ تایید با مغایرت (${toPersianDigits(Math.abs(receipt.totalDiscrepancy))} واحد ${receipt.totalDiscrepancy < 0 ? 'کسری' : 'مازاد'})` : '✅ تایید کامل و ثبت قطعی در کاردکس'}`,
+    `▫️ تعداد تحویل‌شده: <b>${toPersianDigits(receipt.totalReceivedQuantity)} از ${toPersianDigits(receipt.totalExpectedQuantity)} واحد</b>`,
+    receipt.verifiedBy ? `▫️ انباردار تاییدکننده: <b>${receipt.verifiedBy}</b>` : '',
+    receipt.verifiedDate ? `▫️ زمان تایید: ${toPersianDigits(receipt.verifiedDate)}` : '',
+    receipt.warehouseNotes ? `▫️ یادداشت انباردار: <i>«${receipt.warehouseNotes}»</i>` : '',
+    store ? `🏪 <i>${store}</i>` : '',
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+/**
+ * گزارش متنی صدور حواله خروج کالا از انبار
+ */
+export function formatExitSlipIssueTextReport(invoice: Invoice, exitSlipNumber?: string, settings?: StoreSettings): string {
+  const store = settings?.storeName || 'سامانه بازرگانی و انبارداری';
+  const warehouse = settings?.originWarehouseName || 'انبار مرکزی';
+  const lines = [
+    `📤 <b>گزارش صدور حواله خروج کالا</b>`,
+    `▫️ فاکتور متناظر: <code>${toPersianDigits(invoice.invoiceNumber)}</code>`,
+    exitSlipNumber ? `▫️ شماره حواله خروج: <code>${toPersianDigits(exitSlipNumber)}</code>` : '',
+    `▫️ انبار مبدأ: ${warehouse}`,
+    `▫️ خریدار: <b>${invoice.customerName}</b>`,
+    invoice.customerPhone ? `▫️ تلفن خریدار: <code>${toPersianDigits(invoice.customerPhone)}</code>` : '',
+    `▫️ تعداد اقلام حواله: ${toPersianDigits(invoice.items.length)} قلم کالا`,
+    `▫️ تاریخ صدور: ${toPersianDigits(invoice.date)}`,
+    `▫️ وضعیت: ⏳ در انتظار بارگیری و تحویل نهایی`,
+    store ? `🏪 <i>${store}</i>` : '',
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+/**
+ * گزارش متنی تایید خروج و تحویل بار به راننده / مشتری
+ */
+export function formatExitSlipConfirmTextReport(invoice: Invoice, slipLog: ExitSlipData, settings?: StoreSettings): string {
+  const store = settings?.storeName || 'سامانه بازرگانی و انبارداری';
+  const warehouse = settings?.originWarehouseName || 'انبار مرکزی';
+  const lines = [
+    `🚚 <b>گزارش تایید تحویل و خروج قطعی از انبار</b>`,
+    `▫️ فاکتور فروش: <code>${toPersianDigits(invoice.invoiceNumber)}</code>`,
+    `▫️ انبار مبدأ: ${warehouse}`,
+    `▫️ تحویل‌گیرنده: <b>${slipLog.receiverName || invoice.customerName}</b>`,
+    (slipLog.receiverPhone || invoice.customerPhone) ? `▫️ تلفن تماس: <code>${toPersianDigits(slipLog.receiverPhone || invoice.customerPhone || '')}</code>` : '',
+    slipLog.vehicleInfo ? `▫️ مشخصات خودرو / باربری: <b>${toPersianDigits(slipLog.vehicleInfo)}</b>` : '',
+    slipLog.deliveredBy ? `▫️ انباردار تحویل‌دهنده: <b>${slipLog.deliveredBy}</b>` : '',
+    slipLog.deliveredAt ? `▫️ زمان خروج بار: ${toPersianDigits(slipLog.deliveredAt)}` : '',
+    slipLog.deliveryNotes ? `▫️ توضیحات: <i>«${slipLog.deliveryNotes}»</i>` : '',
+    store ? `🏪 <i>${store}</i>` : '',
+  ].filter(Boolean);
   return lines.join('\n');
 }
 
@@ -418,9 +629,9 @@ export async function generateExitSlipPdfBlob(
 }
 
 /**
- * Automatically generate Invoice PDF and send directly to Telegram Bot.
+ * Automatically send Invoice or Proforma Report to Telegram Bot (Text, PDF, or Both)
  */
-export async function autoSendInvoicePdfToTelegram(
+export async function autoSendInvoiceReportToTelegram(
   invoice: Invoice,
   passedSettings?: StoreSettings,
   callbacks?: {
@@ -430,15 +641,22 @@ export async function autoSendInvoicePdfToTelegram(
   }
 ): Promise<boolean> {
   const settings = StorageService.getSettings() || passedSettings;
-  if (!settings?.telegramBotEnabled || !settings?.telegramAutoSendInvoice) {
-    console.log('[Telegram Auto-Send] Invoice auto-send disabled in settings.');
+  if (!settings?.telegramBotEnabled) {
     return false;
   }
 
-  // اگر فاکتور پیش‌فاکتور است و گزینه «فقط پس از تایید نهایی ارسال شود» فعال است، تا زمان تایید منتظر می‌ماند
-  if (invoice.isProforma && settings.telegramAutoSendOnlyConfirmed !== false) {
-    console.log('[Telegram Auto-Send] Invoice is unconfirmed proforma. Auto-dispatch will execute after confirmation.');
-    return false;
+  // بررسی فعال بودن نوع فاکتور در تنظیمات
+  if (invoice.isProforma) {
+    const isProformaEnabled = !!settings.telegramAutoSendProforma || settings.telegramAutoSendOnlyConfirmed === false;
+    if (!isProformaEnabled) {
+      console.log('[Telegram Auto-Send] ارسال خودکار پیش‌فاکتور در تنظیمات غیرفعال است.');
+      return false;
+    }
+  } else {
+    if (!settings.telegramAutoSendInvoice) {
+      console.log('[Telegram Auto-Send] ارسال خودکار فاکتور فروش در تنظیمات غیرفعال است.');
+      return false;
+    }
   }
 
   const botToken = settings.telegramBotToken?.trim();
@@ -455,19 +673,65 @@ export async function autoSendInvoicePdfToTelegram(
     return false;
   }
 
+  const sendMode = settings.telegramSendMode || 'text_only';
+
   try {
     callbacks?.onStart?.();
 
+    // ۱. حالت فقط متنی (بسیار سریع، سبک و بدون فیلتر)
+    if (sendMode === 'text_only') {
+      const textReport = invoice.isProforma
+        ? formatProformaTextReport(invoice, settings)
+        : formatInvoiceTextReport(invoice, settings);
+
+      const res = await sendTelegramTextMessage({
+        botToken,
+        chatId: targetChatId,
+        text: textReport,
+      });
+
+      if (res.success) {
+        // در صورت ارسال مستقیم به مشتری، نسخه رونوشت به کانال اصلی
+        if (targetChatId !== primaryChatId && primaryChatId) {
+          sendTelegramTextMessage({
+            botToken,
+            chatId: primaryChatId,
+            text: textReport + '\n\n📢 <i>نسخه رونوشت به کانال فروشگاه</i>',
+          }).catch((e) => console.warn(e));
+        }
+
+        const successMsg = `گزارش متنی ${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${invoice.invoiceNumber} به تلگرام ارسال گردید.`;
+        callbacks?.onSuccess?.(successMsg);
+        StorageService.logActivity({
+          category: 'system',
+          actionType: 'telegram_auto_sent',
+          actionTitle: `ارسال گزارش متنی ${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} به تلگرام`,
+          details: `گزارش متنی ${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${invoice.invoiceNumber} به چت (${targetChatId}) ارسال شد.`,
+        });
+        return true;
+      } else {
+        callbacks?.onError?.(res.error || 'خطا در ارسال گزارش متنی به تلگرام');
+        return false;
+      }
+    }
+
+    // ۲. حالت PDF یا هر دو (PDF + متن)
     const pdfResult = await generateInvoicePdfBlob(invoice, settings);
     if (!pdfResult.success || !pdfResult.blob) {
-      const err = pdfResult.error || 'خطا در ایجاد خودکار فایل PDF فاکتور';
-      callbacks?.onError?.(err);
-      StorageService.logActivity({
-        category: 'system',
-        actionType: 'telegram_auto_failed',
-        actionTitle: 'خطا در ارسال خودکار فاکتور به تلگرام',
-        details: `تولید خودکار PDF فاکتور شماره ${invoice.invoiceNumber} با شکست مواجه شد: ${err}`,
+      // در صورت بروز خطا در ساخت PDF، به عنوان جایگزین امن گزارش متنی ارسال می‌شود
+      const textReport = invoice.isProforma
+        ? formatProformaTextReport(invoice, settings)
+        : formatInvoiceTextReport(invoice, settings);
+      const fallbackRes = await sendTelegramTextMessage({
+        botToken,
+        chatId: targetChatId,
+        text: textReport,
       });
+      if (fallbackRes.success) {
+        callbacks?.onSuccess?.(`گزارش متنی فاکتور شماره ${invoice.invoiceNumber} به عنوان جایگزین به تلگرام ارسال شد.`);
+        return true;
+      }
+      callbacks?.onError?.(pdfResult.error || 'خطا در ایجاد خودکار فایل PDF فاکتور');
       return false;
     }
 
@@ -484,52 +748,92 @@ export async function autoSendInvoicePdfToTelegram(
       caption,
     });
 
-    // در صورتی که به چت اختصاصی مشتری ارسال شد و کانال اصلی فروشگاه نیز ثبت شده باشد، یک نسخه به کانال اصلی نیز فرستاده می‌شود
-    if (sendResult.success && targetChatId !== primaryChatId && primaryChatId) {
-      sendPdfToTelegram({
-        botToken,
-        chatId: primaryChatId,
-        pdfBlob: pdfResult.blob,
-        filename,
-        caption: caption + '\n\n📢 <i>نسخه رونوشت به کانال فروشگاه</i>',
-      }).catch((e) => console.warn('Copy to main store channel failed:', e));
-    }
-
     if (sendResult.success) {
-      const successMsg = `فایل PDF ${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${invoice.invoiceNumber} با موفقیت به تلگرام ارسال شد.`;
-      callbacks?.onSuccess?.(successMsg);
-      StorageService.logActivity({
-        category: 'system',
-        actionType: 'telegram_auto_sent',
-        actionTitle: 'ارسال خودکار فاکتور به تلگرام',
-        details: `فایل PDF فاکتور شماره ${invoice.invoiceNumber} برای مشتری «${invoice.customerName}» به چت تلگرام (${targetChatId}) ارسال گردید.`,
-      });
+      if (sendMode === 'both') {
+        const textReport = invoice.isProforma
+          ? formatProformaTextReport(invoice, settings)
+          : formatInvoiceTextReport(invoice, settings);
+        await sendTelegramTextMessage({ botToken, chatId: targetChatId, text: textReport });
+      }
+      callbacks?.onSuccess?.(`فاکتور شماره ${invoice.invoiceNumber} با موفقیت به تلگرام ارسال شد.`);
       return true;
     } else {
-      const err = sendResult.error || 'خطا در ارسال فایل به تلگرام';
-      callbacks?.onError?.(err);
-      StorageService.logActivity({
-        category: 'system',
-        actionType: 'telegram_auto_failed',
-        actionTitle: 'خطا در ارسال خودکار فاکتور به تلگرام',
-        details: `ارسال فایل PDF فاکتور شماره ${invoice.invoiceNumber} به تلگرام با خطا مواجه شد: ${err}`,
-      });
+      callbacks?.onError?.(sendResult.error || 'خطا در ارسال فایل به تلگرام');
       return false;
     }
   } catch (err: any) {
-    const errorMsg = err?.message || 'خطای غیرمنتظره در ارسال خودکار';
-    callbacks?.onError?.(errorMsg);
-    console.error('[Telegram Auto-Send Invoice] Exception:', err);
+    callbacks?.onError?.(err?.message || 'خطای غیرمنتظره در ارسال خودکار فاکتور');
+    return false;
+  }
+}
+export const autoSendInvoicePdfToTelegram = autoSendInvoiceReportToTelegram;
+
+/**
+ * Automatically send Purchase Invoice Report to Telegram Bot (Text Only or with PDF)
+ */
+export async function autoSendPurchaseInvoiceReportToTelegram(
+  purchaseInvoice: PurchaseInvoice,
+  passedSettings?: StoreSettings,
+  callbacks?: {
+    onStart?: () => void;
+    onSuccess?: (msg: string) => void;
+    onError?: (err: string) => void;
+  }
+): Promise<boolean> {
+  const settings = StorageService.getSettings() || passedSettings;
+  if (!settings?.telegramBotEnabled) {
+    return false;
+  }
+
+  // بررسی وضعیت فعال بودن ارسال فاکتور خرید در تنظیمات
+  const isEnabled = settings.telegramAutoSendPurchaseInvoice || settings.telegramAutoSendInvoice;
+  if (!isEnabled) {
+    return false;
+  }
+
+  const botToken = settings.telegramBotToken?.trim();
+  const chatId = (settings.telegramChatId || '').trim();
+
+  if (!botToken || !chatId) {
+    return false;
+  }
+
+  try {
+    callbacks?.onStart?.();
+
+    const textReport = formatPurchaseInvoiceTextReport(purchaseInvoice, settings);
+    const res = await sendTelegramTextMessage({
+      botToken,
+      chatId,
+      text: textReport,
+    });
+
+    if (res.success) {
+      callbacks?.onSuccess?.(`گزارش متنی فاکتور خرید شماره ${purchaseInvoice.invoiceNumber} به تلگرام ارسال گردید.`);
+      StorageService.logActivity({
+        category: 'purchase',
+        actionType: 'telegram_auto_sent',
+        actionTitle: 'ارسال گزارش متنی فاکتور خرید به تلگرام',
+        details: `گزارش متنی فاکتور خرید شماره ${purchaseInvoice.invoiceNumber} به تلگرام (${chatId}) ارسال گردید.`,
+      });
+      return true;
+    } else {
+      callbacks?.onError?.(res.error || 'خطا در ارسال گزارش فاکتور خرید به تلگرام');
+      return false;
+    }
+  } catch (err: any) {
+    callbacks?.onError?.(err?.message || 'خطای غیرمنتظره در ارسال خودکار فاکتور خرید');
     return false;
   }
 }
 
 /**
- * Automatically generate Exit Slip PDF and send directly to Telegram Bot.
+ * Automatically send Exit Slip Report to Telegram Bot (Text, PDF, or Both)
  */
-export async function autoSendExitSlipPdfToTelegram(
+export async function autoSendExitSlipReportToTelegram(
   invoice: Invoice,
-  slipLog: ExitSlipData,
+  slipLog: ExitSlipData | null,
+  isConfirmation: boolean,
   passedSettings?: StoreSettings,
   currentUser?: AppUser,
   callbacks?: {
@@ -539,8 +843,16 @@ export async function autoSendExitSlipPdfToTelegram(
   }
 ): Promise<boolean> {
   const settings = StorageService.getSettings() || passedSettings;
-  if (!settings?.telegramBotEnabled || !settings?.telegramAutoSendExitSlip) {
-    console.log('[Telegram Auto-Send] Exit slip auto-send disabled in settings.');
+  if (!settings?.telegramBotEnabled) {
+    return false;
+  }
+
+  // بررسی وضعیت فعال بودن ارسال صدور یا تایید حواله خروج
+  const isEnabled = isConfirmation
+    ? (!!settings.telegramAutoSendExitSlipConfirm || (settings.telegramAutoSendExitSlip !== false && !!settings.telegramAutoSendExitSlip))
+    : (!!settings.telegramAutoSendExitSlipIssue || (!!settings.telegramAutoSendExitSlip && !settings.telegramAutoSendOnlyConfirmed));
+
+  if (!isEnabled) {
     return false;
   }
 
@@ -548,26 +860,45 @@ export async function autoSendExitSlipPdfToTelegram(
   const chatId = (settings.telegramChatId || '').trim();
 
   if (!botToken || !chatId) {
-    const missing = !botToken ? 'توکن ربات' : 'شناسه چت مقصد';
-    console.warn(`[Telegram Auto-Send] ${missing} تنظیم نشده است.`);
-    callbacks?.onError?.(`ارسال به تلگرام ناموفق بود: ${missing} در تنظیمات وارد نشده است.`);
     return false;
   }
+
+  const sendMode = settings.telegramSendMode || 'text_only';
 
   try {
     callbacks?.onStart?.();
 
+    if (sendMode === 'text_only' || !isConfirmation || !slipLog) {
+      const textReport = (isConfirmation && slipLog)
+        ? formatExitSlipConfirmTextReport(invoice, slipLog, settings)
+        : formatExitSlipIssueTextReport(invoice, slipLog?.slipNumber, settings);
+
+      const res = await sendTelegramTextMessage({
+        botToken,
+        chatId,
+        text: textReport,
+      });
+
+      if (res.success) {
+        const title = isConfirmation ? 'تایید خروج و تحویل بار' : 'صدور حواله خروج';
+        callbacks?.onSuccess?.(`گزارش متنی ${title} فاکتور شماره ${invoice.invoiceNumber} به تلگرام ارسال شد.`);
+        StorageService.logActivity({
+          category: 'system',
+          actionType: 'telegram_auto_sent',
+          actionTitle: `ارسال گزارش متنی ${title} به تلگرام`,
+          details: `گزارش متنی ${title} فاکتور ${invoice.invoiceNumber} به تلگرام (${chatId}) ارسال گردید.`,
+        });
+        return true;
+      }
+      return false;
+    }
+
+    // حالت PDF برای تایید خروج
     const pdfResult = await generateExitSlipPdfBlob(invoice, slipLog, settings, currentUser);
     if (!pdfResult.success || !pdfResult.blob) {
-      const err = pdfResult.error || 'خطا در ایجاد خودکار فایل PDF حواله خروج';
-      callbacks?.onError?.(err);
-      StorageService.logActivity({
-        category: 'system',
-        actionType: 'telegram_auto_failed',
-        actionTitle: 'خطا در ارسال خودکار حواله خروج به تلگرام',
-        details: `تولید فایل PDF حواله خروج فاکتور ${invoice.invoiceNumber} با شکست مواجه شد: ${err}`,
-      });
-      return false;
+      const textReport = formatExitSlipConfirmTextReport(invoice, slipLog, settings);
+      await sendTelegramTextMessage({ botToken, chatId, text: textReport });
+      return true;
     }
 
     const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}.pdf`;
@@ -582,78 +913,33 @@ export async function autoSendExitSlipPdfToTelegram(
     });
 
     if (sendResult.success) {
-      const successMsg = `فایل PDF حواله خروج فاکتور شماره ${invoice.invoiceNumber} با موفقیت به تلگرام ارسال شد.`;
-      callbacks?.onSuccess?.(successMsg);
-      StorageService.logActivity({
-        category: 'system',
-        actionType: 'telegram_auto_sent',
-        actionTitle: 'ارسال خودکار حواله خروج به تلگرام',
-        details: `فایل PDF حواله خروج فاکتور شماره ${invoice.invoiceNumber} (تحویل به «${slipLog.receiverName || invoice.customerName}») به تلگرام (${chatId}) ارسال گردید.`,
-      });
+      if (sendMode === 'both') {
+        const textReport = formatExitSlipConfirmTextReport(invoice, slipLog, settings);
+        await sendTelegramTextMessage({ botToken, chatId, text: textReport });
+      }
+      callbacks?.onSuccess?.(`حواله خروج فاکتور شماره ${invoice.invoiceNumber} با موفقیت به تلگرام ارسال شد.`);
       return true;
-    } else {
-      const err = sendResult.error || 'خطا در ارسال به تلگرام';
-      callbacks?.onError?.(err);
-      StorageService.logActivity({
-        category: 'system',
-        actionType: 'telegram_auto_failed',
-        actionTitle: 'خطا در ارسال خودکار حواله خروج به تلگرام',
-        details: `ارسال PDF حواله خروج فاکتور ${invoice.invoiceNumber} به تلگرام با خطا مواجه شد: ${err}`,
-      });
-      return false;
     }
+    return false;
   } catch (err: any) {
-    const errorMsg = err?.message || 'خطای غیرمنتظره در ارسال خودکار';
-    callbacks?.onError?.(errorMsg);
-    console.error('[Telegram Auto-Send Exit Slip] Exception:', err);
+    callbacks?.onError?.(err?.message || 'خطا در ارسال حواله خروج');
     return false;
   }
 }
+export const autoSendExitSlipPdfToTelegram = (
+  invoice: Invoice,
+  slipLog: ExitSlipData,
+  passedSettings?: StoreSettings,
+  currentUser?: AppUser,
+  callbacks?: any
+) => autoSendExitSlipReportToTelegram(invoice, slipLog, true, passedSettings, currentUser, callbacks);
 
 /**
- * Format Inbound Receipt caption for Telegram message
+ * Automatically send Inbound Receipt Report to Telegram (Text, PDF, or Both)
  */
-export function formatInboundReceiptTelegramCaption(
+export async function autoSendInboundReceiptReportToTelegram(
   receipt: InboundReceipt,
-  settings?: StoreSettings
-): string {
-  const warehouse = settings?.originWarehouseName || 'انبار مرکزی';
-  const hasDiscrepancy = receipt.status === 'has_discrepancy' || receipt.totalDiscrepancy !== 0;
-  
-  const lines: string[] = [
-    `📥 <b>رسید ورود کالا به انبار (شماره ${receipt.receiptNumber})</b>`,
-    `🏢 <b>انبار مقصد:</b> ${warehouse}`,
-    `🏭 <b>تأمین‌کننده / فروشنده:</b> ${receipt.supplierName}`,
-    `🧾 <b>فاکتور خرید مرتبط:</b> شماره ${receipt.purchaseInvoiceNumber}`,
-    `📦 <b>تعداد اقلام شمارش‌شده:</b> ${toPersianDigits(receipt.totalReceivedQuantity)} قلم کالا`,
-  ];
-
-  if (hasDiscrepancy) {
-    lines.push(`⚠️ <b>وضعیت شمارش:</b> تایید شده با مغایرت (${toPersianDigits(Math.abs(receipt.totalDiscrepancy))} قلم ${receipt.totalDiscrepancy < 0 ? 'کسری' : 'مازاد'})`);
-  } else {
-    lines.push(`✅ <b>وضعیت شمارش:</b> تایید کامل (بدون هرگونه مغایرت)`);
-  }
-
-  if (receipt.verifiedBy) {
-    lines.push(`👨‍💼 <b>انباردار تاییدکننده:</b> ${receipt.verifiedBy}`);
-  }
-
-  if (receipt.verifiedDate) {
-    lines.push(`📅 <b>تاریخ و زمان تایید انبار:</b> ${toPersianDigits(receipt.verifiedDate)}`);
-  }
-
-  if (receipt.warehouseNotes) {
-    lines.push(`📝 <b>یادداشت انباردار:</b> ${receipt.warehouseNotes}`);
-  }
-
-  return lines.join('\n');
-}
-
-/**
- * Automatically send Inbound Receipt notification to Telegram upon verification/approval.
- */
-export async function autoSendInboundReceiptToTelegram(
-  receipt: InboundReceipt,
+  isConfirmation: boolean,
   passedSettings?: StoreSettings,
   callbacks?: {
     onStart?: () => void;
@@ -662,8 +948,15 @@ export async function autoSendInboundReceiptToTelegram(
   }
 ): Promise<boolean> {
   const settings = StorageService.getSettings() || passedSettings;
-  if (!settings?.telegramBotEnabled || !settings?.telegramAutoSendInboundReceipt) {
-    console.log('[Telegram Auto-Send] Inbound receipt auto-send disabled in settings.');
+  if (!settings?.telegramBotEnabled) {
+    return false;
+  }
+
+  const isEnabled = isConfirmation
+    ? (!!settings.telegramAutoSendInboundReceiptConfirm || (settings.telegramAutoSendInboundReceipt !== false && !!settings.telegramAutoSendInboundReceipt))
+    : (!!settings.telegramAutoSendInboundReceiptIssue || (!!settings.telegramAutoSendInboundReceipt && !settings.telegramAutoSendOnlyConfirmed));
+
+  if (!isEnabled) {
     return false;
   }
 
@@ -671,16 +964,40 @@ export async function autoSendInboundReceiptToTelegram(
   const chatId = (settings.telegramChatId || '').trim();
 
   if (!botToken || !chatId) {
-    const missing = !botToken ? 'توکن ربات' : 'شناسه چت مقصد';
-    console.warn(`[Telegram Auto-Send] ${missing} تنظیم نشده است.`);
-    callbacks?.onError?.(`ارسال به تلگرام ناموفق بود: ${missing} در تنظیمات وارد نشده است.`);
     return false;
   }
+
+  const sendMode = settings.telegramSendMode || 'text_only';
 
   try {
     callbacks?.onStart?.();
 
-    // Check if printable-inbound-receipt is in DOM
+    if (sendMode === 'text_only' || !isConfirmation) {
+      const textReport = isConfirmation
+        ? formatInboundReceiptConfirmTextReport(receipt, settings)
+        : formatInboundReceiptIssueTextReport(receipt, settings);
+
+      const res = await sendTelegramTextMessage({
+        botToken,
+        chatId,
+        text: textReport,
+      });
+
+      if (res.success) {
+        const title = isConfirmation ? 'تایید ورود کالا به انبار' : 'صدور حواله ورود کالا';
+        callbacks?.onSuccess?.(`گزارش متنی ${title} شماره ${receipt.receiptNumber} به تلگرام ارسال شد.`);
+        StorageService.logActivity({
+          category: 'system',
+          actionType: 'telegram_auto_sent',
+          actionTitle: `ارسال گزارش متنی ${title} به تلگرام`,
+          details: `گزارش متنی ${title} شماره ${receipt.receiptNumber} به تلگرام (${chatId}) ارسال شد.`,
+        });
+        return true;
+      }
+      return false;
+    }
+
+    // حالت PDF برای تایید ورود
     const printableEl = document.getElementById('printable-inbound-receipt');
     let pdfBlob: Blob | undefined;
 
@@ -695,54 +1012,43 @@ export async function autoSendInboundReceiptToTelegram(
       }
     }
 
-    const caption = formatInboundReceiptTelegramCaption(receipt, settings);
-
     if (pdfBlob) {
       const sendResult = await sendPdfToTelegram({
         botToken,
         chatId,
         pdfBlob,
         filename: `رسید_ورود_انبار_${receipt.receiptNumber}.pdf`,
-        caption,
+        caption: formatInboundReceiptTelegramCaption(receipt, settings),
       });
 
       if (sendResult.success) {
-        const successMsg = `فایل PDF رسید ورود کالا شماره ${receipt.receiptNumber} به تلگرام ارسال شد.`;
-        callbacks?.onSuccess?.(successMsg);
-        StorageService.logActivity({
-          category: 'system',
-          actionType: 'telegram_auto_sent',
-          actionTitle: 'ارسال خودکار رسید ورود کالا به تلگرام',
-          details: `رسید ورود کالا شماره ${receipt.receiptNumber} به تلگرام (${chatId}) ارسال گردید.`,
-        });
+        if (sendMode === 'both') {
+          const textReport = formatInboundReceiptConfirmTextReport(receipt, settings);
+          await sendTelegramTextMessage({ botToken, chatId, text: textReport });
+        }
+        callbacks?.onSuccess?.(`رسید ورود کالا شماره ${receipt.receiptNumber} به تلگرام ارسال شد.`);
         return true;
       }
     }
 
-    // Fallback: send text message notification if PDF is not rendered
-    const textRes = await testTelegramMessage(botToken, chatId, caption.replace(/<[^>]+>/g, ''));
+    // در صورت نبود المان چاپی، گزارش متنی تایید ارسال می‌شود
+    const textReport = formatInboundReceiptConfirmTextReport(receipt, settings);
+    const textRes = await sendTelegramTextMessage({ botToken, chatId, text: textReport });
     if (textRes.success) {
-      const successMsg = `اطلاعیه تایید رسید ورود کالا شماره ${receipt.receiptNumber} به تلگرام ارسال شد.`;
-      callbacks?.onSuccess?.(successMsg);
-      StorageService.logActivity({
-        category: 'system',
-        actionType: 'telegram_auto_sent',
-        actionTitle: 'ارسال اطلاعیه رسید ورود کالا به تلگرام',
-        details: `اطلاعیه تایید رسید ورود کالا شماره ${receipt.receiptNumber} به تلگرام (${chatId}) ارسال شد.`,
-      });
+      callbacks?.onSuccess?.(`گزارش متنی تایید ورود کالا شماره ${receipt.receiptNumber} به تلگرام ارسال شد.`);
       return true;
-    } else {
-      const err = textRes.error || 'خطا در ارسال پیام به تلگرام';
-      callbacks?.onError?.(err);
-      return false;
     }
+    return false;
   } catch (err: any) {
-    const errorMsg = err?.message || 'خطا در ارسال رسید ورود به تلگرام';
-    callbacks?.onError?.(errorMsg);
-    console.error('[Telegram Auto-Send Inbound Receipt] Exception:', err);
+    callbacks?.onError?.(err?.message || 'خطا در ارسال رسید ورود به تلگرام');
     return false;
   }
 }
+export const autoSendInboundReceiptToTelegram = (
+  receipt: InboundReceipt,
+  passedSettings?: StoreSettings,
+  callbacks?: any
+) => autoSendInboundReceiptReportToTelegram(receipt, true, passedSettings, callbacks);
 
 /**
  * Test AI Provider Connection & API Key

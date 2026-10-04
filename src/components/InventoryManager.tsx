@@ -14,7 +14,7 @@ import { CategoryManagerModal } from './CategoryManagerModal';
 import { ProductDetailsModal } from './ProductDetailsModal';
 import { ProductModal } from './ProductModal';
 import { WarehouseStatsModal } from './WarehouseStatsModal';
-import { autoSendExitSlipPdfToTelegram } from '../utils/telegramService';
+import { autoSendExitSlipReportToTelegram } from '../utils/telegramService';
 import { ErrorBoundary } from './ErrorBoundary';
 import { NumericInput } from './NumericInput';
 import { 
@@ -619,17 +619,17 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       [invoiceId]: updated,
     }));
 
-    // ارسال خودکار فایل PDF حواله خروج به تلگرام در صورت تایید تحویل و فعال بودن در تنظیمات
+    // ارسال خودکار گزارش حواله خروج به تلگرام در صورت تایید تحویل و فعال بودن در تنظیمات
     if (deliveryData.isDelivered) {
       const liveSettings = StorageService.getSettings() || settings;
-      if (liveSettings.telegramBotEnabled && liveSettings.telegramAutoSendExitSlip) {
+      if (liveSettings.telegramBotEnabled && (liveSettings.telegramAutoSendExitSlip || liveSettings.telegramAutoSendExitSlipConfirm)) {
         const targetInvoice = invoices.find((inv) => inv.id === invoiceId);
         if (targetInvoice) {
-          notifyToast('در حال ایجاد و ارسال خودکار فایل PDF حواله خروج به تلگرام...', 'info');
-          autoSendExitSlipPdfToTelegram(targetInvoice, updated, liveSettings, currentUser, {
-            onStart: () => notifyToast('در حال ارسال فایل PDF حواله خروج به تلگرام...', 'info'),
-            onSuccess: (msg) => notifyToast(msg || '✈️ فایل PDF حواله خروج با موفقیت به تلگرام ارسال شد.', 'success'),
-            onError: (err) => notifyToast('⚠️ خطا در ارسال خودکار حواله خروج به تلگرام: ' + err, 'error'),
+          notifyToast('در حال ارسال خودکار گزارش حواله خروج به تلگرام...', 'info');
+          autoSendExitSlipReportToTelegram(targetInvoice, updated, true, liveSettings, currentUser, {
+            onStart: () => notifyToast('در حال ارسال گزارش حواله خروج به تلگرام...', 'info'),
+            onSuccess: (msg) => notifyToast(msg || '✈️ گزارش تایید حواله خروج با موفقیت به تلگرام ارسال شد.', 'success'),
+            onError: (err) => notifyToast('⚠️ خطا در ارسال حواله خروج به تلگرام: ' + err, 'error'),
           });
         }
       }
@@ -657,14 +657,14 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     // ارسال خودکار به تلگرام در صورت تغییر به وضعیت تحویل‌شده
     if (nextIsDelivered) {
       const liveSettings = StorageService.getSettings() || settings;
-      if (liveSettings.telegramBotEnabled && liveSettings.telegramAutoSendExitSlip) {
+      if (liveSettings.telegramBotEnabled && (liveSettings.telegramAutoSendExitSlip || liveSettings.telegramAutoSendExitSlipConfirm)) {
         const targetInvoice = invoices.find((inv) => inv.id === invoiceId);
         if (targetInvoice) {
-          notifyToast('در حال ایجاد و ارسال خودکار فایل PDF حواله خروج به تلگرام...', 'info');
-          autoSendExitSlipPdfToTelegram(targetInvoice, updated, liveSettings, currentUser, {
-            onStart: () => notifyToast('در حال ارسال فایل PDF حواله خروج به تلگرام...', 'info'),
-            onSuccess: (msg) => notifyToast(msg || '✈️ فایل PDF حواله خروج با موفقیت به تلگرام ارسال شد.', 'success'),
-            onError: (err) => notifyToast('⚠️ خطا در ارسال خودکار حواله خروج به تلگرام: ' + err, 'error'),
+          notifyToast('در حال ارسال خودکار گزارش حواله خروج به تلگرام...', 'info');
+          autoSendExitSlipReportToTelegram(targetInvoice, updated, true, liveSettings, currentUser, {
+            onStart: () => notifyToast('در حال ارسال گزارش حواله خروج به تلگرام...', 'info'),
+            onSuccess: (msg) => notifyToast(msg || '✈️ گزارش تایید حواله خروج با موفقیت به تلگرام ارسال شد.', 'success'),
+            onError: (err) => notifyToast('⚠️ خطا در ارسال حواله خروج به تلگرام: ' + err, 'error'),
           });
         }
       }

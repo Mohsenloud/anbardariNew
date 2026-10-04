@@ -1610,6 +1610,71 @@ app.post('/api/telegram/test-message', async (req, res) => {
   }
 });
 
+// 12.2.1 Send Text Report / Message to Chat/Channel/Group (Direct & Unfiltered)
+app.post('/api/telegram/send-message', async (req, res) => {
+  try {
+    const dbData = readDatabase();
+    const serverSettings = dbData?.settings || {};
+
+    const botToken = (
+      req.body?.botToken ||
+      serverSettings?.telegramBotToken ||
+      process.env.TELEGRAM_BOT_TOKEN ||
+      ''
+    ).trim();
+
+    const chatId = (
+      req.body?.chatId ||
+      serverSettings?.telegramChatId ||
+      process.env.TELEGRAM_CHAT_ID ||
+      ''
+    ).trim();
+
+    const text = (req.body?.text || '').trim();
+    const parseMode = req.body?.parse_mode || 'HTML';
+
+    if (!botToken) {
+      return res.status(400).json({ success: false, error: 'توکن ربات تلگرام مشخص نشده است.' });
+    }
+    if (!chatId) {
+      return res.status(400).json({ success: false, error: 'شناسه چت یا کانال مقصد مشخص نشده است.' });
+    }
+    if (!text) {
+      return res.status(400).json({ success: false, error: 'متن پیام خالی است.' });
+    }
+
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: parseMode,
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      return res.status(400).json({
+        success: false,
+        error: data.description || 'ارسال پیام متنی به تلگرام ناموفق بود.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'گزارش متنی با موفقیت به تلگرام ارسال گردید.',
+      result: data.result,
+    });
+  } catch (err: any) {
+    console.error('[Telegram API] send-message error:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'خطا در ارسال پیام متنی به تلگرام: ' + (err?.message || ''),
+    });
+  }
+});
+
 // 12.3 Send PDF Document to Chat/Channel/Group (sendDocument)
 app.post('/api/telegram/send-pdf', async (req, res) => {
   try {
