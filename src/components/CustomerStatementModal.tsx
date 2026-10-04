@@ -42,7 +42,7 @@ import {
 import { StorageService } from '../utils/storage';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate, numberToPersianWords } from '../utils/jalali';
 import { exportCustomerStatementToExcel } from '../utils/excelHelper';
-import { NumericInput } from './NumericInput';
+import { CustomerTransactionModal } from './CustomerTransactionModal';
 
 interface CustomerStatementModalProps {
   isOpen: boolean;
@@ -73,28 +73,31 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 }) => {
   if (!isOpen || !customer) return null;
 
-  // Active sub-view or forms
-  const [formType, setFormType] = useState<'none' | 'deposit' | 'debt'>(initialFormType || 'none');
+  // Active sub-modal for registering deposit or debt
+  const [activeTxnModalType, setActiveTxnModalType] = useState<'deposit' | 'debt' | null>(
+    initialFormType && initialFormType !== 'none' ? initialFormType : null
+  );
   const [filterType, setFilterType] = useState<'all' | 'debt' | 'deposit'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<'all' | '30days' | 'this_year'>('all');
   const [transactionToDelete, setTransactionToDelete] = useState<CustomerTransaction | null>(null);
 
-  // Mobile View Controls
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  // View Controls: Default is 'table' (نمای جدولی پیش‌فرض)
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('table');
   const [showMobileDetails, setShowMobileDetails] = useState<boolean>(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
-  // New Transaction Form State
-  const [formAmount, setFormAmount] = useState<string>('');
-  const [formDate, setFormDate] = useState<string>(getCurrentJalaliDate());
-  const [formTitle, setFormTitle] = useState<string>('');
-  const [formPaymentMethod, setFormPaymentMethod] = useState<CustomerPaymentMethod>('transfer');
-  const [formTrackingNumber, setFormTrackingNumber] = useState<string>('');
-  const [formBankName, setFormBankName] = useState<string>('');
-  const [formChequeDueDate, setFormChequeDueDate] = useState<string>('');
-  const [formSelectedInvoiceId, setFormSelectedInvoiceId] = useState<string>('');
-  const [formNotes, setFormNotes] = useState<string>('');
+  // Open separate transaction modal
+  const handleOpenTransactionModal = (type: 'deposit' | 'debt') => {
+    setActiveTxnModalType(type);
+  };
+
+  // Sync initialFormType when modal opens
+  React.useEffect(() => {
+    if (isOpen && initialFormType && initialFormType !== 'none') {
+      setActiveTxnModalType(initialFormType);
+    }
+  }, [isOpen, initialFormType]);
 
   // Build the complete customer ledger
   const fullLedger = useMemo(() => {
@@ -147,81 +150,6 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
     navigator.clipboard?.writeText(text);
     setCopiedText(label);
     setTimeout(() => setCopiedText(null), 2000);
-  };
-
-  // Open Form
-  const handleOpenForm = (type: 'deposit' | 'debt') => {
-    setFormType(type);
-    setFormDate(getCurrentJalaliDate());
-    setFormTrackingNumber('');
-    setFormBankName('');
-    setFormChequeDueDate('');
-    setFormSelectedInvoiceId('');
-    setFormNotes('');
-
-    if (type === 'deposit') {
-      // Default deposit to remaining debt if any
-      const debtAmount = fullLedger.netBalance > 0 ? fullLedger.netBalance : 0;
-      setFormAmount(debtAmount > 0 ? String(debtAmount) : '');
-      setFormTitle('واریز به حساب / تسویه');
-      setFormPaymentMethod('transfer');
-    } else {
-      setFormAmount('');
-      setFormTitle('ثبت بدهی جدید / مانده گذشته');
-      setFormPaymentMethod('other');
-    }
-  };
-
-  // Sync initialFormType when modal opens
-  React.useEffect(() => {
-    if (isOpen && initialFormType && initialFormType !== 'none') {
-      handleOpenForm(initialFormType);
-    }
-  }, [isOpen, initialFormType]);
-
-  const handleCloseForm = () => {
-    setFormType('none');
-    setFormAmount('');
-    setFormTitle('');
-    setFormNotes('');
-  };
-
-  // Quick set full debt into amount
-  const handleSetFullDebtAmount = () => {
-    if (fullLedger.netBalance > 0) {
-      setFormAmount(String(fullLedger.netBalance));
-    }
-  };
-
-  // Submit new transaction
-  const handleSubmitTransaction = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanAmount = parseFloat(formAmount.replace(/,/g, ''));
-    if (!cleanAmount || cleanAmount <= 0) return;
-
-    const chosenInvoice = unpaidInvoices.find((i) => i.id === formSelectedInvoiceId);
-
-    const newTxn: CustomerTransaction = {
-      id: `ctxn-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      customerId: customer.id,
-      customerName: customer.name,
-      type: formType === 'deposit' ? 'deposit' : 'debt',
-      amount: cleanAmount,
-      date: formDate.trim() || getCurrentJalaliDate(),
-      title: formTitle.trim() || (formType === 'deposit' ? 'واریز وجه' : 'ثبت بدهی'),
-      paymentMethod: formType === 'deposit' ? formPaymentMethod : undefined,
-      trackingNumber: formTrackingNumber.trim() || undefined,
-      bankName: formBankName.trim() || undefined,
-      chequeDueDate: formPaymentMethod === 'cheque' ? formChequeDueDate.trim() : undefined,
-      invoiceId: chosenInvoice?.id,
-      invoiceNumber: chosenInvoice?.invoiceNumber,
-      notes: formNotes.trim() || undefined,
-      recordedBy: currentUser?.fullName || currentUser?.username || 'مدیر سیستم',
-      createdAt: getCurrentJalaliDate(),
-    };
-
-    onSaveTransaction(newTxn);
-    handleCloseForm();
   };
 
   // Print Trigger
@@ -330,10 +258,10 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
               <div className="text-xl font-black font-mono tracking-tight">
                 {formatPrice(Math.abs(fullLedger.netBalance), settings.currency)}
               </div>
-              {fullLedger.netBalance > 0 && formType === 'none' && (
+              {fullLedger.netBalance > 0 && (
                 <button
                   type="button"
-                  onClick={() => handleOpenForm('deposit')}
+                  onClick={() => handleOpenTransactionModal('deposit')}
                   className="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-[11px] font-bold px-2.5 py-1 rounded-xl shadow-xs flex items-center gap-1 cursor-pointer transition-all"
                 >
                   <Plus className="w-3 h-3" />
@@ -452,7 +380,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
               <button
                 type="button"
                 id="add-deposit-btn"
-                onClick={() => handleOpenForm('deposit')}
+                onClick={() => handleOpenTransactionModal('deposit')}
                 className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 sm:px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5 shrink-0" />
@@ -462,7 +390,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
               <button
                 type="button"
                 id="add-debt-btn"
-                onClick={() => handleOpenForm('debt')}
+                onClick={() => handleOpenTransactionModal('debt')}
                 className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white px-3 sm:px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5 shrink-0" />
@@ -472,29 +400,29 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
             {/* Secondary Buttons & View Switch */}
             <div className="flex items-center gap-1.5 shrink-0">
-              {/* Mobile View Switcher (Cards vs Table) */}
+              {/* View Switcher (Table vs Cards) */}
               <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('cards')}
-                  className={`p-1.5 sm:px-2.5 sm:py-1 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                    viewMode === 'cards' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                  title="نمای کارتی (مناسب موبایل)"
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">کارتی</span>
-                </button>
                 <button
                   type="button"
                   onClick={() => setViewMode('table')}
                   className={`p-1.5 sm:px-2.5 sm:py-1 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer ${
                     viewMode === 'table' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
                   }`}
-                  title="نمای جدولی (کامل)"
+                  title="نمای جدولی (پیش‌فرض)"
                 >
                   <LayoutList className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">جدول</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('cards')}
+                  className={`p-1.5 sm:px-2.5 sm:py-1 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                    viewMode === 'cards' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                  title="نمای کارتی"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">کارتی</span>
                 </button>
               </div>
 
@@ -579,223 +507,6 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
             </div>
           </div>
         </div>
-
-        {/* INLINE FORM: ADD DEPOSIT OR DEBT (RESPONSIVE FOR MOBILE) */}
-        {formType !== 'none' && (
-          <div className="no-print p-3 sm:p-5 bg-gradient-to-br from-slate-50 to-slate-100/90 border-b border-slate-200 animate-in fade-in duration-150 shrink-0 max-h-[60vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className={`p-1.5 sm:p-2 rounded-xl text-white ${formType === 'deposit' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
-                  {formType === 'deposit' ? <CreditCard className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                </span>
-                <div>
-                  <h3 className="font-bold text-xs sm:text-sm text-slate-800">
-                    {formType === 'deposit' ? 'ثبت واریزی جدید به حساب مشتری' : 'ثبت سند بدهی جدید برای مشتری'}
-                  </h3>
-                  <span className="text-[10px] text-slate-500">
-                    {formType === 'deposit' ? 'دریافت وجه نقدی، کارت یا حواله' : 'مانده ابتدای دوره، متفرقه یا خرید'}
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleCloseForm}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitTransaction} className="space-y-3">
-              {/* Deposit Quick Action: Settle full remaining debt */}
-              {formType === 'deposit' && fullLedger.netBalance > 0 && (
-                <div className="flex items-center justify-between bg-emerald-50 p-2 sm:p-2.5 rounded-xl border border-emerald-200">
-                  <div className="text-[11px] text-emerald-800 font-medium">
-                    مانده بدهی جاری: <strong className="font-mono font-bold text-rose-700">{formatPrice(fullLedger.netBalance, settings.currency)}</strong>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSetFullDebtAmount}
-                    className="text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-xs"
-                  >
-                    تسویه کل مانده
-                  </button>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
-                {/* 1. Amount */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    مبلغ ({settings.currency}) *
-                  </label>
-                  <NumericInput
-                    required
-                    id="txn-amount-input"
-                    value={formAmount}
-                    onChange={(num, raw) => setFormAmount(raw.replace(/,/g, ''))}
-                    placeholder="مثال: ۲,۵۰۰,۰۰۰"
-                    currency={settings.currency}
-                    showWords={true}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs sm:text-sm font-mono font-bold text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                  />
-                </div>
-
-                {/* 2. Date */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">تاریخ ثبت (شمسی) *</label>
-                  <div className="relative">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      required
-                      id="txn-date-input"
-                      value={formDate}
-                      onChange={(e) => setFormDate(e.target.value)}
-                      placeholder="۱۴۰۳/۰۶/۲۴"
-                      className="w-full bg-white border border-slate-300 rounded-xl pr-8 pl-3 py-2 text-xs sm:text-sm font-mono text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                    />
-                  </div>
-                </div>
-
-                {/* 3. Title */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">عنوان / بابت سند</label>
-                  <input
-                    type="text"
-                    value={formTitle}
-                    onChange={(e) => setFormTitle(e.target.value)}
-                    placeholder={formType === 'deposit' ? 'واریز نقدی، کارت به کارت...' : 'مانده گذشته، هزینه حمل...'}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                  />
-                </div>
-              </div>
-
-              {/* Deposit-specific Fields */}
-              {formType === 'deposit' && (
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 sm:gap-3 pt-1">
-                  {/* Payment Method */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">روش پرداخت</label>
-                    <select
-                      value={formPaymentMethod}
-                      onChange={(e) => setFormPaymentMethod(e.target.value as CustomerPaymentMethod)}
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-500 cursor-pointer"
-                    >
-                      <option value="transfer">واریز به حساب / پایا / ساتنا</option>
-                      <option value="card">کارت به کارت</option>
-                      <option value="pos">کارتخوان فروشگاه (POS)</option>
-                      <option value="cheque">چک بانکی</option>
-                      <option value="cash">وجه نقد</option>
-                      <option value="other">سایر روش‌ها</option>
-                    </select>
-                  </div>
-
-                  {/* Tracking / Ref Number */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      {formPaymentMethod === 'cheque' ? 'شماره چک' : 'شماره پیگیری / فیش'}
-                    </label>
-                    <input
-                      type="text"
-                      value={formTrackingNumber}
-                      onChange={(e) => setFormTrackingNumber(e.target.value)}
-                      placeholder={formPaymentMethod === 'cheque' ? 'شماره چک صیادی' : 'شماره پیگیری یا ارجاع'}
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-800 outline-none focus:border-emerald-500"
-                    />
-                  </div>
-
-                  {/* Bank Name */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">نام بانک / صاحب حساب</label>
-                    <input
-                      type="text"
-                      value={formBankName}
-                      onChange={(e) => setFormBankName(e.target.value)}
-                      placeholder="مثال: بانک ملت"
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-500"
-                    />
-                  </div>
-
-                  {/* Cheque Due Date if cheque */}
-                  {formPaymentMethod === 'cheque' ? (
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">تاریخ سررسید چک</label>
-                      <input
-                        type="text"
-                        value={formChequeDueDate}
-                        onChange={(e) => setFormChequeDueDate(e.target.value)}
-                        placeholder="۱۴۰۳/۰۸/۱۵"
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-800 outline-none focus:border-emerald-500"
-                      />
-                    </div>
-                  ) : (
-                    /* Target Invoice */
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">بابت فاکتور خاص (اختیاری)</label>
-                      <select
-                        value={formSelectedInvoiceId}
-                        onChange={(e) => setFormSelectedInvoiceId(e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-500 cursor-pointer"
-                      >
-                        <option value="">واریز عمومی / علی‌الحساب</option>
-                        {unpaidInvoices.map((inv) => (
-                          <option key={inv.id} value={inv.id}>
-                            فاکتور {toPersianDigits(inv.invoiceNumber)} (مانده: {formatPrice(inv.finalTotal - (inv.paidAmount || 0), settings.currency)})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Notes & Account Information */}
-              <div className="space-y-2.5">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">توضیحات تکمیلی</label>
-                  <input
-                    type="text"
-                    value={formNotes}
-                    onChange={(e) => setFormNotes(e.target.value)}
-                    placeholder="توضیحات و شرح واریز یا بدهی..."
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-500"
-                  />
-                </div>
-
-                {formType === 'deposit' && (
-                  <div className="bg-emerald-50/90 border border-emerald-200/90 rounded-xl p-2.5 sm:p-3 flex items-center gap-2 text-xs text-emerald-800 leading-relaxed">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>
-                      این مبلغ واریزی مستقیماً در حساب و صورتحساب دفتری مشتری ثبت شده و از مانده کل بدهی ایشان کسر می‌گردد (بدون تقسیم یا تغییر در فاکتورها).
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Form Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={handleCloseForm}
-                  className="px-4 py-2 text-xs text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 cursor-pointer"
-                >
-                  انصراف
-                </button>
-                <button
-                  type="submit"
-                  id="submit-transaction-btn"
-                  className={`flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs transition-all cursor-pointer ${
-                    formType === 'deposit' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
-                  }`}
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>{formType === 'deposit' ? 'ثبت واریز وجه' : 'ثبت سند بدهی'}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
 
         {/* LEDGER ENTRIES LIST (RESPONSIVE CARDS FOR MOBILE & TABLE FOR DESKTOP) */}
         <div className="no-print flex-1 overflow-y-auto p-2.5 sm:p-4 md:p-5">
@@ -967,7 +678,17 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                       <th className="py-3 px-3 min-w-[200px]">شرح تراکنش</th>
                       <th className="py-3 px-3 w-28 text-rose-700">بدهکار ({settings.currency})</th>
                       <th className="py-3 px-3 w-28 text-emerald-700">بستانکار ({settings.currency})</th>
-                      <th className="py-3 px-3 w-32">مانده جاری</th>
+                      <th className="py-3 px-3 w-32" title="مانده لحظه‌ای حساب مشتری پس از اعمال هر ردیف">
+                        <div className="flex items-center gap-1.5 cursor-help">
+                          <span>مانده جاری</span>
+                          <span
+                            className="w-4 h-4 rounded-full bg-slate-200 text-slate-600 text-[10px] inline-flex items-center justify-center font-bold"
+                            title="مانده جاری: مانده لحظه‌ای بدهی یا طلب مشتری پس از این تراکنش"
+                          >
+                            ؟
+                          </span>
+                        </div>
+                      </th>
                       <th className="py-3 px-2 w-20 text-center">عملیات</th>
                     </tr>
                   </thead>
@@ -1114,7 +835,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
             {fullLedger.netBalance > 0 && (
               <button
                 type="button"
-                onClick={() => handleOpenForm('deposit')}
+                onClick={() => handleOpenTransactionModal('deposit')}
                 className="sm:hidden px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 cursor-pointer shadow-xs"
               >
                 واریز سریع
@@ -1266,6 +987,21 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* SEPARATE MODAL: REGISTER DEPOSIT OR REGISTER DEBT */}
+      {activeTxnModalType && (
+        <CustomerTransactionModal
+          isOpen={!!activeTxnModalType}
+          onClose={() => setActiveTxnModalType(null)}
+          customer={customer}
+          initialType={activeTxnModalType}
+          invoices={invoices}
+          transactions={transactions}
+          settings={settings}
+          currentUser={currentUser}
+          onSaveTransaction={onSaveTransaction}
+        />
       )}
     </div>
   );

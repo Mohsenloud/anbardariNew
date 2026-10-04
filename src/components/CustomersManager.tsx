@@ -8,6 +8,7 @@ import { CustomerExportModal } from './CustomerExportModal';
 import { CustomerBulkPaymentModal } from './CustomerBulkPaymentModal';
 import { CustomerStatementModal } from './CustomerStatementModal';
 import { CustomerStatementsReportModal } from './CustomerStatementsReportModal';
+import { CustomerTransactionModal } from './CustomerTransactionModal';
 import { 
   Users, 
   Search, 
@@ -81,8 +82,16 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   const [paymentModalCustomer, setPaymentModalCustomer] = useState<Customer | null>(null);
   const [statementCustomer, setStatementCustomer] = useState<Customer | null>(null);
   const [statementInitialForm, setStatementInitialForm] = useState<'none' | 'deposit' | 'debt'>('none');
+  const [transactionCustomer, setTransactionCustomer] = useState<Customer | null>(null);
+  const [transactionInitialType, setTransactionInitialType] = useState<'deposit' | 'debt'>('deposit');
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
   const [isStatementsReportOpen, setIsStatementsReportOpen] = useState(false);
+
+  // Helper to open separate transaction window (deposit / debt)
+  const handleOpenTransaction = (cust: Customer, type: 'deposit' | 'debt' = 'deposit') => {
+    setTransactionCustomer(cust);
+    setTransactionInitialType(type);
+  };
 
   // Helper to open statement modal with optional initial form (deposit/debt)
   const handleOpenStatement = (cust: Customer, initialForm: 'none' | 'deposit' | 'debt' = 'none') => {
@@ -679,7 +688,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                               <button
                                 type="button"
                                 id={`settle-customer-debt-${cust.id}`}
-                                onClick={() => handleOpenStatement(cust, 'deposit')}
+                                onClick={() => handleOpenTransaction(cust, 'deposit')}
                                 title="ثبت واریزی به حساب مشتری"
                                 className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition-all cursor-pointer"
                               >
@@ -837,7 +846,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                         {hasDebt && (
                           <button
                             type="button"
-                            onClick={() => handleOpenStatement(cust, 'deposit')}
+                            onClick={() => handleOpenTransaction(cust, 'deposit')}
                             className="flex items-center gap-1 text-[11px] font-bold px-2 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs cursor-pointer"
                           >
                             <CreditCard className="w-3.5 h-3.5" />
@@ -1055,7 +1064,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                         <button
                           type="button"
                           id={`settle-customer-debt-${cust.id}`}
-                          onClick={() => handleOpenStatement(cust, 'deposit')}
+                          onClick={() => handleOpenTransaction(cust, 'deposit')}
                           title="ثبت واریزی به حساب این مشتری"
                           className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer"
                         >
@@ -1352,7 +1361,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                       onClick={() => {
                         const target = detailCustomer;
                         setDetailCustomer(null);
-                        handleOpenStatement(target, 'deposit');
+                        handleOpenTransaction(target, 'deposit');
                       }}
                       className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                     >
@@ -1648,6 +1657,28 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
           onSelectCustomerForStatement={(cust) => {
             setIsStatementsReportOpen(false);
             setStatementCustomer(cust);
+          }}
+        />
+      )}
+
+      {/* SEPARATE TRANSACTION MODAL: REGISTER DEPOSIT OR REGISTER DEBT */}
+      {transactionCustomer && (
+        <CustomerTransactionModal
+          isOpen={!!transactionCustomer}
+          onClose={() => setTransactionCustomer(null)}
+          customer={transactionCustomer}
+          initialType={transactionInitialType}
+          invoices={invoices}
+          transactions={transactions}
+          settings={settings}
+          currentUser={currentUser}
+          onSaveTransaction={(txn) => {
+            if (onSaveTransaction) {
+              onSaveTransaction(txn);
+            } else {
+              StorageService.addCustomerTransaction(txn);
+            }
+            setTransactionCustomer(null);
           }}
         />
       )}

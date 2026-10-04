@@ -158,7 +158,7 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
         category: 'customer',
         actionType: 'customer_deposit',
         actionTitle: 'ثبت واریزی مستقیم طرف‌حساب',
-        details: `واریزی به مبلغ ${customDepositAmount.toLocaleString('fa-IR')} ${settings.currency} در حساب «${customer.name}» ثبت شد (بدون تقسیم بین فاکتورها).`,
+        details: `واریزی به مبلغ ${customDepositAmount.toLocaleString('fa-IR')} ${settings.currency} در حساب «${customer.name}» ثبت شد.`,
       });
 
       onClose();
@@ -278,9 +278,9 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
                       {settleMode === 'custom_amount' && <Check className="w-3 h-3 stroke-[3]" />}
                     </div>
                     <div>
-                      <div className="font-bold text-xs">ثبت مستقیم در حساب مشتری (توصیه‌شده)</div>
+                      <div className="font-bold text-xs">ثبت واریزی در حساب مشتری</div>
                       <div className="text-[11px] text-slate-500 mt-0.5">
-                        مبلغ واریزی مستقیماً از کل بدهی طرف‌حساب کسر می‌شود و بین فاکتورها تقسیم نمی‌شود.
+                        مبلغ واریزی در پرونده و حساب دفتری طرف‌حساب ثبت می‌شود.
                       </div>
                     </div>
                   </button>
@@ -336,10 +336,6 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
                   </div>
                   <div className="text-[11px] text-slate-500">
                     معادل حروف/خوانا: <span className="font-bold text-slate-800">{formatPrice(customDepositAmount, settings.currency)}</span>
-                  </div>
-                  <div className="bg-emerald-100/70 border border-emerald-300/80 rounded-lg p-2 text-xs text-emerald-900 flex items-center gap-1.5 mt-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-                    <span>این واریزی فقط در حساب مشتری ثبت شده و بین فاکتورها تقسیم نمی‌گردد.</span>
                   </div>
                 </div>
               )}
