@@ -82,6 +82,7 @@ export interface CustomerLedgerEntry {
   notes?: string;
   rawTransaction?: CustomerTransaction;
   rawInvoice?: Invoice;
+  supplierNames?: string[]; // نام تامین‌کنندگان یا فروشندگان کالاهای ورودی این فاکتور
 }
 
 export interface InvoiceItem {

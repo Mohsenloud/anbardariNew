@@ -28,7 +28,9 @@ import {
   PhoneCall,
   LayoutGrid,
   LayoutList,
-  Filter
+  Filter,
+  FileDown,
+  Loader2
 } from 'lucide-react';
 import { 
   Customer, 
@@ -42,6 +44,7 @@ import {
 import { StorageService } from '../utils/storage';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate, numberToPersianWords } from '../utils/jalali';
 import { exportCustomerStatementToExcel } from '../utils/excelHelper';
+import { exportElementToPdf } from '../utils/pdfHelper';
 import { CustomerTransactionModal } from './CustomerTransactionModal';
 
 interface CustomerStatementModalProps {
@@ -86,6 +89,9 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('table');
   const [showMobileDetails, setShowMobileDetails] = useState<boolean>(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
+  const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
+  const [pdfSuccessMessage, setPdfSuccessMessage] = useState<string | null>(null);
+  const [showSuppliers, setShowSuppliers] = useState<boolean>(true);
 
   // Open separate transaction modal
   const handleOpenTransactionModal = (type: 'deposit' | 'debt') => {
@@ -162,6 +168,36 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
     exportCustomerStatementToExcel(customer, fullLedger, settings);
   };
 
+  // Export to PDF
+  const handleExportPdf = async () => {
+    if (isExportingPdf) return;
+    try {
+      setIsExportingPdf(true);
+      const safeCustomerName = customer.name.replace(/[/\\:*?"<>|]/g, '_');
+      const safeDate = getCurrentJalaliDate().replace(/\//g, '-');
+      const filename = `صورتحساب_مالی_${safeCustomerName}_${safeDate}.pdf`;
+
+      const result = await exportElementToPdf('printable-customer-statement-pdf', filename, {
+        pageSize: 'a4',
+        orientation: 'portrait',
+        quality: 'high',
+        documentType: 'generic',
+      });
+
+      if (result.success) {
+        setPdfSuccessMessage('فایل PDF رسمی صورتحساب با موفقیت دانلود شد.');
+        setTimeout(() => setPdfSuccessMessage(null), 5000);
+      } else {
+        alert(result.error || 'خطا در صدور فایل PDF صورتحساب');
+      }
+    } catch (err: any) {
+      console.error('PDF export error:', err);
+      alert('خطا در تولید فایل PDF صورتحساب');
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   return (
     <div 
       id="customer-statement-modal" 
@@ -229,6 +265,23 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* PDF Success Toast Banner */}
+        {pdfSuccessMessage && (
+          <div className="no-print bg-emerald-600 text-white text-xs font-bold py-2 px-4 flex items-center justify-between gap-2 shadow-sm animate-in fade-in slide-in-from-top-1 shrink-0">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-100" />
+              <span>{pdfSuccessMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPdfSuccessMessage(null)}
+              className="text-white/80 hover:text-white p-1 rounded-lg cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* FINANCIAL SUMMARY: MOBILE HERO CARD + DESKTOP 4-COLUMN CARDS */}
         {/* 1. Mobile Financial Banner (< sm) */}
@@ -426,6 +479,23 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                 </button>
               </div>
 
+              {/* Export to PDF */}
+              <button
+                type="button"
+                id="export-statement-pdf-btn"
+                onClick={handleExportPdf}
+                disabled={isExportingPdf}
+                className="p-2 sm:px-3 sm:py-1.5 flex items-center gap-1 bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-60"
+                title="دریافت فایل PDF رسمی صورتحساب"
+              >
+                {isExportingPdf ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
+                ) : (
+                  <FileDown className="w-3.5 h-3.5 text-rose-600" />
+                )}
+                <span className="hidden sm:inline">{isExportingPdf ? 'در حال صدور...' : 'PDF'}</span>
+              </button>
+
               {/* Print Statement */}
               <button
                 type="button"
@@ -505,6 +575,22 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                 </button>
               )}
             </div>
+
+            {/* Show/Hide Suppliers Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowSuppliers(!showSuppliers)}
+              className={`px-2.5 py-1.5 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                showSuppliers
+                  ? 'bg-amber-50 text-amber-900 border-amber-300 shadow-2xs'
+                  : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+              }`}
+              title="نمایش یا عدم نمایش نام شخصی تامین‌کننده و فروشنده کالا در صورتحساب"
+            >
+              <Building2 className={`w-3.5 h-3.5 ${showSuppliers ? 'text-amber-600' : 'text-slate-400'}`} />
+              <span className="hidden sm:inline">نام تامین‌کننده:</span>
+              <span>{showSuppliers ? 'نمایش' : 'مخفی'}</span>
+            </button>
           </div>
         </div>
 
@@ -571,6 +657,14 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                       {/* Description & Tracking info */}
                       <div className="text-xs text-slate-800 mb-2 leading-relaxed">
                         <span>{entry.description}</span>
+                        {showSuppliers && entry.supplierNames && entry.supplierNames.length > 0 && (
+                          <div className="mt-1 flex items-center gap-1 flex-wrap">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md">
+                              <Building2 className="w-3 h-3 text-amber-600" />
+                              <span>تامین‌کننده / فروشنده کالا: {entry.supplierNames.join('، ')}</span>
+                            </span>
+                          </div>
+                        )}
                         {entry.trackingNumber && (
                           <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-500 font-mono">
                             <span>کد پیگیری:</span>
@@ -736,7 +830,15 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                               {toPersianDigits(entry.documentNumber)}
                             </td>
                             <td className="py-2.5 px-3 text-slate-700 leading-relaxed">
-                              <span>{entry.description}</span>
+                              <div>{entry.description}</div>
+                              {showSuppliers && entry.supplierNames && entry.supplierNames.length > 0 && (
+                                <div className="mt-1 flex items-center gap-1 flex-wrap">
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md">
+                                    <Building2 className="w-3 h-3 text-amber-600 shrink-0" />
+                                    <span>تامین‌کننده: {entry.supplierNames.join('، ')}</span>
+                                  </span>
+                                </div>
+                              )}
                               {entry.trackingNumber && (
                                 <span className="text-[10px] text-slate-400 block font-mono">
                                   پیگیری: {toPersianDigits(entry.trackingNumber)}
@@ -902,7 +1004,14 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                   <td className="py-1.5 px-2 border-l border-slate-200 font-mono">{toPersianDigits(item.date)}</td>
                   <td className="py-1.5 px-2 border-l border-slate-200 font-medium">{item.documentTypeLabel}</td>
                   <td className="py-1.5 px-2 border-l border-slate-200 font-mono">{toPersianDigits(item.documentNumber)}</td>
-                  <td className="py-1.5 px-2 border-l border-slate-200">{item.description}</td>
+                  <td className="py-1.5 px-2 border-l border-slate-200">
+                    <div>{item.description}</div>
+                    {showSuppliers && item.supplierNames && item.supplierNames.length > 0 && (
+                      <div className="text-[9.5px] text-amber-800 font-medium mt-0.5">
+                        تامین‌کننده / فروشنده: {item.supplierNames.join('، ')}
+                      </div>
+                    )}
+                  </td>
                   <td className="py-1.5 px-2 border-l border-slate-200 font-mono">{item.debit > 0 ? toPersianDigits(item.debit.toLocaleString('en-US')) : '—'}</td>
                   <td className="py-1.5 px-2 border-l border-slate-200 font-mono">{item.credit > 0 ? toPersianDigits(item.credit.toLocaleString('en-US')) : '—'}</td>
                   <td className="py-1.5 px-2 font-mono font-bold">
@@ -988,6 +1097,239 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* OFFSCREEN FULL-FIDELITY PDF REPORT CONTAINER FOR HTML2CANVAS */}
+      {/* ========================================================================= */}
+      <div style={{ position: 'absolute', left: '-9999px', top: '0', zIndex: -100 }}>
+        <div
+          id="printable-customer-statement-pdf"
+          dir="rtl"
+          style={{
+            width: '820px',
+            backgroundColor: '#ffffff',
+            padding: '24px 20px',
+            fontFamily: "'Vazirmatn', -apple-system, BlinkMacSystemFont, sans-serif",
+            color: '#0f172a',
+            boxSizing: 'border-box',
+          }}
+        >
+          {/* Official Report Table with Persistent Repeating Header */}
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10.5px', direction: 'rtl' }}>
+            <thead data-pdf-thead="true">
+              {/* 1. Official Report Document Header inside thead (Preserved on ALL pages in PDF export) */}
+              <tr className="pdf-doc-header-row" style={{ backgroundColor: '#ffffff', color: '#0f172a' }}>
+                <th
+                  colSpan={8}
+                  style={{
+                    padding: '0 0 14px 0',
+                    border: 'none',
+                    fontWeight: 'normal',
+                    textAlign: 'right',
+                  }}
+                >
+                  {/* Top Bar: Company Details & Statement Metadata */}
+                  <div style={{ borderBottom: '2px solid #0f172a', paddingBottom: '12px', marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '18px', fontWeight: '900', color: '#0f172a' }}>
+                          {settings.storeName || 'سیستم صدور فاکتور و حسابداری'}
+                        </div>
+                        {settings.tagline && (
+                          <div style={{ fontSize: '11px', color: '#475569', marginTop: '3px' }}>
+                            {settings.tagline}
+                          </div>
+                        )}
+                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '3px' }}>
+                          نشانی: {settings.address || '—'} {settings.phone || settings.mobile ? ` | تلفن: ${toPersianDigits(settings.phone || settings.mobile || '')}` : ''}
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: 'left', fontFamily: 'monospace', fontSize: '11px', lineHeight: '1.6' }}>
+                        <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#0f172a', fontFamily: "'Vazirmatn', sans-serif" }}>
+                          صورتحساب رسمی طرف‌حساب
+                        </div>
+                        <div style={{ color: '#475569' }}>
+                          تاریخ صدور: {toPersianDigits(getCurrentJalaliDate())}
+                        </div>
+                        <div style={{ color: '#475569' }}>
+                          کد مشتری: #{toPersianDigits(customer.id.substring(0, 8))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Customer Information Card */}
+                  <div
+                    style={{
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '10px',
+                      padding: '10px 14px',
+                      backgroundColor: '#f8fafc',
+                      marginBottom: '14px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(2, 1fr)',
+                        gap: '6px 20px',
+                        fontSize: '11px',
+                        lineHeight: '1.6',
+                        color: '#1e293b',
+                      }}
+                    >
+                      <div>
+                        <span style={{ color: '#64748b' }}>نام طرف‌حساب: </span>
+                        <strong>{customer.name}</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: '#64748b' }}>شماره تماس: </span>
+                        <strong style={{ fontFamily: 'monospace' }}>
+                          {customer.phone ? toPersianDigits(customer.phone) : '—'}
+                        </strong>
+                      </div>
+                      <div>
+                        <span style={{ color: '#64748b' }}>کد ملی / شناسه اقتصادی: </span>
+                        <strong style={{ fontFamily: 'monospace' }}>
+                          {customer.nationalId ? toPersianDigits(customer.nationalId) : '—'}
+                        </strong>
+                      </div>
+                      <div>
+                        <span style={{ color: '#64748b' }}>نشانی: </span>
+                        <span>{customer.address || '—'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </th>
+              </tr>
+
+              {/* Table Column Headers */}
+              <tr style={{ backgroundColor: '#f1f5f9', color: '#0f172a', fontWeight: 'bold' }}>
+                <th style={{ padding: '7px 4px', border: '1px solid #cbd5e1', textAlign: 'center', width: '32px' }}>#</th>
+                <th style={{ padding: '7px 6px', border: '1px solid #cbd5e1', textAlign: 'right', width: '75px' }}>تاریخ</th>
+                <th style={{ padding: '7px 6px', border: '1px solid #cbd5e1', textAlign: 'right', width: '90px' }}>نوع سند</th>
+                <th style={{ padding: '7px 6px', border: '1px solid #cbd5e1', textAlign: 'right', width: '85px' }}>شماره سند/پیگیری</th>
+                <th style={{ padding: '7px 8px', border: '1px solid #cbd5e1', textAlign: 'right' }}>شرح تراکنش</th>
+                <th style={{ padding: '7px 6px', border: '1px solid #cbd5e1', textAlign: 'right', width: '90px', color: '#b91c1c' }}>بدهکار ({settings.currency})</th>
+                <th style={{ padding: '7px 6px', border: '1px solid #cbd5e1', textAlign: 'right', width: '90px', color: '#047857' }}>بستانکار ({settings.currency})</th>
+                <th style={{ padding: '7px 6px', border: '1px solid #cbd5e1', textAlign: 'right', width: '100px' }}>مانده جاری</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {fullLedger.entries.map((item, idx) => (
+                <tr
+                  key={`pdf-${item.id}`}
+                  style={{
+                    backgroundColor: idx % 2 === 1 ? '#f8fafc' : '#ffffff',
+                  }}
+                >
+                  <td style={{ padding: '5px 4px', border: '1px solid #cbd5e1', textAlign: 'center', fontFamily: 'monospace', color: '#64748b' }}>
+                    {toPersianDigits(idx + 1)}
+                  </td>
+                  <td style={{ padding: '5px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontWeight: 'bold' }}>
+                    {toPersianDigits(item.date)}
+                  </td>
+                  <td style={{ padding: '5px 6px', border: '1px solid #cbd5e1' }}>
+                    {item.documentTypeLabel}
+                  </td>
+                  <td style={{ padding: '5px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace' }}>
+                    {toPersianDigits(item.documentNumber)}
+                  </td>
+                  <td style={{ padding: '5px 8px', border: '1px solid #cbd5e1', lineHeight: '1.4' }}>
+                    <div>{item.description}</div>
+                    {showSuppliers && item.supplierNames && item.supplierNames.length > 0 && (
+                      <div style={{ color: '#b45309', fontSize: '9px', marginTop: '2px', fontWeight: 'bold' }}>
+                        تامین‌کننده / فروشنده کالا: {item.supplierNames.join('، ')}
+                      </div>
+                    )}
+                    {item.trackingNumber && (
+                      <span style={{ display: 'block', fontSize: '9.5px', color: '#64748b', fontFamily: 'monospace' }}>
+                        پیگیری: {toPersianDigits(item.trackingNumber)}
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ padding: '5px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontWeight: 'bold', color: '#b91c1c' }}>
+                    {item.debit > 0 ? toPersianDigits(item.debit.toLocaleString('en-US')) : '—'}
+                  </td>
+                  <td style={{ padding: '5px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontWeight: 'bold', color: '#047857' }}>
+                    {item.credit > 0 ? toPersianDigits(item.credit.toLocaleString('en-US')) : '—'}
+                  </td>
+                  <td style={{ padding: '5px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontWeight: 'bold' }}>
+                    {toPersianDigits(Math.abs(item.balance).toLocaleString('en-US'))} ({item.balance > 0 ? 'بدهکار' : item.balance < 0 ? 'بستانکار' : 'تسویه'})
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+
+            <tfoot>
+              {/* Grand Totals */}
+              <tr style={{ backgroundColor: '#f1f5f9', fontWeight: 'bold', borderTop: '2px solid #64748b', color: '#0f172a' }}>
+                <td colSpan={5} style={{ padding: '7px 10px', border: '1px solid #cbd5e1', textAlign: 'left', fontWeight: 'bold' }}>
+                  مجموع گردش و مانده نهایی ({settings.currency}):
+                </td>
+                <td style={{ padding: '7px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontWeight: '900', color: '#b91c1c' }}>
+                  {toPersianDigits(fullLedger.totalDebit.toLocaleString('en-US'))}
+                </td>
+                <td style={{ padding: '7px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontWeight: '900', color: '#047857' }}>
+                  {toPersianDigits(fullLedger.totalCredit.toLocaleString('en-US'))}
+                </td>
+                <td style={{ padding: '7px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontWeight: '900' }}>
+                  {toPersianDigits(Math.abs(fullLedger.netBalance).toLocaleString('en-US'))} ({fullLedger.netBalance > 0 ? 'بدهکار' : fullLedger.netBalance < 0 ? 'بستانکار' : 'تسویه'})
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+
+          {/* Bottom Statement Summary & Signatures */}
+          <div
+            style={{
+              border: '1px solid #cbd5e1',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              backgroundColor: '#f8fafc',
+              marginTop: '14px',
+              marginBottom: '16px',
+              fontSize: '11px',
+              lineHeight: '1.6',
+            }}
+          >
+            <div>
+              <strong>مانده نهایی حساب به حروف: </strong>
+              <span style={{ fontWeight: 'bold', color: fullLedger.netBalance > 0 ? '#b91c1c' : fullLedger.netBalance < 0 ? '#1d4ed8' : '#047857' }}>
+                {fullLedger.netBalance === 0
+                  ? 'حساب کاملاً تسویه و بی‌حساب است.'
+                  : `${numberToPersianWords(Math.abs(fullLedger.netBalance))} ${settings.currency} (${fullLedger.netBalance > 0 ? 'بدهکار' : 'بستانکار'})`}
+              </span>
+            </div>
+            {settings.invoiceFooterText && (
+              <div style={{ color: '#64748b', fontSize: '10px', marginTop: '4px' }}>
+                {settings.invoiceFooterText}
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '28px',
+              textAlign: 'center',
+              fontSize: '11px',
+              marginTop: '20px',
+              paddingTop: '6px',
+            }}
+          >
+            <div style={{ borderTop: '1px dashed #94a3b8', paddingTop: '8px' }}>
+              <span style={{ fontWeight: 'bold', color: '#334155' }}>مهر و امضای امور مالی / صادرکننده</span>
+            </div>
+            <div style={{ borderTop: '1px dashed #94a3b8', paddingTop: '8px' }}>
+              <span style={{ fontWeight: 'bold', color: '#334155' }}>امضا و تایید مانده حساب توسط طرف‌حساب</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* SEPARATE MODAL: REGISTER DEPOSIT OR REGISTER DEBT */}
       {activeTxnModalType && (

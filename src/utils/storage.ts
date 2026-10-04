@@ -1609,6 +1609,39 @@ export const StorageService = {
   } {
     const rawEntries: Omit<CustomerLedgerEntry, 'balance' | 'balanceStatus'>[] = [];
 
+    // 0. Map product IDs to their recorded inbound/purchase suppliers
+    const productSuppliersMap = new Map<string, Set<string>>();
+    try {
+      const inbounds = StorageService.getInboundReceipts();
+      inbounds.forEach((rec) => {
+        if (rec.supplierName && rec.supplierName.trim()) {
+          rec.items.forEach((it) => {
+            if (it.productId) {
+              if (!productSuppliersMap.has(it.productId)) {
+                productSuppliersMap.set(it.productId, new Set());
+              }
+              productSuppliersMap.get(it.productId)!.add(rec.supplierName.trim());
+            }
+          });
+        }
+      });
+      const purchases = StorageService.getPurchaseInvoices();
+      purchases.forEach((pur) => {
+        if (pur.supplierName && pur.supplierName.trim()) {
+          pur.items.forEach((it) => {
+            if (it.productId) {
+              if (!productSuppliersMap.has(it.productId)) {
+                productSuppliersMap.set(it.productId, new Set());
+              }
+              productSuppliersMap.get(it.productId)!.add(pur.supplierName.trim());
+            }
+          });
+        }
+      });
+    } catch {
+      // Ignore if storage retrieval fails in isolated tests
+    }
+
     // 1. Process all sales invoices (excluding proformas)
     const customerInvoices = invoices.filter((inv) => {
       if (inv.isProforma) return false;
@@ -1626,6 +1659,18 @@ export const StorageService = {
         unpaidInvoicesCount++;
       }
 
+      // Collect suppliers for items in this invoice
+      const suppliersSet = new Set<string>();
+      inv.items.forEach((it) => {
+        if ((it as any).supplierName && (it as any).supplierName.trim()) {
+          suppliersSet.add((it as any).supplierName.trim());
+        }
+        if (it.productId && productSuppliersMap.has(it.productId)) {
+          productSuppliersMap.get(it.productId)!.forEach((s) => suppliersSet.add(s));
+        }
+      });
+      const supplierNames = Array.from(suppliersSet);
+
       // 1.1 Debit entry for the full invoice amount
       rawEntries.push({
         id: `inv-deb-${inv.id}`,
@@ -1639,6 +1684,7 @@ export const StorageService = {
         paymentMethod: inv.paymentMethod ? PAYMENT_METHOD_LABELS[inv.paymentMethod] || inv.paymentMethod : undefined,
         notes: inv.notes,
         rawInvoice: inv,
+        supplierNames: supplierNames.length > 0 ? supplierNames : undefined,
       });
 
       // 1.2 Credit entry if payment occurred at invoice issuance
