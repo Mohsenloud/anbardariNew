@@ -15,7 +15,8 @@ import {
   Clock,
   Sparkles
 } from 'lucide-react';
-import { Customer, Invoice, StoreSettings } from '../types';
+import { Customer, Invoice, StoreSettings, CustomerTransaction } from '../types';
+import { StorageService } from '../utils/storage';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
 import { NumericInput } from './NumericInput';
 
@@ -62,8 +63,8 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
     unpaidCustomerInvoices.map((i) => i.id)
   );
 
-  // Settlement Mode: 'full_selected' (settle 100% of chosen invoices) vs 'custom_amount' (distribute custom deposit)
-  const [settleMode, setSettleMode] = useState<'full_selected' | 'custom_amount'>('full_selected');
+  // Settlement Mode: 'custom_amount' (direct account deposit without touching invoices) vs 'full_selected' (settle 100% of chosen invoices)
+  const [settleMode, setSettleMode] = useState<'custom_amount' | 'full_selected'>('custom_amount');
   const [customDepositAmount, setCustomDepositAmount] = useState<number>(() => {
     return unpaidCustomerInvoices.reduce((sum, inv) => {
       const remaining = Math.max(0, inv.finalTotal - (inv.paidAmount || 0));
@@ -109,48 +110,62 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
     setSelectedInvoiceIds([]);
   };
 
-  // Preview how money will be allocated
+  // Preview how money will be allocated (only relevant when explicitly settling selected invoices)
   const allocationPreview = useMemo(() => {
-    if (selectedInvoices.length === 0) return [];
+    if (selectedInvoices.length === 0 || settleMode !== 'full_selected') return [];
 
-    if (settleMode === 'full_selected') {
-      return selectedInvoices.map((inv) => ({
-        invoice: inv,
-        currentPaid: inv.paidAmount || 0,
-        newPaid: inv.finalTotal,
-        newStatus: 'paid' as const,
-        changeAmount: Math.max(0, inv.finalTotal - (inv.paidAmount || 0)),
-      }));
-    } else {
-      // Distribute customDepositAmount across selectedInvoices in FIFO order
-      let remainingMoney = Math.max(0, customDepositAmount);
-      return selectedInvoices.map((inv) => {
-        const curPaid = inv.paidAmount || 0;
-        const needed = Math.max(0, inv.finalTotal - curPaid);
-        const allocate = Math.min(needed, remainingMoney);
-        remainingMoney -= allocate;
-        const totalNewPaid = curPaid + allocate;
-        const isPaidFull = totalNewPaid >= inv.finalTotal;
-        const isPartial = totalNewPaid > 0 && !isPaidFull;
-
-        return {
-          invoice: inv,
-          currentPaid: curPaid,
-          newPaid: totalNewPaid,
-          newStatus: (isPaidFull ? 'paid' : isPartial ? 'partial' : 'unpaid') as 'paid' | 'partial' | 'unpaid',
-          changeAmount: allocate,
-        };
-      });
-    }
-  }, [selectedInvoices, settleMode, customDepositAmount]);
+    return selectedInvoices.map((inv) => ({
+      invoice: inv,
+      currentPaid: inv.paidAmount || 0,
+      newPaid: inv.finalTotal,
+      newStatus: 'paid' as const,
+      changeAmount: Math.max(0, inv.finalTotal - (inv.paidAmount || 0)),
+    }));
+  }, [selectedInvoices, settleMode]);
 
   const totalAllocated = useMemo(() => {
+    if (settleMode === 'custom_amount') {
+      return customDepositAmount || 0;
+    }
     return allocationPreview.reduce((sum, item) => sum + item.changeAmount, 0);
-  }, [allocationPreview]);
+  }, [settleMode, customDepositAmount, allocationPreview]);
 
   // Submit handler
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 1. Direct deposit to customer account (NO invoice splitting)
+    if (settleMode === 'custom_amount') {
+      if (customDepositAmount <= 0) return;
+
+      const newTxn: CustomerTransaction = {
+        id: `ctxn-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        customerId: customer.id,
+        customerName: customer.name,
+        type: 'deposit',
+        amount: customDepositAmount,
+        date: getCurrentJalaliDate(),
+        title: 'واریز به حساب طرف‌حساب',
+        paymentMethod: paymentMethod === 'bank_transfer' ? 'transfer' : paymentMethod,
+        trackingNumber: referenceNumber.trim() || undefined,
+        notes: notes.trim() || undefined,
+        createdAt: getCurrentJalaliDate(),
+      };
+
+      StorageService.addCustomerTransaction(newTxn);
+
+      StorageService.logActivity({
+        category: 'customer',
+        actionType: 'customer_deposit',
+        actionTitle: 'ثبت واریزی مستقیم طرف‌حساب',
+        details: `واریزی به مبلغ ${customDepositAmount.toLocaleString('fa-IR')} ${settings.currency} در حساب «${customer.name}» ثبت شد (بدون تقسیم بین فاکتورها).`,
+      });
+
+      onClose();
+      return;
+    }
+
+    // 2. Full settlement of explicitly chosen invoices
     if (allocationPreview.length === 0) return;
 
     const updates = allocationPreview.map((item) => ({
@@ -167,11 +182,11 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
     };
 
     const details = [
-      `واریزی یکباره مشتری: «${customer.name}»`,
+      `تسویه فاکتورهای مشتری: «${customer.name}»`,
       `مبلغ واریزی ثبت‌شده: ${formatPrice(totalAllocated, settings.currency)}`,
       `روش واریز: ${methodLabels[paymentMethod] || paymentMethod}`,
       referenceNumber ? `شماره پیگیری/ارجاع: ${referenceNumber}` : '',
-      `تعداد فاکتورهای تحت تاثیر: ${updates.length} فاکتور`,
+      `تعداد فاکتورهای تسویه شده: ${updates.length} فاکتور`,
       notes ? `توضیحات: ${notes}` : '',
     ].filter(Boolean).join(' | ');
 
@@ -250,6 +265,28 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <button
                     type="button"
+                    onClick={() => setSettleMode('custom_amount')}
+                    className={`p-3 rounded-xl border text-right transition-all cursor-pointer flex items-start gap-2.5 ${
+                      settleMode === 'custom_amount'
+                        ? 'bg-emerald-50/80 border-emerald-500 text-emerald-950 ring-2 ring-emerald-500/20 shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
+                      settleMode === 'custom_amount' ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300'
+                    }`}>
+                      {settleMode === 'custom_amount' && <Check className="w-3 h-3 stroke-[3]" />}
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs">ثبت مستقیم در حساب مشتری (توصیه‌شده)</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        مبلغ واریزی مستقیماً از کل بدهی طرف‌حساب کسر می‌شود و بین فاکتورها تقسیم نمی‌شود.
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => setSettleMode('full_selected')}
                     className={`p-3 rounded-xl border text-right transition-all cursor-pointer flex items-start gap-2.5 ${
                       settleMode === 'full_selected'
@@ -265,29 +302,7 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
                     <div>
                       <div className="font-bold text-xs">تسویه کامل فاکتورهای انتخاب‌شده</div>
                       <div className="text-[11px] text-slate-500 mt-0.5">
-                        تمام بدهی فاکتورهای تیک‌خورده به صورت ۱۰۰٪ تسویه‌شده ثبت می‌شود.
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSettleMode('custom_amount')}
-                    className={`p-3 rounded-xl border text-right transition-all cursor-pointer flex items-start gap-2.5 ${
-                      settleMode === 'custom_amount'
-                        ? 'bg-emerald-50/80 border-emerald-500 text-emerald-950 ring-2 ring-emerald-500/20 shadow-xs'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
-                      settleMode === 'custom_amount' ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300'
-                    }`}>
-                      {settleMode === 'custom_amount' && <Check className="w-3 h-3 stroke-[3]" />}
-                    </div>
-                    <div>
-                      <div className="font-bold text-xs">واریز مبلغ مشخص و تسهیم خودکار (FIFO)</div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">
-                        مبلغ واریزی از فاکتور قدیمی‌تر به جدیدتر پر شده و مانده نسیه می‌ماند.
+                        فقط فاکتورهای تیک‌خورده به صورت ۱۰۰٪ تسویه‌شده علامت‌گذاری می‌شوند.
                       </div>
                     </div>
                   </button>
@@ -313,19 +328,24 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
                     />
                     <button
                       type="button"
-                      onClick={() => setCustomDepositAmount(selectedRemainingDebt)}
+                      onClick={() => setCustomDepositAmount(totalRemainingDebt)}
                       className="px-3 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold shrink-0 hover:bg-emerald-700 transition-colors cursor-pointer self-start mt-0.5"
                     >
-                      تسویه کامل انتخابی
+                      تسویه کل مانده
                     </button>
                   </div>
                   <div className="text-[11px] text-slate-500">
                     معادل حروف/خوانا: <span className="font-bold text-slate-800">{formatPrice(customDepositAmount, settings.currency)}</span>
                   </div>
+                  <div className="bg-emerald-100/70 border border-emerald-300/80 rounded-lg p-2 text-xs text-emerald-900 flex items-center gap-1.5 mt-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                    <span>این واریزی فقط در حساب مشتری ثبت شده و بین فاکتورها تقسیم نمی‌گردد.</span>
+                  </div>
                 </div>
               )}
 
-              {/* Step 2: Invoices Selection List */}
+              {/* Step 2: Invoices Selection List (Only shown when explicitly settling chosen invoices) */}
+              {settleMode === 'full_selected' && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-bold text-slate-800">
@@ -408,6 +428,7 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
                   })}
                 </div>
               </div>
+              )}
 
               {/* Step 3: Payment Details */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">

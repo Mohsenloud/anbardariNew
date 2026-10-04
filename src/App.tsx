@@ -1082,70 +1082,10 @@ export default function App() {
   };
 
   // 7.1 CUSTOMER TRANSACTIONS (صورتحساب، ثبت واریزی و بدهی مشتری)
-  const handleSaveCustomerTransaction = (txn: CustomerTransaction, autoSettleInvoices?: boolean) => {
+  const handleSaveCustomerTransaction = (txn: CustomerTransaction) => {
     StorageService.addCustomerTransaction(txn);
     const updatedTxns = StorageService.getCustomerTransactions();
     setCustomerTransactions(updatedTxns);
-
-    // If it's a deposit and auto-settle is requested, automatically allocate the deposit to customer's unpaid invoices (FIFO)
-    if (txn.type === 'deposit' && autoSettleInvoices) {
-      let remainingMoney = txn.amount;
-      const customerUnpaidInvoices = invoices
-        .filter((inv) => {
-          if (inv.isProforma) return false;
-          const matches =
-            (inv.customerId && inv.customerId === txn.customerId) ||
-            (inv.customerName && inv.customerName.trim().toLowerCase() === txn.customerName.trim().toLowerCase());
-          if (!matches) return false;
-          return inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'partial';
-        })
-        .sort((a, b) => a.date.localeCompare(b.date)); // oldest first
-
-      if (customerUnpaidInvoices.length > 0 && remainingMoney > 0) {
-        const invoiceUpdates: { invoiceId: string; status: 'paid' | 'unpaid' | 'partial'; paidAmount: number }[] = [];
-
-        for (const inv of customerUnpaidInvoices) {
-          if (remainingMoney <= 0) break;
-          const currentPaid = inv.paidAmount || 0;
-          const debtOnInv = Math.max(0, inv.finalTotal - currentPaid);
-          if (debtOnInv <= 0) continue;
-
-          if (remainingMoney >= debtOnInv) {
-            remainingMoney -= debtOnInv;
-            invoiceUpdates.push({
-              invoiceId: inv.id,
-              status: 'paid',
-              paidAmount: inv.finalTotal,
-            });
-          } else {
-            const newPaid = currentPaid + remainingMoney;
-            remainingMoney = 0;
-            invoiceUpdates.push({
-              invoiceId: inv.id,
-              status: 'partial',
-              paidAmount: newPaid,
-            });
-          }
-        }
-
-        if (invoiceUpdates.length > 0) {
-          const updateMap = new Map(invoiceUpdates.map((u) => [u.invoiceId, u]));
-          const updatedInvoices = invoices.map((inv) => {
-            const up = updateMap.get(inv.id);
-            if (up) {
-              return {
-                ...inv,
-                paymentStatus: up.status,
-                paidAmount: up.paidAmount,
-              };
-            }
-            return inv;
-          });
-          setInvoices(updatedInvoices);
-          StorageService.saveInvoices(updatedInvoices);
-        }
-      }
-    }
 
     StorageService.logActivity({
       category: 'customer',

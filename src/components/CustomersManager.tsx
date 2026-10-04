@@ -51,7 +51,7 @@ interface CustomersManagerProps {
     updates: { invoiceId: string; status: 'paid' | 'unpaid' | 'partial'; paidAmount: number }[],
     details?: string
   ) => void;
-  onSaveTransaction?: (txn: CustomerTransaction, autoSettleInvoices?: boolean) => void;
+  onSaveTransaction?: (txn: CustomerTransaction) => void;
   onDeleteTransaction?: (txnId: string) => void;
   onViewInvoice?: (invoice: Invoice) => void;
 }
@@ -80,8 +80,15 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   const [exportModalCustomer, setExportModalCustomer] = useState<Customer | null>(null);
   const [paymentModalCustomer, setPaymentModalCustomer] = useState<Customer | null>(null);
   const [statementCustomer, setStatementCustomer] = useState<Customer | null>(null);
+  const [statementInitialForm, setStatementInitialForm] = useState<'none' | 'deposit' | 'debt'>('none');
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
   const [isStatementsReportOpen, setIsStatementsReportOpen] = useState(false);
+
+  // Helper to open statement modal with optional initial form (deposit/debt)
+  const handleOpenStatement = (cust: Customer, initialForm: 'none' | 'deposit' | 'debt' = 'none') => {
+    setStatementCustomer(cust);
+    setStatementInitialForm(initialForm);
+  };
 
   // View Mode: 'table' (ردیفی) is default, with 'grid' (کارتی) option
   const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
@@ -672,12 +679,12 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                               <button
                                 type="button"
                                 id={`settle-customer-debt-${cust.id}`}
-                                onClick={() => setPaymentModalCustomer(cust)}
-                                title="ثبت واریزی یکباره و تسویه تجمیعی فاکتورها"
-                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 transition-all cursor-pointer"
+                                onClick={() => handleOpenStatement(cust, 'deposit')}
+                                title="ثبت واریزی به حساب مشتری"
+                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition-all cursor-pointer"
                               >
-                                <CreditCard className="w-3.5 h-3.5 text-amber-600" />
-                                <span className="hidden xl:inline">تسویه</span>
+                                <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="hidden xl:inline">واریزی</span>
                               </button>
                             )}
 
@@ -830,8 +837,8 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                         {hasDebt && (
                           <button
                             type="button"
-                            onClick={() => setPaymentModalCustomer(cust)}
-                            className="flex items-center gap-1 text-[11px] font-bold px-2 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow-2xs cursor-pointer"
+                            onClick={() => handleOpenStatement(cust, 'deposit')}
+                            className="flex items-center gap-1 text-[11px] font-bold px-2 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs cursor-pointer"
                           >
                             <CreditCard className="w-3.5 h-3.5" />
                             <span>واریزی</span>
@@ -1043,17 +1050,17 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                         <span>صورتحساب مالی</span>
                       </button>
 
-                      {/* Settle Debt / Bulk Payment Button */}
+                      {/* Settle Debt / Deposit Button */}
                       {hasDebt && (
                         <button
                           type="button"
                           id={`settle-customer-debt-${cust.id}`}
-                          onClick={() => setPaymentModalCustomer(cust)}
-                          title="ثبت واریزی یکباره و تسویه تجمیعی فاکتورهای این مشتری"
-                          className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition-all cursor-pointer"
+                          onClick={() => handleOpenStatement(cust, 'deposit')}
+                          title="ثبت واریزی به حساب این مشتری"
+                          className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer"
                         >
                           <CreditCard className="w-3.5 h-3.5" />
-                          <span>ثبت واریزی و تسویه</span>
+                          <span>ثبت واریزی</span>
                         </button>
                       )}
 
@@ -1345,12 +1352,12 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                       onClick={() => {
                         const target = detailCustomer;
                         setDetailCustomer(null);
-                        setPaymentModalCustomer(target);
+                        handleOpenStatement(target, 'deposit');
                       }}
-                      className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                      className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                     >
                       <CreditCard className="w-4 h-4" />
-                      <span>ثبت واریزی و تسویه</span>
+                      <span>ثبت واریزی به حساب</span>
                     </button>
                   )}
 
@@ -1601,15 +1608,19 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
       {statementCustomer && (
         <CustomerStatementModal
           isOpen={!!statementCustomer}
-          onClose={() => setStatementCustomer(null)}
+          onClose={() => {
+            setStatementCustomer(null);
+            setStatementInitialForm('none');
+          }}
           customer={statementCustomer}
           invoices={invoices}
           transactions={transactions}
           settings={settings}
           currentUser={currentUser}
-          onSaveTransaction={(txn, autoSettle) => {
+          initialFormType={statementInitialForm}
+          onSaveTransaction={(txn) => {
             if (onSaveTransaction) {
-              onSaveTransaction(txn, autoSettle);
+              onSaveTransaction(txn);
             } else {
               StorageService.addCustomerTransaction(txn);
             }

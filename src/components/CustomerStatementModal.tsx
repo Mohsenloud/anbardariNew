@@ -52,9 +52,10 @@ interface CustomerStatementModalProps {
   transactions: CustomerTransaction[];
   settings: StoreSettings;
   currentUser?: AppUser;
-  onSaveTransaction: (txn: CustomerTransaction, autoSettleInvoices?: boolean) => void;
+  onSaveTransaction: (txn: CustomerTransaction) => void;
   onDeleteTransaction: (txnId: string) => void;
   onViewInvoice?: (invoice: Invoice) => void;
+  initialFormType?: 'none' | 'deposit' | 'debt';
 }
 
 export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
@@ -68,11 +69,12 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   onSaveTransaction,
   onDeleteTransaction,
   onViewInvoice,
+  initialFormType = 'none',
 }) => {
   if (!isOpen || !customer) return null;
 
   // Active sub-view or forms
-  const [formType, setFormType] = useState<'none' | 'deposit' | 'debt'>('none');
+  const [formType, setFormType] = useState<'none' | 'deposit' | 'debt'>(initialFormType || 'none');
   const [filterType, setFilterType] = useState<'all' | 'debt' | 'deposit'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<'all' | '30days' | 'this_year'>('all');
@@ -93,7 +95,6 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   const [formChequeDueDate, setFormChequeDueDate] = useState<string>('');
   const [formSelectedInvoiceId, setFormSelectedInvoiceId] = useState<string>('');
   const [formNotes, setFormNotes] = useState<string>('');
-  const [formAutoSettle, setFormAutoSettle] = useState<boolean>(true);
 
   // Build the complete customer ledger
   const fullLedger = useMemo(() => {
@@ -157,7 +158,6 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
     setFormChequeDueDate('');
     setFormSelectedInvoiceId('');
     setFormNotes('');
-    setFormAutoSettle(type === 'deposit');
 
     if (type === 'deposit') {
       // Default deposit to remaining debt if any
@@ -171,6 +171,13 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
       setFormPaymentMethod('other');
     }
   };
+
+  // Sync initialFormType when modal opens
+  React.useEffect(() => {
+    if (isOpen && initialFormType && initialFormType !== 'none') {
+      handleOpenForm(initialFormType);
+    }
+  }, [isOpen, initialFormType]);
 
   const handleCloseForm = () => {
     setFormType('none');
@@ -213,7 +220,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
       createdAt: getCurrentJalaliDate(),
     };
 
-    onSaveTransaction(newTxn, formType === 'deposit' && formAutoSettle);
+    onSaveTransaction(newTxn);
     handleCloseForm();
   };
 
@@ -743,9 +750,9 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                 </div>
               )}
 
-              {/* Notes & Auto-settle toggle */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 items-end">
-                <div className="sm:col-span-2">
+              {/* Notes & Account Information */}
+              <div className="space-y-2.5">
+                <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">توضیحات تکمیلی</label>
                   <input
                     type="text"
@@ -757,17 +764,11 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                 </div>
 
                 {formType === 'deposit' && (
-                  <div className="flex items-center gap-2 pb-2">
-                    <input
-                      type="checkbox"
-                      id="auto-settle-check"
-                      checked={formAutoSettle}
-                      onChange={(e) => setFormAutoSettle(e.target.checked)}
-                      className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer w-4 h-4"
-                    />
-                    <label htmlFor="auto-settle-check" className="text-xs text-slate-700 font-medium cursor-pointer">
-                      تسویه خودکار فاکتورهای دارای مانده
-                    </label>
+                  <div className="bg-emerald-50/90 border border-emerald-200/90 rounded-xl p-2.5 sm:p-3 flex items-center gap-2 text-xs text-emerald-800 leading-relaxed">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      این مبلغ واریزی مستقیماً در حساب و صورتحساب دفتری مشتری ثبت شده و از مانده کل بدهی ایشان کسر می‌گردد (بدون تقسیم یا تغییر در فاکتورها).
+                    </span>
                   </div>
                 )}
               </div>
