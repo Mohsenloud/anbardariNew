@@ -57,7 +57,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
 }) => {
   if (!isOpen || !invoice) return null;
 
-  const canDelete = currentUser?.role === 'admin' || !currentUser;
+  const canDelete = !currentUser || currentUser.role === 'admin' || currentUser.role === 'supervisor' || Boolean(currentUser.permissions?.canDeleteInvoice);
   const isPaid = invoice.paymentStatus === 'paid';
   const isPartial = invoice.paymentStatus === 'partial';
   const isUnpaid = invoice.paymentStatus === 'unpaid';

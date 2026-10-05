@@ -61,6 +61,7 @@ const getAvatarBgClass = (color?: string, role?: string) => {
   if (color === 'teal') return 'bg-teal-600 text-white';
   if (color === 'indigo') return 'bg-indigo-600 text-white';
   if (role === 'admin') return 'bg-emerald-600 text-white';
+  if (role === 'supervisor') return 'bg-teal-600 text-white';
   if (role === 'cashier') return 'bg-blue-600 text-white';
   if (role === 'warehouse') return 'bg-amber-600 text-white';
   if (role === 'accountant') return 'bg-purple-600 text-white';

@@ -191,7 +191,15 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
       roleTitle: prev.roleTitle || ROLE_LABELS[role],
       permissions: { ...DEFAULT_ROLE_PERMISSIONS[role] },
       avatarColor:
-        role === 'admin' ? 'emerald' : role === 'cashier' ? 'blue' : role === 'warehouse' ? 'amber' : 'purple',
+        role === 'admin'
+          ? 'emerald'
+          : role === 'supervisor'
+          ? 'teal'
+          : role === 'cashier'
+          ? 'blue'
+          : role === 'warehouse'
+          ? 'amber'
+          : 'purple',
     }));
   };
 
@@ -851,7 +859,7 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                   <button
                     type="button"
                     onClick={() => handleRolePresetSelect('admin')}
@@ -863,6 +871,19 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                   >
                     <div className="text-xs font-bold text-slate-800">مدیر کل</div>
                     <div className="text-[10px] text-slate-500 mt-0.5">تمام اختیارات سیستم</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleRolePresetSelect('supervisor')}
+                    className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
+                      formData.role === 'supervisor'
+                        ? 'bg-teal-50 border-teal-500 ring-2 ring-teal-200'
+                        : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
+                    }`}
+                  >
+                    <div className="text-xs font-bold text-slate-800">سرپرست</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">همه بجز پنل و کاربر</div>
                   </button>
 
                   <button

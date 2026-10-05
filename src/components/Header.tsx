@@ -499,6 +499,8 @@ export const Header: React.FC<HeaderProps> = ({
                                       className={`w-6 h-6 rounded-md ${
                                         u.role === 'admin'
                                           ? 'bg-emerald-600'
+                                          : u.role === 'supervisor'
+                                          ? 'bg-teal-600'
                                           : u.role === 'cashier'
                                           ? 'bg-blue-600'
                                           : u.role === 'warehouse'

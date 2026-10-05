@@ -500,7 +500,7 @@ export const OPTIMAL_PRINT_LAYOUT: PrintLayoutSettings = {
 
 export type PdfQualityPreset = 'economy' | 'standard' | 'high' | 'ultra';
 
-export type UserRole = 'admin' | 'cashier' | 'warehouse' | 'accountant' | 'custom';
+export type UserRole = 'admin' | 'supervisor' | 'cashier' | 'warehouse' | 'accountant' | 'custom';
 
 export interface UserPermissions {
   canCreateInvoice: boolean; // صدور فاکتور جدید

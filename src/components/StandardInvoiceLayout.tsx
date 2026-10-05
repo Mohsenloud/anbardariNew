@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Invoice, StoreSettings } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { Building2 } from 'lucide-react';
 import { getPrintLayoutCssVariables } from '../utils/printLayoutHelper';
+import { StorageService } from '../utils/storage';
 
 export interface StandardInvoiceLayoutProps {
   invoice: Invoice;
@@ -20,6 +21,24 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
   const isA5 = pageSize === 'a5';
   const isLandscape = orientation === 'landscape';
   const isA5Landscape = isA5 && isLandscape;
+
+  const buyerMobile = useMemo(() => {
+    if (invoice.customerPhone && invoice.customerPhone.trim()) return invoice.customerPhone.trim();
+    try {
+      const customers = StorageService.getCustomers();
+      if (invoice.customerId) {
+        const found = customers.find((c) => c.id === invoice.customerId);
+        if (found?.phone) return found.phone;
+      }
+      if (invoice.customerName) {
+        const found = customers.find(
+          (c) => c.name.trim().toLowerCase() === invoice.customerName.trim().toLowerCase()
+        );
+        if (found?.phone) return found.phone;
+      }
+    } catch {}
+    return '';
+  }, [invoice.customerPhone, invoice.customerId, invoice.customerName]);
 
   return (
     <div
@@ -63,7 +82,7 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
                   {settings.tagline}
                 </p>
               )}
-              {/* Seller Phone & Address */}
+              {/* Seller Phone (آدرس طبق درخواست از هدر حذف شد) */}
               <div className={`flex flex-wrap items-center gap-x-3 text-slate-600 pt-0.5 ${
                 isA5 ? 'text-[9px]' : 'text-[11px]'
               }`}>
@@ -71,9 +90,6 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
                   <span>
                     تلفن: <strong className="text-slate-800 font-semibold">{toPersianDigits(settings.phone || settings.mobile)}</strong>
                   </span>
-                )}
-                {settings.address && (
-                  <span className="truncate max-w-[280px]">نشانی: {settings.address}</span>
                 )}
               </div>
             </div>
@@ -123,11 +139,9 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
           <div>
             <strong>خریدار:</strong> <span className="font-bold text-slate-900">{invoice.customerName || 'مشتری محترم'}</span>
           </div>
-          {invoice.customerPhone && (
-            <div>
-              <strong>تلفن:</strong> <span className="font-mono text-slate-900">{toPersianDigits(invoice.customerPhone)}</span>
-            </div>
-          )}
+          <div>
+            <strong>موبایل خریدار:</strong> <span className="font-mono text-slate-900">{buyerMobile ? toPersianDigits(buyerMobile) : '---'}</span>
+          </div>
           {invoice.customerNationalId && (
             <div>
               <strong>شناسه/کد ملی:</strong> <span className="font-mono text-slate-900">{toPersianDigits(invoice.customerNationalId)}</span>
@@ -226,7 +240,7 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
               isA5 ? 'p-1.5 text-[9px]' : 'p-2 text-[11px]'
             }`}>
               <div className="flex items-center justify-between font-bold text-slate-800 pb-0.5 border-b border-slate-200">
-                <span>روش پرداخت:</span>
+                <span>روش دریافت وجه:</span>
                 <span className="text-sky-900 bg-sky-100/90 px-1.5 py-0.5 rounded text-[9.5px]">
                   {invoice.paymentMethod === 'cheque' 
                     ? 'چک صیادی' 
@@ -300,7 +314,7 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
               }`}>
                 <div>
                   <div className="flex items-center justify-between font-bold text-slate-800 pb-1 border-b border-slate-200">
-                    <span>روش پرداخت:</span>
+                    <span>روش دریافت وجه:</span>
                     <span className="text-sky-900 bg-sky-100/90 px-2 py-0.5 rounded text-[10px]">
                       {invoice.paymentMethod === 'cheque' 
                         ? 'چک صیادی' 

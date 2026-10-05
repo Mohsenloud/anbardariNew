@@ -42,7 +42,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
 }) => {
   if (!isOpen || !product) return null;
 
-  const canDelete = currentUser?.role === 'admin' || !currentUser;
+  const canDelete = !currentUser || currentUser.role === 'admin' || currentUser.role === 'supervisor' || Boolean(currentUser.permissions?.canManageInventory);
   const isOut = product.stock === 0;
   const isLow = product.stock > 0 && product.stock <= product.minStockAlert;
 

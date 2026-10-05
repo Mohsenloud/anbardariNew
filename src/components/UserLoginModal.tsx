@@ -203,6 +203,8 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                 className={`w-9 h-9 rounded-xl ${
                   targetUser.role === 'admin'
                     ? 'bg-emerald-600'
+                    : targetUser.role === 'supervisor'
+                    ? 'bg-teal-600'
                     : targetUser.role === 'cashier'
                     ? 'bg-blue-600'
                     : 'bg-amber-600'

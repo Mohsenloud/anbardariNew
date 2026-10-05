@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Invoice, StoreSettings } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { exportElementToPdf, printElementDirectly, printElementInNewWindow, generatePdfBlob } from '../utils/pdfHelper';
@@ -139,6 +139,24 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   const effectiveFinalTotal = (effectiveTaxAmount > 0 && (!invoice.taxAmount || invoice.taxAmount === 0))
     ? taxableAmount + effectiveTaxAmount
     : invoice.finalTotal;
+
+  const buyerMobile = useMemo(() => {
+    if (invoice.customerPhone && invoice.customerPhone.trim()) return invoice.customerPhone.trim();
+    try {
+      const customers = StorageService.getCustomers();
+      if (invoice.customerId) {
+        const found = customers.find((c) => c.id === invoice.customerId);
+        if (found?.phone) return found.phone;
+      }
+      if (invoice.customerName) {
+        const found = customers.find(
+          (c) => c.name.trim().toLowerCase() === invoice.customerName.trim().toLowerCase()
+        );
+        if (found?.phone) return found.phone;
+      }
+    } catch {}
+    return '';
+  }, [invoice.customerPhone, invoice.customerId, invoice.customerName]);
 
   const handlePrint = () => {
     const docTitle = invoice.isProforma
@@ -820,7 +838,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                               {activeSettings.tagline}
                             </p>
                           )}
-                          {/* Seller Phone & Address */}
+                          {/* Seller Phone (آدرس از هدر حذف شد) */}
                           <div className={`flex flex-wrap items-center gap-x-3 text-slate-600 pt-1 ${
                             isA5 ? 'text-[9.5px]' : 'text-[11px]'
                           }`}>
@@ -828,9 +846,6 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                               <span>
                                 تلفن: <strong className="text-slate-800 font-semibold">{toPersianDigits(activeSettings.phone || activeSettings.mobile)}</strong>
                               </span>
-                            )}
-                            {activeSettings.address && (
-                              <span className="truncate max-w-[280px]">نشانی: {activeSettings.address}</span>
                             )}
                           </div>
                         </div>
@@ -900,15 +915,15 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                           <p><strong>نام خریدار / شرکت:</strong> {invoice.customerName || 'مشتری محترم'}</p>
                           <p><strong>شناسه ملی / کد اقتصادی:</strong> {toPersianDigits(invoice.customerNationalId || '---')}</p>
                           <p><strong>نشانی خریدار:</strong> {invoice.customerAddress || '---'}</p>
-                          <p><strong>تلفن همراه:</strong> {toPersianDigits(invoice.customerPhone || '---')}</p>
+                          <p><strong>موبایل خریدار:</strong> {buyerMobile ? toPersianDigits(buyerMobile) : '---'}</p>
                         </div>
                       </div>
                     </div>
                   ) : (
                     /* Standard customer info bar */
-                    <div className={`bg-slate-50 border border-slate-200 rounded-lg flex flex-wrap justify-between gap-2 text-slate-700 ${isA5 ? 'p-2 text-[10px]' : 'p-2.5 text-xs'}`}>
+                    <div className={`bg-slate-50 border border-slate-200 rounded-lg flex flex-wrap justify-between items-center gap-2 text-slate-700 ${isA5 ? 'p-2 text-[10px]' : 'p-2.5 text-xs'}`}>
                       <div><strong>خریدار:</strong> {invoice.customerName || 'مشتری محترم'}</div>
-                      {invoice.customerPhone && <div><strong>تلفن:</strong> {toPersianDigits(invoice.customerPhone)}</div>}
+                      <div><strong>موبایل خریدار:</strong> <span className="font-mono">{buyerMobile ? toPersianDigits(buyerMobile) : '---'}</span></div>
                       {invoice.customerAddress && <div><strong>آدرس:</strong> {invoice.customerAddress}</div>}
                       <div>
                         <strong>وضعیت پرداخت:</strong>{' '}
@@ -1021,9 +1036,9 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                               <span>🏦 مشخصات واریز به حساب:</span>
                             </div>
                             {invoice.transferDescription ? (
-                              <div className="leading-relaxed">{invoice.transferDescription}</div>
+                              <div className="leading-relaxed">{invoice.transferDescription.replace(/فروشگاه/g, '').replace(/\s+/g, ' ').trim()}</div>
                             ) : (
-                              <div className="text-slate-500 italic">واریز به حساب بانکی فروشگاه</div>
+                              <div className="text-slate-500 italic">واریز به حساب بانکی</div>
                             )}
                           </div>
                         )}

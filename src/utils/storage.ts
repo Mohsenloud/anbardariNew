@@ -117,6 +117,16 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canAccessAdmin: true,
     canManageUsers: true,
   },
+  supervisor: {
+    canCreateInvoice: true,
+    canViewInvoices: true,
+    canDeleteInvoice: true,
+    canManageInventory: true,
+    canManageCustomers: true,
+    canViewReports: true,
+    canAccessAdmin: false,
+    canManageUsers: false,
+  },
   cashier: {
     canCreateInvoice: true,
     canViewInvoices: true,
@@ -161,6 +171,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'مدیر کل (دسترسی نامحدود)',
+  supervisor: 'سرپرست (همه فعالیت‌ها بجز پنل و مدیریت کاربران)',
   cashier: 'صندوق‌دار و فروشنده',
   warehouse: 'مسئول انبار و موجودی',
   accountant: 'حسابدار و تحلیلگر مالی',
@@ -220,6 +231,20 @@ const initialUsers: AppUser[] = [
     isActive: true,
     avatarColor: 'purple',
     phone: '۰۹۱۲۸۸۸۹۹۰۰',
+    pin: '1234',
+    password: '1234',
+    createdAt: getCurrentJalaliDate(),
+  },
+  {
+    id: 'user-5',
+    username: 'supervisor1',
+    fullName: 'کامران امینی',
+    role: 'supervisor',
+    roleTitle: 'سرپرست فروش و عملیات',
+    permissions: { ...DEFAULT_ROLE_PERMISSIONS.supervisor },
+    isActive: true,
+    avatarColor: 'teal',
+    phone: '۰۹۱۲۰۱۱۴۴۵۵',
     pin: '1234',
     password: '1234',
     createdAt: getCurrentJalaliDate(),
@@ -2611,6 +2636,15 @@ export const StorageService = {
           pin: userPin,
         };
       });
+
+      if (!sanitized.some((u) => u.role === 'supervisor') && !userDelSet.has('user-5')) {
+        const sup = initialUsers.find((u) => u.id === 'user-5');
+        if (sup) {
+          sanitized.push(sup);
+          needsSave = true;
+        }
+      }
+
       if (needsSave) {
         this.saveUsers(sanitized);
       }

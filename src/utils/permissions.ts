@@ -118,6 +118,13 @@ export function getRoleBadgeConfig(role: UserRole): {
         badgeText: 'text-emerald-800',
         borderColor: 'border-emerald-200',
       };
+    case 'supervisor':
+      return {
+        label: 'سرپرست فروش و عملیات',
+        badgeBg: 'bg-teal-100',
+        badgeText: 'text-teal-800',
+        borderColor: 'border-teal-200',
+      };
     case 'cashier':
       return {
         label: 'صندوق‌دار و فروشنده',

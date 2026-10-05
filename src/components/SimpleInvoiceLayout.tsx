@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Invoice, StoreSettings } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { getPrintLayoutCssVariables } from '../utils/printLayoutHelper';
+import { StorageService } from '../utils/storage';
 
 interface SimpleInvoiceLayoutProps {
   invoice: Invoice;
@@ -22,6 +23,24 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
   const isA5Portrait = isA5 && !isLandscape;
   const isA4Portrait = !isA5 && !isLandscape;
   const isA4Landscape = !isA5 && isLandscape;
+
+  const buyerMobile = useMemo(() => {
+    if (invoice.customerPhone && invoice.customerPhone.trim()) return invoice.customerPhone.trim();
+    try {
+      const customers = StorageService.getCustomers();
+      if (invoice.customerId) {
+        const found = customers.find((c) => c.id === invoice.customerId);
+        if (found?.phone) return found.phone;
+      }
+      if (invoice.customerName) {
+        const found = customers.find(
+          (c) => c.name.trim().toLowerCase() === invoice.customerName.trim().toLowerCase()
+        );
+        if (found?.phone) return found.phone;
+      }
+    } catch {}
+    return '';
+  }, [invoice.customerPhone, invoice.customerId, invoice.customerName]);
 
   const totalQuantity = invoice.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
   const hasDiscounts = invoice.items.some((item) => (item.discount || 0) > 0) || (invoice.totalDiscount || 0) > 0;
@@ -88,6 +107,7 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
                   {settings.tagline}
                 </p>
               )}
+              {/* نشانی طبق درخواست کاربر از هدر حذف شد */}
               <div className={`flex flex-wrap items-center gap-x-3 text-slate-600 pt-0.5 ${
                 isA5Landscape ? 'text-[8.5px]' : isA5Portrait ? 'text-[9.5px]' : 'text-[11px]'
               }`}>
@@ -96,9 +116,6 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
                 )}
                 {settings.mobile && (
                   <span>همراه: <strong className="text-slate-800 font-bold">{toPersianDigits(settings.mobile)}</strong></span>
-                )}
-                {settings.address && (
-                  <span className="truncate max-w-[280px]">نشانی: {settings.address}</span>
                 )}
               </div>
             </div>
@@ -209,9 +226,9 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
                 <span className="text-slate-600 font-medium">نام خریدار:</span>
                 <span className="font-bold text-slate-900 truncate">{invoice.customerName || 'مشتری محترم'}</span>
               </div>
-              <div className="grid grid-cols-[68px_1fr] items-start gap-1">
-                <span className="text-slate-600 font-medium">شماره تماس:</span>
-                <span className="font-bold font-['Vazirmatn']">{toPersianDigits(invoice.customerPhone || '---')}</span>
+              <div className="grid grid-cols-[78px_1fr] items-start gap-1">
+                <span className="text-slate-600 font-medium">موبایل خریدار:</span>
+                <span className="font-bold font-['Vazirmatn']">{buyerMobile ? toPersianDigits(buyerMobile) : '---'}</span>
               </div>
               {invoice.customerNationalId && (
                 <div className="grid grid-cols-[68px_1fr] items-start gap-1">
@@ -335,7 +352,7 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
             isA5Landscape ? 'p-1.5 space-y-1 text-[9px]' : isA5Portrait ? 'p-2 space-y-1.5 text-[10px]' : 'p-2.5 space-y-2 text-xs'
           }`}>
             <div className="flex items-center justify-between pb-1 border-b border-slate-300 font-bold">
-              <span className="text-slate-700">روش پرداخت وجه:</span>
+              <span className="text-slate-700">روش دریافت وجه:</span>
               <span className="font-extrabold text-slate-900 border border-slate-400 rounded px-1.5 py-0.5 bg-slate-50">
                 {invoice.paymentMethod === 'cheque'
                   ? 'چک بانکی'
@@ -369,7 +386,7 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
             {invoice.paymentMethod === 'transfer' && (
               <div className="border border-slate-300 rounded p-1.5 bg-slate-50/80 space-y-0.5 text-[9.5px]">
                 <div className="font-bold text-slate-900">مشخصات واریز:</div>
-                <div>{invoice.transferDescription || 'واریز به شماره حساب بانکی فروشگاه'}</div>
+                <div>{(invoice.transferDescription || 'واریز به شماره حساب بانکی').replace(/فروشگاه/g, '').replace(/\s+/g, ' ').trim()}</div>
               </div>
             )}
 
