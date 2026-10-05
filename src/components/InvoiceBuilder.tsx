@@ -799,6 +799,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       customerPhone: customerPhone.trim(),
       customerAddress: customerAddress.trim(),
       customerNationalId: customerNationalId.trim(),
+      customerGender: editingInvoice?.customerGender || customers.find((c) => c.id === selectedCustomerId)?.gender,
+      customerTitlePrefix: editingInvoice?.customerTitlePrefix || customers.find((c) => c.id === selectedCustomerId)?.titlePrefix,
       date: invoiceDate,
       items,
       subtotal,

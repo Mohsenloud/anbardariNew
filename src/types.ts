@@ -36,6 +36,8 @@ export interface Customer {
   nationalId?: string; // کد ملی یا شناسه اقتصادی
   address?: string;
   notes?: string;
+  gender?: 'male' | 'female' | 'company' | 'other'; // جنسیت یا نوع طرف‌حساب
+  titlePrefix?: string; // عنوان یا پیشوند: آقای، خانم، شرکت
   telegramChatId?: string; // شناسه یا چت‌آیدی تلگرام مشتری (اختیاری جهت ارسال مستقیم فاکتور به مشتری)
   createdAt: string;
 }
@@ -180,6 +182,8 @@ export interface Invoice {
   customerPhone?: string;
   customerAddress?: string;
   customerNationalId?: string;
+  customerGender?: 'male' | 'female' | 'company' | 'other';
+  customerTitlePrefix?: string;
   date: string; // تاریخ شمسی
   dueDate?: string; // سررسید برای نسیه
   items: InvoiceItem[];

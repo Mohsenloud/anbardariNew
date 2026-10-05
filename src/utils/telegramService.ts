@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { Invoice, ExitSlipData, StoreSettings, AppUser, InboundReceipt, PurchaseInvoice } from '../types';
 import { toPersianDigits, formatPrice, getCurrentJalaliTime } from './jalali';
-import { generatePdfBlob } from './pdfHelper';
+import { generatePdfBlob, getInvoicePdfFilename } from './pdfHelper';
 import { StorageService } from './storage';
 import { SimpleInvoiceLayout } from '../components/SimpleInvoiceLayout';
 import { StandardInvoiceLayout } from '../components/StandardInvoiceLayout';
@@ -400,9 +400,7 @@ export async function generateInvoicePdfBlob(
   passedSettings?: StoreSettings
 ): Promise<{ success: boolean; blob?: Blob; file?: File; error?: string }> {
   const settings = StorageService.getSettings() || passedSettings;
-  const filename = invoice.isProforma
-    ? `پیش_فاکتور_${invoice.invoiceNumber}.pdf`
-    : `فاکتور_فروش_${invoice.invoiceNumber}.pdf`;
+  const filename = getInvoicePdfFilename(invoice, { includeExtension: true });
   const quality = (settings?.pdfInvoiceQuality as any) || 'standard';
   const pageSize = settings?.telegramInvoicePageSize || 'a4';
   const orientation = settings?.telegramInvoiceOrientation || 'portrait';
@@ -735,9 +733,7 @@ export async function autoSendInvoiceReportToTelegram(
       return false;
     }
 
-    const filename = invoice.isProforma
-      ? `پیش_فاکتور_${invoice.invoiceNumber}.pdf`
-      : `فاکتور_فروش_${invoice.invoiceNumber}.pdf`;
+    const filename = getInvoicePdfFilename(invoice, { includeExtension: true });
     const caption = formatInvoiceTelegramCaption(invoice, settings);
 
     const sendResult = await sendPdfToTelegram({

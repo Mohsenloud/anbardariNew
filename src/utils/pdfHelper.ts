@@ -1,9 +1,149 @@
 import html2canvas from 'html2canvas-pro';
 import jsPDF from 'jspdf';
 import { StorageService } from './storage';
-import { PdfQualityPreset } from '../types';
+import { PdfQualityPreset, Invoice } from '../types';
 import { toPersianDigits } from './jalali';
 import { getPrintLayoutCssRules } from './printLayoutHelper';
+
+const PERSIAN_FEMALE_FIRST_NAMES = new Set([
+  'مریم', 'سارا', 'فاطمه', 'زهرا', 'نرگس', 'مهسا', 'نیلوفر', 'زینب', 'بهاره', 'شیرین', 'پریسا', 'سپیده', 'الهام',
+  'مینا', 'رویا', 'لاله', 'ساناز', 'نسترن', 'آیدا', 'نگار', 'معصومه', 'سمیه', 'شیما', 'پریچهر', 'مهشید', 'پروانه',
+  'ناهید', 'مهناز', 'فرشته', 'مرجان', 'سمیرا', 'شبنم', 'رعنا', 'عاطفه', 'مونا', 'هنگامه', 'هدی', 'پگاه', 'غزل',
+  'کیمیا', 'نگین', 'یلدا', 'صبا', 'شادی', 'شیوا', 'هما', 'خاطره', 'شکوفه', 'پریناز', 'تینا', 'سوگند', 'ریحانه',
+  'سمانه', 'ندا', 'شیدا', 'مهدیه', 'طاهره', 'فرزانه', 'مژگان', 'بهنوش', 'آذر', 'گیتی', 'پردیس', 'مائده', 'مهلا',
+  'بیتا', 'پانته‌آ', 'انسیه', 'هاجر', 'صدیقه', 'مرضیه', 'سکینه', 'فریبا', 'لیلا', 'شهناز', 'پری', 'نوشین', 'ثریا',
+  'منیر', 'منیژه', 'مهین', 'پروین', 'عفت', 'اقدس', 'اشرف', 'افسانه', 'ملیحه', 'فرانک', 'درسا', 'حنانه', 'ثنا',
+  'سوگل', 'یاسمن', 'ارغوان', 'ترانه', 'بهار', 'دریا', 'روژین', 'افسون', 'ساغر', 'نازنین', 'آرزو', 'طناز', 'آناهیتا'
+]);
+
+const PERSIAN_MALE_FIRST_NAMES = new Set([
+  'علی', 'محمد', 'مهدی', 'رضا', 'حسین', 'احمد', 'حسن', 'سعید', 'حمید', 'کامران', 'آرش', 'مسعود', 'بابک', 'بهنام',
+  'علیرضا', 'امیر', 'پویا', 'بهمن', 'پژمان', 'خسرو', 'فرهاد', 'میلاد', 'سینا', 'بهزاد', 'پیام', 'احسان', 'ایمان',
+  'جواد', 'صادق', 'مجید', 'پیمان', 'مهرداد', 'نوید', 'وحید', 'امید', 'بهروز', 'رامین', 'سامان', 'فرزاد', 'داود',
+  'داوود', 'هادی', 'حامد', 'مصطفی', 'شهاب', 'سیروان', 'سروش', 'کیوان', 'فرامرز', 'جمشید', 'کیان', 'کوروش', 'کورش',
+  'بیژن', 'سهراب', 'دارا', 'شهریار', 'شاهرخ', 'آرمین', 'آرمان', 'شایان', 'فرزین', 'نادر', 'بهرام', 'سام', 'سجاد',
+  'محسن', 'امیرحسین', 'امیرعلی', 'محمدرضا', 'محمدمهدی', 'عباس', 'اکبر', 'اصغر', 'مرتضی', 'مجتبی', 'جعفر', 'ابراهیم',
+  'اسماعیل', 'یوسف', 'یعقوب', 'یونس', 'قاسم', 'کاظم', 'محمود', 'منصور', 'ناصر', 'جمال', 'جلال', 'جابر', 'یاسر',
+  'صابر', 'یاشار', 'اردلان', 'افشین', 'اشکان', 'بردیا', 'ارسلان', 'سورنا', 'سیاوش', 'کیومرث', 'داریوش', 'حمیدرضا',
+  'امیرمحمد', 'امیررضا', 'غلامرضا', 'احمدرضا', 'محمدحسین', 'سید', 'فرید', 'کیانوش', 'مهزیار', 'مهراد', 'ارشیا'
+]);
+
+/**
+ * پاک‌سازی و شکل‌دهی عنوان مشتری به صورت:
+ * آقا یا خانم [نام مشتری]
+ */
+export function formatCustomerHonorificTitle(
+  name?: string,
+  extra?: { gender?: string; titlePrefix?: string; customerId?: string }
+): string {
+  let raw = (name || '').trim();
+  if (!raw || raw === 'مشتری محترم' || raw === 'مشتری') return 'آقا یا خانم مشتری';
+
+  let gender = extra?.gender;
+  let titlePrefix = extra?.titlePrefix;
+  if ((!gender || !titlePrefix) && extra?.customerId) {
+    try {
+      const cust = StorageService.getCustomers().find((c) => c.id === extra.customerId);
+      if (cust) {
+        gender = gender || cust.gender;
+        titlePrefix = titlePrefix || cust.titlePrefix;
+      }
+    } catch {}
+  }
+
+  if (titlePrefix) {
+    if (raw.startsWith(titlePrefix)) return raw;
+    return `${titlePrefix} ${raw}`;
+  }
+
+  if (gender === 'female') {
+    if (/^(خانم|سرکار)/.test(raw)) return raw;
+    return `خانم ${raw}`;
+  }
+  if (gender === 'male') {
+    if (/^(آقا|آقای|جناب)/.test(raw)) return raw;
+    return `آقای ${raw}`;
+  }
+  if (gender === 'company') {
+    return raw;
+  }
+
+  if (/^(آقای|آقا|جناب\s+آقای|جناب)\s+/i.test(raw)) return raw;
+  if (/^(خانم|سرکار\s+خانم)\s+/i.test(raw)) return raw;
+  if (/^(شرکت|موسسه|سازمان|فروشگاه|اداره|بانک|کارخانه|مرکز|تعاونی|پیمانکاری)\s+/i.test(raw)) return raw;
+
+  const words = raw.split(/\s+/).filter(Boolean);
+  const firstWord = words[0];
+
+  if (firstWord === 'دکتر' || firstWord === 'مهندس' || firstWord === 'استاد') {
+    const secondWord = words[1];
+    if (secondWord) {
+      if (
+        PERSIAN_FEMALE_FIRST_NAMES.has(secondWord) ||
+        secondWord.startsWith('فاطمه') ||
+        secondWord.startsWith('زهرا')
+      ) {
+        return `خانم ${raw}`;
+      }
+      if (
+        PERSIAN_MALE_FIRST_NAMES.has(secondWord) ||
+        secondWord.startsWith('علی') ||
+        secondWord.startsWith('محمد') ||
+        secondWord.startsWith('امیر') ||
+        secondWord.startsWith('حمید')
+      ) {
+        return `آقای ${raw}`;
+      }
+    }
+    return `آقا یا خانم ${raw}`;
+  }
+
+  if (
+    PERSIAN_FEMALE_FIRST_NAMES.has(firstWord) ||
+    firstWord.startsWith('فاطمه') ||
+    firstWord.startsWith('زهرا')
+  ) {
+    return `خانم ${raw}`;
+  }
+
+  if (
+    PERSIAN_MALE_FIRST_NAMES.has(firstWord) ||
+    firstWord.startsWith('علی') ||
+    firstWord.startsWith('محمد') ||
+    firstWord.startsWith('امیر') ||
+    firstWord.startsWith('حمید') ||
+    firstWord.startsWith('غلام')
+  ) {
+    return `آقای ${raw}`;
+  }
+
+  return `آقا یا خانم ${raw}`;
+}
+
+/**
+ * نام فایل خروجی PDF طبق درخواست کاربر در تمام برنامه:
+ * فاکتور یا پیش فاکتور ـ شماره؟ـ آقا یا خانم ؟
+ * مثال:
+ * فاکتور ـ 1001 ـ آقای علی رضایی.pdf
+ * پیش فاکتور ـ 1002 ـ خانم سارا محمدی.pdf
+ * فاکتور ـ 1003 ـ آقا یا خانم احمدی.pdf
+ */
+export function getInvoicePdfFilename(
+  invoice: Invoice,
+  options?: { includeExtension?: boolean }
+): string {
+  const docType = invoice.isProforma ? 'پیش فاکتور' : 'فاکتور';
+  const num = String(invoice.invoiceNumber || '1').trim();
+  const customerTitle = formatCustomerHonorificTitle(invoice.customerName, {
+    gender: invoice.customerGender,
+    titlePrefix: invoice.customerTitlePrefix,
+    customerId: invoice.customerId,
+  });
+
+  const base = `${docType} ـ ${num} ـ ${customerTitle}`;
+  const sanitized = base.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim();
+  return options?.includeExtension ? `${sanitized}.pdf` : sanitized;
+}
 
 export interface LayoutMeta {
   headerBottomPx: number;

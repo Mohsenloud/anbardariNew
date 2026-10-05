@@ -9,7 +9,7 @@ import {
 } from '../types';
 import { formatPrice, toPersianDigits, numberToPersianWords } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
-import { printElementDirectly, generatePdfBlob } from '../utils/pdfHelper';
+import { printElementDirectly, generatePdfBlob, getInvoicePdfFilename } from '../utils/pdfHelper';
 import { 
   Receipt, 
   Printer, 
@@ -157,9 +157,7 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
     if (!displayedInvoice) return;
     try {
       setIsExportingPdf(true);
-      const filename = displayedInvoice.isProforma
-        ? `پیش_فاکتور_${displayedInvoice.invoiceNumber}.pdf`
-        : `فاکتور_${displayedInvoice.invoiceNumber}.pdf`;
+      const filename = getInvoicePdfFilename(displayedInvoice, { includeExtension: true });
 
       const pdfResult = await generatePdfBlob('public-web-invoice-container', filename, {
         pageSize: 'a4',

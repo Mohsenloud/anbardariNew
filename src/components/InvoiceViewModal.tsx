@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Invoice, StoreSettings } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
-import { exportElementToPdf, printElementDirectly, printElementInNewWindow, generatePdfBlob } from '../utils/pdfHelper';
+import { exportElementToPdf, printElementDirectly, printElementInNewWindow, generatePdfBlob, getInvoicePdfFilename } from '../utils/pdfHelper';
 import { TelegramSendPdfModal } from './TelegramSendPdfModal';
 import { formatInvoiceTelegramCaption } from '../utils/telegramService';
 import { 
@@ -172,9 +172,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   const handleExportPdf = async () => {
     try {
       setIsExportingPdf(true);
-      const filename = invoice.isProforma
-        ? `پیش_فاکتور_${invoice.invoiceNumber}_${pageSize}_${orientation}`
-        : `فاکتور_فروش_${invoice.invoiceNumber}_${pageSize}_${orientation}`;
+      const filename = getInvoicePdfFilename(invoice);
       await exportElementToPdf('printable-invoice', filename, { pageSize, orientation, documentType: 'invoice' });
     } finally {
       setIsExportingPdf(false);
@@ -232,9 +230,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   const handleSharePdfDirectly = async () => {
     setIsExportingPdf(true);
     try {
-      const filename = invoice.isProforma
-        ? `پیش_فاکتور_${invoice.invoiceNumber}_${pageSize}_${orientation}.pdf`
-        : `فاکتور_فروش_${invoice.invoiceNumber}_${pageSize}_${orientation}.pdf`;
+      const filename = getInvoicePdfFilename(invoice, { includeExtension: true });
       const { success, blob, file, error } = await generatePdfBlob('printable-invoice', filename, { pageSize, orientation, documentType: 'invoice' });
       if (!success || (!file && !blob)) {
         showToast(error || 'خطا در تولید فایل PDF');
@@ -1505,17 +1501,11 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
           onClose={() => setIsTelegramModalOpen(false)}
           settings={settings}
           documentTitle={`فاکتور فروش شماره ${invoice.invoiceNumber}`}
-          defaultFilename={
-            invoice.isProforma
-              ? `پیش_فاکتور_${invoice.invoiceNumber}_${pageSize}.pdf`
-              : `فاکتور_فروش_${invoice.invoiceNumber}_${pageSize}.pdf`
-          }
+          defaultFilename={getInvoicePdfFilename(invoice, { includeExtension: true })}
           defaultCaption={formatInvoiceTelegramCaption(invoice, settings)}
           customerName={invoice.customerName}
           pdfBlobGenerator={async () => {
-            const filename = invoice.isProforma
-              ? `پیش_فاکتور_${invoice.invoiceNumber}_${pageSize}.pdf`
-              : `فاکتور_فروش_${invoice.invoiceNumber}_${pageSize}.pdf`;
+            const filename = getInvoicePdfFilename(invoice, { includeExtension: true });
             const invoiceQualityPreset = (settings?.pdfInvoiceQuality as any) || 'standard';
             return await generatePdfBlob('printable-invoice', filename, {
               pageSize,
