@@ -74,9 +74,10 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
         setTitle('واریز به حساب / تسویه');
         setPaymentMethod('transfer');
       } else {
-        setAmount('');
-        setTitle('ثبت بدهی جدید / مانده گذشته');
-        setPaymentMethod('other');
+        const creditAmount = fullLedger.netBalance < 0 ? Math.abs(fullLedger.netBalance) : 0;
+        setAmount(creditAmount > 0 ? String(creditAmount) : '');
+        setTitle(fullLedger.netBalance < 0 ? 'پرداخت وجه به طرف‌حساب / تسویه طلب' : 'ثبت بدهی جدید / مانده گذشته');
+        setPaymentMethod(fullLedger.netBalance < 0 ? 'transfer' : 'other');
       }
     }
   }, [isOpen, initialType, fullLedger.netBalance]);
@@ -89,15 +90,19 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
       if (!amount && debtAmount > 0) {
         setAmount(String(debtAmount));
       }
-      if (!title || title.includes('بدهی')) {
+      if (!title || title.includes('بدهی') || title.includes('پرداخت')) {
         setTitle('واریز به حساب / تسویه');
       }
       setPaymentMethod('transfer');
     } else {
-      if (!title || title.includes('واریز')) {
-        setTitle('ثبت بدهی جدید');
+      const creditAmount = fullLedger.netBalance < 0 ? Math.abs(fullLedger.netBalance) : 0;
+      if (!amount && creditAmount > 0) {
+        setAmount(String(creditAmount));
       }
-      setPaymentMethod('other');
+      if (!title || title.includes('واریز')) {
+        setTitle(fullLedger.netBalance < 0 ? 'پرداخت وجه به طرف‌حساب / تسویه طلب' : 'ثبت بدهی جدید');
+      }
+      setPaymentMethod(fullLedger.netBalance < 0 ? 'transfer' : 'other');
     }
   };
 
@@ -105,6 +110,8 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
   const handleSetFullDebtAmount = () => {
     if (fullLedger.netBalance > 0) {
       setAmount(String(fullLedger.netBalance));
+    } else if (fullLedger.netBalance < 0) {
+      setAmount(String(Math.abs(fullLedger.netBalance)));
     }
   };
 

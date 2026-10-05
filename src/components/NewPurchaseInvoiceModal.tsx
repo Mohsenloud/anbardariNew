@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Product, 
+  Customer,
   PurchaseInvoice, 
   PurchaseInvoiceItem, 
   InboundReceipt, 
@@ -467,6 +468,40 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
       createdAt: editingInvoice?.createdAt || new Date().toISOString(),
       updatedAt: isEditing ? new Date().toISOString() : undefined,
     };
+
+    // Auto-sync supplier to customers & counterparties list if not existing
+    try {
+      const customers = StorageService.getCustomers();
+      const trimmedSup = supplierName.trim();
+      const existingCustomer = customers.find(
+        (c) => c.name.trim().toLowerCase() === trimmedSup.toLowerCase()
+      );
+      if (!existingCustomer) {
+        const newCustomer: Customer = {
+          id: `cust-supp-${Date.now()}`,
+          name: trimmedSup,
+          phone: supplierPhone.trim() || '',
+          address: supplierAddress.trim() || undefined,
+          nationalId: supplierEconomicCode.trim() || undefined,
+          notes: 'تامین‌کننده / فروشنده کالا (ثبت خودکار از فاکتور خرید)',
+          createdAt: new Date().toISOString(),
+        };
+        StorageService.saveCustomers([newCustomer, ...customers]);
+      } else if (supplierPhone.trim() && !existingCustomer.phone) {
+        const updated = customers.map((c) =>
+          c.id === existingCustomer.id
+            ? {
+                ...c,
+                phone: supplierPhone.trim(),
+                address: c.address || supplierAddress.trim() || undefined,
+              }
+            : c
+        );
+        StorageService.saveCustomers(updated);
+      }
+    } catch (e) {
+      console.error('Failed to sync supplier to customers list', e);
+    }
 
     onSavePurchase(purchaseInvoice, inboundReceipt, createdNewProducts);
   };

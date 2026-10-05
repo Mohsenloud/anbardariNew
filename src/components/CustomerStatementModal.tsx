@@ -30,7 +30,8 @@ import {
   LayoutList,
   Filter,
   FileDown,
-  Loader2
+  Loader2,
+  ShoppingBag
 } from 'lucide-react';
 import { 
   Customer, 
@@ -444,10 +445,14 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                 type="button"
                 id="add-debt-btn"
                 onClick={() => handleOpenTransactionModal('debt')}
-                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white px-3 sm:px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+                className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 active:scale-95 text-white px-3 sm:px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer ${
+                  fullLedger.netBalance < 0
+                    ? 'bg-blue-600 hover:bg-blue-700'
+                    : 'bg-rose-600 hover:bg-rose-700'
+                }`}
               >
                 <Plus className="w-3.5 h-3.5 shrink-0" />
-                <span>ثبت بدهی</span>
+                <span>{fullLedger.netBalance < 0 ? 'پرداخت وجه به طرف‌حساب' : 'ثبت بدهی'}</span>
               </button>
             </div>
 
@@ -625,16 +630,24 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                           <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-lg ${
                             entry.documentType === 'invoice'
                               ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                              : entry.documentType === 'deposit'
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : entry.documentType === 'invoice_payment'
-                                  ? 'bg-teal-50 text-teal-700 border border-teal-200'
-                                  : 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : entry.documentType === 'purchase_invoice'
+                                ? 'bg-amber-50 text-amber-800 border border-amber-300'
+                                : entry.documentType === 'purchase_payment'
+                                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                  : entry.documentType === 'deposit'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : entry.documentType === 'invoice_payment'
+                                      ? 'bg-teal-50 text-teal-700 border border-teal-200'
+                                      : 'bg-rose-50 text-rose-700 border border-rose-200'
                           }`}>
                             {entry.documentType === 'deposit' ? (
                               <ArrowDownLeft className="w-3 h-3 text-emerald-600" />
                             ) : entry.documentType === 'invoice' ? (
                               <FileText className="w-3 h-3 text-purple-600" />
+                            ) : entry.documentType === 'purchase_invoice' ? (
+                              <ShoppingBag className="w-3 h-3 text-amber-600" />
+                            ) : entry.documentType === 'purchase_payment' ? (
+                              <ReceiptText className="w-3 h-3 text-blue-600" />
                             ) : entry.documentType === 'invoice_payment' ? (
                               <ReceiptText className="w-3 h-3 text-teal-600" />
                             ) : (
@@ -817,11 +830,15 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                               <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md ${
                                 entry.documentType === 'invoice'
                                   ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                                  : entry.documentType === 'deposit'
-                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                    : entry.documentType === 'invoice_payment'
-                                      ? 'bg-teal-50 text-teal-700 border border-teal-200'
-                                      : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  : entry.documentType === 'purchase_invoice'
+                                    ? 'bg-amber-50 text-amber-800 border border-amber-300'
+                                    : entry.documentType === 'purchase_payment'
+                                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                      : entry.documentType === 'deposit'
+                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                        : entry.documentType === 'invoice_payment'
+                                          ? 'bg-teal-50 text-teal-700 border border-teal-200'
+                                          : 'bg-rose-50 text-rose-700 border border-rose-200'
                               }`}>
                                 {entry.documentTypeLabel}
                               </span>
@@ -930,11 +947,11 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
             مانده به حروف: <strong className="text-slate-800">
               {fullLedger.netBalance === 0 
                 ? 'تسویه کامل (بی‌حساب)' 
-                : `${numberToPersianWords(Math.abs(fullLedger.netBalance))} ${settings.currency} ${fullLedger.netBalance > 0 ? 'بدهکار' : 'بستانکار'}`}
+                : `${numberToPersianWords(Math.abs(fullLedger.netBalance))} ${settings.currency} ${fullLedger.netBalance > 0 ? 'بدهکار' : 'طلبکار (بستانکار)'}`}
             </strong>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            {fullLedger.netBalance > 0 && (
+            {fullLedger.netBalance > 0 ? (
               <button
                 type="button"
                 onClick={() => handleOpenTransactionModal('deposit')}
@@ -942,7 +959,15 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
               >
                 واریز سریع
               </button>
-            )}
+            ) : fullLedger.netBalance < 0 ? (
+              <button
+                type="button"
+                onClick={() => handleOpenTransactionModal('debt')}
+                className="sm:hidden px-3 py-1.5 text-xs font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 cursor-pointer shadow-xs"
+              >
+                پرداخت وجه
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onClose}

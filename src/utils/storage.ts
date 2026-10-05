@@ -1598,7 +1598,8 @@ export const StorageService = {
   buildCustomerLedger(
     customer: Customer,
     invoices: Invoice[],
-    transactions: CustomerTransaction[]
+    transactions: CustomerTransaction[],
+    purchaseInvoices?: PurchaseInvoice[]
   ): {
     entries: CustomerLedgerEntry[];
     totalDebit: number;
@@ -1748,11 +1749,67 @@ export const StorageService = {
       }
     });
 
+    // 2.5. Process all purchase invoices where this customer/party is the supplier/vendor
+    const allPurchases = purchaseInvoices || StorageService.getPurchaseInvoices();
+    const customerPurchases = allPurchases.filter((pur) => {
+      return (
+        pur.supplierName &&
+        pur.supplierName.trim().toLowerCase() === customer.name.trim().toLowerCase()
+      );
+    });
+
+    customerPurchases.forEach((pur) => {
+      const remainingOnPur = Math.max(0, pur.finalTotal - (pur.paidAmount || 0));
+      if (remainingOnPur > 0) {
+        unpaidInvoicesCount++;
+      }
+
+      // 2.5.1 Credit entry for the full purchase invoice amount (طرف‌حساب/تامین‌کننده بستانکار و طلبکار از ما می‌شود)
+      rawEntries.push({
+        id: `pur-cred-${pur.id}`,
+        date: pur.date,
+        documentNumber: pur.invoiceNumber,
+        documentType: 'purchase_invoice',
+        documentTypeLabel: 'فاکتور خرید کالا',
+        description: `خرید کالا از طرف‌حساب طبق فاکتور خرید شماره ${pur.invoiceNumber} (${pur.items.length} قلم کالا)${pur.notes ? ` - ${pur.notes}` : ''}`,
+        debit: 0,
+        credit: pur.finalTotal, // تامین‌کننده بستانکار (طلبکار از ما) می‌شود
+        paymentMethod: pur.paymentMethod ? PAYMENT_METHOD_LABELS[pur.paymentMethod] || pur.paymentMethod : undefined,
+        notes: pur.notes,
+        rawPurchaseInvoice: pur,
+      });
+
+      // 2.5.2 Debit entry if payment occurred at invoice issuance (پرداخت وجه به تامین‌کننده که طلب ایشان را کاهش می‌دهد)
+      if (pur.paidAmount && pur.paidAmount > 0) {
+        rawEntries.push({
+          id: `pur-pay-${pur.id}`,
+          date: pur.date,
+          documentNumber: pur.invoiceNumber,
+          documentType: 'purchase_payment',
+          documentTypeLabel: 'پرداخت وجه فاکتور خرید',
+          description: `پرداخت وجه بابت فاکتور خرید شماره ${pur.invoiceNumber}${pur.paymentMethod ? ` [${PAYMENT_METHOD_LABELS[pur.paymentMethod] || pur.paymentMethod}]` : ''}${pur.transferDescription ? ` (${pur.transferDescription})` : ''}`,
+          debit: pur.paidAmount, // بدهکار کردن حساب طرف‌حساب (کاهش طلب ایشان)
+          credit: 0,
+          paymentMethod: pur.paymentMethod ? PAYMENT_METHOD_LABELS[pur.paymentMethod] || pur.paymentMethod : undefined,
+          trackingNumber: pur.chequeNumber || undefined,
+          notes: pur.transferDescription || pur.notes,
+          rawPurchaseInvoice: pur,
+        });
+      }
+    });
+
     // 3. Chronological sorting
     rawEntries.sort((a, b) => {
       const cmp = a.date.localeCompare(b.date);
       if (cmp !== 0) return cmp;
-      // If same date, debit comes before credit
+      
+      // On the same date, invoice/purchase_invoice should appear before payment
+      const isBaseDocA = a.documentType === 'invoice' || a.documentType === 'purchase_invoice';
+      const isBaseDocB = b.documentType === 'invoice' || b.documentType === 'purchase_invoice';
+      if (isBaseDocA && !isBaseDocB) return -1;
+      if (!isBaseDocA && isBaseDocB) return 1;
+
+      // Otherwise if one is debit and one credit
       if (a.debit > 0 && b.credit > 0) return -1;
       if (a.credit > 0 && b.debit > 0) return 1;
       return 0;

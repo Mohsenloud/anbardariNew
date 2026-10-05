@@ -70,18 +70,19 @@ export interface CustomerLedgerEntry {
   id: string;
   date: string;
   documentNumber: string;
-  documentType: 'invoice' | 'deposit' | 'debt' | 'invoice_payment';
+  documentType: 'invoice' | 'deposit' | 'debt' | 'invoice_payment' | 'purchase_invoice' | 'purchase_payment';
   documentTypeLabel: string;
   description: string;
-  debit: number; // بدهکار (مبلغ افزایش بدهی مشتری: فاکتور فروش یا ثبت بدهی)
-  credit: number; // بستانکار (مبلغ پرداخت یا واریز مشتری)
-  balance: number; // مانده حساب پس از این ردیف (مثبت: بدهکار، صفر: تسویه، منفی: بستانکار/طلبکار)
+  debit: number; // بدهکار (مبلغ افزایش بدهی مشتری: فاکتور فروش، ثبت بدهی، یا پرداخت به تامین‌کننده)
+  credit: number; // بستانکار (مبلغ پرداخت یا واریز مشتری، یا فاکتور خرید کالا از تامین‌کننده)
+  balance: number; // مانده حساب پس از این ردیف (مثبت: بدهکار به ما، صفر: تسویه، منفی: بستانکار/طلبکار از ما)
   balanceStatus: 'debtor' | 'settled' | 'creditor';
   paymentMethod?: string;
   trackingNumber?: string;
   notes?: string;
   rawTransaction?: CustomerTransaction;
   rawInvoice?: Invoice;
+  rawPurchaseInvoice?: PurchaseInvoice;
   supplierNames?: string[]; // نام تامین‌کنندگان یا فروشندگان کالاهای ورودی این فاکتور
 }
 
