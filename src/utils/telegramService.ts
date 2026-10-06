@@ -428,7 +428,7 @@ export async function generateInvoicePdfBlob(
   }
 
   // Create an offscreen container in the DOM:
-  // Positioned at (0, 0), behind the app, fully accessible for html2canvas
+  // Positioned cleanly, fully accessible for html2canvas
   const container = document.createElement('div');
   const containerId = `telegram-offscreen-invoice-${Date.now()}`;
   container.id = containerId;
@@ -438,9 +438,9 @@ export async function generateInvoicePdfBlob(
   container.style.width = containerWidth;
   container.style.minHeight = containerMinHeight;
   container.style.backgroundColor = '#ffffff';
-  container.style.zIndex = '-99999';
+  container.style.zIndex = '999999';
   container.style.pointerEvents = 'none';
-  container.style.opacity = '1'; // Hidden behind app layers, but fully visible for canvas
+  container.style.opacity = '0.001'; // Hidden from user during capture, but fully painted
   container.dir = 'rtl';
   document.body.appendChild(container);
 
@@ -449,27 +449,32 @@ export async function generateInvoicePdfBlob(
     const invoiceTemplate = settings?.telegramInvoiceTemplate || 'standard';
     const InvoiceComponent = invoiceTemplate === 'simple' ? SimpleInvoiceLayout : StandardInvoiceLayout;
 
-    flushSync(() => {
-      root.render(
-        React.createElement(
-          'div',
-          {
-            id: 'printable-invoice-offscreen',
-            'data-invoice-id': invoice.id,
-            style: { width: containerWidth, minHeight: containerMinHeight, backgroundColor: '#ffffff', padding: isA5 ? '16px' : '24px' },
+    root.render(
+      React.createElement(
+        'div',
+        {
+          id: 'printable-invoice-offscreen',
+          'data-invoice-id': invoice.id,
+          style: {
+            width: containerWidth,
+            minHeight: containerMinHeight,
+            backgroundColor: '#ffffff',
+            padding: isA5 ? '16px' : '24px',
+            boxSizing: 'border-box',
+            direction: 'rtl',
           },
-          React.createElement(InvoiceComponent, {
-            invoice,
-            settings: settings as StoreSettings,
-            pageSize,
-            orientation,
-          })
-        )
-      );
-    });
+        },
+        React.createElement(InvoiceComponent, {
+          invoice,
+          settings: settings as StoreSettings,
+          pageSize,
+          orientation,
+        })
+      )
+    );
 
-    // Wait for layout and web fonts to settle
-    await new Promise((resolve) => setTimeout(resolve, 320));
+    // Wait for React 19 render cycle and web fonts to settle
+    await new Promise((resolve) => setTimeout(resolve, 380));
     if (document.fonts) {
       try {
         await document.fonts.ready;
@@ -498,7 +503,7 @@ export async function generateInvoicePdfBlob(
       } catch (e) {
         console.warn('Offscreen cleanup warning:', e);
       }
-    }, 200);
+    }, 500);
   }
 }
 
@@ -549,9 +554,9 @@ export async function generateExitSlipPdfBlob(
   container.style.width = containerWidth;
   container.style.minHeight = containerMinHeight;
   container.style.backgroundColor = '#ffffff';
-  container.style.zIndex = '-99999';
+  container.style.zIndex = '999999';
   container.style.pointerEvents = 'none';
-  container.style.opacity = '1';
+  container.style.opacity = '0.001';
   container.dir = 'rtl';
   document.body.appendChild(container);
 
@@ -568,32 +573,37 @@ export async function generateExitSlipPdfBlob(
     const exitSlipTemplate = settings?.telegramExitSlipTemplate || 'standard';
     const ExitSlipComponent = exitSlipTemplate === 'simple' ? SimpleExitSlipLayout : StandardExitSlipLayout;
 
-    flushSync(() => {
-      root.render(
-        React.createElement(
-          'div',
-          {
-            id: 'printable-exit-slip-offscreen',
-            'data-invoice-id': invoice.id,
-            style: { width: containerWidth, minHeight: containerMinHeight, backgroundColor: '#ffffff', padding: isA5 ? '16px' : '24px' },
+    root.render(
+      React.createElement(
+        'div',
+        {
+          id: 'printable-exit-slip-offscreen',
+          'data-invoice-id': invoice.id,
+          style: {
+            width: containerWidth,
+            minHeight: containerMinHeight,
+            backgroundColor: '#ffffff',
+            padding: isA5 ? '16px' : '24px',
+            boxSizing: 'border-box',
+            direction: 'rtl',
           },
-          React.createElement(ExitSlipComponent, {
-            invoice,
-            settings: settings as StoreSettings,
-            slipLog,
-            currentUser,
-            slipNumber,
-            issuedTime,
-            originWarehouseName,
-            totalUnits,
-            pageSize,
-            orientation,
-          })
-        )
-      );
-    });
+        },
+        React.createElement(ExitSlipComponent, {
+          invoice,
+          settings: settings as StoreSettings,
+          slipLog,
+          currentUser,
+          slipNumber,
+          issuedTime,
+          originWarehouseName,
+          totalUnits,
+          pageSize,
+          orientation,
+        })
+      )
+    );
 
-    await new Promise((resolve) => setTimeout(resolve, 320));
+    await new Promise((resolve) => setTimeout(resolve, 380));
     if (document.fonts) {
       try {
         await document.fonts.ready;
@@ -622,7 +632,7 @@ export async function generateExitSlipPdfBlob(
       } catch (e) {
         console.warn('Offscreen cleanup warning:', e);
       }
-    }, 200);
+    }, 500);
   }
 }
 
@@ -672,12 +682,19 @@ export async function autoSendInvoiceReportToTelegram(
   }
 
   const sendMode = settings.telegramSendMode || 'text_only';
+  const isTextOnly = sendMode === 'text_only' || (sendMode as string) === 'text';
+  const isBoth = sendMode === 'both';
+  const isFileOnly =
+    sendMode === 'pdf_with_caption' ||
+    (sendMode as string) === 'file' ||
+    (sendMode as string) === 'pdf' ||
+    (!isTextOnly && !isBoth);
 
   try {
     callbacks?.onStart?.();
 
-    // ۱. حالت فقط متنی (بسیار سریع، سبک و بدون فیلتر)
-    if (sendMode === 'text_only') {
+    // ۱. حالت فقط متنی (اگر تنظیم روی متن بود -> فقط بصورت متنی)
+    if (isTextOnly) {
       const textReport = invoice.isProforma
         ? formatProformaTextReport(invoice, settings)
         : formatInvoiceTextReport(invoice, settings);
@@ -688,8 +705,127 @@ export async function autoSendInvoiceReportToTelegram(
         text: textReport,
       });
 
-      if (res.success) {
-        // در صورت ارسال مستقیم به مشتری، نسخه رونوشت به کانال اصلی
+      if (!res.success) {
+        callbacks?.onError?.(res.error || 'خطا در ارسال گزارش متنی به تلگرام');
+        return false;
+      }
+
+      // در صورت ارسال مستقیم به مشتری، نسخه رونوشت به کانال اصلی فروشگاه
+      if (targetChatId !== primaryChatId && primaryChatId) {
+        sendTelegramTextMessage({
+          botToken,
+          chatId: primaryChatId,
+          text: textReport + '\n\n📢 <i>نسخه رونوشت به کانال فروشگاه</i>',
+        }).catch((e) => console.warn(e));
+      }
+
+      const successMsg = `گزارش متنی ${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${invoice.invoiceNumber} با موفقیت به تلگرام ارسال گردید.`;
+      callbacks?.onSuccess?.(successMsg);
+      StorageService.logActivity({
+        category: 'system',
+        actionType: 'telegram_auto_sent',
+        actionTitle: `ارسال گزارش متنی ${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} به تلگرام`,
+        details: `گزارش متنی ${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${invoice.invoiceNumber} به چت (${targetChatId}) ارسال شد.`,
+      });
+      return true;
+    }
+
+    // ۲. حالت فقط فایل (اگر تنظیم روی فایل بود -> فقط بصورت فایل با کپشن)
+    if (isFileOnly) {
+      const pdfResult = await generateInvoicePdfBlob(invoice, settings);
+      if (!pdfResult.success || !pdfResult.blob) {
+        const errorDesc = pdfResult.error || 'خطا در ایجاد فایل PDF فاکتور';
+        console.error('[Telegram Auto-Send] File-only PDF generation failed:', errorDesc);
+        callbacks?.onError?.(`تولید فایل PDF فاکتور با خطا مواجه شد: ${errorDesc}`);
+        return false;
+      }
+
+      const filename = getInvoicePdfFilename(invoice, { includeExtension: true });
+      const caption = formatInvoiceTelegramCaption(invoice, settings);
+
+      const sendResult = await sendPdfToTelegram({
+        botToken,
+        chatId: targetChatId,
+        pdfBlob: pdfResult.blob,
+        filename,
+        caption,
+      });
+
+      if (!sendResult.success) {
+        callbacks?.onError?.(sendResult.error || 'خطا در ارسال فایل PDF فاکتور به تلگرام');
+        return false;
+      }
+
+      // رونوشت به کانال اصلی فروشگاه در صورت ارسال مستقیم به مشتری
+      if (targetChatId !== primaryChatId && primaryChatId) {
+        sendPdfToTelegram({
+          botToken,
+          chatId: primaryChatId,
+          pdfBlob: pdfResult.blob,
+          filename,
+          caption: caption + '\n\n📢 <i>نسخه رونوشت به کانال فروشگاه</i>',
+        }).catch((e) => console.warn(e));
+      }
+
+      const successMsg = `فایل PDF ${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${invoice.invoiceNumber} با موفقیت به تلگرام ارسال شد.`;
+      callbacks?.onSuccess?.(successMsg);
+      StorageService.logActivity({
+        category: 'system',
+        actionType: 'telegram_auto_sent',
+        actionTitle: `ارسال فایل PDF ${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} به تلگرام`,
+        details: `فایل PDF «${filename}» شماره ${invoice.invoiceNumber} به تلگرام (${targetChatId}) ارسال شد.`,
+      });
+      return true;
+    }
+
+    // ۳. حالت هر دو (اگر تنظیم روی هر دو بود -> فایل PDF + گزارش متنی تفکیک‌شده)
+    if (isBoth) {
+      const pdfResult = await generateInvoicePdfBlob(invoice, settings);
+      const textReport = invoice.isProforma
+        ? formatProformaTextReport(invoice, settings)
+        : formatInvoiceTextReport(invoice, settings);
+
+      let pdfSent = false;
+      let filename = '';
+
+      if (pdfResult.success && pdfResult.blob) {
+        filename = getInvoicePdfFilename(invoice, { includeExtension: true });
+        const caption = formatInvoiceTelegramCaption(invoice, settings);
+        const sendPdfRes = await sendPdfToTelegram({
+          botToken,
+          chatId: targetChatId,
+          pdfBlob: pdfResult.blob,
+          filename,
+          caption,
+        });
+
+        if (sendPdfRes.success) {
+          pdfSent = true;
+          // رونوشت فایل PDF به کانال اصلی فروشگاه
+          if (targetChatId !== primaryChatId && primaryChatId) {
+            sendPdfToTelegram({
+              botToken,
+              chatId: primaryChatId,
+              pdfBlob: pdfResult.blob,
+              filename,
+              caption: caption + '\n\n📢 <i>نسخه رونوشت به کانال فروشگاه</i>',
+            }).catch((e) => console.warn(e));
+          }
+        } else {
+          console.error('[Telegram Auto-Send] Failed to send PDF in both mode:', sendPdfRes.error);
+        }
+      } else {
+        console.error('[Telegram Auto-Send] PDF blob generation failed in both mode:', pdfResult.error);
+      }
+
+      // ارسال پیام متنی مجزا و تفکیک‌شده
+      const sendTextRes = await sendTelegramTextMessage({
+        botToken,
+        chatId: targetChatId,
+        text: textReport,
+      });
+
+      if (sendTextRes.success) {
         if (targetChatId !== primaryChatId && primaryChatId) {
           sendTelegramTextMessage({
             botToken,
@@ -697,66 +833,31 @@ export async function autoSendInvoiceReportToTelegram(
             text: textReport + '\n\n📢 <i>نسخه رونوشت به کانال فروشگاه</i>',
           }).catch((e) => console.warn(e));
         }
+      }
 
-        const successMsg = `گزارش متنی ${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${invoice.invoiceNumber} به تلگرام ارسال گردید.`;
+      if (pdfSent && sendTextRes.success) {
+        const successMsg = `فایل PDF و گزارش متنی ${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${invoice.invoiceNumber} با موفقیت به تلگرام ارسال گردید.`;
         callbacks?.onSuccess?.(successMsg);
         StorageService.logActivity({
           category: 'system',
           actionType: 'telegram_auto_sent',
-          actionTitle: `ارسال گزارش متنی ${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} به تلگرام`,
-          details: `گزارش متنی ${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${invoice.invoiceNumber} به چت (${targetChatId}) ارسال شد.`,
+          actionTitle: `ارسال فایل PDF و متن ${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} به تلگرام`,
+          details: `فایل PDF «${filename}» و گزارش متنی فاکتور شماره ${invoice.invoiceNumber} به تلگرام (${targetChatId}) ارسال شد.`,
         });
         return true;
+      } else if (pdfSent && !sendTextRes.success) {
+        callbacks?.onSuccess?.(`فایل PDF فاکتور شماره ${invoice.invoiceNumber} ارسال شد (پیام متنی با خطا مواجه شد).`);
+        return true;
+      } else if (!pdfSent && sendTextRes.success) {
+        callbacks?.onSuccess?.(`گزارش متنی فاکتور شماره ${invoice.invoiceNumber} ارسال شد (تولید فایل PDF با خطا مواجه شد).`);
+        return true;
       } else {
-        callbacks?.onError?.(res.error || 'خطا در ارسال گزارش متنی به تلگرام');
+        callbacks?.onError?.('خطا در ارسال فایل PDF و گزارش متنی به تلگرام.');
         return false;
       }
     }
 
-    // ۲. حالت PDF یا هر دو (PDF + متن)
-    const pdfResult = await generateInvoicePdfBlob(invoice, settings);
-    if (!pdfResult.success || !pdfResult.blob) {
-      // در صورت بروز خطا در ساخت PDF، به عنوان جایگزین امن گزارش متنی ارسال می‌شود
-      const textReport = invoice.isProforma
-        ? formatProformaTextReport(invoice, settings)
-        : formatInvoiceTextReport(invoice, settings);
-      const fallbackRes = await sendTelegramTextMessage({
-        botToken,
-        chatId: targetChatId,
-        text: textReport,
-      });
-      if (fallbackRes.success) {
-        callbacks?.onSuccess?.(`گزارش متنی فاکتور شماره ${invoice.invoiceNumber} به عنوان جایگزین به تلگرام ارسال شد.`);
-        return true;
-      }
-      callbacks?.onError?.(pdfResult.error || 'خطا در ایجاد خودکار فایل PDF فاکتور');
-      return false;
-    }
-
-    const filename = getInvoicePdfFilename(invoice, { includeExtension: true });
-    const caption = formatInvoiceTelegramCaption(invoice, settings);
-
-    const sendResult = await sendPdfToTelegram({
-      botToken,
-      chatId: targetChatId,
-      pdfBlob: pdfResult.blob,
-      filename,
-      caption,
-    });
-
-    if (sendResult.success) {
-      if (sendMode === 'both') {
-        const textReport = invoice.isProforma
-          ? formatProformaTextReport(invoice, settings)
-          : formatInvoiceTextReport(invoice, settings);
-        await sendTelegramTextMessage({ botToken, chatId: targetChatId, text: textReport });
-      }
-      callbacks?.onSuccess?.(`فاکتور شماره ${invoice.invoiceNumber} با موفقیت به تلگرام ارسال شد.`);
-      return true;
-    } else {
-      callbacks?.onError?.(sendResult.error || 'خطا در ارسال فایل به تلگرام');
-      return false;
-    }
+    return false;
   } catch (err: any) {
     callbacks?.onError?.(err?.message || 'خطای غیرمنتظره در ارسال خودکار فاکتور');
     return false;

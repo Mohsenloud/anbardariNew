@@ -304,19 +304,23 @@ export default function App() {
     // ارسال خودکار گزارش متنی یا فایل فاکتور / حواله خروج به تلگرام
     const liveSettings = StorageService.getSettings() || settings;
     if (liveSettings.telegramBotEnabled) {
+      const isBothMode = liveSettings.telegramSendMode === 'both';
+      const isFileMode = liveSettings.telegramSendMode === 'pdf_with_caption' || (liveSettings.telegramSendMode as string) === 'file';
+      const modeLabel = isBothMode ? 'فایل PDF و متن' : isFileMode ? 'فایل PDF' : 'گزارش متنی';
+
       if (newInvoice.isProforma) {
         if (liveSettings.telegramAutoSendProforma || liveSettings.telegramAutoSendOnlyConfirmed === false) {
           autoSendInvoiceReportToTelegram(newInvoice, liveSettings, {
-            onStart: () => showToast('در حال ارسال خودکار گزارش پیش‌فاکتور به تلگرام...'),
-            onSuccess: (msg) => showToast(msg || '✈️ گزارش پیش‌فاکتور به تلگرام ارسال گردید.'),
+            onStart: () => showToast(`در حال ارسال ${modeLabel} پیش‌فاکتور به تلگرام...`),
+            onSuccess: (msg) => showToast(msg || `✈️ ${modeLabel} پیش‌فاکتور به تلگرام ارسال گردید.`),
             onError: (err) => showToast('⚠️ خطا در ارسال پیش‌فاکتور به تلگرام: ' + err),
           });
         }
       } else {
         if (liveSettings.telegramAutoSendInvoice) {
           autoSendInvoiceReportToTelegram(newInvoice, liveSettings, {
-            onStart: () => showToast('در حال ارسال خودکار گزارش فاکتور فروش به تلگرام...'),
-            onSuccess: (msg) => showToast(msg || '✈️ گزارش فاکتور فروش به تلگرام ارسال گردید.'),
+            onStart: () => showToast(`در حال ارسال ${modeLabel} فاکتور فروش به تلگرام...`),
+            onSuccess: (msg) => showToast(msg || `✈️ ${modeLabel} فاکتور فروش به تلگرام ارسال گردید.`),
             onError: (err) => showToast('⚠️ خطا در ارسال فاکتور به تلگرام: ' + err),
           });
         }
@@ -650,9 +654,13 @@ export default function App() {
     // ارسال خودکار گزارش یا فایل PDF فاکتور رسمی تایید شده به تلگرام پس از تبدیل
     const liveSettings = StorageService.getSettings() || settings;
     if (liveSettings.telegramBotEnabled && (liveSettings.telegramAutoSendInvoice || liveSettings.telegramAutoSendOnProformaConvert)) {
+      const isBothMode = liveSettings.telegramSendMode === 'both';
+      const isFileMode = liveSettings.telegramSendMode === 'pdf_with_caption' || (liveSettings.telegramSendMode as string) === 'file';
+      const modeLabel = isBothMode ? 'فایل PDF و متن' : isFileMode ? 'فایل PDF' : 'گزارش متنی';
+
       autoSendInvoiceReportToTelegram(convertedInvoice, liveSettings, {
-        onStart: () => showToast('در حال ارسال خودکار گزارش فاکتور تایید شده به تلگرام...'),
-        onSuccess: (msg) => showToast(msg || '✈️ گزارش فاکتور تایید شده با موفقیت به تلگرام ارسال شد.'),
+        onStart: () => showToast(`در حال ارسال خودکار ${modeLabel} فاکتور تایید شده به تلگرام...`),
+        onSuccess: (msg) => showToast(msg || `✈️ ${modeLabel} فاکتور تایید شده با موفقیت به تلگرام ارسال شد.`),
         onError: (err) => showToast('⚠️ خطا در ارسال خودکار فاکتور به تلگرام: ' + err),
       });
     }

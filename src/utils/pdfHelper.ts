@@ -543,6 +543,22 @@ export const exportElementToPdf = async (
           clonedDoc.defaultView.scrollTo(0, 0);
         }
 
+        // ایزوله‌سازی رندرهای پشت صحنه ربات تلگرام در محیط کلون شده
+        if (element.id && element.id.startsWith('telegram-offscreen-')) {
+          clonedElement.style.setProperty('opacity', '1', 'important');
+          clonedElement.style.setProperty('visibility', 'visible', 'important');
+          clonedElement.style.setProperty('z-index', '999999', 'important');
+          clonedElement.style.setProperty('position', 'relative', 'important');
+          clonedElement.style.setProperty('left', 'auto', 'important');
+          clonedElement.style.setProperty('top', 'auto', 'important');
+
+          Array.from(clonedDoc.body.children).forEach((child) => {
+            if (child !== clonedElement && !child.contains(clonedElement)) {
+              (child as HTMLElement).style.setProperty('display', 'none', 'important');
+            }
+          });
+        }
+
         // Ensure Vazirmatn font is loaded in the cloned document frame
         if (!clonedDoc.querySelector('link[href*="Vazirmatn"]')) {
           const fontLink = clonedDoc.createElement('link');
@@ -831,6 +847,22 @@ export const generatePdfBlob = async (
       onclone: (clonedDoc, clonedElement) => {
         if (clonedDoc.defaultView) {
           clonedDoc.defaultView.scrollTo(0, 0);
+        }
+
+        // ایزوله‌سازی رندرهای پشت صحنه ربات تلگرام در محیط کلون شده
+        if (element.id && element.id.startsWith('telegram-offscreen-')) {
+          clonedElement.style.setProperty('opacity', '1', 'important');
+          clonedElement.style.setProperty('visibility', 'visible', 'important');
+          clonedElement.style.setProperty('z-index', '999999', 'important');
+          clonedElement.style.setProperty('position', 'relative', 'important');
+          clonedElement.style.setProperty('left', 'auto', 'important');
+          clonedElement.style.setProperty('top', 'auto', 'important');
+
+          Array.from(clonedDoc.body.children).forEach((child) => {
+            if (child !== clonedElement && !child.contains(clonedElement)) {
+              (child as HTMLElement).style.setProperty('display', 'none', 'important');
+            }
+          });
         }
 
         // Ensure Vazirmatn font is loaded in the cloned document frame
