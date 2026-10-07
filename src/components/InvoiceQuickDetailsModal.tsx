@@ -333,7 +333,8 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
         </div>
 
         {/* Footer Actions Toolbar */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shrink-0">
+          {/* Secondary Actions Row */}
           <div className="flex items-center gap-1.5 flex-wrap">
             {/* Convert Proforma if proforma */}
             {invoice.isProforma && onConvertProforma && (
@@ -343,7 +344,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                   onClose();
                   onConvertProforma(invoice);
                 }}
-                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                className="min-h-[38px] px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
               >
                 <ArrowRightLeft className="w-4 h-4" />
                 <span>تبدیل به فاکتور رسمی</span>
@@ -358,7 +359,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                   onClose();
                   onEditInvoice(invoice);
                 }}
-                className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="min-h-[38px] px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Pencil className="w-4 h-4" />
                 <span>ویرایش</span>
@@ -373,7 +374,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                   onClose();
                   onOpenPaymentModal(invoice);
                 }}
-                className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="min-h-[38px] px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <CheckCircle className="w-4 h-4 text-emerald-600" />
                 <span>ثبت دریافتی</span>
@@ -388,7 +389,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                   onClose();
                   onExportCustomer(invoice);
                 }}
-                className="px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="min-h-[38px] px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                 title="خروجی اکسل فاکتورها و حواله‌های این مشتری"
               >
                 <FileSpreadsheet className="w-4 h-4 text-purple-600" />
@@ -404,7 +405,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                   onClose();
                   onOpenShareLinkModal(invoice);
                 }}
-                className="px-3 py-2 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="min-h-[38px] px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                 title="ایجاد و اشتراک لینک نسخه تحت وب برای مشتری (بدون نیاز به دانلود PDF)"
               >
                 <Globe className="w-4 h-4 text-sky-600" />
@@ -423,7 +424,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                       onReturnInvoiceToStock(invoice);
                     }}
                     title={invoice.isProforma ? 'لغو و حذف پیش‌فاکتور' : 'مرجوعی به انبار'}
-                    className="p-2 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-xl border border-amber-200 cursor-pointer"
+                    className="min-h-[38px] min-w-[38px] p-2 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-xl border border-amber-200 cursor-pointer flex items-center justify-center"
                   >
                     <RotateCcw className="w-4 h-4" />
                   </button>
@@ -438,7 +439,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                       onDeleteInvoice(invoice.id);
                     }}
                     title="حذف سند"
-                    className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl border border-rose-200 cursor-pointer"
+                    className="min-h-[38px] min-w-[38px] p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl border border-rose-200 cursor-pointer flex items-center justify-center"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -447,6 +448,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
             )}
           </div>
 
+          {/* Primary View & Print and Close Buttons */}
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -454,7 +456,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                 onClose();
                 onViewInvoice(invoice);
               }}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-emerald-200 cursor-pointer"
+              className="flex-1 sm:flex-initial min-h-[40px] px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-emerald-200 cursor-pointer"
             >
               <Printer className="w-4 h-4" />
               <span>مشاهده و چاپ کامل فاکتور</span>
@@ -463,7 +465,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+              className="min-h-[40px] px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
             >
               بستن
             </button>

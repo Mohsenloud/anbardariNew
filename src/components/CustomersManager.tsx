@@ -55,6 +55,9 @@ interface CustomersManagerProps {
   onSaveTransaction?: (txn: CustomerTransaction) => void;
   onDeleteTransaction?: (txnId: string) => void;
   onViewInvoice?: (invoice: Invoice) => void;
+  onEditInvoice?: (invoice: Invoice) => void;
+  onDeleteInvoice?: (invoiceId: string) => void;
+  onUpdatePaymentStatus?: (invoiceId: string, status: 'paid' | 'unpaid' | 'partial', paidAmount?: number) => void;
 }
 
 export const CustomersManager: React.FC<CustomersManagerProps> = ({
@@ -71,6 +74,9 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   onSaveTransaction,
   onDeleteTransaction,
   onViewInvoice,
+  onEditInvoice,
+  onDeleteInvoice,
+  onUpdatePaymentStatus,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -1687,6 +1693,20 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
             }
           }}
           onViewInvoice={onViewInvoice}
+          onEditInvoice={(inv) => {
+            if (onEditInvoice) {
+              setStatementCustomer(null);
+              onEditInvoice(inv);
+            }
+          }}
+          onDeleteInvoice={(invId) => {
+            if (onDeleteInvoice) {
+              onDeleteInvoice(invId);
+            } else {
+              StorageService.deleteInvoice(invId);
+            }
+          }}
+          onUpdatePaymentStatus={onUpdatePaymentStatus}
         />
       )}
 

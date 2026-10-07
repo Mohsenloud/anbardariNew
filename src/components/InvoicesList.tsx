@@ -735,76 +735,164 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
             filteredInvoices.map((inv) => {
               const isPaid = inv.paymentStatus === 'paid';
               const isPartial = inv.paymentStatus === 'partial';
+              const remainingDebt = Math.max(0, inv.finalTotal - (inv.paidAmount || 0));
 
               return (
                 <div
                   key={inv.id}
                   id={`mobile-invoice-card-${inv.id}`}
                   onClick={() => setQuickDetailsInvoice(inv)}
-                  className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition-all cursor-pointer active:bg-slate-50 space-y-2.5"
+                  className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-2xs hover:border-emerald-300 hover:shadow-xs transition-all cursor-pointer active:bg-slate-50 space-y-2.5"
                 >
-                  {/* Row 1: Number, Date, and Status */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-black text-slate-900 text-sm bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
+                  {/* Row 1: Header - Number, Date, Type Badge & Payment Status */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                      <span className="font-mono font-black text-slate-900 text-xs sm:text-sm bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 shadow-3xs">
                         {toPersianDigits(inv.invoiceNumber)}
                       </span>
                       {inv.isProforma && (
-                        <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded-md font-bold">
+                        <span className="text-[10px] sm:text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-md font-bold">
                           پیش‌فاکتور
                         </span>
                       )}
-                      <span className="text-xs text-slate-500 font-mono">
-                        {toPersianDigits(inv.date)}
+                      <span className="text-[11px] sm:text-xs text-slate-500 font-mono flex items-center gap-1 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
+                        <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span>{toPersianDigits(inv.date)}</span>
                       </span>
                     </div>
 
                     <span
-                      className={`px-2 py-0.5 rounded-full font-bold text-[10px] flex items-center gap-1 border shrink-0 ${
+                      className={`px-2.5 py-1 rounded-full font-bold text-[10px] sm:text-xs flex items-center gap-1 border shrink-0 shadow-3xs ${
                         isPaid
-                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                           : isPartial
-                          ? 'bg-amber-100 text-amber-800 border-amber-300'
-                          : 'bg-rose-100 text-rose-800 border-rose-300'
+                          ? 'bg-amber-50 text-amber-800 border-amber-200'
+                          : 'bg-rose-50 text-rose-800 border-rose-200'
                       }`}
                     >
-                      {isPaid ? 'تسویه' : isPartial ? 'بیعانه' : 'نسیه'}
+                      {isPaid ? (
+                        <>
+                          <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
+                          <span>تسویه کامل</span>
+                        </>
+                      ) : isPartial ? (
+                        <>
+                          <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                          <span>بیعانه / اقساطی</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="w-3 h-3 text-rose-600 shrink-0" />
+                          <span>نسیه / باز</span>
+                        </>
+                      )}
                     </span>
                   </div>
 
-                  {/* Row 2: Customer Name, Amount, and View Details Button */}
-                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs">
-                    <div className="font-bold text-slate-900 truncate max-w-[170px]" title={inv.customerName}>
-                      {inv.customerName}
+                  {/* Row 2: Customer Identity, Metadata & Financial Amount */}
+                  <div className="flex items-start justify-between gap-3 pt-2 border-t border-slate-100">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      {/* Customer Title */}
+                      <div className="flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                        <h3 className="font-black text-slate-900 text-xs sm:text-sm leading-snug break-words" title={inv.customerName}>
+                          {inv.customerName}
+                        </h3>
+                      </div>
+
+                      {/* Customer & Document Metadata Paragraph */}
+                      <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-500 font-medium">
+                        {inv.customerPhone && (
+                          <span className="flex items-center gap-1 font-mono text-slate-600">
+                            <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                            <span>{toPersianDigits(inv.customerPhone)}</span>
+                          </span>
+                        )}
+                        {inv.items && inv.items.length > 0 && (
+                          <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md font-bold text-[10px]">
+                            {toPersianDigits(inv.items.length)} ردیف کالا
+                          </span>
+                        )}
+                        {inv.paymentMethod && (
+                          <span className="text-slate-400 text-[10px]">
+                            • {inv.paymentMethod === 'cheque'
+                              ? 'چک'
+                              : inv.paymentMethod === 'cash'
+                              ? 'نقدی'
+                              : inv.paymentMethod === 'pos'
+                              ? 'کارتخوان'
+                              : inv.paymentMethod === 'transfer'
+                              ? 'حواله'
+                              : 'دفتری'}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="font-black font-mono text-slate-800 text-xs">
+                    {/* Financial Amount & Remaining Balance */}
+                    <div className="text-left shrink-0 pl-0.5">
+                      <span className="text-[10px] text-slate-400 block font-medium">مبلغ سند:</span>
+                      <span className="font-black font-mono text-slate-900 text-xs sm:text-sm block">
                         {formatPrice(inv.finalTotal, settings.currency)}
                       </span>
+                      {!isPaid && (
+                        <span className="text-[10px] text-rose-600 font-bold block mt-0.5 font-mono">
+                          مانده: {formatPrice(remainingDebt, settings.currency)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
+                  {/* Row 3: Action Buttons (Touch-friendly & Responsive) */}
+                  <div 
+                    className="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-100" 
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                      {/* Primary Quick Details Button */}
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenShareModal(inv);
-                        }}
-                        className="p-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-xl transition-colors cursor-pointer"
-                        title="ارسال نسخه تحت وب فاکتور برای مشتری"
+                        onClick={() => setQuickDetailsInvoice(inv)}
+                        className="flex-1 min-h-[36px] sm:min-h-[38px] px-2.5 sm:px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] sm:text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-3xs"
+                        title="مشاهده اطلاعات کامل، اقلام و عملیات فاکتور"
                       >
-                        <Globe className="w-3.5 h-3.5" />
+                        <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
+                        <span>مشاهده جزئیات</span>
                       </button>
 
+                      {/* Quick Payment Status Button (when unpaid or partial) */}
+                      {!isPaid && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPaymentModal(inv)}
+                          className="min-h-[36px] sm:min-h-[38px] px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 text-amber-800 border border-amber-200 rounded-xl text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer shadow-3xs shrink-0"
+                          title="ثبت دریافتی و تسویه این سند"
+                        >
+                          <Coins className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600 shrink-0" />
+                          <span>تسویه</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {/* Direct Print Button */}
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setQuickDetailsInvoice(inv);
-                        }}
-                        className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                        onClick={() => onViewInvoice(inv)}
+                        className="min-h-[36px] min-w-[36px] sm:min-h-[38px] sm:min-w-[38px] p-2 bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl transition-all cursor-pointer flex items-center justify-center shadow-3xs"
+                        title="مشاهده پیش‌نمایش و چاپ مستقیم فاکتور"
                       >
-                        <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>جزئیات</span>
+                        <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-600" />
+                      </button>
+
+                      {/* Customer Online Web Link Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenShareModal(inv)}
+                        className="min-h-[36px] min-w-[36px] sm:min-h-[38px] sm:min-w-[38px] p-2 bg-sky-50 hover:bg-sky-100 active:bg-sky-200 text-sky-700 border border-sky-200 rounded-xl transition-all cursor-pointer flex items-center justify-center shadow-3xs"
+                        title="ارسال نسخه تحت وب فاکتور برای مشتری"
+                      >
+                        <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-600" />
                       </button>
                     </div>
                   </div>
@@ -870,9 +958,15 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
 
                       {/* Customer Name */}
                       <td className="py-3.5 px-3">
-                        <div className="font-bold text-slate-900 truncate max-w-xs" title={inv.customerName}>
+                        <div className="font-bold text-slate-900 truncate max-w-xs text-xs sm:text-sm" title={inv.customerName}>
                           {inv.customerName}
                         </div>
+                        {inv.customerPhone && (
+                          <div className="text-[10.5px] text-slate-400 font-mono flex items-center gap-1 mt-0.5">
+                            <Phone className="w-2.5 h-2.5 text-slate-300" />
+                            <span>{toPersianDigits(inv.customerPhone)}</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Issue Date */}
@@ -886,11 +980,18 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                       {/* Amount & Status */}
                       <td className="py-3.5 px-3 text-left whitespace-nowrap font-['Vazirmatn']">
                         <div className="flex items-center justify-end gap-2">
-                          <span className="font-black text-slate-900 text-xs sm:text-sm font-mono">
-                            {formatPrice(inv.finalTotal, settings.currency)}
-                          </span>
+                          <div className="text-left">
+                            <span className="font-black text-slate-900 text-xs sm:text-sm font-mono block">
+                              {formatPrice(inv.finalTotal, settings.currency)}
+                            </span>
+                            {!isPaid && (
+                              <span className="text-[10px] text-rose-600 font-bold block font-mono">
+                                مانده: {formatPrice(Math.max(0, inv.finalTotal - (inv.paidAmount || 0)), settings.currency)}
+                              </span>
+                            )}
+                          </div>
                           <span
-                            className={`px-2 py-0.5 rounded-full font-bold text-[10px] border ${
+                            className={`px-2 py-0.5 rounded-full font-bold text-[10px] border shrink-0 ${
                               isPaid
                                 ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                                 : isPartial

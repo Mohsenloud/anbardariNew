@@ -7,13 +7,15 @@ import {
   InboundReceipt, 
   StoreSettings, 
   AppUser,
-  WarehouseInfo 
+  WarehouseInfo,
+  CustomerTransaction 
 } from '../types';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate, getCurrentJalaliTime, formatNumber } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
 import { getRoleBadgeConfig, isTabPermitted } from '../utils/permissions';
 import { clearAppCacheAndReload, getLastCacheUpdatedTime } from '../utils/appUpdater';
 import { NumericInput } from './NumericInput';
+import { CustomerTransactionModal } from './CustomerTransactionModal';
 import { 
   LayoutGrid, 
   BarChart3, 
@@ -49,7 +51,10 @@ import {
   CreditCard,
   ArrowLeftRight,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  Coins,
+  Wallet,
+  Phone
 } from 'lucide-react';
 
 const getAvatarBgClass = (color?: string, role?: string) => {
@@ -83,6 +88,7 @@ interface QuickDashboardProps {
   onUpdateSettings?: (newSettings: StoreSettings) => void;
   onLogout?: () => void;
   onRequestLogin?: (targetUser?: AppUser | null) => void;
+  onSaveTransaction?: (txn: CustomerTransaction) => void;
 }
 
 export const QuickDashboard: React.FC<QuickDashboardProps> = ({
@@ -100,9 +106,16 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
   onUpdateSettings,
   onLogout,
   onRequestLogin,
+  onSaveTransaction,
 }) => {
   const currentDate = getCurrentJalaliDate();
   const currentTime = getCurrentJalaliTime();
+
+  // State for Customer Deposit Picker and Modal
+  const [isDepositPickerOpen, setIsDepositPickerOpen] = useState(false);
+  const [depositSelectedCustomer, setDepositSelectedCustomer] = useState<Customer | null>(null);
+  const [depositSearchQuery, setDepositSearchQuery] = useState('');
+  const [depositFilterOnlyDebtors, setDepositFilterOnlyDebtors] = useState(false);
 
   // User Permissions derived from currentUser (configured by manager)
   const userPerms = useMemo(() => {
@@ -233,6 +246,30 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
   const [auditNotes, setAuditNotes] = useState<Record<string, string>>({});
   const [auditSuccessMsg, setAuditSuccessMsg] = useState('');
 
+  // Filter customers for Deposit Picker Modal
+  const filteredDepositCustomers = useMemo(() => {
+    const q = depositSearchQuery.trim().toLowerCase();
+    const allTxns = StorageService.getCustomerTransactions();
+
+    return customers
+      .filter((c) => {
+        if (q) {
+          const matchName = c.name.toLowerCase().includes(q);
+          const matchPhone = c.phone?.toLowerCase().includes(q);
+          const matchNat = c.nationalId?.toLowerCase().includes(q);
+          if (!matchName && !matchPhone && !matchNat) return false;
+        }
+
+        if (depositFilterOnlyDebtors) {
+          const ledger = StorageService.buildCustomerLedger(c, invoices, allTxns);
+          if (ledger.netBalance <= 0) return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [customers, invoices, depositSearchQuery, depositFilterOnlyDebtors]);
+
   // Operations permitted for the active user
   const permittedOperations = useMemo(() => {
     const list: Array<{
@@ -345,6 +382,23 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
       });
     }
 
+    // Customer Deposit / Payment Recording (ثبت واریزی از مشتری)
+    if (canCustomers || canInvoice || canAdmin) {
+      list.push({
+        id: 'customer-deposit',
+        label: 'ثبت واریزی مشتری',
+        icon: Coins,
+        borderClass: 'border-emerald-200',
+        bgClass: 'bg-emerald-50',
+        textClass: 'text-emerald-600',
+        hoverBgClass: 'group-hover:bg-emerald-600',
+        hoverTextClass: 'group-hover:text-white',
+        hoverBorderClass: 'group-hover:border-emerald-600',
+        hoverLabelClass: 'group-hover:text-emerald-700',
+        onClick: () => setIsDepositPickerOpen(true),
+      });
+    }
+
     // Always include the "بیشتر امکانات" action button for accessing role-based features
     list.push({
       id: 'more-features',
@@ -361,7 +415,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
     });
 
     return list;
-  }, [canInventory, canInvoice, canCustomers, canInvoicesList, onNavigate, onNewInvoice]);
+  }, [canInventory, canInvoice, canCustomers, canInvoicesList, canAdmin, onNavigate, onNewInvoice]);
 
   // Comprehensive features list strictly filtered by user's permitted role
   const allPermittedFeatures = useMemo(() => {
@@ -388,6 +442,22 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
         onClick: () => {
           setIsMoreFeaturesModalOpen(false);
           onNewInvoice();
+        },
+      });
+    }
+
+    if (canCustomers || canInvoice || canAdmin) {
+      items.push({
+        id: 'feat-customer-deposit',
+        title: 'ثبت واریزی و دریافت وجه از مشتری',
+        subtitle: 'دریافت نقدی، پوز، کارت به کارت یا چک مشتری و تسویه حساب',
+        icon: Coins,
+        colorClass: 'text-emerald-600',
+        bgClass: 'bg-emerald-50/80 border-emerald-200 hover:bg-emerald-100/90',
+        badgeText: 'عملیات مالی',
+        onClick: () => {
+          setIsMoreFeaturesModalOpen(false);
+          setIsDepositPickerOpen(true);
         },
       });
     }
@@ -614,23 +684,23 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
     <div className="w-full max-w-7xl mx-auto space-y-4 sm:space-y-6 select-none">
       {/* ACTIVE USER & PERMISSION ROLE BANNER */}
       {currentUser && (
-        <div className="flex items-center justify-between bg-white px-3.5 py-2.5 sm:px-5 sm:py-3 rounded-2xl border border-slate-200/90 shadow-xs text-xs">
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl ${getAvatarBgClass(currentUser.avatarColor, currentUser.role)} flex items-center justify-center font-black text-sm shrink-0 shadow-xs`}>
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white px-3.5 py-3 sm:px-5 sm:py-3.5 rounded-2xl border border-slate-200/90 shadow-xs text-xs">
+          <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+            <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl ${getAvatarBgClass(currentUser.avatarColor, currentUser.role)} flex items-center justify-center font-black text-sm sm:text-base shrink-0 shadow-xs`}>
               {currentUser.fullName ? currentUser.fullName.charAt(0) : <UserCheck className="w-5 h-5" />}
             </div>
-            <div className="flex flex-col">
-              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                <span className="font-extrabold text-slate-900 text-xs sm:text-base">
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-black text-slate-900 text-sm sm:text-base truncate">
                   {currentUser.fullName}
                 </span>
                 {roleConfig && (
-                  <span className={`text-[10px] sm:text-xs font-extrabold px-2 py-0.5 rounded-full border ${roleConfig.badgeBg} ${roleConfig.badgeText} ${roleConfig.borderColor}`}>
+                  <span className={`text-[10px] sm:text-xs font-black px-2.5 py-0.5 rounded-full border ${roleConfig.badgeBg} ${roleConfig.badgeText} ${roleConfig.borderColor} shrink-0`}>
                     {currentUser.roleTitle || roleConfig.label}
                   </span>
                 )}
               </div>
-              <span className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5">
+              <span className="text-[11px] sm:text-xs text-slate-400 font-medium mt-0.5 truncate">
                 {currentUser.role === 'admin'
                   ? 'دسترسی نامحدود به تمامی بخش‌های سامانه'
                   : `امکانات فعال: ${[
@@ -645,14 +715,14 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
             {/* APP UPDATE & CLEAR CACHE BUTTON */}
             <button
               type="button"
               id="btn-dashboard-update-cache"
               onClick={() => setIsUpdateModalOpen(true)}
               title="بروزرسانی برنامه و نوسازی کش مرورگر"
-              className="text-[11px] sm:text-xs font-bold text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 border border-sky-200 hover:border-sky-300 px-2.5 sm:px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-xs"
+              className="text-[11px] sm:text-xs font-bold text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 border border-sky-200 hover:border-sky-300 px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-xs min-h-[36px]"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-sky-600 ${isUpdatingApp ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">بروزرسانی برنامه</span>
@@ -663,11 +733,11 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => onNavigate('admin')}
-                className="text-[11px] sm:text-xs font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 sm:px-3 py-1.5 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                className="text-[11px] sm:text-xs font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3 py-1.5 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-xs min-h-[36px]"
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                 <span className="hidden sm:inline">پنل مدیریت</span>
-                <span className="sm:hidden">مدیر</span>
+                <span className="sm:hidden">مدیریت</span>
               </button>
             )}
 
@@ -678,9 +748,9 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                 id="btn-dashboard-user-logout"
                 onClick={onLogout}
                 title="خروج از حساب کاربری"
-                className="text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 hover:border-rose-300 px-2.5 sm:px-3.5 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-xs"
+                className="text-[11px] sm:text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 hover:border-rose-300 px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-xs min-h-[36px]"
               >
-                <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-600 shrink-0" />
+                <LogOut className="w-3.5 h-3.5 text-rose-600 shrink-0" />
                 <span>خروج</span>
               </button>
             )}
@@ -690,9 +760,9 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
 
       {/* GUEST / NO MULTI-USER TOP HEADER BANNER */}
       {!currentUser && (
-        <div className="flex items-center justify-between bg-white px-3.5 py-2.5 sm:px-5 sm:py-3 rounded-2xl border border-slate-200/90 shadow-xs text-xs">
-          <div className="flex items-center gap-2">
-            <span className="font-extrabold text-slate-900 text-sm">{settings.storeName || 'سامانه مدیریت و حسابداری سپهر'}</span>
+        <div className="flex items-center justify-between bg-white px-3.5 py-3 sm:px-5 sm:py-3.5 rounded-2xl border border-slate-200/90 shadow-xs text-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="font-black text-slate-900 text-sm sm:text-base">{settings.storeName || 'سامانه مدیریت و حسابداری سپهر'}</span>
             <span className="text-slate-400 text-xs hidden sm:inline">• {toPersianDigits(getCurrentJalaliDate())}</span>
           </div>
           <button
@@ -700,10 +770,10 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
             id="btn-dashboard-update-cache-guest"
             onClick={() => setIsUpdateModalOpen(true)}
             title="بروزرسانی برنامه و نوسازی کش مرورگر"
-            className="text-[11px] sm:text-xs font-bold text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 border border-sky-200 hover:border-sky-300 px-2.5 sm:px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-xs"
+            className="text-[11px] sm:text-xs font-bold text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 border border-sky-200 hover:border-sky-300 px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-xs min-h-[36px]"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-sky-600 ${isUpdatingApp ? 'animate-spin' : ''}`} />
-            <span>بروزرسانی برنامه و کش</span>
+            <span>بروزرسانی برنامه</span>
           </button>
         </div>
       )}
@@ -1023,7 +1093,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
 
               {/* Circular Action Buttons */}
               {permittedOperations.length > 0 && (
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2.5 pt-1">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
                   {permittedOperations.map((op) => {
                     const IconComp = op.icon;
                     return (
@@ -1092,42 +1162,80 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
             </div>
           )}
 
-          {/* ROW 3: فاکتور فروش سریع (Only visible if canCreateInvoice) */}
-          {canInvoice && (
-            <div
-              id="banner-quick-invoice"
-              onClick={() => onNewInvoice()}
-              className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 text-white rounded-2xl p-4 shadow-md shadow-emerald-600/15 flex items-center justify-between cursor-pointer hover:shadow-lg hover:brightness-105 active:scale-99 transition-all"
-            >
-              {/* Right: White Circle with Green Plus */}
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-white text-emerald-600 shadow-md flex items-center justify-center shrink-0">
-                  <Plus className="w-7 h-7 stroke-[3]" />
-                </div>
+          {/* ROW 3: عملیات ویژه و سریع فروش و مالی (فاکتور فروش سریع + ثبت واریزی مشتری) */}
+          {(canInvoice || canCustomers || canAdmin) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Card 1: فاکتور فروش سریع */}
+              {canInvoice && (
+                <div
+                  id="banner-quick-invoice"
+                  onClick={() => onNewInvoice()}
+                  className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 text-white rounded-2xl p-3.5 sm:p-4 shadow-md shadow-emerald-600/15 flex items-center justify-between cursor-pointer hover:shadow-lg hover:brightness-105 active:scale-99 transition-all"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white text-emerald-600 shadow-sm flex items-center justify-center shrink-0">
+                      <Plus className="w-6 h-6 stroke-[3]" />
+                    </div>
 
-                {/* Center: Title & Subtitle */}
-                <div className="flex flex-col">
-                  <span className="text-sm sm:text-base font-black text-white">
-                    فاکتور فروش سریع
-                  </span>
-                  <span className="text-[11px] font-medium text-white/90 mt-0.5">
-                    ثبت فوری اقلام، مشتری و صدور فاکتور
-                  </span>
-                </div>
-              </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-sm sm:text-base font-black text-white truncate">
+                        فاکتور فروش سریع
+                      </span>
+                      <span className="text-[11px] font-medium text-emerald-100/90 mt-0.5 truncate">
+                        ثبت فوری اقلام و فاکتور فروش
+                      </span>
+                    </div>
+                  </div>
 
-              {/* Left: Button */}
-              <button
-                type="button"
-                id="quick-invoice-options-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onNewInvoice();
-                }}
-                className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-colors"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
+                  <button
+                    type="button"
+                    id="quick-invoice-options-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNewInvoice();
+                    }}
+                    className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-colors shrink-0"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Card 2: ثبت واریزی از مشتری */}
+              {(canCustomers || canInvoice || canAdmin) && (
+                <div
+                  id="banner-quick-customer-deposit"
+                  onClick={() => setIsDepositPickerOpen(true)}
+                  className="bg-gradient-to-r from-teal-700 via-emerald-700 to-cyan-800 text-white rounded-2xl p-3.5 sm:p-4 shadow-md shadow-teal-700/15 flex items-center justify-between cursor-pointer hover:shadow-lg hover:brightness-105 active:scale-99 transition-all"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/20 backdrop-blur-xs text-amber-300 shadow-sm flex items-center justify-center shrink-0">
+                      <Coins className="w-6 h-6 stroke-[2.4]" />
+                    </div>
+
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-sm sm:text-base font-black text-white truncate">
+                        ثبت واریزی از مشتری
+                      </span>
+                      <span className="text-[11px] font-medium text-teal-100/90 mt-0.5 truncate">
+                        دریافت نقد، پوز، چک و تسویه بدهی
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    id="quick-deposit-options-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsDepositPickerOpen(true);
+                    }}
+                    className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-colors shrink-0"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1176,7 +1284,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
               </div>
 
               {/* Action Buttons Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5 py-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 py-2">
                 {permittedOperations.map((op) => {
                   const Icon = op.icon;
                   return (
@@ -1252,40 +1360,90 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
               </div>
             </div>
 
-            {/* 3. QUICK INVOICE BANNER */}
-            {canInvoice && (
-              <div
-                id="desk-card-quick-invoice-banner"
-                onClick={onNewInvoice}
-                className="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-3xl p-5 text-white flex items-center justify-between shadow-md shadow-emerald-600/20 cursor-pointer hover:from-emerald-700 hover:to-teal-800 active:scale-99 transition-all"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0">
-                    <Plus className="w-6 h-6 stroke-[3]" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-black text-lg">صدور فاکتور فروش سریع (POS)</span>
-                      <span className="text-[11px] bg-white/20 px-2 py-0.5 rounded-full font-bold">کلید میانبر Alt+N</span>
+            {/* 3. QUICK ACTION BANNERS: NEW INVOICE & CUSTOMER DEPOSIT */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Card 1: صدور فاکتور فروش سریع */}
+              {canInvoice && (
+                <div
+                  id="desk-card-quick-invoice-banner"
+                  onClick={onNewInvoice}
+                  className="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-3xl p-4 sm:p-5 text-white flex flex-col justify-between shadow-md shadow-emerald-600/15 cursor-pointer hover:from-emerald-700 hover:to-teal-800 active:scale-99 transition-all group min-h-[145px]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
+                        <Plus className="w-6 h-6 stroke-[3]" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-base sm:text-lg">فاکتور فروش سریع (POS)</span>
+                          <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-bold">Alt+N</span>
+                        </div>
+                        <span className="text-xs text-emerald-100 font-medium mt-0.5 block">
+                          صدور فاکتور رسمی / عادی، بارکدخوان و چاپ
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-xs text-emerald-100 font-medium mt-0.5 block">
-                      صدور فاکتور رسمی / عادی، محاسبه ارزش افزوده، تخفیفات و چاپ حرارتی یا A4
-                    </span>
+                  </div>
+
+                  <div className="mt-3 pt-2.5 border-t border-white/20 flex items-center justify-between">
+                    <span className="text-[11px] text-emerald-100 font-medium">فروش نقدی، اعتباری و رسمی</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onNewInvoice();
+                      }}
+                      className="px-3.5 py-1.5 bg-white text-emerald-800 hover:bg-emerald-50 rounded-xl text-xs font-black transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>صدور فاکتور</span>
+                    </button>
                   </div>
                 </div>
+              )}
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={onNewInvoice}
-                    className="px-5 py-2.5 bg-white text-emerald-800 hover:bg-emerald-50 rounded-xl text-xs font-black transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>شروع صدور فاکتور</span>
-                  </button>
+              {/* Card 2: ثبت واریزی و تسویه مشتری */}
+              {(canCustomers || canInvoice || canAdmin) && (
+                <div
+                  id="desk-card-customer-deposit-banner"
+                  onClick={() => setIsDepositPickerOpen(true)}
+                  className="bg-gradient-to-r from-teal-700 via-emerald-700 to-cyan-800 rounded-3xl p-4 sm:p-5 text-white flex flex-col justify-between shadow-md shadow-teal-700/15 cursor-pointer hover:brightness-105 active:scale-99 transition-all group min-h-[145px]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-xs text-amber-300 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
+                        <Coins className="w-6 h-6 stroke-[2.4]" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-base sm:text-lg">ثبت واریزی از مشتری</span>
+                          <span className="text-[10px] bg-amber-400 text-slate-900 px-2 py-0.5 rounded-full font-extrabold">امور مالی</span>
+                        </div>
+                        <span className="text-xs text-teal-100 font-medium mt-0.5 block">
+                          دریافت نقد، پوز، چک بانکی و تسویه حساب
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 pt-2.5 border-t border-white/20 flex items-center justify-between">
+                    <span className="text-[11px] text-teal-100 font-medium">تسویه بدهی طرف‌حساب</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsDepositPickerOpen(true);
+                      }}
+                      className="px-3.5 py-1.5 bg-white text-teal-800 hover:bg-teal-50 rounded-xl text-xs font-black transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Coins className="w-3.5 h-3.5 text-amber-500" />
+                      <span>ثبت واریزی مشتری</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* 4. WAREHOUSE SETTINGS CARD */}
             {(canInventory || canAdmin) && (
@@ -2123,6 +2281,164 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* 6. CUSTOMER DEPOSIT PICKER MODAL (ثبت واریزی از مشتری) */}
+      {isDepositPickerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-5 sm:p-6 shadow-2xl space-y-4 max-h-[88vh] flex flex-col border border-slate-200 animate-in zoom-in-95">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shadow-xs">
+                  <Coins className="w-5 h-5 stroke-[2.4]" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base sm:text-lg">
+                    ثبت واریزی و دریافت وجه از مشتری
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    طرف‌حساب مورد نظر را جهت ثبت پرداخت نقد، پوز یا چک انتخاب کنید
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDepositPickerOpen(false);
+                  setDepositSearchQuery('');
+                  setDepositFilterOnlyDebtors(false);
+                }}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Search and Filters */}
+            <div className="space-y-2.5 shrink-0">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={depositSearchQuery}
+                  onChange={(e) => setDepositSearchQuery(e.target.value)}
+                  placeholder="جستجوی مشتری (نام، شماره تماس یا کد ملی)..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-10 pl-3 py-2.5 text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden transition-all"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={depositFilterOnlyDebtors}
+                    onChange={(e) => setDepositFilterOnlyDebtors(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
+                  />
+                  <span className="font-bold text-slate-700 text-xs">
+                    فقط مشتریان دارای بدهی
+                  </span>
+                </label>
+                <span className="text-[11px] text-slate-400 font-medium">
+                  {toPersianDigits(filteredDepositCustomers.length)} طرف‌حساب
+                </span>
+              </div>
+            </div>
+
+            {/* Customers List */}
+            <div className="overflow-y-auto flex-1 space-y-2 pr-1 divide-y divide-slate-50">
+              {filteredDepositCustomers.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 text-xs space-y-2">
+                  <p>هیچ مشتری با مشخصات وارد شده یافت نشد.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDepositPickerOpen(false);
+                      onNavigate('customers');
+                    }}
+                    className="text-emerald-700 font-bold hover:underline cursor-pointer"
+                  >
+                    رفتن به مدیریت مشتریان
+                  </button>
+                </div>
+              ) : (
+                filteredDepositCustomers.map((cust) => {
+                  const allTxns = StorageService.getCustomerTransactions();
+                  const ledger = StorageService.buildCustomerLedger(cust, invoices, allTxns);
+                  const isDebtor = ledger.netBalance > 0;
+                  const isCreditor = ledger.netBalance < 0;
+
+                  return (
+                    <div
+                      key={cust.id}
+                      onClick={() => {
+                        setDepositSelectedCustomer(cust);
+                        setIsDepositPickerOpen(false);
+                      }}
+                      className="p-3 rounded-2xl border border-slate-200/80 hover:border-emerald-300 hover:bg-emerald-50/40 transition-all cursor-pointer flex items-center justify-between group active:scale-99"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 group-hover:bg-emerald-100 group-hover:text-emerald-700 text-slate-600 flex items-center justify-center font-bold text-xs shrink-0 transition-colors">
+                          <Users className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="font-extrabold text-slate-900 text-xs sm:text-sm block truncate group-hover:text-emerald-800 transition-colors">
+                            {cust.name}
+                          </span>
+                          <span className="text-[11px] text-slate-400 font-mono block mt-0.5">
+                            {cust.phone ? toPersianDigits(cust.phone) : 'بدون شماره تماس'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-left shrink-0 space-y-1">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span className={`text-xs sm:text-sm font-black font-mono ${
+                            isDebtor ? 'text-rose-700' : isCreditor ? 'text-blue-700' : 'text-slate-500'
+                          }`}>
+                            {toPersianDigits(Math.abs(ledger.netBalance).toLocaleString('en-US'))} {settings.currency}
+                          </span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                            isDebtor ? 'bg-rose-100 text-rose-700' : isCreditor ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {isDebtor ? 'بدهکار' : isCreditor ? 'طلبکار' : 'بی‌حساب'}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-emerald-600 font-bold block group-hover:underline">
+                          ثبت واریزی ←
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. CUSTOMER TRANSACTION MODAL (REGISTER DEPOSIT / PAYMENT) */}
+      {depositSelectedCustomer && (
+        <CustomerTransactionModal
+          isOpen={!!depositSelectedCustomer}
+          onClose={() => setDepositSelectedCustomer(null)}
+          customer={depositSelectedCustomer}
+          initialType="deposit"
+          invoices={invoices}
+          transactions={StorageService.getCustomerTransactions()}
+          settings={settings}
+          currentUser={currentUser || undefined}
+          onSaveTransaction={(txn) => {
+            if (onSaveTransaction) {
+              onSaveTransaction(txn);
+            } else {
+              StorageService.addCustomerTransaction(txn);
+            }
+            setDepositSelectedCustomer(null);
+          }}
+        />
       )}
     </div>
   );

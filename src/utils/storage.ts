@@ -1900,6 +1900,29 @@ export const StorageService = {
     this.queuePushToServer({ invoices: clean, deletedInvoiceIds: Array.from(deletedSet) });
   },
 
+  updateInvoice(updatedInvoice: Invoice) {
+    const invoices = this.getInvoices();
+    const index = invoices.findIndex((inv) => inv.id === updatedInvoice.id);
+    let next: Invoice[];
+    if (index >= 0) {
+      next = [...invoices];
+      next[index] = updatedInvoice;
+    } else {
+      next = [updatedInvoice, ...invoices];
+    }
+    this.saveInvoices(next);
+    this.notifyChange();
+  },
+
+  deleteInvoice(invoiceId: string) {
+    this.markInvoiceDeleted(invoiceId);
+    this.deleteExitSlipLog(invoiceId);
+    const invoices = this.getInvoices();
+    const filtered = invoices.filter((inv) => inv.id !== invoiceId);
+    this.saveInvoices(filtered);
+    this.notifyChange();
+  },
+
   // -------------------------------------------------------------
   // SECURE PUBLIC WEB INVOICE SHARING (لینک نسخه تحت وب برای مشتری)
   // -------------------------------------------------------------

@@ -32,7 +32,9 @@ import {
   FileDown,
   Loader2,
   ShoppingBag,
-  Send
+  Send,
+  Pencil,
+  Coins
 } from 'lucide-react';
 import { 
   Customer, 
@@ -48,6 +50,7 @@ import { formatPrice, toPersianDigits, getCurrentJalaliDate, numberToPersianWord
 import { exportCustomerStatementToExcel } from '../utils/excelHelper';
 import { exportElementToPdf } from '../utils/pdfHelper';
 import { CustomerTransactionModal } from './CustomerTransactionModal';
+import { NumericInput } from './NumericInput';
 import { sendTelegramTextMessage } from '../utils/telegramService';
 
 interface CustomerStatementModalProps {
@@ -61,6 +64,9 @@ interface CustomerStatementModalProps {
   onSaveTransaction: (txn: CustomerTransaction) => void;
   onDeleteTransaction: (txnId: string) => void;
   onViewInvoice?: (invoice: Invoice) => void;
+  onEditInvoice?: (invoice: Invoice) => void;
+  onDeleteInvoice?: (invoiceId: string) => void;
+  onUpdatePaymentStatus?: (invoiceId: string, status: 'paid' | 'unpaid' | 'partial', paidAmount?: number) => void;
   initialFormType?: 'none' | 'deposit' | 'debt';
 }
 
@@ -75,6 +81,9 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   onSaveTransaction,
   onDeleteTransaction,
   onViewInvoice,
+  onEditInvoice,
+  onDeleteInvoice,
+  onUpdatePaymentStatus,
   initialFormType = 'none',
 }) => {
   if (!isOpen || !customer) return null;
@@ -86,7 +95,27 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   const [filterType, setFilterType] = useState<'all' | 'debt' | 'deposit'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<'all' | '30days' | 'this_year'>('all');
-  const [transactionToDelete, setTransactionToDelete] = useState<CustomerTransaction | null>(null);
+  const [transactionToEdit, setTransactionToEdit] = useState<CustomerTransaction | null>(null);
+
+  // Universal deletion state (for manual deposit/debt, invoice payment, or invoice debt)
+  const [itemToDelete, setItemToDelete] = useState<{
+    type: 'transaction' | 'invoice_payment' | 'invoice';
+    id: string;
+    amount: number;
+    title: string;
+    invoice?: Invoice;
+    transaction?: CustomerTransaction;
+  } | null>(null);
+
+  // Invoice payment edit modal state
+  const [invoicePaymentToEdit, setInvoicePaymentToEdit] = useState<Invoice | null>(null);
+  const [editPaymentAmount, setEditPaymentAmount] = useState<number>(0);
+  const [editPaymentMethod, setEditPaymentMethod] = useState<string>('cash');
+  const [editPaymentTracking, setEditPaymentTracking] = useState<string>('');
+  const [editPaymentNote, setEditPaymentNote] = useState<string>('');
+
+  // Local state trigger to immediately reflect invoice changes if updated internally
+  const [ledgerVersion, setLedgerVersion] = useState<number>(0);
 
   // View Controls: Default is 'table' (نمای جدولی پیش‌فرض)
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('table');
@@ -98,7 +127,90 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
   // Open separate transaction modal
   const handleOpenTransactionModal = (type: 'deposit' | 'debt') => {
+    setTransactionToEdit(null);
     setActiveTxnModalType(type);
+  };
+
+  // Open edit modal for a transaction
+  const handleOpenEditTransaction = (txn: CustomerTransaction) => {
+    setTransactionToEdit(txn);
+    setActiveTxnModalType(txn.type);
+  };
+
+  // Open edit modal for invoice payment
+  const handleOpenEditInvoicePayment = (inv: Invoice) => {
+    setInvoicePaymentToEdit(inv);
+    setEditPaymentAmount(inv.paidAmount || 0);
+    setEditPaymentMethod(inv.paymentMethod || 'cash');
+    setEditPaymentTracking(inv.chequeNumber || '');
+    setEditPaymentNote(inv.transferDescription || inv.notes || '');
+  };
+
+  // Save edited invoice payment
+  const handleSaveInvoicePayment = () => {
+    if (!invoicePaymentToEdit) return;
+    const cleanAmount = Math.max(0, Number(editPaymentAmount) || 0);
+    const newStatus = cleanAmount >= invoicePaymentToEdit.finalTotal ? 'paid' : cleanAmount > 0 ? 'partial' : 'unpaid';
+    const updatedInv: Invoice = {
+      ...invoicePaymentToEdit,
+      paidAmount: cleanAmount,
+      paymentStatus: newStatus,
+      paymentMethod: editPaymentMethod as any,
+      chequeNumber: editPaymentTracking.trim() || undefined,
+      transferDescription: editPaymentNote.trim() || undefined,
+      updatedAt: getCurrentJalaliDate(),
+    };
+
+    StorageService.updateInvoice(updatedInv);
+    if (onUpdatePaymentStatus) {
+      onUpdatePaymentStatus(invoicePaymentToEdit.id, newStatus, cleanAmount);
+    }
+
+    StorageService.logActivity({
+      category: 'sales',
+      actionType: 'update_payment',
+      actionTitle: 'ویرایش واریزی فاکتور',
+      details: `ویرایش مبلغ پرداختی فاکتور شماره ${invoicePaymentToEdit.invoiceNumber} به ${cleanAmount.toLocaleString('fa-IR')} ${settings.currency}`,
+    });
+
+    setLedgerVersion((v) => v + 1);
+    setInvoicePaymentToEdit(null);
+  };
+
+  // Universal deletion handler
+  const handleConfirmDelete = () => {
+    if (!itemToDelete) return;
+
+    if (itemToDelete.type === 'transaction') {
+      onDeleteTransaction(itemToDelete.id);
+    } else if (itemToDelete.type === 'invoice_payment' && itemToDelete.invoice) {
+      const updatedInv: Invoice = {
+        ...itemToDelete.invoice,
+        paidAmount: 0,
+        paymentStatus: 'unpaid',
+        updatedAt: getCurrentJalaliDate(),
+      };
+      StorageService.updateInvoice(updatedInv);
+      if (onUpdatePaymentStatus) {
+        onUpdatePaymentStatus(itemToDelete.invoice.id, 'unpaid', 0);
+      }
+      StorageService.logActivity({
+        category: 'sales',
+        actionType: 'update_payment',
+        actionTitle: 'حذف واریزی فاکتور',
+        details: `حذف واریزی فاکتور شماره ${itemToDelete.invoice.invoiceNumber} و بازگشت فاکتور به حالت بدهکار`,
+      });
+      setLedgerVersion((v) => v + 1);
+    } else if (itemToDelete.type === 'invoice' && itemToDelete.invoice) {
+      if (onDeleteInvoice) {
+        onDeleteInvoice(itemToDelete.invoice.id);
+      } else {
+        StorageService.deleteInvoice(itemToDelete.invoice.id);
+      }
+      setLedgerVersion((v) => v + 1);
+    }
+
+    setItemToDelete(null);
   };
 
   // Sync initialFormType when modal opens
@@ -108,14 +220,22 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
     }
   }, [isOpen, initialFormType]);
 
+  // Live invoices list (refreshes if user edited/deleted invoice payment directly)
+  const activeInvoices = useMemo(() => {
+    if (ledgerVersion > 0) {
+      return StorageService.getInvoices();
+    }
+    return invoices;
+  }, [invoices, ledgerVersion]);
+
   // Build the complete customer ledger
   const fullLedger = useMemo(() => {
-    return StorageService.buildCustomerLedger(customer, invoices, transactions);
-  }, [customer, invoices, transactions]);
+    return StorageService.buildCustomerLedger(customer, activeInvoices, transactions);
+  }, [customer, activeInvoices, transactions, ledgerVersion]);
 
   // Unpaid invoices for this customer
   const unpaidInvoices = useMemo(() => {
-    return invoices
+    return activeInvoices
       .filter((inv) => {
         if (inv.isProforma) return false;
         const matchesCustomer = 
@@ -125,7 +245,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
         return inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'partial';
       })
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [invoices, customer]);
+  }, [activeInvoices, customer]);
 
   // Filter ledger entries
   const filteredEntries = useMemo(() => {
@@ -822,28 +942,112 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                         </div>
                       </div>
 
-                      {/* Action buttons (View Invoice / Delete Manual Txn) */}
+                      {/* Action buttons (View Invoice / Edit / Delete) */}
                       {(entry.rawInvoice || (isManualTxn && entry.rawTransaction)) && (
-                        <div className="flex items-center justify-end gap-1.5 mt-2 pt-2 border-t border-slate-100">
+                        <div className="flex items-center justify-end gap-1.5 mt-2 pt-2 border-t border-slate-100 flex-wrap">
+                          {/* 1. View Invoice Button */}
                           {entry.rawInvoice && onViewInvoice && (
                             <button
                               type="button"
                               onClick={() => onViewInvoice(entry.rawInvoice!)}
-                              className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors cursor-pointer"
+                              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/70 rounded-xl transition-colors cursor-pointer"
+                              title="مشاهده جزئیات فاکتور"
                             >
                               <Eye className="w-3.5 h-3.5" />
                               <span>مشاهده فاکتور</span>
                             </button>
                           )}
+
+                          {/* 2. Manual Transaction (Deposit or Debt): Edit & Delete */}
                           {isManualTxn && entry.rawTransaction && (
-                            <button
-                              type="button"
-                              onClick={() => setTransactionToDelete(entry.rawTransaction!)}
-                              className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>حذف سند</span>
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditTransaction(entry.rawTransaction!)}
+                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200/70 rounded-xl transition-colors cursor-pointer"
+                                title={entry.rawTransaction.type === 'deposit' ? 'ویرایش سند واریزی' : 'ویرایش سند بدهی'}
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                <span>ویرایش {entry.rawTransaction.type === 'deposit' ? 'واریزی' : 'بدهی'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setItemToDelete({
+                                  type: 'transaction',
+                                  id: entry.rawTransaction!.id,
+                                  amount: entry.rawTransaction!.amount,
+                                  title: entry.rawTransaction!.title || (entry.rawTransaction!.type === 'deposit' ? 'واریز وجه' : 'سند بدهی'),
+                                  transaction: entry.rawTransaction,
+                                })}
+                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/70 rounded-xl transition-colors cursor-pointer"
+                                title="حذف سند مالی"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>حذف</span>
+                              </button>
+                            </>
+                          )}
+
+                          {/* 3. Invoice Payment (Deposit recorded on invoice): Edit & Delete */}
+                          {entry.documentType === 'invoice_payment' && entry.rawInvoice && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditInvoicePayment(entry.rawInvoice!)}
+                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200/70 rounded-xl transition-colors cursor-pointer"
+                                title="ویرایش واریزی فاکتور"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                <span>ویرایش واریزی</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setItemToDelete({
+                                  type: 'invoice_payment',
+                                  id: entry.rawInvoice!.id,
+                                  amount: entry.credit,
+                                  title: `واریزی فاکتور شماره #${toPersianDigits(entry.rawInvoice!.invoiceNumber)}`,
+                                  invoice: entry.rawInvoice,
+                                })}
+                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/70 rounded-xl transition-colors cursor-pointer"
+                                title="حذف واریزی فاکتور (بازگشت به بدهکاری)"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>حذف واریزی</span>
+                              </button>
+                            </>
+                          )}
+
+                          {/* 4. Invoice Debt (Sales Invoice): Edit & Delete */}
+                          {entry.documentType === 'invoice' && entry.rawInvoice && (
+                            <>
+                              {onEditInvoice && (
+                                <button
+                                  type="button"
+                                  onClick={() => onEditInvoice(entry.rawInvoice!)}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200/70 rounded-xl transition-colors cursor-pointer"
+                                  title="ویرایش اقلام فاکتور فروش"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                  <span>ویرایش فاکتور</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setItemToDelete({
+                                  type: 'invoice',
+                                  id: entry.rawInvoice!.id,
+                                  amount: entry.debit,
+                                  title: `فاکتور فروش شماره #${toPersianDigits(entry.rawInvoice!.invoiceNumber)}`,
+                                  invoice: entry.rawInvoice,
+                                })}
+                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/70 rounded-xl transition-colors cursor-pointer"
+                                title="حذف کامل فاکتور و بدهی"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>حذف فاکتور</span>
+                              </button>
+                            </>
                           )}
                         </div>
                       )}
@@ -877,7 +1081,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                           </span>
                         </div>
                       </th>
-                      <th className="py-3 px-2 w-20 text-center">عملیات</th>
+                      <th className="py-3 px-2 w-28 text-center">عملیات</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -967,25 +1171,102 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                             </td>
                             <td className="py-2.5 px-2 text-center whitespace-nowrap">
                               <div className="flex items-center justify-center gap-1">
+                                {/* 1. View Invoice */}
                                 {entry.rawInvoice && onViewInvoice && (
                                   <button
                                     type="button"
                                     onClick={() => onViewInvoice(entry.rawInvoice!)}
                                     title="مشاهده فاکتور"
-                                    className="p-1 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-md cursor-pointer transition-colors"
+                                    className="p-1.5 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg cursor-pointer transition-colors"
                                   >
-                                    <Eye className="w-3.5 h-3.5" />
+                                    <Eye className="w-4 h-4" />
                                   </button>
                                 )}
+
+                                {/* 2. Manual Transaction (Deposit or Debt): Edit & Delete */}
                                 {isManualTxn && entry.rawTransaction && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setTransactionToDelete(entry.rawTransaction!)}
-                                    title="حذف سند دستی"
-                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer transition-colors"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenEditTransaction(entry.rawTransaction!)}
+                                      title={entry.rawTransaction.type === 'deposit' ? 'ویرایش سند واریزی' : 'ویرایش سند بدهی'}
+                                      className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg cursor-pointer transition-colors"
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setItemToDelete({
+                                        type: 'transaction',
+                                        id: entry.rawTransaction!.id,
+                                        amount: entry.rawTransaction!.amount,
+                                        title: entry.rawTransaction!.title || (entry.rawTransaction!.type === 'deposit' ? 'واریز وجه' : 'سند بدهی'),
+                                        transaction: entry.rawTransaction,
+                                      })}
+                                      title="حذف سند مالی"
+                                      className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </>
+                                )}
+
+                                {/* 3. Invoice Payment (Deposit on Invoice): Edit & Delete */}
+                                {entry.documentType === 'invoice_payment' && entry.rawInvoice && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenEditInvoicePayment(entry.rawInvoice!)}
+                                      title="ویرایش مبلغ واریزی فاکتور"
+                                      className="p-1.5 text-teal-600 hover:text-teal-800 hover:bg-teal-50 rounded-lg cursor-pointer transition-colors"
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setItemToDelete({
+                                        type: 'invoice_payment',
+                                        id: entry.rawInvoice!.id,
+                                        amount: entry.credit,
+                                        title: `واریزی فاکتور شماره #${toPersianDigits(entry.rawInvoice!.invoiceNumber)}`,
+                                        invoice: entry.rawInvoice,
+                                      })}
+                                      title="حذف واریزی فاکتور (بازگشت به بدهکاری)"
+                                      className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </>
+                                )}
+
+                                {/* 4. Invoice Debt (Sales Invoice): Edit & Delete */}
+                                {entry.documentType === 'invoice' && entry.rawInvoice && (
+                                  <>
+                                    {onEditInvoice && (
+                                      <button
+                                        type="button"
+                                        onClick={() => onEditInvoice(entry.rawInvoice!)}
+                                        title="ویرایش اقلام فاکتور فروش"
+                                        className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg cursor-pointer transition-colors"
+                                      >
+                                        <Pencil className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => setItemToDelete({
+                                        type: 'invoice',
+                                        id: entry.rawInvoice!.id,
+                                        amount: entry.debit,
+                                        title: `فاکتور فروش شماره #${toPersianDigits(entry.rawInvoice!.invoiceNumber)}`,
+                                        invoice: entry.rawInvoice,
+                                      })}
+                                      title="حذف کامل فاکتور و بدهی"
+                                      className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             </td>
@@ -1168,36 +1449,174 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
       </div>
 
-      {/* DELETE TRANSACTION CONFIRMATION MODAL */}
-      {transactionToDelete && (
+      {/* UNIVERSAL DELETE CONFIRMATION MODAL (DEPOSIT, DEBT, INVOICE PAYMENT, INVOICE) */}
+      {itemToDelete && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 text-right">
-            <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center mb-3 mx-auto">
-              <Trash2 className="w-5 h-5" />
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 sm:p-6 shadow-2xl border border-slate-200 text-right animate-in zoom-in-95">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mb-3.5 mx-auto">
+              <Trash2 className="w-6 h-6 stroke-[2.2]" />
             </div>
-            <h4 className="text-sm font-bold text-slate-900 text-center mb-1">
-              حذف سند تراکنش
+            <h4 className="text-sm sm:text-base font-extrabold text-slate-900 text-center mb-1.5">
+              {itemToDelete.type === 'transaction'
+                ? 'حذف سند تراکنش مالی'
+                : itemToDelete.type === 'invoice_payment'
+                ? 'حذف واریزی ثبت شده فاکتور'
+                : 'حذف فاکتور فروش'}
             </h4>
-            <p className="text-xs text-slate-600 text-center mb-4 leading-relaxed">
-              آیا از حذف این سند مالی به مبلغ <strong className="font-mono font-bold text-rose-700">{formatPrice(transactionToDelete.amount, settings.currency)}</strong> اطمینان دارید؟
-            </p>
+            <div className="text-xs text-slate-600 text-center mb-4 leading-relaxed space-y-2">
+              <p>
+                آیا از حذف «<strong>{itemToDelete.title}</strong>» به مبلغ{' '}
+                <strong className="font-mono font-bold text-rose-700">
+                  {formatPrice(itemToDelete.amount, settings.currency)}
+                </strong>{' '}
+                اطمینان دارید؟
+              </p>
+              {itemToDelete.type === 'invoice_payment' && (
+                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 font-medium text-right leading-relaxed">
+                  توجه: با حذف این واریزی، فاکتور به حالت پرداخت‌نشده تغییر یافته و مانده بدهی مشتری افزایش خواهد یافت.
+                </div>
+              )}
+              {itemToDelete.type === 'invoice' && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-[11px] text-rose-900 font-medium text-right leading-relaxed">
+                  هشدار: این فاکتور و کل مبلغ بدهی آن به طور قطعی از سیستم و صورتحساب مشتری حذف خواهد شد.
+                </div>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setTransactionToDelete(null)}
-                className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 cursor-pointer"
+                onClick={() => setItemToDelete(null)}
+                className="flex-1 py-2.5 px-3 rounded-xl text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 cursor-pointer transition-colors"
               >
                 انصراف
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  onDeleteTransaction(transactionToDelete.id);
-                  setTransactionToDelete(null);
-                }}
-                className="flex-1 py-2 px-3 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 cursor-pointer"
+                onClick={handleConfirmDelete}
+                className="flex-1 py-2.5 px-3 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-md shadow-rose-600/20 cursor-pointer transition-all active:scale-98"
               >
                 بله، حذف شود
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT INVOICE PAYMENT MODAL */}
+      {invoicePaymentToEdit && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 text-right space-y-4 animate-in zoom-in-95">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-teal-100 text-teal-700 flex items-center justify-center shadow-xs">
+                  <Coins className="w-5 h-5 stroke-[2.2]" />
+                </div>
+                <div>
+                  <h4 className="text-sm sm:text-base font-extrabold text-slate-900">
+                    ویرایش مبلغ واریزی فاکتور
+                  </h4>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    فاکتور شماره #{toPersianDigits(invoicePaymentToEdit.invoiceNumber)}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInvoicePaymentToEdit(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5">
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-xs flex justify-between items-center">
+                <span className="text-slate-500 font-medium">مبلغ کل فاکتور:</span>
+                <span className="font-black text-slate-800 font-mono">
+                  {formatPrice(invoicePaymentToEdit.finalTotal, settings.currency)}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  مبلغ واریز شده جدید ({settings.currency}):
+                </label>
+                <NumericInput
+                  min={0}
+                  max={invoicePaymentToEdit.finalTotal * 1.5}
+                  value={editPaymentAmount}
+                  onChange={(val) => setEditPaymentAmount(val)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 focus:outline-hidden"
+                />
+                <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
+                  <span>مانده بدهی پس از ویرایش:</span>
+                  <span className={`font-mono font-bold ${invoicePaymentToEdit.finalTotal - editPaymentAmount > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                    {formatPrice(Math.max(0, invoicePaymentToEdit.finalTotal - editPaymentAmount), settings.currency)}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  روش پرداخت / تسویه:
+                </label>
+                <select
+                  value={editPaymentMethod}
+                  onChange={(e) => setEditPaymentMethod(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 focus:outline-hidden"
+                >
+                  <option value="cash">نقدی</option>
+                  <option value="pos">دستگاه کارتخوان (POS)</option>
+                  <option value="card">کارت به کارت</option>
+                  <option value="transfer">حواله بانکی پایا / ساتنا</option>
+                  <option value="cheque">چک بانکی صیادی</option>
+                  <option value="credit">اعتباری / نسیه</option>
+                  <option value="other">سایر روش‌ها</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  شماره پیگیری / شماره چک (اختیاری):
+                </label>
+                <input
+                  type="text"
+                  value={editPaymentTracking}
+                  onChange={(e) => setEditPaymentTracking(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-teal-500 focus:outline-hidden"
+                  placeholder="مثال: ۲۵۸۷۴۱ یا سریال چک"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  توضیحات واریزی:
+                </label>
+                <input
+                  type="text"
+                  value={editPaymentNote}
+                  onChange={(e) => setEditPaymentNote(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-teal-500 focus:outline-hidden"
+                  placeholder="توضیحاتی در مورد نحوه تسویه یا حساب..."
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setInvoicePaymentToEdit(null)}
+                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                انصراف
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveInvoicePayment}
+                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 shadow-md shadow-teal-600/20 transition-all cursor-pointer active:scale-98"
+              >
+                ذخیره تغییرات واریزی
               </button>
             </div>
           </div>
@@ -1437,18 +1856,26 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
         </div>
       </div>
 
-      {/* SEPARATE MODAL: REGISTER DEPOSIT OR REGISTER DEBT */}
+      {/* SEPARATE MODAL: REGISTER / EDIT DEPOSIT OR DEBT */}
       {activeTxnModalType && (
         <CustomerTransactionModal
           isOpen={!!activeTxnModalType}
-          onClose={() => setActiveTxnModalType(null)}
+          onClose={() => {
+            setActiveTxnModalType(null);
+            setTransactionToEdit(null);
+          }}
           customer={customer}
           initialType={activeTxnModalType}
+          editingTransaction={transactionToEdit}
           invoices={invoices}
           transactions={transactions}
           settings={settings}
           currentUser={currentUser}
-          onSaveTransaction={onSaveTransaction}
+          onSaveTransaction={(txn) => {
+            onSaveTransaction(txn);
+            setActiveTxnModalType(null);
+            setTransactionToEdit(null);
+          }}
         />
       )}
     </div>

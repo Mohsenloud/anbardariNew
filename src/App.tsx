@@ -1641,6 +1641,7 @@ export default function App() {
             onUpdateSettings={handleSaveSettings}
             onLogout={handleLogout}
             onRequestLogin={handleRequestLogin}
+            onSaveTransaction={handleSaveCustomerTransaction}
           />
         )}
 
@@ -1738,6 +1739,9 @@ export default function App() {
             onSaveTransaction={handleSaveCustomerTransaction}
             onDeleteTransaction={handleDeleteCustomerTransaction}
             onViewInvoice={(inv) => setViewingInvoice(inv)}
+            onEditInvoice={handleStartEditInvoice}
+            onDeleteInvoice={handleDeleteInvoice}
+            onUpdatePaymentStatus={handleUpdatePaymentStatus}
           />
         )}
 

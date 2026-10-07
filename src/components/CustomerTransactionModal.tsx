@@ -39,6 +39,7 @@ export interface CustomerTransactionModalProps {
   settings: StoreSettings;
   currentUser?: AppUser;
   onSaveTransaction: (txn: CustomerTransaction) => void;
+  editingTransaction?: CustomerTransaction | null;
 }
 
 export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> = ({
@@ -51,19 +52,38 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
   settings,
   currentUser,
   onSaveTransaction,
+  editingTransaction,
 }) => {
   if (!isOpen || !customer) return null;
 
   // Transaction type: deposit (واریز) or debt (بدهی)
-  const [txnType, setTxnType] = useState<'deposit' | 'debt'>(initialType);
-  const [amount, setAmount] = useState<string>('');
-  const [date, setDate] = useState<string>(getCurrentJalaliDate());
-  const [title, setTitle] = useState<string>('');
-  const [paymentMethod, setPaymentMethod] = useState<CustomerPaymentMethod>('transfer');
-  const [trackingNumber, setTrackingNumber] = useState<string>('');
-  const [bankName, setBankName] = useState<string>('');
-  const [chequeDueDate, setChequeDueDate] = useState<string>('');
-  const [notes, setNotes] = useState<string>('');
+  const [txnType, setTxnType] = useState<'deposit' | 'debt'>(
+    editingTransaction ? editingTransaction.type : initialType
+  );
+  const [amount, setAmount] = useState<string>(
+    editingTransaction ? String(editingTransaction.amount) : ''
+  );
+  const [date, setDate] = useState<string>(
+    editingTransaction?.date || getCurrentJalaliDate()
+  );
+  const [title, setTitle] = useState<string>(
+    editingTransaction?.title || ''
+  );
+  const [paymentMethod, setPaymentMethod] = useState<CustomerPaymentMethod>(
+    editingTransaction?.paymentMethod || 'transfer'
+  );
+  const [trackingNumber, setTrackingNumber] = useState<string>(
+    editingTransaction?.trackingNumber || ''
+  );
+  const [bankName, setBankName] = useState<string>(
+    editingTransaction?.bankName || ''
+  );
+  const [chequeDueDate, setChequeDueDate] = useState<string>(
+    editingTransaction?.chequeDueDate || ''
+  );
+  const [notes, setNotes] = useState<string>(
+    editingTransaction?.notes || ''
+  );
 
   // Calculate current customer net balance
   const fullLedger = useMemo(() => {
@@ -92,33 +112,46 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
 
   useEffect(() => {
     if (isOpen) {
-      setTxnType(initialType);
-      setDate(getCurrentJalaliDate());
-      setTrackingNumber('');
-      setBankName('');
-      setChequeDueDate('');
-      setNotes('');
-      setShowTelegramPreview(false);
-      if (settings?.telegramBotEnabled) {
-        setSendToTelegram(
-          initialType === 'deposit'
-            ? settings?.telegramAutoSendCustomerPayment !== false
-            : settings?.telegramAutoSendSupplierPayment !== false
-        );
-      }
-      if (initialType === 'deposit') {
-        const debtAmount = fullLedger.netBalance > 0 ? fullLedger.netBalance : 0;
-        setAmount(debtAmount > 0 ? String(debtAmount) : '');
-        setTitle('واریز به حساب / تسویه');
-        setPaymentMethod('transfer');
+      if (editingTransaction) {
+        setTxnType(editingTransaction.type);
+        setAmount(String(editingTransaction.amount));
+        setDate(editingTransaction.date || getCurrentJalaliDate());
+        setTitle(editingTransaction.title || (editingTransaction.type === 'deposit' ? 'واریز به حساب / تسویه' : 'ثبت بدهی جدید'));
+        setPaymentMethod(editingTransaction.paymentMethod || 'transfer');
+        setTrackingNumber(editingTransaction.trackingNumber || '');
+        setBankName(editingTransaction.bankName || '');
+        setChequeDueDate(editingTransaction.chequeDueDate || '');
+        setNotes(editingTransaction.notes || '');
+        setShowTelegramPreview(false);
       } else {
-        const creditAmount = fullLedger.netBalance < 0 ? Math.abs(fullLedger.netBalance) : 0;
-        setAmount(creditAmount > 0 ? String(creditAmount) : '');
-        setTitle(fullLedger.netBalance < 0 ? 'پرداخت وجه به طرف‌حساب / تسویه طلب' : 'ثبت بدهی جدید / مانده گذشته');
-        setPaymentMethod(fullLedger.netBalance < 0 ? 'transfer' : 'other');
+        setTxnType(initialType);
+        setDate(getCurrentJalaliDate());
+        setTrackingNumber('');
+        setBankName('');
+        setChequeDueDate('');
+        setNotes('');
+        setShowTelegramPreview(false);
+        if (settings?.telegramBotEnabled) {
+          setSendToTelegram(
+            initialType === 'deposit'
+              ? settings?.telegramAutoSendCustomerPayment !== false
+              : settings?.telegramAutoSendSupplierPayment !== false
+          );
+        }
+        if (initialType === 'deposit') {
+          const debtAmount = fullLedger.netBalance > 0 ? fullLedger.netBalance : 0;
+          setAmount(debtAmount > 0 ? String(debtAmount) : '');
+          setTitle('واریز به حساب / تسویه');
+          setPaymentMethod('transfer');
+        } else {
+          const creditAmount = fullLedger.netBalance < 0 ? Math.abs(fullLedger.netBalance) : 0;
+          setAmount(creditAmount > 0 ? String(creditAmount) : '');
+          setTitle(fullLedger.netBalance < 0 ? 'پرداخت وجه به طرف‌حساب / تسویه طلب' : 'ثبت بدهی جدید / مانده گذشته');
+          setPaymentMethod(fullLedger.netBalance < 0 ? 'transfer' : 'other');
+        }
       }
     }
-  }, [isOpen, initialType, fullLedger.netBalance]);
+  }, [isOpen, initialType, fullLedger.netBalance, editingTransaction]);
 
   // Switch type handler
   const handleSwitchType = (type: 'deposit' | 'debt') => {
@@ -159,29 +192,43 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
     const cleanAmount = parseFloat(amount.replace(/,/g, ''));
     if (!cleanAmount || cleanAmount <= 0) return;
 
-    const newTxn: CustomerTransaction = {
-      id: `ctxn-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      customerId: customer.id,
-      customerName: customer.name,
-      type: txnType,
-      amount: cleanAmount,
-      date: date.trim() || getCurrentJalaliDate(),
-      title: title.trim() || (txnType === 'deposit' ? 'واریز وجه' : 'ثبت بدهی'),
-      paymentMethod: txnType === 'deposit' ? paymentMethod : undefined,
-      trackingNumber: trackingNumber.trim() || undefined,
-      bankName: bankName.trim() || undefined,
-      chequeDueDate: paymentMethod === 'cheque' ? chequeDueDate.trim() : undefined,
-      notes: notes.trim() || undefined,
-      recordedBy: currentUser?.fullName || currentUser?.username || 'مدیر سیستم',
-      createdAt: getCurrentJalaliDate(),
-    };
+    const finalTxn: CustomerTransaction = editingTransaction
+      ? {
+          ...editingTransaction,
+          type: txnType,
+          amount: cleanAmount,
+          date: date.trim() || getCurrentJalaliDate(),
+          title: title.trim() || (txnType === 'deposit' ? 'واریز وجه' : 'ثبت بدهی'),
+          paymentMethod: txnType === 'deposit' ? paymentMethod : undefined,
+          trackingNumber: trackingNumber.trim() || undefined,
+          bankName: bankName.trim() || undefined,
+          chequeDueDate: paymentMethod === 'cheque' ? chequeDueDate.trim() : undefined,
+          notes: notes.trim() || undefined,
+          updatedAt: getCurrentJalaliDate(),
+        }
+      : {
+          id: `ctxn-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          customerId: customer.id,
+          customerName: customer.name,
+          type: txnType,
+          amount: cleanAmount,
+          date: date.trim() || getCurrentJalaliDate(),
+          title: title.trim() || (txnType === 'deposit' ? 'واریز وجه' : 'ثبت بدهی'),
+          paymentMethod: txnType === 'deposit' ? paymentMethod : undefined,
+          trackingNumber: trackingNumber.trim() || undefined,
+          bankName: bankName.trim() || undefined,
+          chequeDueDate: paymentMethod === 'cheque' ? chequeDueDate.trim() : undefined,
+          notes: notes.trim() || undefined,
+          recordedBy: currentUser?.fullName || currentUser?.username || 'مدیر سیستم',
+          createdAt: getCurrentJalaliDate(),
+        };
 
-    onSaveTransaction(newTxn);
+    onSaveTransaction(finalTxn);
 
     // ارسال گزارش به تلگرام در صورت فعال بودن
     if (sendToTelegram && settings?.telegramBotEnabled) {
       if (txnType === 'deposit') {
-        autoSendCustomerPaymentReportToTelegram(newTxn, customer, settings, netBalanceAfter).catch((err) => {
+        autoSendCustomerPaymentReportToTelegram(finalTxn, customer, settings, netBalanceAfter).catch((err) => {
           console.warn('[Telegram Auto-Send] Error sending customer payment receipt:', err);
         });
       } else {
@@ -246,7 +293,9 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
             </div>
             <div className="min-w-0">
               <h3 className="font-black text-sm sm:text-base truncate">
-                {txnType === 'deposit' ? 'ثبت واریزی وجه طرف‌حساب' : 'ثبت بدهی جدید طرف‌حساب'}
+                {editingTransaction
+                  ? (txnType === 'deposit' ? 'ویرایش سند واریزی طرف‌حساب' : 'ویرایش سند بدهی طرف‌حساب')
+                  : (txnType === 'deposit' ? 'ثبت واریزی وجه طرف‌حساب' : 'ثبت بدهی جدید طرف‌حساب')}
               </h3>
               <p className="text-[11px] text-slate-300 truncate mt-0.5 flex items-center gap-1.5">
                 <span>مشتری:</span>
@@ -622,7 +671,13 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
             }`}
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>{txnType === 'deposit' ? 'ثبت واریز به حساب' : 'ثبت سند بدهی'}</span>
+            <span>
+              {editingTransaction
+                ? 'ذخیره تغییرات سند مالی'
+                : txnType === 'deposit'
+                ? 'ثبت واریز به حساب'
+                : 'ثبت سند بدهی'}
+            </span>
           </button>
         </div>
       </div>
