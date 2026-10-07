@@ -3,6 +3,11 @@ import { PurchaseInvoice, StoreSettings, AppUser } from '../types';
 import { toPersianDigits, formatPrice } from '../utils/jalali';
 import { PAYMENT_METHOD_LABELS } from '../utils/storage';
 import { exportElementToPdf, printElementDirectly } from '../utils/pdfHelper';
+import {
+  autoSendPurchaseInvoiceReportToTelegram,
+  autoSendSupplierPaymentReportToTelegram,
+  isTelegramConfigured,
+} from '../utils/telegramService';
 import { 
   Printer, 
   X, 
@@ -23,7 +28,8 @@ import {
   Hash,
   Calendar,
   Warehouse,
-  Edit3
+  Edit3,
+  Send
 } from 'lucide-react';
 
 interface PurchaseInvoiceViewModalProps {
@@ -86,6 +92,51 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
       showToast('خطا در تبدیل فاکتور خرید به PDF.');
     } finally {
       setIsExportingPdf(false);
+    }
+  };
+
+  // Telegram Send Handler
+  const [isSendingTelegram, setIsSendingTelegram] = useState(false);
+  const handleSendTelegram = async () => {
+    if (!settings.telegramBotEnabled) {
+      showToast('ربات تلگرام در تنظیمات سیستم فعال نشده است.');
+      return;
+    }
+    setIsSendingTelegram(true);
+    try {
+      // ارسال گزارش فاکتور خرید به تلگرام
+      await autoSendPurchaseInvoiceReportToTelegram(invoice, settings, {
+        onStart: () => showToast('در حال ارسال گزارش فاکتور خرید به تلگرام...'),
+        onSuccess: (msg) => showToast(msg || 'گزارش فاکتور خرید به تلگرام ارسال گردید.'),
+        onError: (err) => showToast('خطا در ارسال: ' + err),
+      });
+
+      // در صورت وجود پرداختی، ارسال رسید پرداخت به تامین‌کننده نیز انجام شود
+      if (invoice.paidAmount > 0) {
+        await autoSendSupplierPaymentReportToTelegram(
+          {
+            supplierName: invoice.supplierName,
+            supplierPhone: invoice.supplierPhone,
+            amount: invoice.paidAmount,
+            paymentMethod: invoice.paymentMethod,
+            trackingNumber: invoice.transferDescription,
+            chequeDueDate: invoice.chequeDueDate,
+            invoiceNumber: invoice.invoiceNumber,
+            date: invoice.date,
+            title: `پرداخت وجه فاکتور خرید ${invoice.invoiceNumber}`,
+            notes: invoice.notes,
+            recordedBy: currentUser?.fullName || currentUser?.username || 'مدیر سیستم',
+          },
+          settings,
+          {
+            onSuccess: (msg) => showToast(msg || 'رسید پرداخت به تامین‌کننده نیز به تلگرام ارسال شد.'),
+          }
+        );
+      }
+    } catch (e: any) {
+      showToast('خطا در ارتباط با تلگرام: ' + (e?.message || ''));
+    } finally {
+      setIsSendingTelegram(false);
     }
   };
 
@@ -296,6 +347,25 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
               {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
               <span className="hidden lg:inline">{isCopied ? 'کپی شد' : 'کپی متن'}</span>
             </button>
+
+            {/* Send to Telegram Button */}
+            {settings?.telegramBotEnabled && (
+              <button
+                type="button"
+                id="btn-telegram-purchase-invoice"
+                onClick={handleSendTelegram}
+                disabled={isSendingTelegram}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#229ED9] hover:bg-[#1e8cc0] active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer disabled:opacity-50"
+                title="ارسال گزارش فاکتور خرید و رسید پرداخت به تلگرام"
+              >
+                {isSendingTelegram ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                <span className="hidden sm:inline">ارسال به تلگرام</span>
+              </button>
+            )}
 
             {/* Export PDF Button */}
             <button

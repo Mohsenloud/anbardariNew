@@ -1,8 +1,8 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { Invoice, ExitSlipData, StoreSettings, AppUser, InboundReceipt, PurchaseInvoice } from '../types';
-import { toPersianDigits, formatPrice, getCurrentJalaliTime } from './jalali';
+import { Invoice, ExitSlipData, StoreSettings, AppUser, InboundReceipt, PurchaseInvoice, Customer, CustomerTransaction } from '../types';
+import { toPersianDigits, formatPrice, getCurrentJalaliTime, getCurrentJalaliDate } from './jalali';
 import { generatePdfBlob, getInvoicePdfFilename } from './pdfHelper';
 import { StorageService } from './storage';
 import { SimpleInvoiceLayout } from '../components/SimpleInvoiceLayout';
@@ -392,6 +392,114 @@ export function formatExitSlipConfirmTextReport(invoice: Invoice, slipLog: ExitS
   return lines.join('\n');
 }
 
+const PAYMENT_METHOD_MAP: Record<string, string> = {
+  cash: 'نقدی',
+  transfer: 'واریز بانکی / پایا / کارت‌به‌کارت',
+  pos: 'دستگاه کارتخوان (POS)',
+  cheque: 'چک بانکی',
+  card: 'کارت‌به‌کارت',
+  credit: 'نسیه / حساب دفتری',
+  other: 'سایر / توافقی',
+};
+
+/**
+ * فرمت پیام تلگرام برای دریافت مبلغ از مشتری (واریزی / چک / تسویه)
+ */
+export function formatCustomerPaymentTelegramReport(
+  txn: CustomerTransaction,
+  customer?: Customer | null,
+  settings?: StoreSettings,
+  balanceAfter?: number
+): string {
+  const store = settings?.storeName || 'سامانه حسابداری و بازرگانی';
+  const currency = settings?.currency || 'تومان';
+  const methodLabel = txn.paymentMethod
+    ? PAYMENT_METHOD_MAP[txn.paymentMethod] || txn.paymentMethod
+    : 'واریز بانکی / نقدی';
+
+  const lines = [
+    `💵 <b>رسید دریافت وجه از مشتری</b>`,
+    `▫️ نام خریدار: <b>${txn.customerName}</b>`,
+    customer?.phone ? `▫️ شماره تماس: <code>${toPersianDigits(customer.phone)}</code>` : '',
+    `▫️ مبلغ دریافتی: <b>${toPersianDigits(formatPrice(txn.amount))} ${currency}</b>`,
+    `▫️ روش دریافت: <b>${methodLabel}</b>`,
+    txn.title ? `▫️ بابت / عنوان سند: <i>«${txn.title}»</i>` : '',
+    txn.invoiceNumber ? `▫️ مربوط به فاکتور: شماره <code>${toPersianDigits(txn.invoiceNumber)}</code>` : '',
+    txn.trackingNumber ? `▫️ شماره پیگیری / ارجاع / صیادی: <code>${toPersianDigits(txn.trackingNumber)}</code>` : '',
+    txn.bankName ? `▫️ حساب / بانک مقصد: <b>${txn.bankName}</b>` : '',
+    txn.chequeDueDate ? `▫️ سررسید چک: <b>${toPersianDigits(txn.chequeDueDate)}</b>` : '',
+    `▫️ تاریخ ثبت: ${toPersianDigits(txn.date)}`,
+    balanceAfter !== undefined
+      ? `▫️ وضعیت مانده حساب مشتری: <b>${
+          balanceAfter > 0
+            ? `${toPersianDigits(formatPrice(balanceAfter))} ${currency} (بدهکار)`
+            : balanceAfter < 0
+            ? `${toPersianDigits(formatPrice(Math.abs(balanceAfter)))} ${currency} (بستانکار/طلبکار)`
+            : '✅ تسویه حساب کامل (صفر)'
+        }</b>`
+      : '',
+    txn.recordedBy ? `▫️ ثبت‌کننده: ${txn.recordedBy}` : '',
+    txn.notes ? `▫️ توضیحات: <i>«${txn.notes}»</i>` : '',
+    store ? `🏪 <i>${store}</i>` : '',
+  ].filter(Boolean);
+
+  return lines.join('\n');
+}
+
+/**
+ * فرمت پیام تلگرام برای پرداخت مبلغ به تامین‌کننده (پرداختی / تسویه فاکتور خرید)
+ */
+export function formatSupplierPaymentTelegramReport(params: {
+  supplierName: string;
+  supplierPhone?: string;
+  amount: number;
+  paymentMethod?: string;
+  trackingNumber?: string;
+  bankName?: string;
+  chequeDueDate?: string;
+  invoiceNumber?: string;
+  date?: string;
+  title?: string;
+  notes?: string;
+  recordedBy?: string;
+  settings?: StoreSettings;
+  balanceAfter?: number;
+}): string {
+  const store = params.settings?.storeName || 'سامانه حسابداری و بازرگانی';
+  const currency = params.settings?.currency || 'تومان';
+  const methodLabel = params.paymentMethod
+    ? PAYMENT_METHOD_MAP[params.paymentMethod] || params.paymentMethod
+    : 'واریز بانکی / نقدی';
+
+  const lines = [
+    `💳 <b>رسید پرداخت وجه به تامین‌کننده</b>`,
+    `▫️ تامین‌کننده / فروشنده: <b>${params.supplierName}</b>`,
+    params.supplierPhone ? `▫️ شماره تماس: <code>${toPersianDigits(params.supplierPhone)}</code>` : '',
+    `▫️ مبلغ پرداختی: <b>${toPersianDigits(formatPrice(params.amount))} ${currency}</b>`,
+    `▫️ روش پرداخت: <b>${methodLabel}</b>`,
+    params.title ? `▫️ بابت / عنوان سند: <i>«${params.title}»</i>` : '',
+    params.invoiceNumber ? `▫️ مربوط به فاکتور خرید: شماره <code>${toPersianDigits(params.invoiceNumber)}</code>` : '',
+    params.trackingNumber ? `▫️ شماره پیگیری / ارجاع / چک: <code>${toPersianDigits(params.trackingNumber)}</code>` : '',
+    params.bankName ? `▫️ بانک / حساب مبدأ: <b>${params.bankName}</b>` : '',
+    params.chequeDueDate ? `▫️ تاریخ سررسید چک: <b>${toPersianDigits(params.chequeDueDate)}</b>` : '',
+    `▫️ تاریخ پرداخت: ${toPersianDigits(params.date || getCurrentJalaliDate())}`,
+    params.balanceAfter !== undefined
+      ? `▫️ وضعیت مانده با تامین‌کننده: <b>${
+          params.balanceAfter < 0
+            ? `${toPersianDigits(formatPrice(Math.abs(params.balanceAfter)))} ${currency} (طلبکار از ما)`
+            : params.balanceAfter > 0
+            ? `${toPersianDigits(formatPrice(params.balanceAfter))} ${currency} (بدهکار به ما)`
+            : '✅ تسویه حساب کامل (صفر)'
+        }</b>`
+      : '',
+    params.recordedBy ? `▫️ ثبت‌کننده: ${params.recordedBy}` : '',
+    params.notes ? `▫️ توضیحات: <i>«${params.notes}»</i>` : '',
+    store ? `🏪 <i>${store}</i>` : '',
+  ].filter(Boolean);
+
+  return lines.join('\n');
+}
+
 /**
  * Generate Invoice PDF Blob whether the invoice modal is currently open or not.
  */
@@ -428,19 +536,19 @@ export async function generateInvoicePdfBlob(
   }
 
   // Create an offscreen container in the DOM:
-  // Positioned cleanly, fully accessible for html2canvas
+  // Positioned offscreen cleanly, fully accessible for html2canvas
   const container = document.createElement('div');
   const containerId = `telegram-offscreen-invoice-${Date.now()}`;
   container.id = containerId;
   container.style.position = 'fixed';
-  container.style.left = '0px';
+  container.style.left = '-9999px';
   container.style.top = '0px';
   container.style.width = containerWidth;
   container.style.minHeight = containerMinHeight;
   container.style.backgroundColor = '#ffffff';
-  container.style.zIndex = '999999';
+  container.style.zIndex = '-9999';
   container.style.pointerEvents = 'none';
-  container.style.opacity = '0.001'; // Hidden from user during capture, but fully painted
+  container.style.opacity = '1';
   container.dir = 'rtl';
   document.body.appendChild(container);
 
@@ -549,14 +657,14 @@ export async function generateExitSlipPdfBlob(
   const containerId = `telegram-offscreen-exit-slip-${Date.now()}`;
   container.id = containerId;
   container.style.position = 'fixed';
-  container.style.left = '0px';
+  container.style.left = '-9999px';
   container.style.top = '0px';
   container.style.width = containerWidth;
   container.style.minHeight = containerMinHeight;
   container.style.backgroundColor = '#ffffff';
-  container.style.zIndex = '999999';
+  container.style.zIndex = '-9999';
   container.style.pointerEvents = 'none';
-  container.style.opacity = '0.001';
+  container.style.opacity = '1';
   container.dir = 'rtl';
   document.body.appendChild(container);
 
@@ -920,6 +1028,159 @@ export async function autoSendPurchaseInvoiceReportToTelegram(
     }
   } catch (err: any) {
     callbacks?.onError?.(err?.message || 'خطای غیرمنتظره در ارسال خودکار فاکتور خرید');
+    return false;
+  }
+}
+
+/**
+ * ارسال خودکار یا دستی رسید دریافت وجه از مشتری به تلگرام
+ */
+export async function autoSendCustomerPaymentReportToTelegram(
+  txn: CustomerTransaction,
+  customer?: Customer | null,
+  passedSettings?: StoreSettings,
+  balanceAfter?: number,
+  callbacks?: {
+    onStart?: () => void;
+    onSuccess?: (msg: string) => void;
+    onError?: (err: string) => void;
+  }
+): Promise<boolean> {
+  const settings = StorageService.getSettings() || passedSettings;
+  if (!settings?.telegramBotEnabled) {
+    return false;
+  }
+
+  // بررسی فعال بودن در تنظیمات (پیش‌فرض فعال در صورت عدم غیرفعال‌سازی صریح)
+  if (settings.telegramAutoSendCustomerPayment === false) {
+    return false;
+  }
+
+  const botToken = settings.telegramBotToken?.trim();
+  const primaryChatId = (settings.telegramChatId || '').trim();
+  const customerChatId = (customer?.telegramChatId || '').trim();
+  const targetChatId = (customerChatId && settings.telegramAutoSendCustomerDirect !== false)
+    ? customerChatId
+    : primaryChatId;
+
+  if (!botToken || !targetChatId) {
+    const missing = !botToken ? 'توکن ربات' : 'شناسه چت تلگرام';
+    callbacks?.onError?.(`ارسال به تلگرام انجام نشد: ${missing} در تنظیمات وارد نشده است.`);
+    return false;
+  }
+
+  try {
+    callbacks?.onStart?.();
+
+    const reportText = formatCustomerPaymentTelegramReport(txn, customer, settings, balanceAfter);
+
+    const res = await sendTelegramTextMessage({
+      botToken,
+      chatId: targetChatId,
+      text: reportText,
+    });
+
+    if (res.success) {
+      // در صورت ارسال به چت مستقیم مشتری، نسخه رونوشت به کانال فروشگاه
+      if (targetChatId !== primaryChatId && primaryChatId) {
+        sendTelegramTextMessage({
+          botToken,
+          chatId: primaryChatId,
+          text: reportText + '\n\n📢 <i>نسخه رونوشت به کانال فروشگاه</i>',
+        }).catch((e) => console.warn(e));
+      }
+
+      const successMsg = `رسید دریافت وجه از «${txn.customerName}» با موفقیت به تلگرام ارسال شد.`;
+      callbacks?.onSuccess?.(successMsg);
+      StorageService.logActivity({
+        category: 'customer',
+        actionType: 'telegram_auto_sent',
+        actionTitle: 'ارسال رسید دریافت وجه مشتری به تلگرام',
+        details: `رسید دریافت وجه به مبلغ ${txn.amount.toLocaleString('fa-IR')} تومان از «${txn.customerName}» به تلگرام ارسال شد.`,
+      });
+      return true;
+    } else {
+      callbacks?.onError?.(res.error || 'خطا در ارسال رسید دریافت وجه به تلگرام');
+      return false;
+    }
+  } catch (err: any) {
+    callbacks?.onError?.(err?.message || 'خطا در ارسال به تلگرام');
+    return false;
+  }
+}
+
+/**
+ * ارسال خودکار یا دستی رسید پرداخت وجه به تامین‌کننده به تلگرام
+ */
+export async function autoSendSupplierPaymentReportToTelegram(
+  params: {
+    supplierName: string;
+    supplierPhone?: string;
+    amount: number;
+    paymentMethod?: string;
+    trackingNumber?: string;
+    bankName?: string;
+    chequeDueDate?: string;
+    invoiceNumber?: string;
+    date?: string;
+    title?: string;
+    notes?: string;
+    recordedBy?: string;
+    balanceAfter?: number;
+  },
+  passedSettings?: StoreSettings,
+  callbacks?: {
+    onStart?: () => void;
+    onSuccess?: (msg: string) => void;
+    onError?: (err: string) => void;
+  }
+): Promise<boolean> {
+  const settings = StorageService.getSettings() || passedSettings;
+  if (!settings?.telegramBotEnabled) {
+    return false;
+  }
+
+  // بررسی فعال بودن در تنظیمات
+  if (settings.telegramAutoSendSupplierPayment === false) {
+    return false;
+  }
+
+  const botToken = settings.telegramBotToken?.trim();
+  const chatId = (settings.telegramChatId || '').trim();
+
+  if (!botToken || !chatId) {
+    const missing = !botToken ? 'توکن ربات' : 'شناسه چت تلگرام';
+    callbacks?.onError?.(`ارسال به تلگرام انجام نشد: ${missing} در تنظیمات وارد نشده است.`);
+    return false;
+  }
+
+  try {
+    callbacks?.onStart?.();
+
+    const reportText = formatSupplierPaymentTelegramReport({ ...params, settings });
+
+    const res = await sendTelegramTextMessage({
+      botToken,
+      chatId,
+      text: reportText,
+    });
+
+    if (res.success) {
+      const successMsg = `رسید پرداخت وجه به «${params.supplierName}» با موفقیت به تلگرام ارسال شد.`;
+      callbacks?.onSuccess?.(successMsg);
+      StorageService.logActivity({
+        category: 'purchase',
+        actionType: 'telegram_auto_sent',
+        actionTitle: 'ارسال رسید پرداخت به تامین‌کننده به تلگرام',
+        details: `رسید پرداخت وجه به مبلغ ${params.amount.toLocaleString('fa-IR')} تومان به «${params.supplierName}» به تلگرام ارسال شد.`,
+      });
+      return true;
+    } else {
+      callbacks?.onError?.(res.error || 'خطا در ارسال رسید پرداخت به تلگرام');
+      return false;
+    }
+  } catch (err: any) {
+    callbacks?.onError?.(err?.message || 'خطا در ارسال به تلگرام');
     return false;
   }
 }

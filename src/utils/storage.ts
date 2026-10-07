@@ -520,6 +520,8 @@ const initialSettings: StoreSettings = {
   telegramAutoSendInvoice: false,
   telegramAutoSendProforma: false,
   telegramAutoSendPurchaseInvoice: false,
+  telegramAutoSendCustomerPayment: false,
+  telegramAutoSendSupplierPayment: false,
   telegramAutoSendOnlyConfirmed: true,
   telegramAutoSendOnProformaConvert: true,
   telegramAutoSendExitSlip: false,

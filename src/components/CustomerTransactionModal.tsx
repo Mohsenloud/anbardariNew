@@ -11,12 +11,23 @@ import {
   Building2,
   FileText,
   User,
-  Check
+  Check,
+  Send,
+  Eye,
+  MessageSquare,
+  Bot
 } from 'lucide-react';
 import { Customer, Invoice, StoreSettings, AppUser, CustomerTransaction, CustomerPaymentMethod } from '../types';
 import { StorageService } from '../utils/storage';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
 import { NumericInput } from './NumericInput';
+import {
+  autoSendCustomerPaymentReportToTelegram,
+  autoSendSupplierPaymentReportToTelegram,
+  formatCustomerPaymentTelegramReport,
+  formatSupplierPaymentTelegramReport,
+  isTelegramConfigured
+} from '../utils/telegramService';
 
 export interface CustomerTransactionModalProps {
   isOpen: boolean;
@@ -60,6 +71,25 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
   }, [customer, invoices, transactions]);
 
   // Sync initial type when opening
+  const isTelegramReady = isTelegramConfigured(settings);
+  const [sendToTelegram, setSendToTelegram] = useState<boolean>(() => {
+    if (!settings?.telegramBotEnabled) return false;
+    return initialType === 'deposit'
+      ? settings?.telegramAutoSendCustomerPayment !== false
+      : settings?.telegramAutoSendSupplierPayment !== false;
+  });
+  const [showTelegramPreview, setShowTelegramPreview] = useState<boolean>(false);
+
+  // Estimated balance after transaction
+  const netBalanceAfter = useMemo(() => {
+    const cleanAmount = parseFloat(amount.replace(/,/g, '')) || 0;
+    if (txnType === 'deposit') {
+      return fullLedger.netBalance - cleanAmount;
+    } else {
+      return fullLedger.netBalance + cleanAmount;
+    }
+  }, [fullLedger.netBalance, amount, txnType]);
+
   useEffect(() => {
     if (isOpen) {
       setTxnType(initialType);
@@ -68,6 +98,14 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
       setBankName('');
       setChequeDueDate('');
       setNotes('');
+      setShowTelegramPreview(false);
+      if (settings?.telegramBotEnabled) {
+        setSendToTelegram(
+          initialType === 'deposit'
+            ? settings?.telegramAutoSendCustomerPayment !== false
+            : settings?.telegramAutoSendSupplierPayment !== false
+        );
+      }
       if (initialType === 'deposit') {
         const debtAmount = fullLedger.netBalance > 0 ? fullLedger.netBalance : 0;
         setAmount(debtAmount > 0 ? String(debtAmount) : '');
@@ -139,6 +177,36 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
     };
 
     onSaveTransaction(newTxn);
+
+    // ارسال گزارش به تلگرام در صورت فعال بودن
+    if (sendToTelegram && settings?.telegramBotEnabled) {
+      if (txnType === 'deposit') {
+        autoSendCustomerPaymentReportToTelegram(newTxn, customer, settings, netBalanceAfter).catch((err) => {
+          console.warn('[Telegram Auto-Send] Error sending customer payment receipt:', err);
+        });
+      } else {
+        autoSendSupplierPaymentReportToTelegram(
+          {
+            supplierName: customer.name,
+            supplierPhone: customer.phone,
+            amount: cleanAmount,
+            paymentMethod,
+            trackingNumber: trackingNumber.trim() || undefined,
+            bankName: bankName.trim() || undefined,
+            chequeDueDate: chequeDueDate.trim() || undefined,
+            date: date.trim() || getCurrentJalaliDate(),
+            title: title.trim() || (fullLedger.netBalance < 0 ? 'پرداخت وجه به طرف‌حساب / تسویه طلب' : 'ثبت سند بدهی'),
+            notes: notes.trim() || undefined,
+            recordedBy: currentUser?.fullName || currentUser?.username || 'مدیر سیستم',
+            balanceAfter: netBalanceAfter,
+          },
+          settings
+        ).catch((err) => {
+          console.warn('[Telegram Auto-Send] Error sending supplier payment receipt:', err);
+        });
+      }
+    }
+
     onClose();
   };
 
@@ -441,6 +509,97 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
               className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
             />
           </div>
+
+          {/* Telegram Reporting Option Card */}
+          {settings?.telegramBotEnabled && (
+            <div className="p-3 bg-gradient-to-r from-sky-50 to-blue-50/60 rounded-2xl border border-sky-200/90 space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={sendToTelegram}
+                    onChange={(e) => setSendToTelegram(e.target.checked)}
+                    className="w-4 h-4 rounded text-[#229ED9] focus:ring-[#229ED9] cursor-pointer"
+                  />
+                  <span className="font-bold text-xs text-sky-950 flex items-center gap-1.5">
+                    <Send className="w-3.5 h-3.5 text-[#229ED9]" />
+                    <span>
+                      {txnType === 'deposit'
+                        ? 'ارسال خودکار رسید دریافت وجه به تلگرام'
+                        : 'ارسال رسید پرداخت وجه به تامین‌کننده/طرف‌حساب به تلگرام'}
+                    </span>
+                  </span>
+                </label>
+
+                {sendToTelegram && (
+                  <button
+                    type="button"
+                    onClick={() => setShowTelegramPreview((prev) => !prev)}
+                    className="text-[11px] font-bold text-sky-700 hover:text-sky-900 bg-white/80 hover:bg-white px-2.5 py-1 rounded-lg border border-sky-300 transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <Eye className="w-3 h-3 text-[#229ED9]" />
+                    <span>{showTelegramPreview ? 'بستن پیش‌نمایش' : 'پیش‌نمایش پیام'}</span>
+                  </button>
+                )}
+              </div>
+
+              {sendToTelegram && (
+                <div className="text-[11px] text-sky-800/90 leading-relaxed pr-6 space-y-1">
+                  <p>
+                    مقصد ارسال:{' '}
+                    <strong>
+                      {customer?.telegramChatId
+                        ? `چت اختصاصی مشتری (${toPersianDigits(customer.telegramChatId)})`
+                        : `کانال/گروه ثبت‌شده در سیستم (${toPersianDigits(settings?.telegramChatId || 'کانال اصلی')})`}
+                    </strong>
+                  </p>
+
+                  {/* Message Preview Accordion */}
+                  {showTelegramPreview && (
+                    <div className="mt-2 p-2.5 bg-white/95 rounded-xl border border-sky-300/80 shadow-2xs font-mono text-[10.5px] text-slate-800 whitespace-pre-line text-right max-h-40 overflow-y-auto leading-relaxed">
+                      {txnType === 'deposit'
+                        ? formatCustomerPaymentTelegramReport(
+                            {
+                              id: 'preview',
+                              customerId: customer.id,
+                              customerName: customer.name,
+                              type: 'deposit',
+                              amount: parseFloat(amount.replace(/,/g, '')) || 0,
+                              date: date || getCurrentJalaliDate(),
+                              title: title || 'واریز وجه به حساب',
+                              paymentMethod,
+                              trackingNumber: trackingNumber || undefined,
+                              bankName: bankName || undefined,
+                              chequeDueDate: chequeDueDate || undefined,
+                              notes: notes || undefined,
+                              recordedBy: currentUser?.fullName || currentUser?.username || 'مدیر سیستم',
+                              createdAt: getCurrentJalaliDate(),
+                            },
+                            customer,
+                            settings,
+                            netBalanceAfter
+                          ).replace(/<[^>]+>/g, '')
+                        : formatSupplierPaymentTelegramReport({
+                            supplierName: customer.name,
+                            supplierPhone: customer.phone,
+                            amount: parseFloat(amount.replace(/,/g, '')) || 0,
+                            paymentMethod,
+                            trackingNumber: trackingNumber || undefined,
+                            bankName: bankName || undefined,
+                            chequeDueDate: chequeDueDate || undefined,
+                            date: date || getCurrentJalaliDate(),
+                            title: title || 'پرداخت وجه به طرف‌حساب',
+                            notes: notes || undefined,
+                            recordedBy: currentUser?.fullName || currentUser?.username || 'مدیر سیستم',
+                            settings,
+                            balanceAfter: netBalanceAfter,
+                          }).replace(/<[^>]+>/g, '')}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </form>
 
         {/* FOOTER ACTIONS */}

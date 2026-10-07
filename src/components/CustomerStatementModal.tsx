@@ -31,7 +31,8 @@ import {
   Filter,
   FileDown,
   Loader2,
-  ShoppingBag
+  ShoppingBag,
+  Send
 } from 'lucide-react';
 import { 
   Customer, 
@@ -47,6 +48,7 @@ import { formatPrice, toPersianDigits, getCurrentJalaliDate, numberToPersianWord
 import { exportCustomerStatementToExcel } from '../utils/excelHelper';
 import { exportElementToPdf } from '../utils/pdfHelper';
 import { CustomerTransactionModal } from './CustomerTransactionModal';
+import { sendTelegramTextMessage } from '../utils/telegramService';
 
 interface CustomerStatementModalProps {
   isOpen: boolean;
@@ -196,6 +198,66 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
       alert('خطا در تولید فایل PDF صورتحساب');
     } finally {
       setIsExportingPdf(false);
+    }
+  };
+
+  // Send Statement Report to Telegram
+  const [isSendingTelegram, setIsSendingTelegram] = useState(false);
+  const handleSendTelegramStatement = async () => {
+    if (!settings?.telegramBotEnabled) {
+      alert('ربات تلگرام در تنظیمات سیستم فعال نیست.');
+      return;
+    }
+    const botToken = settings.telegramBotToken?.trim();
+    const primaryChatId = (settings.telegramChatId || '').trim();
+    const customerChatId = (customer.telegramChatId || '').trim();
+    const targetChatId = (customerChatId && settings.telegramAutoSendCustomerDirect !== false)
+      ? customerChatId
+      : primaryChatId;
+
+    if (!botToken || !targetChatId) {
+      alert('توکن ربات یا شناسه چت تلگرام در تنظیمات ثبت نشده است.');
+      return;
+    }
+
+    setIsSendingTelegram(true);
+    try {
+      const store = settings.storeName || 'سامانه حسابداری و فروشگاه';
+      const lines = [
+        `📊 <b>گزارش صورتحساب و مانده حساب طرف‌حساب</b>`,
+        `👤 طرف‌حساب: <b>${customer.name}</b>`,
+        customer.phone ? `📞 شماره تماس: <code>${toPersianDigits(customer.phone)}</code>` : '',
+        `📅 تاریخ گزارش: ${toPersianDigits(getCurrentJalaliDate())}`,
+        `---------------------------------`,
+        `▫️ مجموع کل بدهکاری (فاکتورها و اسناد): <b>${toPersianDigits(formatPrice(fullLedger.totalDebit))} ${settings.currency}</b>`,
+        `▫️ مجموع کل بستانکاری (واریزی و دریافتی‌ها): <b>${toPersianDigits(formatPrice(fullLedger.totalCredit))} ${settings.currency}</b>`,
+        `---------------------------------`,
+        `💰 <b>وضعیت نهایی مانده حساب:</b> <b>${
+          fullLedger.netBalance > 0
+            ? `${toPersianDigits(formatPrice(fullLedger.netBalance))} ${settings.currency} (بدهکار به فروشگاه)`
+            : fullLedger.netBalance < 0
+            ? `${toPersianDigits(formatPrice(Math.abs(fullLedger.netBalance)))} ${settings.currency} (بستانکار / طلبکار از ما)`
+            : '✅ تسویه کامل (صفر)'
+        }</b>`,
+        store ? `🏪 <i>${store}</i>` : '',
+      ].filter(Boolean);
+
+      const res = await sendTelegramTextMessage({
+        botToken,
+        chatId: targetChatId,
+        text: lines.join('\n'),
+      });
+
+      if (res.success) {
+        setPdfSuccessMessage('گزارش وضعیت حساب طرف‌حساب با موفقیت به تلگرام ارسال گردید.');
+        setTimeout(() => setPdfSuccessMessage(null), 5000);
+      } else {
+        alert(res.error || 'خطا در ارسال به تلگرام');
+      }
+    } catch (err: any) {
+      alert('خطا در ارسال: ' + (err?.message || ''));
+    } finally {
+      setIsSendingTelegram(false);
     }
   };
 
@@ -524,6 +586,25 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                 <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600" />
                 <span className="hidden sm:inline">اکسل</span>
               </button>
+
+              {/* Send to Telegram */}
+              {settings?.telegramBotEnabled && (
+                <button
+                  type="button"
+                  id="send-statement-telegram-btn"
+                  onClick={handleSendTelegramStatement}
+                  disabled={isSendingTelegram}
+                  className="p-2 sm:px-3 sm:py-1.5 flex items-center gap-1 bg-sky-50 hover:bg-sky-100 active:scale-95 text-sky-700 border border-sky-300 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                  title="ارسال خلاصه صورتحساب به تلگرام"
+                >
+                  {isSendingTelegram ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#229ED9]" />
+                  ) : (
+                    <Send className="w-3.5 h-3.5 text-[#229ED9]" />
+                  )}
+                  <span className="hidden sm:inline">تلگرام</span>
+                </button>
+              )}
             </div>
           </div>
 

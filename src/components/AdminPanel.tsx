@@ -2780,6 +2780,44 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     />
                   </label>
 
+                  {/* 4.1 Auto-send Customer Payment */}
+                  <label className="p-3.5 rounded-xl border border-emerald-200/80 bg-emerald-50/40 hover:bg-emerald-50/80 flex items-start justify-between gap-3 cursor-pointer transition-all shadow-xs">
+                    <div className="space-y-1">
+                      <span className="font-bold text-emerald-950 text-xs block">
+                        💵 ارسال خودکار دریافت مبلغ از مشتری
+                      </span>
+                      <span className="text-[11px] text-slate-600 leading-relaxed block">
+                        به محض ثبت واریزی، فیش، چک یا تسویه حساب خریدار
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      name="telegramAutoSendCustomerPayment"
+                      checked={formData.telegramAutoSendCustomerPayment !== false}
+                      onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendCustomerPayment: e.target.checked }))}
+                      className="w-4 h-4 mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer shrink-0"
+                    />
+                  </label>
+
+                  {/* 4.2 Auto-send Supplier Payment */}
+                  <label className="p-3.5 rounded-xl border border-blue-200/80 bg-blue-50/40 hover:bg-blue-50/80 flex items-start justify-between gap-3 cursor-pointer transition-all shadow-xs">
+                    <div className="space-y-1">
+                      <span className="font-bold text-blue-950 text-xs block">
+                        💳 ارسال خودکار پرداخت وجه به تامین‌کننده
+                      </span>
+                      <span className="text-[11px] text-slate-600 leading-relaxed block">
+                        به محض پرداخت وجه، چک یا تسویه بدهی به فروشنده کالا
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      name="telegramAutoSendSupplierPayment"
+                      checked={formData.telegramAutoSendSupplierPayment !== false}
+                      onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendSupplierPayment: e.target.checked }))}
+                      className="w-4 h-4 mt-0.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer shrink-0"
+                    />
+                  </label>
+
                   {/* 5. Auto-send Inbound Receipt Issue */}
                   <label className="p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50/80 flex items-start justify-between gap-3 cursor-pointer transition-all shadow-xs">
                     <div className="space-y-1">

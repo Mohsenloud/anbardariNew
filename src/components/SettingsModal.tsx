@@ -1162,6 +1162,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         />
                       </label>
 
+                      {/* 4.1 Customer Payment / Deposit */}
+                      <label className="p-2.5 rounded-xl border border-emerald-200/80 bg-emerald-50/40 hover:bg-emerald-50/80 flex items-start justify-between gap-2 cursor-pointer">
+                        <div>
+                          <span className="font-bold text-emerald-950 text-xs block">💵 ارسال خودکار دریافت مبلغ از مشتری</span>
+                          <span className="text-[10px] text-slate-600">به محض ثبت واریزی، فیش، چک یا تسویه حساب خریدار</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={formData.telegramAutoSendCustomerPayment !== false}
+                          onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendCustomerPayment: e.target.checked }))}
+                          className="w-4 h-4 mt-0.5 rounded text-emerald-600 cursor-pointer"
+                        />
+                      </label>
+
+                      {/* 4.2 Supplier Payment */}
+                      <label className="p-2.5 rounded-xl border border-blue-200/80 bg-blue-50/40 hover:bg-blue-50/80 flex items-start justify-between gap-2 cursor-pointer">
+                        <div>
+                          <span className="font-bold text-blue-950 text-xs block">💳 ارسال خودکار پرداخت وجه به تامین‌کننده</span>
+                          <span className="text-[10px] text-slate-600">به محض پرداخت وجه، چک یا تسویه بدهی به فروشنده</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={formData.telegramAutoSendSupplierPayment !== false}
+                          onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendSupplierPayment: e.target.checked }))}
+                          className="w-4 h-4 mt-0.5 rounded text-blue-600 cursor-pointer"
+                        />
+                      </label>
+
                       {/* 5. Inbound Receipt Issue */}
                       <label className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-start justify-between gap-2 cursor-pointer">
                         <div>

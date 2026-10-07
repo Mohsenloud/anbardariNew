@@ -30,7 +30,9 @@ import {
   autoSendInvoicePdfToTelegram,
   autoSendInboundReceiptReportToTelegram, 
   autoSendExitSlipReportToTelegram,
-  autoSendPurchaseInvoiceReportToTelegram
+  autoSendPurchaseInvoiceReportToTelegram,
+  autoSendCustomerPaymentReportToTelegram,
+  autoSendSupplierPaymentReportToTelegram
 } from './utils/telegramService';
 import { PublicWebInvoiceView } from './components/PublicWebInvoiceView';
 import { StandaloneLivePreviewView } from './components/StandaloneLivePreviewView';
@@ -778,6 +780,37 @@ export default function App() {
     });
 
     showToast('وضعیت تسویه فاکتور بروزرسانی شد.');
+
+    // ارسال خودکار رسید دریافت مبلغ از مشتری به تلگرام
+    const liveSettings = StorageService.getSettings() || settings;
+    if (liveSettings.telegramBotEnabled && liveSettings.telegramAutoSendCustomerPayment !== false && inv && (status === 'paid' || status === 'partial')) {
+      const paymentVal = status === 'paid' ? inv.finalTotal : (paidAmount || inv.paidAmount || 0);
+      if (paymentVal > 0) {
+        const cust = customers.find((c) => c.id === inv.customerId);
+        autoSendCustomerPaymentReportToTelegram(
+          {
+            id: `ctxn-${Date.now()}`,
+            customerId: inv.customerId,
+            customerName: inv.customerName,
+            type: 'deposit',
+            amount: paymentVal,
+            date: getCurrentJalaliDate(),
+            title: `تسویه/دریافت وجه فاکتور فروش شماره ${inv.invoiceNumber}`,
+            paymentMethod: (inv.paymentMethod as any) || 'transfer',
+            invoiceNumber: inv.invoiceNumber,
+            notes: inv.notes,
+            recordedBy: currentUser?.fullName || currentUser?.username || 'مدیر سیستم',
+            createdAt: getCurrentJalaliDate(),
+          },
+          cust,
+          liveSettings,
+          undefined,
+          {
+            onSuccess: (msg) => showToast(msg || '✈️ رسید دریافت وجه فاکتور به تلگرام ارسال گردید.'),
+          }
+        ).catch((err) => console.warn('[Telegram Auto-Send] Invoice payment receipt error:', err));
+      }
+    }
   };
 
   // 4.1 BATCH UPDATE PAYMENT STATUS (Lump-sum payment across multiple customer invoices)
@@ -809,6 +842,36 @@ export default function App() {
     });
 
     showToast(`${updates.length} فاکتور با موفقیت تسویه و در حساب مشتری ثبت گردید.`);
+
+    // ارسال خودکار رسید تسویه تجمیعی فاکتورهای مشتری به تلگرام
+    const liveSettings = StorageService.getSettings() || settings;
+    if (liveSettings.telegramBotEnabled && liveSettings.telegramAutoSendCustomerPayment !== false && updates.length > 0) {
+      const sampleInv = invoices.find((i) => i.id === updates[0].invoiceId);
+      if (sampleInv) {
+        const cust = customers.find((c) => c.id === sampleInv.customerId);
+        const totalPaidInBatch = updates.reduce((sum, u) => sum + (u.paidAmount || 0), 0);
+        autoSendCustomerPaymentReportToTelegram(
+          {
+            id: `ctxn-${Date.now()}`,
+            customerId: sampleInv.customerId,
+            customerName: sampleInv.customerName,
+            type: 'deposit',
+            amount: totalPaidInBatch,
+            date: getCurrentJalaliDate(),
+            title: `تسویه تجمیعی ${updates.length} فاکتور فروش`,
+            notes: details,
+            recordedBy: currentUser?.fullName || currentUser?.username || 'مدیر سیستم',
+            createdAt: getCurrentJalaliDate(),
+          },
+          cust,
+          liveSettings,
+          undefined,
+          {
+            onSuccess: (msg) => showToast(msg || '✈️ رسید تسویه تجمیعی به تلگرام ارسال شد.'),
+          }
+        ).catch((err) => console.warn('[Telegram Auto-Send] Batch payment receipt error:', err));
+      }
+    }
   };
 
   // 5. INVENTORY PRODUCT MANAGEMENT
@@ -1107,6 +1170,40 @@ export default function App() {
         ? `واریزی به مبلغ ${txn.amount.toLocaleString('fa-IR')} ${settings.currency} در حساب «${txn.customerName}» ثبت شد.`
         : `سند بدهی به مبلغ ${txn.amount.toLocaleString('fa-IR')} ${settings.currency} برای «${txn.customerName}» ثبت شد.`
     );
+
+    // ارسال خودکار رسید دریافت وجه از مشتری یا پرداخت به تامین‌کننده به تلگرام
+    const liveSettings = StorageService.getSettings() || settings;
+    if (liveSettings.telegramBotEnabled) {
+      if (txn.type === 'deposit' && liveSettings.telegramAutoSendCustomerPayment !== false) {
+        const cust = customers.find((c) => c.id === txn.customerId);
+        autoSendCustomerPaymentReportToTelegram(txn, cust, liveSettings, undefined, {
+          onStart: () => showToast('در حال ارسال رسید دریافت وجه به تلگرام...'),
+          onSuccess: (msg) => showToast(msg || '✈️ رسید دریافت وجه به تلگرام ارسال گردید.'),
+          onError: (err) => console.warn('[Telegram Auto-Send] Customer deposit error:', err),
+        });
+      } else if (txn.type === 'debt' && liveSettings.telegramAutoSendSupplierPayment !== false && (txn.title?.includes('پرداخت') || txn.title?.includes('تسویه'))) {
+        autoSendSupplierPaymentReportToTelegram(
+          {
+            supplierName: txn.customerName,
+            amount: txn.amount,
+            paymentMethod: txn.paymentMethod,
+            trackingNumber: txn.trackingNumber,
+            bankName: txn.bankName,
+            chequeDueDate: txn.chequeDueDate,
+            date: txn.date,
+            title: txn.title,
+            notes: txn.notes,
+            recordedBy: txn.recordedBy,
+          },
+          liveSettings,
+          {
+            onStart: () => showToast('در حال ارسال رسید پرداخت به تامین‌کننده به تلگرام...'),
+            onSuccess: (msg) => showToast(msg || '✈️ رسید پرداخت به تامین‌کننده به تلگرام ارسال گردید.'),
+            onError: (err) => console.warn('[Telegram Auto-Send] Supplier payment error:', err),
+          }
+        );
+      }
+    }
   };
 
   const handleDeleteCustomerTransaction = (txnId: string) => {
@@ -1175,6 +1272,28 @@ export default function App() {
             onSuccess: (msg) => showToast(msg || '✈️ گزارش حواله ورود به تلگرام ارسال گردید.'),
             onError: (err) => showToast('⚠️ خطا در ارسال گزارش به تلگرام: ' + err),
           });
+        }
+        if (newPurchaseInvoice.paidAmount > 0 && liveSettings.telegramAutoSendSupplierPayment !== false) {
+          autoSendSupplierPaymentReportToTelegram(
+            {
+              supplierName: newPurchaseInvoice.supplierName,
+              supplierPhone: newPurchaseInvoice.supplierPhone,
+              amount: newPurchaseInvoice.paidAmount,
+              paymentMethod: newPurchaseInvoice.paymentMethod,
+              trackingNumber: newPurchaseInvoice.transferDescription,
+              bankName: undefined,
+              chequeDueDate: newPurchaseInvoice.chequeDueDate,
+              invoiceNumber: newPurchaseInvoice.invoiceNumber,
+              date: newPurchaseInvoice.date,
+              title: `پرداخت وجه فاکتور خرید ${newPurchaseInvoice.invoiceNumber}`,
+              notes: newPurchaseInvoice.notes,
+              recordedBy: currentUser?.fullName || currentUser?.username || 'مدیر سیستم',
+            },
+            liveSettings,
+            {
+              onSuccess: (msg) => showToast(msg || '✈️ رسید پرداخت به تامین‌کننده به تلگرام ارسال گردید.'),
+            }
+          ).catch((err) => console.warn('[Telegram Auto-Send] Purchase invoice payment report error:', err));
         }
       }
     }

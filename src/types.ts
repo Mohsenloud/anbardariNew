@@ -324,6 +324,8 @@ export interface StoreSettings {
   telegramAutoSendInvoice?: boolean; // ارسال خودکار فاکتور فروش پس از ثبت و تایید قطعی
   telegramAutoSendProforma?: boolean; // ارسال خودکار پیش‌فاکتور به محض صدور
   telegramAutoSendPurchaseInvoice?: boolean; // ارسال خودکار فاکتور خرید کالا به محض ثبت
+  telegramAutoSendCustomerPayment?: boolean; // ارسال خودکار دریافت وجه / واریزی مشتری
+  telegramAutoSendSupplierPayment?: boolean; // ارسال خودکار پرداخت وجه به تامین‌کننده
   telegramAutoSendOnlyConfirmed?: boolean; // ارسال خودکار فاکتور فقط پس از تایید نهایی (عدم ارسال پیش‌فاکتور بدون تایید)
   telegramAutoSendOnProformaConvert?: boolean; // ارسال خودکار به محض تایید و تبدیل پیش‌فاکتور به فاکتور قطعی
   telegramAutoSendExitSlip?: boolean; // ارسال خودکار حواله خروج

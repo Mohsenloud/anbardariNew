@@ -13,7 +13,8 @@ import {
   Building2,
   FileText,
   Clock,
-  Sparkles
+  Sparkles,
+  Send
 } from 'lucide-react';
 import { Customer, Invoice, StoreSettings, CustomerTransaction } from '../types';
 import { StorageService } from '../utils/storage';
@@ -470,6 +471,21 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
                   />
                 </div>
               </div>
+
+              {settings?.telegramBotEnabled && (
+                <div className="p-2.5 bg-sky-50 rounded-xl border border-sky-200 text-xs flex items-center justify-between gap-2 text-sky-950">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <Send className="w-3.5 h-3.5 text-[#229ED9]" />
+                    <span>ارسال رسید دریافت مبلغ به تلگرام:</span>
+                    <span className="font-normal text-slate-600">
+                      {customer.telegramChatId ? `چت اختصاصی مشتری (${toPersianDigits(customer.telegramChatId)})` : 'کانال اصلی فروشگاه'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-sky-700 bg-sky-100 font-bold px-2 py-0.5 rounded-full">
+                    فعال طبق تنظیمات
+                  </span>
+                </div>
+              )}
             </>
           )}
 

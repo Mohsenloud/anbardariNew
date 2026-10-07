@@ -13,7 +13,8 @@ import {
   MessageSquare,
   Building2,
   User,
-  Zap
+  Zap,
+  Sparkles
 } from 'lucide-react';
 import { StoreSettings } from '../types';
 import { isTelegramConfigured, sendPdfToTelegram, sendTelegramTextMessage } from '../utils/telegramService';
@@ -51,8 +52,8 @@ export const TelegramSendPdfModal: React.FC<TelegramSendPdfModalProps> = ({
   const [destType, setDestType] = useState<DestinationType>(
     customerTelegramChatId ? 'customer' : 'default'
   );
-  const [sendFormat, setSendFormat] = useState<'text_only' | 'pdf'>(
-    settings?.telegramSendMode === 'text_only' ? 'text_only' : 'pdf'
+  const [sendFormat, setSendFormat] = useState<'text_only' | 'pdf' | 'both'>(
+    settings?.telegramSendMode === 'both' ? 'both' : settings?.telegramSendMode === 'text_only' ? 'text_only' : 'pdf'
   );
   const [customChatId, setCustomChatId] = useState<string>('');
   const [caption, setCaption] = useState<string>(defaultCaption);
@@ -110,7 +111,7 @@ export const TelegramSendPdfModal: React.FC<TelegramSendPdfModalProps> = ({
             message: response.error || 'ارسال متن به تلگرام ناموفق بود.',
           });
         }
-      } else {
+      } else if (sendFormat === 'pdf') {
         // ۲. ارسال فایل PDF به همراه کپشن
         const pdfResult = await pdfBlobGenerator();
         if (!pdfResult.success || !pdfResult.blob) {
@@ -142,6 +143,54 @@ export const TelegramSendPdfModal: React.FC<TelegramSendPdfModalProps> = ({
           setStatus({
             type: 'error',
             message: response.error || 'ارسال به تلگرام ناموفق بود.',
+          });
+        }
+      } else {
+        // ۳. حالت هر دو (فایل PDF + پیام متنی مجزا)
+        const pdfResult = await pdfBlobGenerator();
+        if (!pdfResult.success || !pdfResult.blob) {
+          setStatus({
+            type: 'error',
+            message: pdfResult.error || 'خطا در ایجاد فایل PDF برای ارسال.',
+          });
+          setIsSending(false);
+          return;
+        }
+
+        const pdfResponse = await sendPdfToTelegram({
+          botToken: settings?.telegramBotToken,
+          chatId: targetChatId,
+          pdfBlob: pdfResult.blob,
+          filename: defaultFilename,
+          caption: caption.trim(),
+        });
+
+        const textResponse = await sendTelegramTextMessage({
+          botToken: settings?.telegramBotToken,
+          chatId: targetChatId,
+          text: caption.trim() || defaultCaption,
+        });
+
+        if (pdfResponse.success && textResponse.success) {
+          setStatus({
+            type: 'success',
+            message: 'فایل PDF و پیام متنی با موفقیت به تلگرام ارسال شدند.',
+          });
+          setTimeout(() => {
+            onClose();
+          }, 2200);
+        } else if (pdfResponse.success) {
+          setStatus({
+            type: 'success',
+            message: 'فایل PDF با موفقیت ارسال شد (پیام متنی با خطا مواجه شد).',
+          });
+          setTimeout(() => {
+            onClose();
+          }, 2500);
+        } else {
+          setStatus({
+            type: 'error',
+            message: pdfResponse.error || textResponse.error || 'ارسال به تلگرام ناموفق بود.',
           });
         }
       }
@@ -349,35 +398,47 @@ export const TelegramSendPdfModal: React.FC<TelegramSendPdfModalProps> = ({
                 </div>
               </div>
 
-              {/* Send Format Switcher (Text Only vs PDF) */}
+              {/* Send Format Switcher (Text Only vs PDF vs Both) */}
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-slate-700 block">
                   فرمت ارسال به تلگرام:
                 </label>
-                <div className="p-1 bg-slate-100 rounded-xl flex items-center gap-1 border border-slate-200">
+                <div className="p-1 bg-slate-100 rounded-xl grid grid-cols-3 gap-1 border border-slate-200">
                   <button
                     type="button"
                     onClick={() => setSendFormat('text_only')}
-                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                       sendFormat === 'text_only'
                         ? 'bg-emerald-600 text-white shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     <Zap className="w-3.5 h-3.5" />
-                    <span>فقط گزارش متنی (سریع و بدون فیلتر)</span>
+                    <span>فقط متن</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setSendFormat('pdf')}
-                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                       sendFormat === 'pdf'
                         ? 'bg-[#229ED9] text-white shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     <FileText className="w-3.5 h-3.5" />
-                    <span>ارسال فایل رسمی PDF</span>
+                    <span>فایل PDF</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSendFormat('both')}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                      sendFormat === 'both'
+                        ? 'bg-purple-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>هر دو مورد</span>
                   </button>
                 </div>
               </div>

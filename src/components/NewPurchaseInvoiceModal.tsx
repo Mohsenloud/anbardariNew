@@ -37,7 +37,8 @@ import {
   ChevronDown,
   ChevronUp,
   UserCheck,
-  CheckCircle2
+  CheckCircle2,
+  Send
 } from 'lucide-react';
 
 interface NewPurchaseInvoiceModalProps {
@@ -1093,6 +1094,23 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                   className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs placeholder:text-slate-400"
                 />
               </div>
+
+              {/* Telegram Auto-Send Indicator */}
+              {settings?.telegramBotEnabled && (
+                <div className="p-2.5 bg-sky-50/90 rounded-xl border border-sky-200 text-[11px] text-sky-950 flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <Send className="w-3.5 h-3.5 text-[#229ED9]" />
+                    <span>ارسال گزارش به تلگرام:</span>
+                    <span className="font-medium text-slate-600">
+                      {(settings.telegramAutoSendPurchaseInvoice || settings.telegramAutoSendInvoice) ? 'فاکتور خرید' : ''}
+                      {paidAmount > 0 && settings.telegramAutoSendSupplierPayment !== false ? ' + رسید پرداخت وجه' : ''}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-sky-800 bg-sky-200/70 font-bold px-2 py-0.5 rounded-full">
+                    فعال طبق تنظیمات
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Calculations & Totals (5 cols) */}
