@@ -133,36 +133,127 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
         )}
 
         {/* Customer & Transaction info bar */}
-        <div className={`bg-slate-50 border border-slate-300 rounded-lg flex flex-wrap justify-between items-center gap-2 text-slate-700 ${
-          isA5 ? 'p-1.5 text-[9.5px]' : 'p-2.5 text-xs'
-        }`}>
-          <div>
-            <strong>خریدار:</strong> <span className="font-bold text-slate-900">{invoice.customerName || 'مشتری محترم'}</span>
+        {invoice.type === 'official' ? (
+          <div className={`space-y-1.5 ${isA5 ? 'text-[8.5px]' : 'text-xs'}`}>
+            {/* جدول مشخصات فروشنده رسمی */}
+            <div className="border border-slate-300 rounded-lg overflow-hidden bg-white shadow-2xs">
+              <div className={`bg-slate-100 font-black text-slate-900 border-b border-slate-200 flex items-center justify-between ${
+                isA5 ? 'px-2 py-0.5 text-[9px]' : 'px-3 py-1 text-xs'
+              }`}>
+                <div className="flex items-center gap-1.5">
+                  <Building2 className={`text-emerald-700 ${isA5 ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+                  <span>مشخصات فروشنده</span>
+                </div>
+                <span className="text-[10px] text-slate-500 font-bold">فاکتور رسمی دارایی</span>
+              </div>
+              <div className={`grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1 text-slate-700 ${
+                isA5 ? 'p-1.5 leading-snug' : 'p-2.5 leading-normal'
+              }`}>
+                <div>
+                  <span className="text-slate-500 font-medium">نام شخص حقیقی / حقوقی: </span>
+                  <strong className="text-slate-900 font-bold">{invoice.sellerName || settings.sellerName || settings.storeName || '---'}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium">شماره اقتصادی: </span>
+                  <strong className="font-mono text-slate-900 font-bold">{toPersianDigits(invoice.sellerEconomicCode || settings.economicCode || '---')}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium">شماره ثبت / مجوز: </span>
+                  <strong className="font-mono text-slate-900 font-bold">
+                    {toPersianDigits(invoice.sellerRegistrationNumber || settings.registrationNumber || invoice.sellerNationalCode || settings.nationalCode || '---')}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium">شماره تلفن: </span>
+                  <strong className="font-mono text-slate-900 font-bold">{toPersianDigits(invoice.sellerPhone || settings.phone || settings.mobile || '---')}</strong>
+                </div>
+                <div className="col-span-2 sm:col-span-4 pt-0.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <span className="text-slate-500 font-medium">نشانی: </span>
+                    <span className="text-slate-800 font-medium">{invoice.sellerAddress || settings.address || '---'}</span>
+                  </div>
+                  {(invoice.sellerPostalCode || settings.postalCode) && (
+                    <div>
+                      <span className="text-slate-500 font-medium">کد پستی: </span>
+                      <strong className="font-mono text-slate-900 font-bold">{toPersianDigits(invoice.sellerPostalCode || settings.postalCode || '')}</strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* جدول مشخصات خریدار */}
+            <div className="border border-slate-300 rounded-lg overflow-hidden bg-white shadow-2xs">
+              <div className={`bg-slate-100 font-black text-slate-900 border-b border-slate-200 flex items-center justify-between ${
+                isA5 ? 'px-2 py-0.5 text-[9px]' : 'px-3 py-1 text-xs'
+              }`}>
+                <span>مشخصات خریدار</span>
+                <span className="text-[10px] text-slate-500 font-bold">
+                  وضعیت تسویه: {invoice.paymentStatus === 'paid' ? 'تسویه کامل' : invoice.paymentStatus === 'partial' ? 'بیعانه' : 'نسیه / بدهکار'}
+                </span>
+              </div>
+              <div className={`grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1 text-slate-700 ${
+                isA5 ? 'p-1.5 leading-snug' : 'p-2.5 leading-normal'
+              }`}>
+                <div>
+                  <span className="text-slate-500 font-medium">نام شخص حقیقی / حقوقی: </span>
+                  <strong className="text-slate-900 font-bold">{invoice.customerName || 'مشتری محترم'}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium">شماره اقتصادی / کد ملی: </span>
+                  <strong className="font-mono text-slate-900 font-bold">{toPersianDigits(invoice.customerNationalId || '---')}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium">شماره تماس: </span>
+                  <strong className="font-mono text-slate-900 font-bold">{buyerMobile ? toPersianDigits(buyerMobile) : '---'}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium">روش پرداخت: </span>
+                  <strong className="text-slate-900 font-bold">
+                    {invoice.paymentMethod === 'cash' ? 'نقدی' : invoice.paymentMethod === 'pos' ? 'کارتخوان' : invoice.paymentMethod === 'cheque' ? 'چک' : invoice.paymentMethod === 'credit' ? 'نسیه' : 'انتقال بانکی'}
+                  </strong>
+                </div>
+                {invoice.customerAddress && (
+                  <div className="col-span-2 sm:col-span-4 pt-0.5 border-t border-slate-100">
+                    <span className="text-slate-500 font-medium">نشانی خریدار: </span>
+                    <span className="text-slate-800">{invoice.customerAddress}</span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-          <div>
-            <strong>موبایل خریدار:</strong> <span className="font-mono text-slate-900">{buyerMobile ? toPersianDigits(buyerMobile) : '---'}</span>
-          </div>
-          {invoice.customerNationalId && (
+        ) : (
+          <div className={`bg-slate-50 border border-slate-300 rounded-lg flex flex-wrap justify-between items-center gap-2 text-slate-700 ${
+            isA5 ? 'p-1.5 text-[9.5px]' : 'p-2.5 text-xs'
+          }`}>
             <div>
-              <strong>شناسه/کد ملی:</strong> <span className="font-mono text-slate-900">{toPersianDigits(invoice.customerNationalId)}</span>
+              <strong>خریدار:</strong> <span className="font-bold text-slate-900">{invoice.customerName || 'مشتری محترم'}</span>
             </div>
-          )}
-          {invoice.customerAddress && (
-            <div className="truncate max-w-[280px]">
-              <strong>نشانی:</strong> {invoice.customerAddress}
+            <div>
+              <strong>موبایل خریدار:</strong> <span className="font-mono text-slate-900">{buyerMobile ? toPersianDigits(buyerMobile) : '---'}</span>
             </div>
-          )}
-          <div>
-            <strong>وضعیت تسویه:</strong>{' '}
-            <span className="font-bold text-slate-900">
-              {invoice.paymentStatus === 'paid'
-                ? 'تسویه کامل'
-                : invoice.paymentStatus === 'partial'
-                ? 'بیعانه'
-                : 'نسیه / بدهکار'}
-            </span>
+            {invoice.customerNationalId && (
+              <div>
+                <strong>شناسه/کد ملی:</strong> <span className="font-mono text-slate-900">{toPersianDigits(invoice.customerNationalId)}</span>
+              </div>
+            )}
+            {invoice.customerAddress && (
+              <div className="truncate max-w-[280px]">
+                <strong>نشانی:</strong> {invoice.customerAddress}
+              </div>
+            )}
+            <div>
+              <strong>وضعیت تسویه:</strong>{' '}
+              <span className="font-bold text-slate-900">
+                {invoice.paymentStatus === 'paid'
+                  ? 'تسویه کامل'
+                  : invoice.paymentStatus === 'partial'
+                  ? 'بیعانه'
+                  : 'نسیه / بدهکار'}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* ZONE 2: MIDDLE (Items Table) */}
@@ -203,7 +294,17 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
                   </td>
                 )}
                 <td className={`border-l border-slate-200 font-bold text-slate-900 ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`}>
-                  {item.productName}
+                  <div>{item.productName}</div>
+                  {item.variantName && (
+                    <div className={`text-purple-700 font-normal mt-0.5 ${isA5 ? 'text-[8px]' : 'text-[9px]'}`}>
+                      تنوع: {item.variantName}
+                    </div>
+                  )}
+                  {(item.description || item.notes) && (
+                    <div className={`text-slate-600 font-normal mt-0.5 leading-snug whitespace-pre-wrap ${isA5 ? 'text-[8px]' : 'text-[9.5px]'}`}>
+                      <span className="text-slate-400 font-medium">توضیح: </span>{item.description || item.notes}
+                    </div>
+                  )}
                 </td>
                 <td className={`border-l border-slate-200 text-center font-bold ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`}>
                   {toPersianDigits(item.quantity)}

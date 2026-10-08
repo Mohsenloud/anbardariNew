@@ -2272,34 +2272,76 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   />
                 </div>
 
-                {/* Economic Code */}
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1.5">
-                    کد اقتصادی (ویژه فاکتورهای رسمی دارایی)
-                  </label>
-                  <input
-                    type="text"
-                    name="economicCode"
-                    value={formData.economicCode}
-                    onChange={handleInputChange}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-mono outline-none focus:bg-white focus:border-emerald-500 text-left"
-                    dir="ltr"
-                  />
-                </div>
+                {/* بخش ویژه اطلاعات فروشنده رسمی (جهت فاکتورهای رسمی دارایی) */}
+                <div className="md:col-span-2 p-4 sm:p-5 bg-gradient-to-r from-emerald-50/90 to-teal-50/80 rounded-2xl border-2 border-emerald-300/80 shadow-xs space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-200 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                        <Building2 className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-slate-900 text-sm">
+                          اطلاعات فروشنده رسمی (جهت درج در بالای فاکتورهای رسمی)
+                        </h4>
+                        <p className="text-[11px] text-slate-600 font-medium mt-0.5">
+                          طبق الزامات امور مالیاتی، در فاکتور رسمی نام، شماره اقتصادی، شماره ثبت، تلفن و آدرس فروشنده در بالای فاکتور درج می‌گردد.
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-emerald-600 text-white font-extrabold px-2.5 py-1 rounded-lg self-start sm:self-auto shadow-2xs">
+                      الزامی برای فاکتور رسمی
+                    </span>
+                  </div>
 
-                {/* National Code */}
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1.5">
-                    شناسه ملی / کد ملی
-                  </label>
-                  <input
-                    type="text"
-                    name="nationalCode"
-                    value={formData.nationalCode}
-                    onChange={handleInputChange}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-mono outline-none focus:bg-white focus:border-emerald-500 text-left"
-                    dir="ltr"
-                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-xs">
+                    {/* Economic Code */}
+                    <div>
+                      <label className="block text-slate-800 font-bold mb-1.5">
+                        شماره اقتصادی (کد اقتصادی دارایی) <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="economicCode"
+                        value={formData.economicCode || ''}
+                        onChange={handleInputChange}
+                        placeholder="مثال: ۴۱۱۴۸۷۹۵۴۳۲۱"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-left font-bold"
+                        dir="ltr"
+                      />
+                    </div>
+
+                    {/* Registration Number */}
+                    <div>
+                      <label className="block text-slate-800 font-bold mb-1.5">
+                        شماره ثبت شرکت یا پروانه کسب <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="registrationNumber"
+                        value={formData.registrationNumber || ''}
+                        onChange={handleInputChange}
+                        placeholder="مثال: ۵۴۳۲۱۰"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-left font-bold"
+                        dir="ltr"
+                      />
+                    </div>
+
+                    {/* National Code / ID */}
+                    <div>
+                      <label className="block text-slate-800 font-bold mb-1.5">
+                        شناسه ملی (شرکت‌ها) / کد ملی <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="nationalCode"
+                        value={formData.nationalCode || ''}
+                        onChange={handleInputChange}
+                        placeholder="مثال: ۱۰۱۰۹۸۷۶۵۴۳"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-left font-bold"
+                        dir="ltr"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {/* Address */}

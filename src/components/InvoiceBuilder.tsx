@@ -11,6 +11,10 @@ import {
   Check, 
   ChevronLeft, 
   ChevronDown, 
+  ChevronUp,
+  GripVertical,
+  ArrowUp,
+  ArrowDown,
   Package, 
   Boxes, 
   Shapes, 
@@ -294,14 +298,32 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   const [servicePrice, setServicePrice] = useState<number>(0);
   const [serviceQuantity, setServiceQuantity] = useState<number>(1);
   const [serviceUnit, setServiceUnit] = useState<string>('موردی');
+  const [serviceDescription, setServiceDescription] = useState<string>('');
 
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState<boolean>(false);
 
-  // Mobile Quick Item Price & Discount Edit Modal
+  // Mobile & Desktop Quick Item Edit Modal (Price, Discount & Row Description)
   const [mobileEditingItem, setMobileEditingItem] = useState<InvoiceItem | null>(null);
   const [mobileEditUnitPrice, setMobileEditUnitPrice] = useState<number>(0);
   const [mobileEditDiscount, setMobileEditDiscount] = useState<number>(0);
+  const [mobileEditDescription, setMobileEditDescription] = useState<string>('');
+
+  // Row Reordering & Moving State (قابلیت جابجایی ردیف‌های کالاها در زمان صدور فاکتور)
+  const [isReorderModalOpen, setIsReorderModalOpen] = useState<boolean>(false);
+  const [moveItemDialog, setMoveItemDialog] = useState<{
+    isOpen: boolean;
+    fromIndex: number;
+    targetPosition: number; // 1-based (e.g. 1, 2, 3...)
+    mode: 'move' | 'swap';
+  }>({
+    isOpen: false,
+    fromIndex: 0,
+    targetPosition: 1,
+    mode: 'move',
+  });
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   // Mobile Fast Product Search
   const [mobileProductSearch, setMobileProductSearch] = useState<string>('');
@@ -418,7 +440,9 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
           unitPrice: it.unitPrice,
           discount: it.discount,
           total: it.total,
-          code: it.code
+          code: it.code,
+          description: it.description || it.notes,
+          variantName: it.variantName,
         })),
         subtotal,
         totalDiscount,
@@ -667,11 +691,14 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       buyPrice: 0,
       discount: 0,
       total: safeQty * safePrice,
+      description: serviceDescription.trim() || undefined,
+      notes: serviceDescription.trim() || undefined,
     };
     setItems((prev) => [newItem, ...prev]);
     setServiceName('');
     setServicePrice(0);
     setServiceQuantity(1);
+    setServiceDescription('');
     setIsServiceModalOpen(false);
   };
 
@@ -816,6 +843,14 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       chequeName: paymentMethod === 'cheque' ? chequeName.trim() : undefined,
       transferDescription: paymentMethod === 'transfer' ? transferDescription.trim() : undefined,
       notes: notes.trim(),
+      // ثبت اطلاعات فروشنده رسمی در فاکتور رسمی
+      sellerName: settings.sellerName || settings.storeName,
+      sellerEconomicCode: settings.economicCode,
+      sellerRegistrationNumber: settings.registrationNumber || settings.nationalCode,
+      sellerNationalCode: settings.nationalCode,
+      sellerPhone: settings.phone || settings.mobile,
+      sellerAddress: settings.address,
+      sellerPostalCode: settings.postalCode,
       createdAt: editingInvoice ? editingInvoice.createdAt : new Date().toISOString(),
       updatedAt: isEditing ? new Date().toISOString() : undefined,
       convertedFromProforma: editingInvoice?.convertedFromProforma,
@@ -943,16 +978,18 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     });
   };
 
-  // Open mobile edit item modal
+  // Open mobile/desktop edit item modal (price, discount, row description)
   const handleOpenMobileEditItem = (item: InvoiceItem) => {
     setMobileEditingItem(item);
     setMobileEditUnitPrice(item.unitPrice);
     setMobileEditDiscount(item.discount || 0);
+    setMobileEditDescription(item.description || item.notes || '');
   };
 
-  // Save mobile edit item
+  // Save mobile/desktop edit item
   const handleSaveMobileEditItem = () => {
     if (!mobileEditingItem) return;
+    const cleanDesc = mobileEditDescription.trim() || undefined;
     setItems((prev) =>
       prev.map((it) => {
         if (it.id === mobileEditingItem.id) {
@@ -963,12 +1000,108 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             unitPrice: safePrice,
             discount: safeDisc,
             total: Math.max(0, it.quantity * safePrice - safeDisc),
+            description: cleanDesc,
+            notes: cleanDesc,
           };
         }
         return it;
       })
     );
     setMobileEditingItem(null);
+  };
+
+  // ================= ROW REORDERING & MOVING LOGIC =================
+  // Swap two items at indexA and indexB (مثلاً ردیف ۱ به ۲ و ردیف ۲ به ۱ منتقل شود)
+  const handleSwapItems = (idxA: number, idxB: number) => {
+    if (idxA === idxB || idxA < 0 || idxB < 0 || idxA >= items.length || idxB >= items.length) return;
+    setSortOrder('default'); // Prioritize user custom ordering
+    setItems((prev) => {
+      const list = [...prev];
+      const temp = list[idxA];
+      list[idxA] = list[idxB];
+      list[idxB] = temp;
+      return list;
+    });
+  };
+
+  // Move item from fromIdx to toIdx (مثلاً ردیف ۱ به ردیف ۳ منتقل شود و بقیه ردیف‌ها شیفت شوند)
+  const handleMoveItemToPosition = (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0 || fromIdx >= items.length || toIdx >= items.length) return;
+    setSortOrder('default');
+    setItems((prev) => {
+      const list = [...prev];
+      const [moved] = list.splice(fromIdx, 1);
+      list.splice(toIdx, 0, moved);
+      return list;
+    });
+  };
+
+  // Move item up (یک ردیف به بالا / جابجایی با ردیف ماقبل)
+  const handleMoveItemUp = (idx: number) => {
+    if (idx > 0) {
+      handleSwapItems(idx, idx - 1);
+    }
+  };
+
+  // Move item down (یک ردیف به پایین / جابجایی با ردیف مابعد)
+  const handleMoveItemDown = (idx: number) => {
+    if (idx < items.length - 1) {
+      handleSwapItems(idx, idx + 1);
+    }
+  };
+
+  // Open direct row move / swap dialog
+  const handleOpenMoveDialog = (fromIdx: number) => {
+    const defaultTarget = fromIdx === 0 && items.length > 1 ? 2 : (fromIdx > 0 ? fromIdx : 1);
+    setMoveItemDialog({
+      isOpen: true,
+      fromIndex: fromIdx,
+      targetPosition: defaultTarget,
+      mode: 'move',
+    });
+  };
+
+  // Execute move or swap from dialog
+  const handleExecuteMoveDialog = () => {
+    const toIdx = moveItemDialog.targetPosition - 1; // convert 1-based position to 0-based index
+    if (moveItemDialog.mode === 'move') {
+      handleMoveItemToPosition(moveItemDialog.fromIndex, toIdx);
+    } else {
+      handleSwapItems(moveItemDialog.fromIndex, toIdx);
+    }
+    setMoveItemDialog((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  // Reverse all items order
+  const handleReverseItems = () => {
+    if (items.length <= 1) return;
+    setSortOrder('default');
+    setItems((prev) => [...prev].reverse());
+  };
+
+  // HTML5 Drag & Drop Handlers
+  const handleDragStart = (idx: number) => {
+    setDraggedIndex(idx);
+  };
+
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    if (dragOverIndex !== idx) {
+      setDragOverIndex(idx);
+    }
+  };
+
+  const handleDrop = (toIdx: number) => {
+    if (draggedIndex !== null && draggedIndex !== toIdx) {
+      handleMoveItemToPosition(draggedIndex, toIdx);
+    }
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
   };
 
   // Clear all items
@@ -1161,6 +1294,59 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
+          </div>
+        )}
+
+        {/* ================= 1.8. OFFICIAL SELLER BANNER (MOBILE) ================= */}
+        {invoiceType === 'official' && (
+          <div className="px-3.5 py-2.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-white border-b-2 border-emerald-300/80 text-xs shrink-0 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                  <Building2 className="w-3.5 h-3.5" />
+                </div>
+                <div className="truncate">
+                  <span className="text-[10px] text-emerald-800 font-bold ml-1">فروشنده رسمی:</span>
+                  <span className="font-black text-slate-900 truncate">
+                    {settings.sellerName || settings.storeName || 'ثبت نشده'}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSettingsModalOpen(true)}
+                className="text-[10px] font-black text-emerald-700 hover:text-emerald-900 bg-white px-2 py-0.5 rounded-lg border border-emerald-300 shadow-2xs shrink-0 cursor-pointer active:scale-95 transition-all"
+              >
+                تنظیمات فروشنده
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-2.5 gap-y-1 pt-1.5 border-t border-emerald-200/60 text-[10px] text-slate-600">
+              <div>
+                <span className="text-slate-400 ml-1">شماره اقتصادی:</span>
+                <b className="font-mono text-slate-800 font-bold" dir="ltr">
+                  {settings.economicCode ? toPersianDigits(settings.economicCode) : 'ثبت نشده'}
+                </b>
+              </div>
+              <div>
+                <span className="text-slate-400 ml-1">شماره ثبت:</span>
+                <b className="font-mono text-slate-800 font-bold" dir="ltr">
+                  {settings.registrationNumber ? toPersianDigits(settings.registrationNumber) : (settings.nationalCode ? toPersianDigits(settings.nationalCode) : 'ثبت نشده')}
+                </b>
+              </div>
+              <div>
+                <span className="text-slate-400 ml-1">شماره تلفن:</span>
+                <b className="font-mono text-slate-800 font-bold" dir="ltr">
+                  {(settings.phone || settings.mobile) ? toPersianDigits(settings.phone || settings.mobile) : 'ثبت نشده'}
+                </b>
+              </div>
+              <div className="truncate">
+                <span className="text-slate-400 ml-1">آدرس:</span>
+                <span className="text-slate-800 font-medium truncate" title={settings.address}>
+                  {settings.address || 'ثبت نشده'}
+                </span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1374,15 +1560,92 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
           ) : (
             /* ITEMS CARDS LIST */
             <div className="space-y-2.5 pb-2">
+              {items.length > 1 && (
+                <div className="flex items-center justify-between gap-2 px-1 pb-1">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-600 font-bold">
+                    <span>اقلام فاکتور:</span>
+                    <span className="font-extrabold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md font-mono">
+                      {toPersianDigits(items.length)} قلم
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsReorderModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-xs border border-indigo-200/80 active:scale-95 transition-all cursor-pointer shadow-2xs"
+                  >
+                    <ArrowUpDown className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>جابجایی و ترتیب ردیف‌ها</span>
+                  </button>
+                </div>
+              )}
               {displayedItems.map((item, idx) => {
                 const isService = !item.productId;
+                const realIdx = items.findIndex((it) => it.id === item.id);
+                const actualIndex = realIdx !== -1 ? realIdx : idx;
+                const isDraggingThis = draggedIndex === actualIndex;
+                const isDragOverThis = dragOverIndex === actualIndex;
                 return (
                   <div
                     key={item.id || idx}
+                    draggable={items.length > 1}
+                    onDragStart={() => handleDragStart(actualIndex)}
+                    onDragOver={(e) => handleDragOver(e, actualIndex)}
+                    onDrop={() => handleDrop(actualIndex)}
+                    onDragEnd={handleDragEnd}
                     className={`${
                       idx % 2 === 1 ? 'bg-slate-50/90' : 'bg-white'
+                    } ${isDraggingThis ? 'opacity-40 border-dashed border-2 border-indigo-400' : ''} ${
+                      isDragOverThis && !isDraggingThis ? 'border-t-2 border-indigo-500 bg-indigo-50/40' : ''
                     } rounded-2xl border border-slate-200/90 p-3 shadow-2xs hover:border-slate-300 transition-all space-y-2.5`}
                   >
+                    {/* Top Header Row of Mobile Card: Row Badge, Reorder controls & Delete */}
+                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenMoveDialog(actualIndex)}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 font-black text-xs border border-slate-200 hover:border-indigo-300 cursor-pointer transition-all active:scale-95 shadow-2xs"
+                          title="کلیک جهت انتقال به ردیف دیگر (مثلا ردیف ۱ به ۳) یا تعویض جایگاه"
+                        >
+                          <span>ردیف {toPersianDigits(actualIndex + 1)}</span>
+                          <ArrowUpDown className="w-2.5 h-2.5 text-slate-400" />
+                        </button>
+
+                        {items.length > 1 && (
+                          <div className="flex items-center gap-0.5 bg-slate-100/90 rounded-lg p-0.5 border border-slate-200/60">
+                            <button
+                              type="button"
+                              disabled={actualIndex === 0}
+                              onClick={() => handleMoveItemUp(actualIndex)}
+                              className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-indigo-600 disabled:opacity-20 cursor-pointer"
+                              title="انتقال به ردیف بالا"
+                            >
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={actualIndex === items.length - 1}
+                              onClick={() => handleMoveItemDown(actualIndex)}
+                              className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-indigo-600 disabled:opacity-20 cursor-pointer"
+                              title="انتقال به ردیف پایین"
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Delete Item Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(item.id)}
+                        className="text-slate-300 hover:text-rose-500 p-1.5 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
+                        title="حذف ردیف"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -1412,24 +1675,45 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                             type="button"
                             onClick={() => handleOpenMobileEditItem(item)}
                             className="font-bold text-slate-800 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 px-2 py-0.5 rounded-lg border border-slate-200/80 hover:border-emerald-300 flex items-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95"
-                            title="کلیک جهت تغییر قیمت کالا در فاکتور"
+                            title="کلیک جهت ویرایش قیمت، تخفیف یا توضیحات این ردیف"
                           >
                             <span>{formatPrice(item.unitPrice)}</span>
                             <Pencil className="w-2.5 h-2.5 text-slate-400 hover:text-emerald-600" />
                           </button>
                           {item.unit && <span className="text-slate-400 font-normal">({item.unit})</span>}
                         </div>
-                      </div>
 
-                      {/* Delete Item Button */}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(item.id)}
-                        className="text-slate-300 hover:text-rose-500 p-1.5 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
-                        title="حذف ردیف"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                        {/* Item Description (توضیحات اختصاصی ردیف کالا یا خدمت جهت چاپ و PDF) */}
+                        {item.description ? (
+                          <div className="mt-1.5 flex items-start gap-1.5 text-[11px] text-slate-700 bg-amber-50/80 border border-amber-200/80 rounded-xl px-2.5 py-1.5">
+                            <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <span className="font-bold text-amber-800 text-[10px] ml-1">توضیح چاپ:</span>
+                              <span className="text-slate-700 leading-tight break-words">{item.description}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenMobileEditItem(item)}
+                              className="text-amber-700 hover:text-amber-900 font-bold text-[10px] underline cursor-pointer shrink-0"
+                              title="ویرایش توضیح این ردیف"
+                            >
+                              ویرایش
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenMobileEditItem(item)}
+                              className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 px-1.5 py-0.5 rounded-md transition-colors cursor-pointer"
+                              title="افزودن توضیح اختصاصی برای این ردیف جهت نمایش در چاپ و PDF"
+                            >
+                              <Plus className="w-3 h-3 stroke-[2.5]" />
+                              <span>افزودن توضیح ردیف (چاپ و PDF)</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Quantity & Row Total Bar */}
@@ -1699,6 +1983,97 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
         <div className="grid grid-cols-12 gap-5 p-5 bg-slate-50/70 flex-1">
           {/* RIGHT COLUMN: INVOICE TABLE & FAST ADD (Col Span 8) */}
           <div className="col-span-8 flex flex-col gap-4">
+            {/* اطلاعات و مشخصات فروشنده رسمی در بالای فاکتور رسمی */}
+            {invoiceType === 'official' && (
+              <div className="bg-gradient-to-r from-emerald-50 via-teal-50/50 to-white rounded-2xl p-4 border-2 border-emerald-300/80 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between border-b border-emerald-200/70 pb-2.5 flex-wrap gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                      <Building2 className="w-4.5 h-4.5" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-2">
+                        <span>اطلاعات فروشنده رسمی (فاکتور رسمی دارایی)</span>
+                        <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-md font-bold">
+                          ثبت در بالای فاکتور
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        مشخصات فروشنده رسمی ثبت‌شده در پنل مدیریت که در سربرگ و بالای فاکتور رسمی درج می‌گردد.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsSettingsModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 hover:border-emerald-300 text-xs font-black transition-all cursor-pointer shadow-2xs active:scale-95"
+                    title="ویرایش مشخصات فروشنده رسمی در پنل مدیریت / تنظیمات"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>ویرایش در تنظیمات</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 text-xs">
+                  {/* نام فروشنده */}
+                  <div className="bg-white/95 p-2.5 rounded-xl border border-emerald-100 shadow-2xs">
+                    <span className="text-[10px] text-slate-400 block font-bold mb-0.5">نام فروشنده / شرکت:</span>
+                    <span className="font-black text-slate-900 truncate block" title={settings.sellerName || settings.storeName}>
+                      {settings.sellerName || settings.storeName || 'ثبت نشده'}
+                    </span>
+                  </div>
+
+                  {/* شماره اقتصادی */}
+                  <div className="bg-white/95 p-2.5 rounded-xl border border-emerald-100 shadow-2xs">
+                    <span className="text-[10px] text-slate-400 block font-bold mb-0.5">شماره اقتصادی:</span>
+                    <span className="font-black text-slate-900 font-mono truncate block" dir="ltr">
+                      {settings.economicCode ? toPersianDigits(settings.economicCode) : 'ثبت نشده'}
+                    </span>
+                  </div>
+
+                  {/* شماره ثبت */}
+                  <div className="bg-white/95 p-2.5 rounded-xl border border-emerald-100 shadow-2xs">
+                    <span className="text-[10px] text-slate-400 block font-bold mb-0.5">شماره ثبت / مجوز:</span>
+                    <span className="font-black text-slate-900 font-mono truncate block" dir="ltr">
+                      {settings.registrationNumber ? toPersianDigits(settings.registrationNumber) : (settings.nationalCode ? toPersianDigits(settings.nationalCode) : 'ثبت نشده')}
+                    </span>
+                  </div>
+
+                  {/* شماره تلفن */}
+                  <div className="bg-white/95 p-2.5 rounded-xl border border-emerald-100 shadow-2xs">
+                    <span className="text-[10px] text-slate-400 block font-bold mb-0.5">شماره تلفن:</span>
+                    <span className="font-black text-slate-900 font-mono truncate block" dir="ltr">
+                      {(settings.phone || settings.mobile) ? toPersianDigits(settings.phone || settings.mobile) : 'ثبت نشده'}
+                    </span>
+                  </div>
+
+                  {/* آدرس */}
+                  <div className="bg-white/95 p-2.5 rounded-xl border border-emerald-100 shadow-2xs col-span-2 sm:col-span-1 lg:col-span-1">
+                    <span className="text-[10px] text-slate-400 block font-bold mb-0.5">آدرس و نشانی:</span>
+                    <span className="font-bold text-slate-800 truncate block text-[11px]" title={`${settings.address || 'ثبت نشده'} ${settings.postalCode ? `(کدپستی: ${settings.postalCode})` : ''}`}>
+                      {settings.address || 'ثبت نشده'}
+                    </span>
+                  </div>
+                </div>
+
+                {(!settings.economicCode || !settings.registrationNumber || !settings.address) && (
+                  <div className="text-[11px] text-amber-800 bg-amber-50/90 border border-amber-200/90 rounded-xl px-3 py-1.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>توجه: برخی از مشخصات رسمی فروشنده (کد اقتصادی، شماره ثبت یا آدرس) در پنل مدیریت خالی است.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsSettingsModalOpen(true)}
+                      className="text-amber-900 font-black underline hover:text-amber-700 cursor-pointer text-xs shrink-0"
+                    >
+                      تکمیل در پنل مدیریت
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* 1. Customer Selection Card */}
             <div className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3.5">
               <div className="flex items-center gap-3.5 min-w-0">
@@ -1894,18 +2269,33 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   )}
                 </div>
 
-                {/* Clear Items Button */}
-                {items.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleClearAllItems}
-                    title="پاکسازی تمامی اقلام فاکتور"
-                    className="px-3 py-1.5 rounded-xl hover:bg-rose-50 text-rose-600 border border-rose-200/80 hover:border-rose-300 transition-colors cursor-pointer text-xs font-black flex items-center gap-1.5 active:scale-95 shrink-0"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>پاکسازی کل فاکتور</span>
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {/* Reorder Items Button */}
+                  {items.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsReorderModalOpen(true)}
+                      title="مدیریت و جابجایی ترتیب ردیف‌های کالاها (مثلاً ردیف ۱ به ۳ یا تعویض ردیف‌ها)"
+                      className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/90 hover:border-indigo-300 transition-all cursor-pointer text-xs font-black flex items-center gap-1.5 active:scale-95 shadow-2xs shrink-0"
+                    >
+                      <ArrowUpDown className="w-3.5 h-3.5" />
+                      <span>جابجایی و ترتیب ردیف‌ها</span>
+                    </button>
+                  )}
+
+                  {/* Clear Items Button */}
+                  {items.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearAllItems}
+                      title="پاکسازی تمامی اقلام فاکتور"
+                      className="px-3 py-1.5 rounded-xl hover:bg-rose-50 text-rose-600 border border-rose-200/80 hover:border-rose-300 transition-colors cursor-pointer text-xs font-black flex items-center gap-1.5 active:scale-95 shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>پاکسازی کل فاکتور</span>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1948,7 +2338,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     <table className="w-full text-right border-collapse text-xs">
                       <thead>
                         <tr className="bg-slate-100/90 text-slate-700 font-black border-b border-slate-200 sticky top-0 z-10">
-                          <th className="py-3 px-2 text-center w-10">#</th>
+                          <th className="py-3 px-2 text-center w-20">ردیف / جابجایی</th>
                           <th className="py-3 px-3 w-28">کد کالا</th>
                           <th className="py-3 px-4">شرح کالا یا خدمت</th>
                           <th className="py-3 px-3 w-36">قیمت واحد ({settings.currency || 'تومان'})</th>
@@ -1961,16 +2351,66 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                         {displayedItems.map((item, idx) => {
                           const prod = products.find((p) => p.id === item.productId);
                           const isShortage = prod && !isProforma && item.quantity > prod.stock;
+                          const realIdx = items.findIndex((it) => it.id === item.id);
+                          const actualIndex = realIdx !== -1 ? realIdx : idx;
+                          const isDraggingThis = draggedIndex === actualIndex;
+                          const isDragOverThis = dragOverIndex === actualIndex;
                           return (
                             <tr
                               key={item.id}
+                              draggable={items.length > 1}
+                              onDragStart={() => handleDragStart(actualIndex)}
+                              onDragOver={(e) => handleDragOver(e, actualIndex)}
+                              onDrop={() => handleDrop(actualIndex)}
+                              onDragEnd={handleDragEnd}
                               className={`${
                                 idx % 2 === 1 ? 'bg-slate-50/85' : 'bg-white'
-                              } hover:bg-slate-100/75 transition-colors`}
+                              } ${isDraggingThis ? 'opacity-40 bg-indigo-50 border-dashed border-2 border-indigo-400' : ''} ${
+                                isDragOverThis && !isDraggingThis ? 'border-t-2 border-indigo-500 bg-indigo-50/40' : ''
+                              } hover:bg-slate-100/75 transition-all group/row`}
                             >
-                              {/* Index */}
-                              <td className="py-3 px-2 text-center font-bold text-slate-400">
-                                {toPersianDigits(idx + 1)}
+                              {/* Index & Reorder Controls */}
+                              <td className="py-2.5 px-2 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  {items.length > 1 && (
+                                    <span
+                                      className="text-slate-300 group-hover/row:text-slate-500 cursor-grab active:cursor-grabbing p-0.5 rounded hover:bg-slate-200 transition-colors hidden sm:inline-block"
+                                      title="کشیدن و رها کردن برای تغییر ترتیب ردیف"
+                                    >
+                                      <GripVertical className="w-3.5 h-3.5" />
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenMoveDialog(actualIndex)}
+                                    className="min-w-6 h-6 px-1 rounded-md bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 font-black text-xs border border-slate-200/80 hover:border-indigo-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs active:scale-95"
+                                    title="کلیک جهت انتقال به ردیف دیگر (مثلا ردیف ۱ به ۳) یا تعویض جایگاه ردیف‌ها"
+                                  >
+                                    {toPersianDigits(actualIndex + 1)}
+                                  </button>
+                                  {items.length > 1 && (
+                                    <div className="flex flex-col gap-0.5">
+                                      <button
+                                        type="button"
+                                        disabled={actualIndex === 0}
+                                        onClick={() => handleMoveItemUp(actualIndex)}
+                                        className="w-4 h-4 rounded flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-20 disabled:hover:text-slate-400 disabled:hover:bg-transparent transition-all cursor-pointer"
+                                        title="یک ردیف به بالا (جابجایی با ردیف قبلی)"
+                                      >
+                                        <ChevronUp className="w-3 h-3 stroke-[2.5]" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={actualIndex === items.length - 1}
+                                        onClick={() => handleMoveItemDown(actualIndex)}
+                                        className="w-4 h-4 rounded flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-20 disabled:hover:text-slate-400 disabled:hover:bg-transparent transition-all cursor-pointer"
+                                        title="یک ردیف به پایین (جابجایی با ردیف بعدی)"
+                                      >
+                                        <ChevronDown className="w-3 h-3 stroke-[2.5]" />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               </td>
 
                               {/* Product Code */}
@@ -1997,6 +2437,37 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                                   <span className="text-[10px] bg-amber-50 text-amber-700 font-bold px-1.5 py-0.5 rounded border border-amber-200 inline-block mt-0.5">
                                     آیتم خدماتی
                                   </span>
+                                )}
+
+                                {/* Item Description (توضیحات اختصاصی ردیف کالا یا خدمت جهت چاپ و PDF) */}
+                                {item.description ? (
+                                  <div className="flex items-start gap-1.5 mt-1 text-[11px] text-slate-700 bg-amber-50/80 border border-amber-200/80 rounded-lg px-2 py-1 max-w-md">
+                                    <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                                    <span className="flex-1 font-normal leading-tight text-slate-700 break-words" title={item.description}>
+                                      <span className="text-amber-800 font-bold ml-1 text-[10px]">توضیح چاپ:</span>
+                                      {item.description}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenMobileEditItem(item)}
+                                      className="text-amber-700 hover:text-amber-900 font-bold text-[10px] underline cursor-pointer shrink-0 mr-1"
+                                      title="ویرایش توضیح این ردیف"
+                                    >
+                                      ویرایش
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenMobileEditItem(item)}
+                                      className="inline-flex items-center gap-1 text-[10px] text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 px-1.5 py-0.5 rounded transition-colors mt-0.5 cursor-pointer font-bold"
+                                      title="افزودن توضیح اختصاصی برای این ردیف جهت نمایش در چاپ و خروجی PDF"
+                                    >
+                                      <Plus className="w-2.5 h-2.5 stroke-[2.5]" />
+                                      <span>افزودن توضیح ردیف (چاپ و PDF)</span>
+                                    </button>
+                                  </div>
                                 )}
                               </td>
 
@@ -3561,6 +4032,20 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 />
               </div>
 
+              {/* توضیحات اختصاصی خدمات (نمایش زیر ردیف در چاپ و PDF) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  توضیحات خدمات (جهت نمایش در چاپ و فایل PDF زیر ردیف):
+                </label>
+                <textarea
+                  value={serviceDescription}
+                  onChange={(e) => setServiceDescription(e.target.value)}
+                  placeholder="مثلاً: شرایط ارائه خدمت، مدت زمان پشتیبانی یا گارانتی، جزئیات سفارش..."
+                  rows={2}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white resize-none"
+                />
+              </div>
+
               {/* کد اختصاصی خدمات تعیین‌شده توسط سیستم */}
               <div className="bg-blue-50/70 border border-blue-200/80 rounded-2xl p-3 space-y-2">
                 <div className="flex items-center justify-between text-xs">
@@ -4374,7 +4859,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-sm font-black text-slate-900 truncate">
-                    تغییر قیمت کالا در فاکتور
+                    ویرایش ردیف فاکتور (قیمت، تخفیف و توضیحات)
                   </h3>
                   <div className="text-[11px] text-slate-500 font-medium truncate">
                     {mobileEditingItem.productName} ({toPersianDigits(mobileEditingItem.quantity)} {mobileEditingItem.unit || 'عدد'})
@@ -4388,6 +4873,34 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               >
                 <X className="w-4 h-4" />
               </button>
+            </div>
+
+            {/* Row-specific Description Input (توضیحات اختصاصی ردیف جهت چاپ و PDF) */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-slate-700">
+                  توضیح اختصاصی این ردیف (نمایش در چاپ و PDF):
+                </label>
+                {mobileEditDescription && (
+                  <button
+                    type="button"
+                    onClick={() => setMobileEditDescription('')}
+                    className="text-[10px] text-rose-500 hover:text-rose-700 font-bold cursor-pointer"
+                  >
+                    پاک کردن
+                  </button>
+                )}
+              </div>
+              <textarea
+                value={mobileEditDescription}
+                onChange={(e) => setMobileEditDescription(e.target.value)}
+                placeholder="توضیح این کالا یا خدمت که زیر ردیف در چاپ و فایل PDF نشان داده می‌شود (مثلاً: گارانتی، مدل، رنگ، مشخصات، شماره سریال...)"
+                rows={2}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:bg-white resize-none transition-all"
+              />
+              <span className="text-[10px] text-slate-400 block">
+                این توضیح در زیر نام کالا/خدمت در نسخه چاپی و خروجی PDF با قلم کوچک چاپ می‌شود.
+              </span>
             </div>
 
             {/* Price Input */}
@@ -4498,10 +5011,328 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-xs cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5"
               >
                 <Check className="w-4 h-4" />
-                <span>اعمال تغییر قیمت</span>
+                <span>ذخیره تغییرات ردیف</span>
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* ================= MODAL: DIRECT ROW MOVE & SWAP DIALOG ================= */}
+      {moveItemDialog.isOpen && items[moveItemDialog.fromIndex] && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-2xs">
+                  <ArrowUpDown className="w-4 h-4 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-slate-800">
+                    جابجایی ردیف {toPersianDigits(moveItemDialog.fromIndex + 1)}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 font-medium truncate max-w-[200px]">
+                    {items[moveItemDialog.fromIndex].productName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMoveItemDialog((prev) => ({ ...prev, isOpen: false }))}
+                className="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Mode Selector Tabs: انتقال ردیف (Move) یا تعویض جایگاه (Swap) */}
+            <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-2xl gap-1">
+              <button
+                type="button"
+                onClick={() => setMoveItemDialog((prev) => ({ ...prev, mode: 'move' }))}
+                className={`py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                  moveItemDialog.mode === 'move'
+                    ? 'bg-white text-indigo-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                انتقال به ردیف جدید
+              </button>
+              <button
+                type="button"
+                onClick={() => setMoveItemDialog((prev) => ({ ...prev, mode: 'swap' }))}
+                className={`py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                  moveItemDialog.mode === 'swap'
+                    ? 'bg-white text-indigo-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                تعویض جایگاه (Swap)
+              </button>
+            </div>
+
+            {moveItemDialog.mode === 'move' ? (
+              <div className="space-y-3">
+                <div className="text-xs text-slate-700 font-bold flex items-center justify-between">
+                  <span>انتقال ردیف {toPersianDigits(moveItemDialog.fromIndex + 1)} به شماره ردیف:</span>
+                  <span className="text-indigo-600 font-black text-sm font-mono">
+                    ردیف {toPersianDigits(moveItemDialog.targetPosition)}
+                  </span>
+                </div>
+
+                {/* Quick Number Selector Grid */}
+                <div className="grid grid-cols-5 gap-1.5 max-h-40 overflow-y-auto p-1.5 bg-slate-50 rounded-2xl border border-slate-100">
+                  {items.map((_, i) => {
+                    const pos = i + 1;
+                    const isCurrent = moveItemDialog.fromIndex === i;
+                    const isSelected = moveItemDialog.targetPosition === pos;
+                    return (
+                      <button
+                        key={pos}
+                        type="button"
+                        disabled={isCurrent}
+                        onClick={() => setMoveItemDialog((prev) => ({ ...prev, targetPosition: pos }))}
+                        className={`py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer flex flex-col items-center justify-center ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white shadow-xs scale-105'
+                            : isCurrent
+                            ? 'bg-slate-200/60 text-slate-400 cursor-not-allowed opacity-60'
+                            : 'bg-white hover:bg-indigo-50 text-slate-700 border border-slate-200/80 active:scale-95'
+                        }`}
+                      >
+                        <span>{toPersianDigits(pos)}</span>
+                        {isCurrent && <span className="text-[9px] font-normal">فعلی</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="text-[11px] text-slate-500 leading-relaxed bg-indigo-50/70 p-2.5 rounded-xl border border-indigo-100 space-y-1">
+                  <div className="font-bold text-indigo-900">نحوه عملکرد جابجایی:</div>
+                  <div>
+                    ردیف {toPersianDigits(moveItemDialog.fromIndex + 1)} برداشته شده و در جایگاه ردیف {toPersianDigits(moveItemDialog.targetPosition)} قرار می‌گیرد و سایر ردیف‌ها به طور خودکار جابجا می‌شوند.
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="text-xs text-slate-700 font-bold">
+                  تعویض جایگاه ردیف <span className="text-indigo-600 font-black">{toPersianDigits(moveItemDialog.fromIndex + 1)}</span> با کدام ردیف؟
+                </div>
+
+                {/* Select target item to swap with */}
+                <div className="space-y-1.5 max-h-44 overflow-y-auto p-1 bg-slate-50 rounded-2xl border border-slate-100">
+                  {items.map((it, i) => {
+                    const pos = i + 1;
+                    const isCurrent = moveItemDialog.fromIndex === i;
+                    const isSelected = moveItemDialog.targetPosition === pos;
+                    return (
+                      <button
+                        key={it.id || i}
+                        type="button"
+                        disabled={isCurrent}
+                        onClick={() => setMoveItemDialog((prev) => ({ ...prev, targetPosition: pos }))}
+                        className={`w-full text-right p-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : isCurrent
+                            ? 'bg-slate-200/50 text-slate-400 cursor-not-allowed opacity-50'
+                            : 'bg-white hover:bg-indigo-50 text-slate-700 border border-slate-200/80'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <span className={`px-2 py-0.5 rounded-md text-[11px] font-black shrink-0 ${isSelected ? 'bg-indigo-700 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                            ردیف {toPersianDigits(pos)}
+                          </span>
+                          <span className="truncate">{it.productName}</span>
+                        </div>
+                        {isCurrent && <span className="text-[10px] text-slate-400 shrink-0">ردیف جاری</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="text-[11px] text-slate-500 leading-relaxed bg-indigo-50/70 p-2.5 rounded-xl border border-indigo-100 space-y-1">
+                  <div className="font-bold text-indigo-900">نحوه عملکرد تعویض (Swap):</div>
+                  <div>
+                    جایگاه ردیف {toPersianDigits(moveItemDialog.fromIndex + 1)} و ردیف {toPersianDigits(moveItemDialog.targetPosition)} با هم عوض می‌شود (مثلاً ردیف ۱ به ۲ و ردیف ۲ به ۱ منتقل می‌گردد).
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setMoveItemDialog((prev) => ({ ...prev, isOpen: false }))}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 cursor-pointer transition-colors"
+              >
+                انصراف
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteMoveDialog}
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-xs cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>
+                  {moveItemDialog.mode === 'move'
+                    ? `انتقال به ردیف ${toPersianDigits(moveItemDialog.targetPosition)}`
+                    : `تعویض با ردیف ${toPersianDigits(moveItemDialog.targetPosition)}`}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: REORDER ALL ITEMS MODAL ================= */}
+      {isReorderModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 flex flex-col max-h-[85vh] space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-2xs">
+                  <ArrowUpDown className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-slate-800">
+                    مدیریت و ترتیب ردیف‌های کالاها
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    جابجایی، تعویض ردیف‌ها و انتقال به موقعیت دلخواه در فاکتور
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsReorderModalOpen(false)}
+                className="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Quick Helper Banner */}
+            <div className="bg-indigo-50/70 border border-indigo-100 rounded-2xl p-3 flex items-center justify-between gap-2 text-xs">
+              <span className="text-indigo-800 font-bold leading-relaxed">
+                می‌توانید با دکمه‌های بالا/پایین، درگ و رها کردن، یا انتخاب شماره ردیف جدید، جایگاه اقلام را تغییر دهید.
+              </span>
+              <button
+                type="button"
+                onClick={handleReverseItems}
+                className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-indigo-100 text-indigo-700 font-black text-[11px] border border-indigo-200/80 shrink-0 cursor-pointer active:scale-95 transition-all shadow-2xs"
+                title="معکوس کردن کامل ترتیب اقلام فاکتور"
+              >
+                معکوس کردن ترتیب
+              </button>
+            </div>
+
+            {/* Items List */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+              {items.map((item, idx) => {
+                const isDragging = draggedIndex === idx;
+                const isOver = dragOverIndex === idx;
+                return (
+                  <div
+                    key={item.id || idx}
+                    draggable
+                    onDragStart={() => handleDragStart(idx)}
+                    onDragOver={(e) => handleDragOver(e, idx)}
+                    onDrop={() => handleDrop(idx)}
+                    onDragEnd={handleDragEnd}
+                    className={`flex items-center justify-between gap-2 p-2.5 rounded-2xl border transition-all ${
+                      isDragging
+                        ? 'opacity-40 border-dashed border-2 border-indigo-400 bg-indigo-50'
+                        : isOver
+                        ? 'border-t-2 border-indigo-500 bg-indigo-50/50'
+                        : 'bg-white hover:bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    {/* Drag Handle & Row Badge */}
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="text-slate-300 hover:text-slate-600 cursor-grab active:cursor-grabbing p-1 rounded hover:bg-slate-100">
+                        <GripVertical className="w-4 h-4" />
+                      </span>
+
+                      <span className="min-w-14 text-center px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-black text-xs border border-indigo-100 font-mono">
+                        ردیف {toPersianDigits(idx + 1)}
+                      </span>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="font-black text-xs text-slate-800 truncate">
+                          {item.productName}
+                        </div>
+                        <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                          <span>{toPersianDigits(item.quantity)} {item.unit}</span>
+                          <span>•</span>
+                          <span className="font-mono text-emerald-600 font-bold" dir="ltr">{formatPrice(item.total)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Controls: Up/Down buttons + Jump Select */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {/* Move Up */}
+                      <button
+                        type="button"
+                        disabled={idx === 0}
+                        onClick={() => handleMoveItemUp(idx)}
+                        className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 disabled:opacity-20 flex items-center justify-center transition-colors cursor-pointer"
+                        title="انتقال به یک ردیف بالاتر"
+                      >
+                        <ChevronUp className="w-4 h-4" />
+                      </button>
+
+                      {/* Move Down */}
+                      <button
+                        type="button"
+                        disabled={idx === items.length - 1}
+                        onClick={() => handleMoveItemDown(idx)}
+                        className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 disabled:opacity-20 flex items-center justify-center transition-colors cursor-pointer"
+                        title="انتقال به یک ردیف پایین‌تر"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+
+                      {/* Move to Position Dropdown */}
+                      <div className="relative">
+                        <select
+                          value={idx + 1}
+                          onChange={(e) => {
+                            const targetPos = parseInt(e.target.value, 10);
+                            handleMoveItemToPosition(idx, targetPos - 1);
+                          }}
+                          className="bg-slate-100 hover:bg-indigo-50 text-slate-700 font-bold text-xs rounded-lg px-2 py-1.5 border border-slate-200 hover:border-indigo-300 outline-none cursor-pointer transition-colors"
+                          title="انتقال مستقیم به شماره ردیف دلخواه (مثلاً ردیف ۱ به ۳)"
+                        >
+                          {items.map((_, pIdx) => (
+                            <option key={pIdx + 1} value={pIdx + 1}>
+                              به ردیف {toPersianDigits(pIdx + 1)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsReorderModalOpen(false)}
+                className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs shadow-xs cursor-pointer active:scale-95 transition-all flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4 text-emerald-400" />
+                <span>تایید و بازگشت به فاکتور</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

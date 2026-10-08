@@ -760,6 +760,11 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                                 تنوع: {item.variantName}
                               </span>
                             )}
+                            {(item.description || item.notes) && (
+                              <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">
+                                <span className="text-slate-400 font-medium">توضیح: </span>{item.description || item.notes}
+                              </p>
+                            )}
                             {item.productCode && (
                               <p className="text-[11px] text-slate-400 mt-0.5 font-mono">
                                 کد کالا: {toPersianDigits(item.productCode)}
@@ -824,6 +829,11 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                             {item.variantName && (
                               <span className="mr-1.5 text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded font-medium">
                                 {item.variantName}
+                              </span>
+                            )}
+                            {(item.description || item.notes) && (
+                              <span className="block text-[11px] text-slate-600 mt-0.5 leading-snug">
+                                <span className="text-slate-400 font-medium">توضیح: </span>{item.description || item.notes}
                               </span>
                             )}
                             {item.productCode && (

@@ -396,7 +396,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     id="settings-economic-code"
                     value={formData.economicCode}
                     onChange={(e) => setFormData({ ...formData, economicCode: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono text-left"
+                    dir="ltr"
+                    placeholder="۱۲ رقم"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-medium text-slate-700 mb-1">شماره ثبت شرکت / پروانه کسب</label>
+                  <input
+                    type="text"
+                    id="settings-registration-number"
+                    value={formData.registrationNumber || ''}
+                    onChange={(e) => setFormData({ ...formData, registrationNumber: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono text-left"
+                    dir="ltr"
+                    placeholder="شماره ثبت رسمی"
                   />
                 </div>
 
@@ -407,7 +422,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     id="settings-national-code"
                     value={formData.nationalCode}
                     onChange={(e) => setFormData({ ...formData, nationalCode: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono text-left"
+                    dir="ltr"
+                    placeholder="شناسه یا کد ملی"
                   />
                 </div>
 

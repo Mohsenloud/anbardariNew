@@ -106,6 +106,9 @@ export interface InvoiceItem {
   // پشتیبانی از تنوع کالا در فاکتور
   variantId?: string;
   variantName?: string; // مثلاً: طوسی یا قرمز
+  // توضیحات اختصاصی ردیف کالا یا خدمت (جهت نمایش در چاپ و PDF)
+  description?: string;
+  notes?: string; // آلیاس description
 }
 
 export type PaymentStatus = 'paid' | 'unpaid' | 'partial';
@@ -207,6 +210,14 @@ export interface Invoice {
   convertedFromProforma?: string; // شماره پیش‌فاکتور اولیه قبل از تبدیل به فاکتور رسمی
   telegramChatId?: string; // شناسه یا چت‌آیدی اختصاصی تلگرام مقصد برای ارسال مستقیم PDF این فاکتور
   shareLink?: InvoiceShareLink; // تنظیمات و شناسه لینک اشتراک آنلاین نسخه تحت وب فاکتور برای مشتری
+  // مشخصات فروشنده رسمی در زمان صدور فاکتور (جهت استعلام و سابقه فاکتورهای رسمی دارایی)
+  sellerName?: string;
+  sellerEconomicCode?: string;
+  sellerRegistrationNumber?: string;
+  sellerNationalCode?: string;
+  sellerPhone?: string;
+  sellerAddress?: string;
+  sellerPostalCode?: string;
   createdAt: string;
   updatedAt?: string; // تاریخ آخرین ویرایش فاکتور
 }
@@ -250,6 +261,7 @@ export interface StoreSettings {
   mobile: string;
   economicCode: string;
   nationalCode: string;
+  registrationNumber?: string; // شماره ثبت رسمی شرکت یا پروانه کسب
   address: string;
   postalCode: string;
   invoiceFooterText: string;

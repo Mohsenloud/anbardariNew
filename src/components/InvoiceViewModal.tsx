@@ -965,7 +965,19 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                             {toPersianDigits(idx + 1)}
                           </td>
                           <td className="p-2 border-l border-slate-200 text-slate-600">{toPersianDigits(item.productCode || '---')}</td>
-                          <td className="p-2 border-l border-slate-200 font-medium text-slate-900">{item.productName}</td>
+                          <td className="p-2 border-l border-slate-200 font-medium text-slate-900">
+                            <div>{item.productName}</div>
+                            {item.variantName && (
+                              <div className="text-[10px] text-purple-700 mt-0.5">
+                                تنوع: {item.variantName}
+                              </div>
+                            )}
+                            {(item.description || item.notes) && (
+                              <div className="text-[10px] text-slate-500 font-normal mt-0.5 leading-snug whitespace-pre-wrap">
+                                <span className="text-slate-400">توضیح: </span>{item.description || item.notes}
+                              </div>
+                            )}
+                          </td>
                           <td className="p-2 border-l border-slate-200 text-center font-bold">{toPersianDigits(item.quantity)}</td>
                           <td className="p-2 border-l border-slate-200 text-center text-slate-600">{item.unit || 'عدد'}</td>
                           <td className="p-2 border-l border-slate-200 text-left font-['Vazirmatn']">{formatPrice(item.unitPrice, '', true)}</td>
@@ -1131,6 +1143,14 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                     <div key={idx} className="flex justify-between items-start">
                       <div>
                         <div className="font-bold text-slate-800">{item.productName}</div>
+                        {item.variantName && (
+                          <div className="text-[9px] text-purple-700">تنوع: {item.variantName}</div>
+                        )}
+                        {(item.description || item.notes) && (
+                          <div className="text-[9.5px] text-slate-500 leading-snug">
+                            <span className="text-slate-400">توضیح: </span>{item.description || item.notes}
+                          </div>
+                        )}
                         <div className="text-[10px] text-slate-500 font-['Vazirmatn']">
                           {toPersianDigits(item.quantity)} × {formatPrice(item.unitPrice, '', true)}
                         </div>

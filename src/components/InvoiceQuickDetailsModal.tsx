@@ -304,6 +304,11 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                               </span>
                             )}
                           </div>
+                          {(item.description || item.notes) && (
+                            <div className="text-[11px] text-slate-600 mt-1 leading-snug">
+                              <span className="text-slate-400 font-medium">توضیح: </span>{item.description || item.notes}
+                            </div>
+                          )}
                         </td>
                         <td className="p-2.5 text-center font-mono font-bold text-slate-800">
                           {toPersianDigits(item.quantity)}

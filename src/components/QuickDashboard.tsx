@@ -382,23 +382,6 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
       });
     }
 
-    // Customer Deposit / Payment Recording (ثبت واریزی از مشتری)
-    if (canCustomers || canInvoice || canAdmin) {
-      list.push({
-        id: 'customer-deposit',
-        label: 'ثبت واریزی مشتری',
-        icon: Coins,
-        borderClass: 'border-emerald-200',
-        bgClass: 'bg-emerald-50',
-        textClass: 'text-emerald-600',
-        hoverBgClass: 'group-hover:bg-emerald-600',
-        hoverTextClass: 'group-hover:text-white',
-        hoverBorderClass: 'group-hover:border-emerald-600',
-        hoverLabelClass: 'group-hover:text-emerald-700',
-        onClick: () => setIsDepositPickerOpen(true),
-      });
-    }
-
     // Always include the "بیشتر امکانات" action button for accessing role-based features
     list.push({
       id: 'more-features',

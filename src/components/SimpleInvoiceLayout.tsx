@@ -193,21 +193,27 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
             }`}>
               <div className="grid grid-cols-[68px_1fr] items-start gap-1">
                 <span className="text-slate-600 font-medium">نام / برند:</span>
-                <span className="font-bold truncate">{settings.storeName} {settings.sellerName ? `(${settings.sellerName})` : ''}</span>
+                <span className="font-bold truncate">{invoice.sellerName || settings.storeName} {settings.sellerName && !invoice.sellerName ? `(${settings.sellerName})` : ''}</span>
               </div>
-              {(settings.economicCode || settings.nationalCode) && (
+              {(invoice.sellerEconomicCode || settings.economicCode) && (
                 <div className="grid grid-cols-[68px_1fr] items-start gap-1">
-                  <span className="text-slate-600 font-medium">کد ملی/اقتصادی:</span>
-                  <span className="font-bold font-['Vazirmatn']">{toPersianDigits(settings.economicCode || settings.nationalCode || '')}</span>
+                  <span className="text-slate-600 font-medium">کد اقتصادی:</span>
+                  <span className="font-bold font-['Vazirmatn'] font-mono">{toPersianDigits(invoice.sellerEconomicCode || settings.economicCode || '')}</span>
+                </div>
+              )}
+              {(invoice.sellerRegistrationNumber || settings.registrationNumber || invoice.sellerNationalCode || settings.nationalCode) && (
+                <div className="grid grid-cols-[68px_1fr] items-start gap-1">
+                  <span className="text-slate-600 font-medium">شماره ثبت/ملی:</span>
+                  <span className="font-bold font-['Vazirmatn'] font-mono">{toPersianDigits(invoice.sellerRegistrationNumber || settings.registrationNumber || invoice.sellerNationalCode || settings.nationalCode || '')}</span>
                 </div>
               )}
               <div className="grid grid-cols-[68px_1fr] items-start gap-1">
                 <span className="text-slate-600 font-medium">شماره تماس:</span>
-                <span className="font-bold font-['Vazirmatn']">{toPersianDigits(settings.phone || settings.mobile || '---')}</span>
+                <span className="font-bold font-['Vazirmatn'] font-mono">{toPersianDigits(invoice.sellerPhone || settings.phone || settings.mobile || '---')}</span>
               </div>
               <div className="grid grid-cols-[68px_1fr] items-start gap-1">
                 <span className="text-slate-600 font-medium">نشانی:</span>
-                <span className="truncate">{settings.address || '---'}</span>
+                <span className="truncate">{invoice.sellerAddress || settings.address || '---'}</span>
               </div>
             </div>
           </div>
@@ -288,6 +294,11 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
                     {item.variantName && (
                       <div className="text-[10px] text-slate-600 mt-0.5">
                         تنوع: <span className="font-semibold text-slate-800">{item.variantName}</span>
+                      </div>
+                    )}
+                    {(item.description || item.notes) && (
+                      <div className={`text-slate-600 font-normal mt-0.5 leading-snug whitespace-pre-wrap ${isA5 ? 'text-[8px]' : 'text-[9.5px]'}`}>
+                        <span className="text-slate-400 font-medium">توضیح: </span>{item.description || item.notes}
                       </div>
                     )}
                   </td>

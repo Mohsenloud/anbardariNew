@@ -447,6 +447,7 @@ const initialSettings: StoreSettings = {
   mobile: '۰۹۱۲۳۴۵۶۷۸۹',
   economicCode: '۴۱۱۴۸۷۹۵۴۳۲۱',
   nationalCode: '۱۰۱۰۹۸۷۶۵۴۳',
+  registrationNumber: '۵۴۳۲۱۰',
   address: 'تهران، خیابان ولیعصر، تقاطع طالقانی، مجتمع نور، واحد ۲۰۴',
   postalCode: '۱۴۱۵۸۳۳۶۵۴',
   invoiceFooterText: 'از خرید و اعتماد شما صمیمانه سپاسگزاریم. کالاهای دارای گارانتی تا ۲۴ ساعت پس از تحویل دارای مهلت تست سلامت می‌باشند.',
