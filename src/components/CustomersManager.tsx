@@ -296,7 +296,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+      <div className="flex flex-col gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
           <div className="flex items-center gap-2.5">
             <span className="p-2 rounded-xl bg-purple-50 text-purple-700">
@@ -309,7 +309,8 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 flex-wrap">
+        {/* Action Buttons Row Below Title */}
+        <div className="flex items-center gap-2 pt-3 border-t border-slate-100 flex-wrap">
           <button
             type="button"
             id="open-customer-statements-report-btn"
@@ -370,26 +371,26 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
 
       {/* Customer List Card */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-        {/* Search, Sort, Filter & View Mode Toolbar */}
-        <div className="p-3.5 sm:p-4 border-b border-slate-200/80 bg-slate-50/70 space-y-3">
+        {/* Search, Sort, Filter & View Mode Toolbar (Decluttered & Mobile-Optimized) */}
+        <div className="p-2.5 sm:p-3.5 border-b border-slate-200/80 bg-slate-50/70 space-y-2 sm:space-y-2.5">
           {/* Top Tier: Search, View Mode Toggle, and Sort */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-2.5">
             {/* Search Input */}
-            <div className="relative flex-1 max-w-md">
+            <div className="relative flex-1 min-w-0">
               <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 id="customer-search-input"
-                placeholder="جستجو در نام، شماره تلفن، کد ملی یا آدرس..."
+                placeholder="جستجوی مشتری (نام، شماره، کد ملی)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-xl pr-9 pl-8 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none transition-all"
+                className="w-full bg-white border border-slate-200/90 rounded-xl pr-9 pl-8 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none transition-all shadow-2xs"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 cursor-pointer"
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
                   title="پاک کردن جستجو"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -398,33 +399,33 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
             </div>
 
             {/* Right Controls: Sort & View Mode Switcher */}
-            <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+            <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
               {/* Sort Dropdown */}
-              <div className="relative w-36 sm:w-44">
+              <div className="relative flex-1 sm:flex-initial sm:w-40 min-w-0">
                 <select
                   id="customer-sort-select"
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="w-full appearance-none bg-white border border-slate-200 rounded-xl pr-7 pl-6 py-2 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none cursor-pointer"
+                  className="w-full appearance-none bg-white border border-slate-200/90 rounded-xl pr-7 pl-6 py-1.5 text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none cursor-pointer shadow-2xs truncate"
                 >
                   <option value="name-asc">نام (الفبا)</option>
                   <option value="debt-desc">بیشترین بدهی</option>
                   <option value="orders-desc">بیشترین سفارش</option>
-                  <option value="newest">جدیدترین مشتریان</option>
+                  <option value="newest">جدیدترین</option>
                 </select>
                 <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
 
               {/* View Mode Toggle Switcher */}
-              <div className="flex items-center bg-slate-200/80 p-0.5 rounded-xl border border-slate-300/60 text-xs">
+              <div className="flex items-center bg-slate-200/60 p-0.5 rounded-xl border border-slate-200/80 text-xs shadow-2xs shrink-0">
                 <button
                   type="button"
                   id="customers-view-table-btn"
                   onClick={() => handleToggleViewMode('table')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg font-medium text-xs transition-all cursor-pointer ${
                     viewMode === 'table'
-                      ? 'bg-white text-purple-800 shadow-2xs'
+                      ? 'bg-white text-purple-800 shadow-2xs font-bold'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                   title="نمایش ردیفی (جدولی)"
@@ -436,9 +437,9 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                   type="button"
                   id="customers-view-grid-btn"
                   onClick={() => handleToggleViewMode('grid')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg font-medium text-xs transition-all cursor-pointer ${
                     viewMode === 'grid'
-                      ? 'bg-white text-purple-800 shadow-2xs'
+                      ? 'bg-white text-purple-800 shadow-2xs font-bold'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                   title="نمایش کارتی"
@@ -450,18 +451,18 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
             </div>
           </div>
 
-          {/* Bottom Tier: Filter Chips & Summary Count */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/60">
-            {/* Filter Chips */}
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          {/* Bottom Tier: Streamlined Segmented Filter & Summary Count */}
+          <div className="flex items-center justify-between gap-2 pt-1.5 sm:pt-2 border-t border-slate-200/70 overflow-hidden">
+            {/* Unified Status Segmented Filter */}
+            <div className="flex items-center bg-slate-200/60 p-0.5 rounded-xl border border-slate-200/80 text-xs shadow-2xs overflow-x-auto no-scrollbar scroll-smooth flex-1 sm:flex-initial">
               <button
                 type="button"
                 id="filter-cust-all"
                 onClick={() => setStatusFilter('all')}
-                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                className={`px-2 sm:px-2.5 py-1 rounded-lg text-xs transition-all cursor-pointer whitespace-nowrap font-medium ${
                   statusFilter === 'all'
-                    ? 'bg-slate-900 text-white shadow-2xs'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                    ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 همه ({toPersianDigits(customers.length)})
@@ -471,14 +472,16 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                 type="button"
                 id="filter-cust-debtors"
                 onClick={() => setStatusFilter('debtors')}
-                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`px-2 sm:px-2.5 py-1 rounded-lg text-xs transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap font-medium ${
                   statusFilter === 'debtors'
-                    ? 'bg-rose-600 text-white shadow-2xs'
-                    : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
+                    ? 'bg-rose-600 text-white shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <span>دارای بدهی</span>
-                <span className="bg-white/30 text-current px-1.5 py-0.2 rounded-full text-[10px] font-mono">
+                <span>بدهکاران</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                  statusFilter === 'debtors' ? 'bg-white/25 text-white' : 'bg-rose-100 text-rose-700'
+                }`}>
                   {toPersianDigits(totalDebtorsCount)}
                 </span>
               </button>
@@ -487,14 +490,16 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                 type="button"
                 id="filter-cust-creditors"
                 onClick={() => setStatusFilter('creditors')}
-                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`px-2 sm:px-2.5 py-1 rounded-lg text-xs transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap font-medium ${
                   statusFilter === 'creditors'
-                    ? 'bg-blue-600 text-white shadow-2xs'
-                    : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
+                    ? 'bg-blue-600 text-white shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <span>بستانکاران</span>
-                <span className="bg-white/30 text-current px-1.5 py-0.2 rounded-full text-[10px] font-mono">
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                  statusFilter === 'creditors' ? 'bg-white/25 text-white' : 'bg-blue-100 text-blue-700'
+                }`}>
                   {toPersianDigits(totalCreditorsCount)}
                 </span>
               </button>
@@ -503,22 +508,24 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                 type="button"
                 id="filter-cust-settled"
                 onClick={() => setStatusFilter('settled')}
-                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`px-2 sm:px-2.5 py-1 rounded-lg text-xs transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap font-medium ${
                   statusFilter === 'settled'
-                    ? 'bg-emerald-600 text-white shadow-2xs'
-                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                    ? 'bg-emerald-600 text-white shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <span>تسویه‌شده</span>
-                <span className="bg-white/30 text-current px-1.5 py-0.2 rounded-full text-[10px] font-mono">
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                  statusFilter === 'settled' ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-700'
+                }`}>
                   {toPersianDigits(totalSettledCount)}
                 </span>
               </button>
             </div>
 
             {/* Total Counter */}
-            <div className="text-[11px] text-slate-500 font-medium">
-              نمایش <strong className="text-slate-800 font-mono">{toPersianDigits(filteredCustomers.length)}</strong> از <strong className="text-slate-800 font-mono">{toPersianDigits(customers.length)}</strong> مشتری
+            <div className="text-[10px] sm:text-[11px] text-slate-500 font-medium shrink-0 whitespace-nowrap hidden sm:block">
+              نمایش <strong className="text-slate-800 font-mono">{toPersianDigits(filteredCustomers.length)}</strong> از <strong className="text-slate-800 font-mono">{toPersianDigits(customers.length)}</strong>
             </div>
           </div>
         </div>

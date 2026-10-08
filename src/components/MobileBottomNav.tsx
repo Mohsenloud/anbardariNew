@@ -19,7 +19,8 @@ import {
   LogOut,
   X,
   RefreshCw,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Menu
 } from 'lucide-react';
 
 interface MobileBottomNavProps {
@@ -30,6 +31,7 @@ interface MobileBottomNavProps {
   currentUser?: AppUser;
   onNewInvoice?: () => void;
   onLogout?: () => void;
+  onOpenSidebar?: () => void;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -40,6 +42,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   currentUser,
   onNewInvoice,
   onLogout,
+  onOpenSidebar,
 }) => {
   const safeSettings = settings || StorageService.getSettings();
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -107,11 +110,15 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         ]
       : []),
     {
-      id: 'more',
-      label: 'بیشتر',
-      icon: MoreHorizontal,
+      id: 'sidebar',
+      label: 'سایدبار',
+      icon: Menu,
       onClick: () => {
-        setShowMoreMenu((prev) => !prev);
+        if (onOpenSidebar) {
+          onOpenSidebar();
+        } else {
+          setShowMoreMenu((prev) => !prev);
+        }
       },
     },
   ];

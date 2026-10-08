@@ -896,90 +896,88 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
       {/* Top Header Card (Desktop & Tablet) */}
       <div className="hidden sm:flex flex-col gap-4 bg-white p-5 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs">
-        {/* Top Tier: Title, Description & Action Buttons */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="p-2.5 rounded-2xl bg-blue-50 text-blue-700 shrink-0 shadow-2xs">
-              <PackageCheck className="w-6 h-6" />
-            </span>
-            <div>
-              <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-tight">
-                مدیریت انبار و موجودی کالاها
-              </h2>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                کنترل لحظه‌ای موجودی، برگه‌های خروج انبارداری (حواله تحویل)، رسید ورود و تاریخچه گردش کالا
-              </p>
-            </div>
+        {/* Top Tier: Title & Description */}
+        <div className="flex items-center gap-3">
+          <span className="p-2.5 rounded-2xl bg-blue-50 text-blue-700 shrink-0 shadow-2xs">
+            <PackageCheck className="w-6 h-6" />
+          </span>
+          <div>
+            <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-tight">
+              مدیریت انبار و موجودی کالاها
+            </h2>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              کنترل لحظه‌ای موجودی، برگه‌های خروج انبارداری (حواله تحویل)، رسید ورود و تاریخچه گردش کالا
+            </p>
           </div>
+        </div>
 
-          {/* Action Buttons (Stats Modal, Categories, Excel Export/Import & New Product) */}
-          <div className="flex flex-wrap items-center gap-2 shrink-0 self-start md:self-auto">
-            {/* Warehouse Stats Summary Button */}
-            <button
-              type="button"
-              id="open-inventory-stats-modal-btn"
-              onClick={() => setIsStatsModalOpen(true)}
-              title="مشاهده آمار جامع موجودی، کسری‌ها و برگه‌های خروج در پنجره جداگانه"
-              className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 active:scale-95 text-blue-900 border border-blue-200/90 hover:border-blue-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-            >
-              <BarChart3 className="w-4 h-4 text-blue-600" />
-              <span>خلاصه آمار انبار</span>
-              {lowStockCount > 0 && (
-                <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full shadow-2xs">
-                  {toPersianDigits(lowStockCount)} کسری
-                </span>
-              )}
-            </button>
-
-            {/* Category Management Button */}
-            <button
-              type="button"
-              id="manage-categories-btn"
-              onClick={() => setIsCategoryModalOpen(true)}
-              title="مدیریت و تعریف دسته‌بندی‌های محصولات (قطعات، لوازم جانبی و...)"
-              className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 active:scale-95 text-indigo-900 border border-indigo-200/90 hover:border-indigo-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-            >
-              <FolderTree className="w-4 h-4 text-indigo-600" />
-              <span>دسته‌بندی‌ها</span>
-              <span className="bg-indigo-200/70 text-indigo-900 text-[10px] font-mono px-1.5 py-0.2 rounded-full font-bold">
-                {toPersianDigits(categories.length)}
+        {/* Action Buttons Row Below Title (Stats Modal, Categories, Excel Export/Import & New Product) */}
+        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100">
+          {/* Warehouse Stats Summary Button */}
+          <button
+            type="button"
+            id="open-inventory-stats-modal-btn"
+            onClick={() => setIsStatsModalOpen(true)}
+            title="مشاهده آمار جامع موجودی، کسری‌ها و برگه‌های خروج در پنجره جداگانه"
+            className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 active:scale-95 text-blue-900 border border-blue-200/90 hover:border-blue-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+          >
+            <BarChart3 className="w-4 h-4 text-blue-600" />
+            <span>خلاصه آمار انبار</span>
+            {lowStockCount > 0 && (
+              <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full shadow-2xs">
+                {toPersianDigits(lowStockCount)} کسری
               </span>
-            </button>
+            )}
+          </button>
 
-            {/* Excel Export */}
-            <button
-              type="button"
-              id="export-inventory-excel-btn"
-              onClick={() => exportProductsToExcel(products)}
-              title="خروجی فایل اکسل از همه کالاها و تنوع‌ها"
-              className="flex items-center gap-1.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 border border-slate-200/90 hover:border-slate-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-            >
-              <Download className="w-4 h-4 text-slate-500" />
-              <span>خروجی اکسل</span>
-            </button>
+          {/* Category Management Button */}
+          <button
+            type="button"
+            id="manage-categories-btn"
+            onClick={() => setIsCategoryModalOpen(true)}
+            title="مدیریت و تعریف دسته‌بندی‌های محصولات (قطعات، لوازم جانبی و...)"
+            className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 active:scale-95 text-indigo-900 border border-indigo-200/90 hover:border-indigo-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+          >
+            <FolderTree className="w-4 h-4 text-indigo-600" />
+            <span>دسته‌بندی‌ها</span>
+            <span className="bg-indigo-200/70 text-indigo-900 text-[10px] font-mono px-1.5 py-0.2 rounded-full font-bold">
+              {toPersianDigits(categories.length)}
+            </span>
+          </button>
 
-            {/* Excel Import */}
-            <button
-              type="button"
-              id="import-inventory-excel-btn"
-              onClick={() => setIsImportModalOpen(true)}
-              title="ورود کالاها و تنوع‌ها از فایل اکسل"
-              className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-800 border border-emerald-200 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-              <span>ورود از اکسل</span>
-            </button>
+          {/* Excel Export */}
+          <button
+            type="button"
+            id="export-inventory-excel-btn"
+            onClick={() => exportProductsToExcel(products)}
+            title="خروجی فایل اکسل از همه کالاها و تنوع‌ها"
+            className="flex items-center gap-1.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 border border-slate-200/90 hover:border-slate-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+          >
+            <Download className="w-4 h-4 text-slate-500" />
+            <span>خروجی اکسل</span>
+          </button>
 
-            {/* New Product */}
-            <button
-              id="add-new-product-btn"
-              onClick={handleOpenNewProduct}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200/80 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>کالای جدید</span>
-            </button>
-          </div>
+          {/* Excel Import */}
+          <button
+            type="button"
+            id="import-inventory-excel-btn"
+            onClick={() => setIsImportModalOpen(true)}
+            title="ورود کالاها و تنوع‌ها از فایل اکسل"
+            className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-800 border border-emerald-200 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>ورود از اکسل</span>
+          </button>
+
+          {/* New Product */}
+          <button
+            id="add-new-product-btn"
+            onClick={handleOpenNewProduct}
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200/80 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>کالای جدید</span>
+          </button>
         </div>
 
         {/* Bottom Tier: Sub-Tab Navigation Bar */}
@@ -1119,30 +1117,40 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       {activeSubTab === 'items' && (
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
           {/* Filters Bar */}
-          <div className="p-4 border-b border-slate-200/80 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between bg-slate-50/60">
+          <div className="p-2.5 sm:p-3.5 border-b border-slate-200/80 bg-slate-50/70 flex flex-col md:flex-row gap-2 sm:gap-2.5 md:gap-3 items-stretch md:items-center justify-between">
             {/* Search */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+            <div className="relative flex-1 max-w-sm">
+              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 id="inventory-search-input"
-                placeholder="جستجو در نام یا کد کالا..."
+                placeholder="جستجو در کالاها (نام یا کد)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-xl pr-9 pl-4 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                className="w-full bg-white border border-slate-200/90 rounded-xl pr-9 pl-8 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all shadow-2xs"
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-0.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="پاک کردن جستجو"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
-            {/* Category & Stock Status Selectors */}
-            <div className="flex flex-wrap items-center gap-2.5">
-              <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5">
-                <Filter className="w-3.5 h-3.5 text-slate-400" />
-                <span>دسته:</span>
+            {/* Category & Status & Layout Controls Group */}
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              {/* Category Dropdown (Compact) */}
+              <div className="flex items-center gap-1 text-xs text-slate-600 bg-white border border-slate-200/90 rounded-xl px-2 py-1.5 shadow-2xs">
+                <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <select
                   id="inventory-category-select"
                   value={selectedCategory}
                   onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="bg-transparent font-medium text-slate-800 outline-none cursor-pointer"
+                  className="bg-transparent font-medium text-slate-700 outline-none cursor-pointer text-xs max-w-[130px] sm:max-w-none truncate"
                 >
                   <option value="all">همه دسته‌ها ({toPersianDigits(products.length)})</option>
                   {categories.map((c) => (
@@ -1153,13 +1161,13 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                 </select>
               </div>
 
-              {/* Status Pills */}
-              <div className="flex bg-white border border-slate-200 rounded-xl p-1 text-xs">
+              {/* Status Pills (Compact Segmented) */}
+              <div className="flex bg-slate-200/60 border border-slate-200/80 rounded-xl p-0.5 text-xs shadow-2xs overflow-x-auto no-scrollbar">
                 <button
                   id="filter-stock-all"
                   onClick={() => setStockStatusFilter('all')}
-                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                    stockStatusFilter === 'all' ? 'bg-slate-900 text-white font-medium' : 'text-slate-600 hover:text-slate-900'
+                  className={`px-2 py-1 rounded-lg transition-all cursor-pointer font-medium whitespace-nowrap ${
+                    stockStatusFilter === 'all' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   همه
@@ -1167,8 +1175,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                 <button
                   id="filter-stock-in"
                   onClick={() => setStockStatusFilter('in_stock')}
-                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                    stockStatusFilter === 'in_stock' ? 'bg-emerald-600 text-white font-medium' : 'text-slate-600 hover:text-slate-900'
+                  className={`px-2 py-1 rounded-lg transition-all cursor-pointer font-medium whitespace-nowrap ${
+                    stockStatusFilter === 'in_stock' ? 'bg-emerald-600 text-white shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   موجود
@@ -1176,8 +1184,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                 <button
                   id="filter-stock-low"
                   onClick={() => setStockStatusFilter('low_stock')}
-                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                    stockStatusFilter === 'low_stock' ? 'bg-amber-600 text-white font-medium' : 'text-slate-600 hover:text-slate-900'
+                  className={`px-2 py-1 rounded-lg transition-all cursor-pointer font-medium whitespace-nowrap ${
+                    stockStatusFilter === 'low_stock' ? 'bg-amber-500 text-white shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   رو به اتمام
@@ -1185,36 +1193,37 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                 <button
                   id="filter-stock-out"
                   onClick={() => setStockStatusFilter('out_of_stock')}
-                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                    stockStatusFilter === 'out_of_stock' ? 'bg-rose-600 text-white font-medium' : 'text-slate-600 hover:text-slate-900'
+                  className={`px-2 py-1 rounded-lg transition-all cursor-pointer font-medium whitespace-nowrap ${
+                    stockStatusFilter === 'out_of_stock' ? 'bg-rose-600 text-white shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   ناموجود
                 </button>
               </div>
-              {/* Layout Mode Switcher (تک ردیفه / دو ردیفه) */}
-              <div className="flex bg-slate-100 p-0.5 border border-slate-200 rounded-xl text-xs gap-1">
+
+              {/* Layout Mode Switcher (Clean & Compact) */}
+              <div className="flex bg-slate-200/60 border border-slate-200/80 rounded-xl p-0.5 text-xs shadow-2xs shrink-0">
                 <button
                   type="button"
                   id="view-mode-single-row"
                   onClick={() => handleSetProductTableView('single_row')}
-                  className={`px-2.5 py-1 rounded-lg transition-all font-bold cursor-pointer flex items-center gap-1.5 ${
+                  className={`px-2 py-1 rounded-lg transition-all font-medium cursor-pointer flex items-center gap-1 ${
                     productTableView === 'single_row'
-                      ? 'bg-white text-indigo-700 shadow-xs'
+                      ? 'bg-white text-indigo-700 shadow-2xs font-bold'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
-                  title="جدول تک‌ردیفه (فقط نام و دسته‌بندی با دکمه مشاهده اطلاعات کامل)"
+                  title="جدول تک‌ردیفه (نام و دسته‌بندی)"
                 >
                   <FileText className="w-3.5 h-3.5" />
-                  <span>تک‌ردیفه (نام و دسته)</span>
+                  <span>تک‌ردیفه</span>
                 </button>
                 <button
                   type="button"
                   id="view-mode-double-row"
                   onClick={() => handleSetProductTableView('double_row')}
-                  className={`px-2.5 py-1 rounded-lg transition-all font-bold cursor-pointer flex items-center gap-1.5 ${
+                  className={`px-2 py-1 rounded-lg transition-all font-medium cursor-pointer flex items-center gap-1 ${
                     productTableView === 'double_row'
-                      ? 'bg-white text-indigo-700 shadow-xs'
+                      ? 'bg-white text-indigo-700 shadow-2xs font-bold'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                   title="نمای دو ردیفه فشرده"

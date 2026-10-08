@@ -46,7 +46,8 @@ import {
   Info,
   RefreshCw,
   Building2,
-  ExternalLink
+  ExternalLink,
+  Menu
 } from 'lucide-react';
 import { StorageService } from '../utils/storage';
 import { broadcastLivePreview } from '../utils/livePreviewSync';
@@ -68,6 +69,7 @@ interface InvoiceBuilderProps {
   onAddNewCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => Customer;
   onSaveProduct?: (product: Product) => void;
   onCancel?: () => void;
+  onToggleSidebar?: () => void;
 }
 
 export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
@@ -81,6 +83,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   onAddNewCustomer,
   onSaveProduct,
   onCancel,
+  onToggleSidebar,
 }) => {
   const isEditing = !!editingInvoice;
 
@@ -1263,10 +1266,22 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       >
         {/* ================= 1. TOP HEADER (TWO ROWS ON MOBILE) ================= */}
         <div className="border-b border-slate-200/90 bg-white sticky top-0 z-20 shrink-0 shadow-2xs">
-          {/* Row 1: Back Button, Title, Invoice # & Type Switcher */}
+          {/* Row 1: Back Button, Hamburger, Title, Invoice # & Type Switcher */}
           <div className="flex items-center justify-between px-3 pt-2.5 pb-2 border-b border-slate-100/80">
             {/* Title & Document Identity */}
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              {onToggleSidebar && (
+                <button
+                  type="button"
+                  id="invoice-mobile-hamburger-btn"
+                  onClick={onToggleSidebar}
+                  title="منوی سایدبار برنامه"
+                  aria-label="دکمه همبرگری سایدبار"
+                  className="w-8 h-8 rounded-xl border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-700 transition-colors shrink-0 cursor-pointer active:scale-95"
+                >
+                  <Menu className="w-4 h-4" />
+                </button>
+              )}
               {onCancel && (
                 <button
                   type="button"

@@ -9,6 +9,7 @@ import { StorageService } from './utils/storage';
 import { getCurrentJalaliDate } from './utils/jalali';
 import { isTabPermitted, getDefaultTabForUser, getRoleBadgeConfig } from './utils/permissions';
 import { Header } from './components/Header';
+import { Sidebar } from './components/Sidebar';
 import { InvoiceBuilder } from './components/InvoiceBuilder';
 import { InvoicesList } from './components/InvoicesList';
 import { InventoryManager } from './components/InventoryManager';
@@ -117,6 +118,38 @@ export default function App() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [loginTargetUser, setLoginTargetUser] = useState<AppUser | null>(null);
   const [toastMessage, setToastMessage] = useState<string>('');
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
+  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('sepehr_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleSidebar = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setIsMobileSidebarOpen((prev) => !prev);
+    } else {
+      setIsDesktopSidebarCollapsed((prev) => {
+        const next = !prev;
+        try {
+          localStorage.setItem('sepehr_sidebar_collapsed', String(next));
+        } catch {}
+        return next;
+      });
+    }
+  };
+
+  const handleToggleDesktopSidebarCollapse = () => {
+    setIsDesktopSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('sepehr_sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   // Load initial data - preserves authenticated user session across page reloads
   const loadData = (preserveCurrentUser = true) => {
@@ -1573,7 +1606,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col selection:bg-emerald-500 selection:text-white">
+    <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-row selection:bg-emerald-500 selection:text-white">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="no-print fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-50 flex items-center gap-2.5 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-xl border border-slate-700 animate-bounce max-w-[90vw]">
@@ -1582,13 +1615,13 @@ export default function App() {
         </div>
       )}
 
-      {/* Main App Header */}
-      <Header
+      {/* Main App Navigation Sidebar (Desktop sticky & Mobile Drawer) */}
+      <Sidebar
         settings={settings}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         lowStockCount={lowStockCount}
-        currentUser={currentUser || undefined}
+        currentUser={currentUser}
         users={users}
         onSwitchUser={handleSwitchUser}
         onRequestLogin={handleRequestLogin}
@@ -1598,7 +1631,32 @@ export default function App() {
           setActiveTab('new-invoice');
         }}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        isOpenMobile={isMobileSidebarOpen}
+        onCloseMobile={() => setIsMobileSidebarOpen(false)}
+        isCollapsedDesktop={isDesktopSidebarCollapsed}
+        onToggleCollapseDesktop={handleToggleDesktopSidebarCollapse}
       />
+
+      {/* Main Application Area (Header + Content Views + Modals) */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+        {/* Main App Header */}
+        <Header
+          settings={settings}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          lowStockCount={lowStockCount}
+          currentUser={currentUser || undefined}
+          users={users}
+          onSwitchUser={handleSwitchUser}
+          onRequestLogin={handleRequestLogin}
+          onLogout={handleLogout}
+          onOpenNewInvoice={() => {
+            setEditingInvoice(null);
+            setActiveTab('new-invoice');
+          }}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onToggleSidebar={handleToggleSidebar}
+        />
 
       {/* Main Body Content View - Consistent Layout & Padding Across All Tabs */}
       <main className={`flex-1 max-w-7xl w-full mx-auto ${
@@ -1652,6 +1710,7 @@ export default function App() {
             customers={customers}
             settings={settings}
             editingInvoice={editingInvoice}
+            onToggleSidebar={handleToggleSidebar}
             onSaveInvoice={handleSaveInvoice}
             onUpdateInvoice={handleUpdateInvoice}
             onAddNewCustomer={handleAddNewCustomerQuick}
@@ -1882,7 +1941,9 @@ export default function App() {
           setActiveTab('new-invoice');
         }}
         onLogout={handleLogout}
+        onOpenSidebar={() => setIsMobileSidebarOpen(true)}
       />
+      </div>
     </div>
   );
 }

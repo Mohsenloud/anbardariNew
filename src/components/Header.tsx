@@ -38,6 +38,7 @@ interface HeaderProps {
   onLogout?: () => void;
   onOpenNewInvoice: () => void;
   onOpenSettings: () => void;
+  onToggleSidebar?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -52,34 +53,29 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   onOpenNewInvoice,
   onOpenSettings,
+  onToggleSidebar,
 }) => {
   const safeSettings = settings || StorageService.getSettings();
   const currentDate = getCurrentJalaliDate();
   const currentTime = getCurrentJalaliTime();
 
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close menus on click outside or escape key
+  // Close user menu on click outside or escape key
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsMenuOpen(false);
-      }
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setIsUserMenuOpen(false);
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setIsMenuOpen(false);
         setIsUserMenuOpen(false);
       }
     };
 
-    if (isMenuOpen || isUserMenuOpen) {
+    if (isUserMenuOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('keydown', handleKeyDown);
     }
@@ -87,277 +83,55 @@ export const Header: React.FC<HeaderProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isMenuOpen, isUserMenuOpen]);
-
-  const allNavItems = [
-    { 
-      id: 'dashboard', 
-      label: 'داشبورد', 
-      description: 'پیشخوان جامع، دسترسی سریع، آمار روز و وضعیت انبار',
-      icon: LayoutDashboard, 
-      enabled: isTabPermitted('dashboard', currentUser, safeSettings),
-      onClick: () => {
-        setActiveTab('dashboard');
-        setIsMenuOpen(false);
-      }
-    },
-    { 
-      id: 'new-invoice', 
-      label: 'صدور فاکتور جدید', 
-      description: 'ثبت سریع فاکتور فروشگاهی، رسمی یا حرارتی',
-      icon: PlusCircle, 
-      isPrimary: true, 
-      enabled: isTabPermitted('new-invoice', currentUser, safeSettings),
-      onClick: () => {
-        onOpenNewInvoice();
-        setIsMenuOpen(false);
-      }
-    },
-    { 
-      id: 'invoices', 
-      label: 'لیست فاکتورها', 
-      description: 'مشاهده، چاپ، اشتراک‌گذاری و جستجوی فاکتورها',
-      icon: ReceiptText, 
-      enabled: isTabPermitted('invoices', currentUser, safeSettings),
-      onClick: () => {
-        setActiveTab('invoices');
-        setIsMenuOpen(false);
-      }
-    },
-    { 
-      id: 'purchases', 
-      label: 'فاکتورهای خرید', 
-      description: 'ثبت فاکتور خرید کالا، تامین‌کنندگان و ورود به انبار',
-      icon: ShoppingCart, 
-      enabled: isTabPermitted('purchases', currentUser, safeSettings),
-      onClick: () => {
-        setActiveTab('purchases');
-        setIsMenuOpen(false);
-      }
-    },
-    { 
-      id: 'inventory', 
-      label: 'مدیریت انبار و کالا', 
-      description: 'کنترل موجودی، کاردکس و گردش کالاها',
-      icon: Boxes, 
-      badge: lowStockCount > 0 ? lowStockCount : undefined,
-      enabled: isTabPermitted('inventory', currentUser, safeSettings),
-      onClick: () => {
-        setActiveTab('inventory');
-        setIsMenuOpen(false);
-      }
-    },
-    { 
-      id: 'customers', 
-      label: 'مشتریان', 
-      description: 'پرونده مشتریان، سابقه خرید و مانده‌حساب',
-      icon: Users,
-      enabled: isTabPermitted('customers', currentUser, safeSettings),
-      onClick: () => {
-        setActiveTab('customers');
-        setIsMenuOpen(false);
-      }
-    },
-    { 
-      id: 'reports', 
-      label: 'گزارشات و سود', 
-      description: 'آمار مالی، سود ناخالص و کالاهای پرفروش',
-      icon: BarChart3,
-      enabled: isTabPermitted('reports', currentUser, safeSettings),
-      onClick: () => {
-        setActiveTab('reports');
-        setIsMenuOpen(false);
-      }
-    },
-    { 
-      id: 'admin', 
-      label: 'پنل مدیریت', 
-      description: 'تنظیمات جامع سیستم، کاربران و پشتیبان‌گیری',
-      icon: ShieldCheck, 
-      enabled: isTabPermitted('admin', currentUser, safeSettings),
-      onClick: () => {
-        setActiveTab('admin');
-        setIsMenuOpen(false);
-      }
-    },
-  ];
-
-  const navItems = allNavItems.filter(item => item.enabled);
-  const currentActiveItem = navItems.find(item => item.id === activeTab) || navItems[0];
-  const ActiveIcon = currentActiveItem?.icon || Menu;
+  }, [isUserMenuOpen]);
 
   return (
-    <header className={`no-print bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs ${(activeTab === 'dashboard' || activeTab === 'new-invoice') ? 'hidden sm:block' : ''}`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-3">
-          {/* Logo & Store Info */}
-          <div className="flex items-center gap-3 min-w-0" title={safeSettings?.storeName || 'سیستم فاکتور و انبارداری'}>
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-md shadow-emerald-200 shrink-0">
-              <FileSpreadsheet className="w-6 h-6" />
-            </div>
-            <div className="hidden sm:block min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-base sm:text-lg text-slate-800 tracking-tight truncate">
-                  {safeSettings?.appName || safeSettings?.storeName || 'سیستم فاکتور و انبارداری'}
-                </h1>
-                {safeSettings?.showStoreEditionBadge !== false && (
-                  <span className="hidden md:inline-block text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
-                    نسخه فروشگاهی
-                  </span>
-                )}
+    <header className={`no-print bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs ${activeTab === 'new-invoice' ? 'hidden lg:block' : ''}`}>
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 gap-2 sm:gap-3">
+          {/* Right Section: Hamburger Button + Logo & Store Info */}
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            {/* Mobile & Quick Hamburger Button (دکمه همبرگری سایدبار) */}
+            <button
+              type="button"
+              id="header-hamburger-btn"
+              onClick={onToggleSidebar}
+              title="باز کردن منوی سایدبار برنامه"
+              aria-label="دکمه همبرگری منوی سایدبار"
+              className="flex items-center justify-center w-10 h-10 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 active:scale-95 transition-all cursor-pointer border border-slate-200/90 shadow-2xs shrink-0"
+            >
+              <Menu className="w-5 h-5 stroke-[2.3]" />
+            </button>
+
+            {/* Logo & Store Info */}
+            <div 
+              onClick={() => setActiveTab('dashboard')}
+              className="flex items-center gap-2.5 min-w-0 cursor-pointer" 
+              title={safeSettings?.storeName || 'سیستم فاکتور و انبارداری'}
+            >
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-md shadow-emerald-200 shrink-0">
+                <FileSpreadsheet className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
-              <p className="text-xs text-slate-500 hidden lg:block truncate">
-                {safeSettings?.tagline || 'صدور فاکتور رسمی و کنترل بلادرنگ موجودی انبار'}
-              </p>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <h1 className="font-extrabold text-sm sm:text-base md:text-lg text-slate-800 tracking-tight truncate">
+                    {safeSettings?.appName || safeSettings?.storeName || 'سیستم فاکتور و انبارداری'}
+                  </h1>
+                  {safeSettings?.showStoreEditionBadge !== false && (
+                    <span className="hidden sm:inline-block text-[10px] sm:text-[11px] font-semibold px-1.5 sm:px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                      نسخه فروشگاهی
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-400 hidden md:block truncate">
+                  {safeSettings?.tagline || 'صدور فاکتور رسمی و کنترل بلادرنگ موجودی انبار'}
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Center / Action Area: The Unified Menu Button */}
+          {/* Left Action Area: Clock & User Switcher */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Unified Menu Button & Dropdown */}
-            <div className="relative" ref={menuRef}>
-              <button
-                type="button"
-                id="header-unified-menu-btn"
-                onClick={() => setIsMenuOpen(prev => !prev)}
-                title={`بخش جاری: ${currentActiveItem?.label}`}
-                className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer border ${
-                  isMenuOpen
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-200 ring-2 ring-emerald-200'
-                    : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200/90 shadow-xs hover:border-slate-300'
-                }`}
-                aria-expanded={isMenuOpen}
-                aria-haspopup="true"
-              >
-                <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${
-                  isMenuOpen ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-700'
-                }`}>
-                  <ActiveIcon className="w-4 h-4" />
-                </div>
-                
-                <div className="hidden sm:flex items-center gap-1.5">
-                  <span className="text-xs font-medium text-slate-500 hidden md:inline">
-                    بخش جاری:
-                  </span>
-                  <span className={`${isMenuOpen ? 'text-white' : 'text-slate-900'} font-bold`}>
-                    {currentActiveItem?.label}
-                  </span>
-                </div>
-
-                {/* Badge if inventory has low stock alerts */}
-                {lowStockCount > 0 && (
-                  <span 
-                    title={`${lowStockCount} قلم کالای کم‌موجود`}
-                    className={`text-[11px] font-black rounded-full px-1.5 py-0.5 flex items-center justify-center leading-none ${
-                      isMenuOpen ? 'bg-amber-400 text-slate-950' : 'bg-amber-500 text-white'
-                    }`}
-                  >
-                    {lowStockCount}
-                  </span>
-                )}
-
-                <ChevronDown className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform duration-200 ${
-                  isMenuOpen ? 'rotate-180 text-white' : 'text-slate-400'
-                }`} />
-              </button>
-
-              {/* Dropdown Menu Container */}
-              {isMenuOpen && (
-                <>
-                  {/* Backdrop for Mobile */}
-                  <div
-                    className="fixed inset-0 bg-slate-900/40 backdrop-blur-2xs z-40 sm:hidden animate-in fade-in duration-150"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsMenuOpen(false);
-                    }}
-                    aria-hidden="true"
-                  />
-                  <div
-                    id="header-dropdown-popover"
-                    className="fixed inset-x-3 top-[68px] sm:absolute sm:top-full sm:mt-2 sm:right-0 sm:left-auto sm:inset-x-auto w-auto max-w-sm sm:max-w-none sm:w-80 mx-auto sm:mx-0 bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 p-2.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col max-h-[calc(100vh-84px)] overflow-hidden"
-                    role="menu"
-                  >
-                    <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between shrink-0">
-                      <div>
-                        <span className="text-xs font-black text-slate-800 block">
-                          منوی بخش‌های سیستم
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          جهت جابجایی بین قسمت‌ها کلیک کنید
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsMenuOpen(false)}
-                        className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
-                        title="بستن منو"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <div className="py-1.5 space-y-1 flex-1 overflow-y-auto">
-                      {navItems.map((item) => {
-                        const Icon = item.icon;
-                        const isActive = activeTab === item.id;
-                        const isPrimaryAction = item.id === 'new-invoice';
-
-                        return (
-                          <button
-                            key={item.id}
-                            id={`dropdown-menu-item-${item.id}`}
-                            type="button"
-                            onClick={item.onClick}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-right transition-all cursor-pointer group ${
-                              isActive
-                                ? 'bg-emerald-50 text-emerald-900 border border-emerald-200 font-semibold shadow-xs'
-                                : isPrimaryAction
-                                ? 'bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-800'
-                                : 'text-slate-700 hover:bg-slate-100/80 hover:text-slate-900'
-                            }`}
-                            role="menuitem"
-                          >
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                              isActive
-                                ? 'bg-emerald-600 text-white'
-                                : isPrimaryAction
-                                ? 'bg-emerald-600 text-white'
-                                : 'bg-slate-100 text-slate-600 group-hover:bg-slate-200 group-hover:text-slate-900'
-                            }`}>
-                              <Icon className="w-4 h-4" />
-                            </div>
-
-                            <div className="flex-1 min-w-0 text-right">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className={`text-xs font-bold ${
-                                  isActive ? 'text-emerald-900' : 'text-slate-800'
-                                }`}>
-                                  {item.label}
-                                </span>
-                                {item.badge !== undefined && (
-                                  <span className="bg-amber-500 text-white text-[10px] font-black rounded-full px-1.5 py-0.2 shrink-0">
-                                    {item.badge} هشدار
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-[10px] text-slate-400 truncate mt-0.5">
-                                {item.description}
-                              </p>
-                            </div>
-
-                            {isActive && (
-                              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
             {/* Current Date & Clock (on wider screens) */}
             {safeSettings?.showHeaderClock !== false && (
               <div className="hidden xl:flex flex-col items-end text-xs text-slate-500 bg-slate-50 border border-slate-200/80 px-3 py-1.5 rounded-lg">
