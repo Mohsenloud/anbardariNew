@@ -355,7 +355,10 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
                 </span>
               </div>
               {invoice.notes && (
-                <p><strong>توضیحات:</strong> {invoice.notes}</p>
+                <div className="text-slate-800 leading-relaxed whitespace-pre-line">
+                  <strong>توضیحات:</strong>
+                  <p className="mt-0.5 whitespace-pre-line font-medium leading-relaxed">{invoice.notes}</p>
+                </div>
               )}
               {settings.printLayout?.showTermsBlock !== false && (
                 <p className="text-slate-500 leading-relaxed text-[9.5px]">
@@ -430,7 +433,10 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
                   </div>
 
                   {invoice.notes && (
-                    <p className="mt-1"><strong>توضیحات:</strong> {invoice.notes}</p>
+                    <div className="mt-1 text-slate-800 leading-relaxed whitespace-pre-line">
+                      <strong>توضیحات:</strong>
+                      <p className="mt-0.5 whitespace-pre-line font-medium leading-relaxed">{invoice.notes}</p>
+                    </div>
                   )}
                 </div>
                 {settings.printLayout?.showTermsBlock !== false && (

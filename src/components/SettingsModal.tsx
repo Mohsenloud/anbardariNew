@@ -389,54 +389,108 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   />
                 </div>
 
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">کد اقتصادی (فاکتور رسمی)</label>
-                  <input
-                    type="text"
-                    id="settings-economic-code"
-                    value={formData.economicCode}
-                    onChange={(e) => setFormData({ ...formData, economicCode: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono text-left"
-                    dir="ltr"
-                    placeholder="۱۲ رقم"
-                  />
-                </div>
+                {/* بخش ویژه اطلاعات فروشنده رسمی */}
+                <div className="sm:col-span-2 p-3.5 bg-gradient-to-r from-emerald-50/90 to-teal-50/80 rounded-2xl border-2 border-emerald-300/80 space-y-3">
+                  <div className="flex items-center justify-between border-b border-emerald-200 pb-2">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-emerald-700" />
+                      <span className="font-black text-slate-900 text-xs">
+                        مشخصات فروشنده رسمی (جهت درج در بالای فاکتورهای رسمی دارایی)
+                      </span>
+                    </div>
+                    <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-md">
+                      الزامی برای فاکتور رسمی
+                    </span>
+                  </div>
 
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">شماره ثبت شرکت / پروانه کسب</label>
-                  <input
-                    type="text"
-                    id="settings-registration-number"
-                    value={formData.registrationNumber || ''}
-                    onChange={(e) => setFormData({ ...formData, registrationNumber: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono text-left"
-                    dir="ltr"
-                    placeholder="شماره ثبت رسمی"
-                  />
-                </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block font-bold text-slate-850 mb-1">نام فروشنده رسمی / شرکت</label>
+                      <input
+                        type="text"
+                        value={formData.sellerName || ''}
+                        onChange={(e) => setFormData({ ...formData, sellerName: e.target.value })}
+                        placeholder={formData.storeName || 'نام شخص یا شرکت'}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-bold"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">شناسه ملی / کد ملی</label>
-                  <input
-                    type="text"
-                    id="settings-national-code"
-                    value={formData.nationalCode}
-                    onChange={(e) => setFormData({ ...formData, nationalCode: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono text-left"
-                    dir="ltr"
-                    placeholder="شناسه یا کد ملی"
-                  />
-                </div>
+                    <div>
+                      <label className="block font-bold text-slate-850 mb-1">کد اقتصادی دارایی (۱۲ رقمی)</label>
+                      <input
+                        type="text"
+                        id="settings-economic-code"
+                        value={formData.economicCode}
+                        onChange={(e) => setFormData({ ...formData, economicCode: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono text-left font-bold"
+                        dir="ltr"
+                        placeholder="۱۲ رقم"
+                      />
+                    </div>
 
-                <div className="sm:col-span-2">
-                  <label className="block font-medium text-slate-700 mb-1">نشانی کامل فروشگاه / شرکت</label>
-                  <input
-                    type="text"
-                    id="settings-address"
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                  />
+                    <div>
+                      <label className="block font-bold text-slate-850 mb-1">شماره ثبت شرکت / پروانه کسب</label>
+                      <input
+                        type="text"
+                        id="settings-registration-number"
+                        value={formData.registrationNumber || ''}
+                        onChange={(e) => setFormData({ ...formData, registrationNumber: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono text-left font-bold"
+                        dir="ltr"
+                        placeholder="شماره ثبت رسمی"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-850 mb-1">شماره تلفن رسمی فروشنده</label>
+                      <input
+                        type="text"
+                        value={formData.phone || ''}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        placeholder={formData.mobile || 'تلفن تماس'}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono text-left font-bold"
+                        dir="ltr"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-850 mb-1">شناسه ملی / کد ملی</label>
+                      <input
+                        type="text"
+                        id="settings-national-code"
+                        value={formData.nationalCode}
+                        onChange={(e) => setFormData({ ...formData, nationalCode: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono text-left"
+                        dir="ltr"
+                        placeholder="شناسه یا کد ملی"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-850 mb-1">کد پستی ۱۰ رقمی</label>
+                      <input
+                        type="text"
+                        id="settings-postal-code"
+                        value={formData.postalCode}
+                        onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono text-left"
+                        dir="ltr"
+                        placeholder="۱۰ رقم"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block font-bold text-slate-850 mb-1">نشانی و آدرس دقیق فروشنده رسمی</label>
+                      <input
+                        type="text"
+                        id="settings-address"
+                        value={formData.address}
+                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        placeholder="آدرس دقیق جهت درج در سربرگ فاکتور رسمی"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="sm:col-span-2">

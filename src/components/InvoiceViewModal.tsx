@@ -890,15 +890,21 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                       {/* Seller Box */}
                       <div className="border border-slate-300 rounded-lg p-2.5 bg-slate-50/50">
-                        <div className="font-bold text-slate-800 pb-1 mb-1 border-b border-slate-200 flex items-center gap-1">
-                          <Building2 className="w-3.5 h-3.5 text-slate-700" />
-                          <span>مشخصات فروشنده:</span>
+                        <div className="font-bold text-slate-800 pb-1 mb-1 border-b border-slate-200 flex items-center justify-between">
+                          <div className="flex items-center gap-1">
+                            <Building2 className="w-3.5 h-3.5 text-emerald-700" />
+                            <span>مشخصات فروشنده رسمی:</span>
+                          </div>
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
+                            فاکتور دارایی
+                          </span>
                         </div>
                         <div className="space-y-0.5 text-slate-700">
-                          <p><strong>نام فروشگاه / شخص:</strong> {settings.storeName} ({settings.sellerName})</p>
-                          <p><strong>شناسه ملی / کد اقتصادی:</strong> {toPersianDigits(settings.economicCode || settings.nationalCode || '---')}</p>
-                          <p><strong>نشانی:</strong> {settings.address}</p>
-                          <p><strong>تلفن تماس:</strong> {toPersianDigits(settings.phone || settings.mobile)}</p>
+                          <p><strong>نام فروشنده / شرکت:</strong> {invoice.sellerName || settings.sellerName || settings.storeName || '---'}</p>
+                          <p><strong>شماره اقتصادی:</strong> <span className="font-mono font-bold" dir="ltr">{toPersianDigits(invoice.sellerEconomicCode || settings.economicCode || '---')}</span></p>
+                          <p><strong>شماره ثبت / مجوز:</strong> <span className="font-mono" dir="ltr">{toPersianDigits(invoice.sellerRegistrationNumber || settings.registrationNumber || invoice.sellerNationalCode || settings.nationalCode || '---')}</span></p>
+                          <p><strong>شماره تلفن:</strong> <span className="font-mono" dir="ltr">{toPersianDigits(invoice.sellerPhone || settings.phone || settings.mobile || '---')}</span></p>
+                          <p><strong>نشانی و آدرس:</strong> {invoice.sellerAddress || settings.address || '---'}</p>
                         </div>
                       </div>
 
@@ -1060,7 +1066,10 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                       </div>
 
                       {invoice.notes && (
-                        <p><strong>توضیحات فاکتور:</strong> {invoice.notes}</p>
+                        <div className="text-slate-800 leading-relaxed text-xs">
+                          <strong className="text-slate-900 font-bold">توضیحات فاکتور:</strong>
+                          <p className="mt-0.5 whitespace-pre-line font-medium leading-relaxed">{invoice.notes}</p>
+                        </div>
                       )}
                       <p className="text-[11px] text-slate-600 leading-relaxed">
                         {settings.invoiceFooterText || 'از اعتماد و همکاری شما صمیمانه متشکریم.'}

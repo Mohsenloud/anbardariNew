@@ -325,6 +325,24 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
+  // Official Seller Details State (نام، کد اقتصادی، شماره ثبت، تلفن، آدرس جهت فاکتور رسمی)
+  const [officialSellerName, setOfficialSellerName] = useState<string>(
+    editingInvoice?.sellerName || settings.sellerName || settings.storeName || ''
+  );
+  const [officialEconomicCode, setOfficialEconomicCode] = useState<string>(
+    editingInvoice?.sellerEconomicCode || settings.economicCode || ''
+  );
+  const [officialRegistrationNumber, setOfficialRegistrationNumber] = useState<string>(
+    editingInvoice?.sellerRegistrationNumber || settings.registrationNumber || settings.nationalCode || ''
+  );
+  const [officialPhone, setOfficialPhone] = useState<string>(
+    editingInvoice?.sellerPhone || settings.phone || settings.mobile || ''
+  );
+  const [officialAddress, setOfficialAddress] = useState<string>(
+    editingInvoice?.sellerAddress || settings.address || ''
+  );
+  const [isOfficialSellerModalOpen, setIsOfficialSellerModalOpen] = useState<boolean>(false);
+
   // Mobile Fast Product Search
   const [mobileProductSearch, setMobileProductSearch] = useState<string>('');
 
@@ -844,12 +862,12 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       transferDescription: paymentMethod === 'transfer' ? transferDescription.trim() : undefined,
       notes: notes.trim(),
       // ثبت اطلاعات فروشنده رسمی در فاکتور رسمی
-      sellerName: settings.sellerName || settings.storeName,
-      sellerEconomicCode: settings.economicCode,
-      sellerRegistrationNumber: settings.registrationNumber || settings.nationalCode,
+      sellerName: officialSellerName.trim() || settings.sellerName || settings.storeName,
+      sellerEconomicCode: officialEconomicCode.trim() || settings.economicCode,
+      sellerRegistrationNumber: officialRegistrationNumber.trim() || settings.registrationNumber || settings.nationalCode,
       sellerNationalCode: settings.nationalCode,
-      sellerPhone: settings.phone || settings.mobile,
-      sellerAddress: settings.address,
+      sellerPhone: officialPhone.trim() || settings.phone || settings.mobile,
+      sellerAddress: officialAddress.trim() || settings.address,
       sellerPostalCode: settings.postalCode,
       createdAt: editingInvoice ? editingInvoice.createdAt : new Date().toISOString(),
       updatedAt: isEditing ? new Date().toISOString() : undefined,
@@ -1115,6 +1133,90 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     }
   };
 
+  // ================= INVOICE NOTES AUTO-BULLET LOGIC =================
+  // در اول هر خط یک بولت گذاشته شود؛ زمانی که کاربر در یک خط می‌نویسد و اینتر می‌زند، در اول خط بعد یک بولت قرار داده شود
+  const handleNotesKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const textarea = e.currentTarget;
+      const { selectionStart, selectionEnd, value } = textarea;
+
+      const before = value.substring(0, selectionStart);
+      const after = value.substring(selectionEnd);
+
+      // درج خط جدید به همراه علامت بولت در اول خط
+      const bulletNewline = '\n• ';
+      const nextValue = before + bulletNewline + after;
+      setNotes(nextValue);
+
+      const targetPos = selectionStart + bulletNewline.length;
+      setTimeout(() => {
+        textarea.setSelectionRange(targetPos, targetPos);
+      }, 0);
+    }
+  };
+
+  const handleNotesFocus = (e: React.FocusEvent<HTMLTextAreaElement>) => {
+    // اگر متن توضیحات خالی است، ابتدای خط اول بولت قرار گیرد
+    if (!notes || notes.trim() === '') {
+      const initial = '• ';
+      setNotes(initial);
+      setTimeout(() => {
+        e.target.setSelectionRange(initial.length, initial.length);
+      }, 0);
+    }
+  };
+
+  const handleNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    let val = e.target.value;
+    // اگر کاربر در ابتدای متنی که بولت ندارد شروع به تایپ کرد، بولت به اول خط اضافه شود
+    if (val.trim() !== '' && !val.startsWith('• ') && !val.startsWith('•')) {
+      val = '• ' + val;
+    }
+    setNotes(val);
+  };
+
+  // تابع یکپارچه‌سازی و افزودن بولت به تمام خطوط توضیحات
+  const handleFormatAllLinesWithBullet = () => {
+    if (!notes.trim()) {
+      setNotes('• ');
+      return;
+    }
+    const formatted = notes
+      .split('\n')
+      .map((line) => {
+        const trimmed = line.trimStart();
+        if (!trimmed) return '';
+        if (trimmed.startsWith('•')) {
+          return trimmed.startsWith('• ') ? line : line.replace('•', '• ');
+        }
+        return `• ${line}`;
+      })
+      .join('\n');
+    setNotes(formatted);
+  };
+
+  // ذخیره اطلاعات فروشنده رسمی (در این فاکتور و ذخیره اختیاری در تنظیمات سیستم)
+  const handleSaveOfficialSellerInfo = (saveToGlobalSettings: boolean) => {
+    if (saveToGlobalSettings) {
+      try {
+        const updatedSettings: StoreSettings = {
+          ...settings,
+          sellerName: officialSellerName.trim() || settings.sellerName,
+          storeName: settings.storeName || officialSellerName.trim(),
+          economicCode: officialEconomicCode.trim(),
+          registrationNumber: officialRegistrationNumber.trim(),
+          phone: officialPhone.trim() || settings.phone,
+          address: officialAddress.trim() || settings.address,
+        };
+        StorageService.saveSettings(updatedSettings);
+      } catch (err) {
+        console.error('Failed to save official seller settings', err);
+      }
+    }
+    setIsOfficialSellerModalOpen(false);
+  };
+
   // Desktop Global Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1308,42 +1410,45 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <div className="truncate">
                   <span className="text-[10px] text-emerald-800 font-bold ml-1">فروشنده رسمی:</span>
                   <span className="font-black text-slate-900 truncate">
-                    {settings.sellerName || settings.storeName || 'ثبت نشده'}
+                    {officialSellerName || settings.sellerName || settings.storeName || 'ثبت نشده'}
                   </span>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsSettingsModalOpen(true)}
-                className="text-[10px] font-black text-emerald-700 hover:text-emerald-900 bg-white px-2 py-0.5 rounded-lg border border-emerald-300 shadow-2xs shrink-0 cursor-pointer active:scale-95 transition-all"
-              >
-                تنظیمات فروشنده
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsOfficialSellerModalOpen(true)}
+                  className="text-[10px] font-black text-emerald-800 hover:text-emerald-950 bg-emerald-100/90 hover:bg-emerald-200 px-2.5 py-1 rounded-lg border border-emerald-300 shadow-2xs shrink-0 cursor-pointer active:scale-95 transition-all flex items-center gap-1"
+                >
+                  <Pencil className="w-2.5 h-2.5 text-emerald-700" />
+                  <span>ویرایش مشخصات</span>
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-x-2.5 gap-y-1 pt-1.5 border-t border-emerald-200/60 text-[10px] text-slate-600">
               <div>
                 <span className="text-slate-400 ml-1">شماره اقتصادی:</span>
                 <b className="font-mono text-slate-800 font-bold" dir="ltr">
-                  {settings.economicCode ? toPersianDigits(settings.economicCode) : 'ثبت نشده'}
+                  {officialEconomicCode || settings.economicCode ? toPersianDigits(officialEconomicCode || settings.economicCode) : 'ثبت نشده'}
                 </b>
               </div>
               <div>
                 <span className="text-slate-400 ml-1">شماره ثبت:</span>
                 <b className="font-mono text-slate-800 font-bold" dir="ltr">
-                  {settings.registrationNumber ? toPersianDigits(settings.registrationNumber) : (settings.nationalCode ? toPersianDigits(settings.nationalCode) : 'ثبت نشده')}
+                  {officialRegistrationNumber || settings.registrationNumber ? toPersianDigits(officialRegistrationNumber || settings.registrationNumber) : (settings.nationalCode ? toPersianDigits(settings.nationalCode) : 'ثبت نشده')}
                 </b>
               </div>
               <div>
                 <span className="text-slate-400 ml-1">شماره تلفن:</span>
                 <b className="font-mono text-slate-800 font-bold" dir="ltr">
-                  {(settings.phone || settings.mobile) ? toPersianDigits(settings.phone || settings.mobile) : 'ثبت نشده'}
+                  {(officialPhone || settings.phone || settings.mobile) ? toPersianDigits(officialPhone || settings.phone || settings.mobile) : 'ثبت نشده'}
                 </b>
               </div>
               <div className="truncate">
                 <span className="text-slate-400 ml-1">آدرس:</span>
-                <span className="text-slate-800 font-medium truncate" title={settings.address}>
-                  {settings.address || 'ثبت نشده'}
+                <span className="text-slate-800 font-medium truncate" title={officialAddress || settings.address}>
+                  {officialAddress || settings.address || 'ثبت نشده'}
                 </span>
               </div>
             </div>
@@ -1995,31 +2100,41 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                       <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-2">
                         <span>اطلاعات فروشنده رسمی (فاکتور رسمی دارایی)</span>
                         <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-md font-bold">
-                          ثبت در بالای فاکتور
+                          درج در بالای فاکتور
                         </span>
                       </h3>
                       <p className="text-[11px] text-slate-500 font-medium">
-                        مشخصات فروشنده رسمی ثبت‌شده در پنل مدیریت که در سربرگ و بالای فاکتور رسمی درج می‌گردد.
+                        مشخصات فروشنده رسمی طبق قوانین مالیاتی که در سربرگ و بالای فاکتور رسمی ثبت و چاپ می‌گردد.
                       </p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsSettingsModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 hover:border-emerald-300 text-xs font-black transition-all cursor-pointer shadow-2xs active:scale-95"
-                    title="ویرایش مشخصات فروشنده رسمی در پنل مدیریت / تنظیمات"
-                  >
-                    <Pencil className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>ویرایش در تنظیمات</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsOfficialSellerModalOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95"
+                      title="ویرایش سریع مشخصات فروشنده رسمی برای این فاکتور یا تنظیمات"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      <span>ویرایش اطلاعات فروشنده</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsSettingsModalOpen(true)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 hover:border-emerald-300 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
+                      title="باز کردن پنل تنظیمات کامل فروشگاه"
+                    >
+                      <span>تنظیمات</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 text-xs">
                   {/* نام فروشنده */}
                   <div className="bg-white/95 p-2.5 rounded-xl border border-emerald-100 shadow-2xs">
                     <span className="text-[10px] text-slate-400 block font-bold mb-0.5">نام فروشنده / شرکت:</span>
-                    <span className="font-black text-slate-900 truncate block" title={settings.sellerName || settings.storeName}>
-                      {settings.sellerName || settings.storeName || 'ثبت نشده'}
+                    <span className="font-black text-slate-900 truncate block" title={officialSellerName || settings.sellerName || settings.storeName}>
+                      {officialSellerName || settings.sellerName || settings.storeName || 'ثبت نشده'}
                     </span>
                   </div>
 
@@ -2027,7 +2142,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   <div className="bg-white/95 p-2.5 rounded-xl border border-emerald-100 shadow-2xs">
                     <span className="text-[10px] text-slate-400 block font-bold mb-0.5">شماره اقتصادی:</span>
                     <span className="font-black text-slate-900 font-mono truncate block" dir="ltr">
-                      {settings.economicCode ? toPersianDigits(settings.economicCode) : 'ثبت نشده'}
+                      {officialEconomicCode || settings.economicCode ? toPersianDigits(officialEconomicCode || settings.economicCode) : 'ثبت نشده'}
                     </span>
                   </div>
 
@@ -2035,7 +2150,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   <div className="bg-white/95 p-2.5 rounded-xl border border-emerald-100 shadow-2xs">
                     <span className="text-[10px] text-slate-400 block font-bold mb-0.5">شماره ثبت / مجوز:</span>
                     <span className="font-black text-slate-900 font-mono truncate block" dir="ltr">
-                      {settings.registrationNumber ? toPersianDigits(settings.registrationNumber) : (settings.nationalCode ? toPersianDigits(settings.nationalCode) : 'ثبت نشده')}
+                      {officialRegistrationNumber || settings.registrationNumber ? toPersianDigits(officialRegistrationNumber || settings.registrationNumber) : (settings.nationalCode ? toPersianDigits(settings.nationalCode) : 'ثبت نشده')}
                     </span>
                   </div>
 
@@ -2043,31 +2158,31 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   <div className="bg-white/95 p-2.5 rounded-xl border border-emerald-100 shadow-2xs">
                     <span className="text-[10px] text-slate-400 block font-bold mb-0.5">شماره تلفن:</span>
                     <span className="font-black text-slate-900 font-mono truncate block" dir="ltr">
-                      {(settings.phone || settings.mobile) ? toPersianDigits(settings.phone || settings.mobile) : 'ثبت نشده'}
+                      {(officialPhone || settings.phone || settings.mobile) ? toPersianDigits(officialPhone || settings.phone || settings.mobile) : 'ثبت نشده'}
                     </span>
                   </div>
 
                   {/* آدرس */}
                   <div className="bg-white/95 p-2.5 rounded-xl border border-emerald-100 shadow-2xs col-span-2 sm:col-span-1 lg:col-span-1">
                     <span className="text-[10px] text-slate-400 block font-bold mb-0.5">آدرس و نشانی:</span>
-                    <span className="font-bold text-slate-800 truncate block text-[11px]" title={`${settings.address || 'ثبت نشده'} ${settings.postalCode ? `(کدپستی: ${settings.postalCode})` : ''}`}>
-                      {settings.address || 'ثبت نشده'}
+                    <span className="font-bold text-slate-800 truncate block text-[11px]" title={`${officialAddress || settings.address || 'ثبت نشده'} ${settings.postalCode ? `(کدپستی: ${settings.postalCode})` : ''}`}>
+                      {officialAddress || settings.address || 'ثبت نشده'}
                     </span>
                   </div>
                 </div>
 
-                {(!settings.economicCode || !settings.registrationNumber || !settings.address) && (
+                {(!officialEconomicCode && !settings.economicCode || !officialRegistrationNumber && !settings.registrationNumber || !officialAddress && !settings.address) && (
                   <div className="text-[11px] text-amber-800 bg-amber-50/90 border border-amber-200/90 rounded-xl px-3 py-1.5 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 font-bold">
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                      <span>توجه: برخی از مشخصات رسمی فروشنده (کد اقتصادی، شماره ثبت یا آدرس) در پنل مدیریت خالی است.</span>
+                      <span>توجه: برخی از مشخصات رسمی فروشنده (کد اقتصادی، شماره ثبت یا آدرس) خالی است.</span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => setIsSettingsModalOpen(true)}
+                      onClick={() => setIsOfficialSellerModalOpen(true)}
                       className="text-amber-900 font-black underline hover:text-amber-700 cursor-pointer text-xs shrink-0"
                     >
-                      تکمیل در پنل مدیریت
+                      تکمیل سریع اطلاعات
                     </button>
                   </div>
                 )}
@@ -2949,16 +3064,31 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
                 {/* Notes */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    توضیحات و یادداشت فاکتور:
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11px] font-bold text-slate-700">
+                      توضیحات و یادداشت فاکتور:
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleFormatAllLinesWithBullet}
+                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer hover:underline"
+                      title="افزودن بولت (•) به تمام خطوط توضیحات"
+                    >
+                      <span>• بولت‌گذاری خطوط</span>
+                    </button>
+                  </div>
                   <textarea
                     value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
+                    onChange={handleNotesChange}
+                    onKeyDown={handleNotesKeyDown}
+                    onFocus={handleNotesFocus}
                     rows={2}
-                    placeholder="توضیحات تکمیلی..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    placeholder="• هر توضیح را بنویسید؛ با فشردن Enter بولت جدید در اول خط بعد درج می‌شود..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none leading-relaxed"
                   />
+                  <div className="flex items-center justify-between mt-1 text-[10px] text-slate-400">
+                    <span>💡 با فشردن Enter در اول هر خط به طور خودکار علامت بولت (•) قرار داده می‌شود.</span>
+                  </div>
                 </div>
 
                 {/* Final Action Buttons */}
@@ -4796,16 +4926,31 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
             {/* Notes */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                توضیحات و یادداشت فاکتور:
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700">
+                  توضیحات و یادداشت فاکتور:
+                </label>
+                <button
+                  type="button"
+                  onClick={handleFormatAllLinesWithBullet}
+                  className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer hover:underline"
+                  title="افزودن بولت (•) به تمام خطوط توضیحات"
+                >
+                  <span>• بولت‌گذاری خطوط</span>
+                </button>
+              </div>
               <textarea
                 value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                placeholder="توضیحات تکمیلی جهت درج در پایین برگه فاکتور..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                onChange={handleNotesChange}
+                onKeyDown={handleNotesKeyDown}
+                onFocus={handleNotesFocus}
+                rows={3}
+                placeholder="• هر توضیح را بنویسید؛ با زدن Enter در آغاز هر خط بولت (•) قرار داده می‌شود..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none leading-relaxed"
               />
+              <p className="mt-1 text-[10px] text-slate-400">
+                💡 با فشردن کلید Enter، به طور خودکار در اول هر خط یک بولت (•) گذاشته می‌شود.
+              </p>
             </div>
 
             {/* Actions: Save & Print vs Save */}
@@ -5330,6 +5475,130 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               >
                 <Check className="w-4 h-4 text-emerald-400" />
                 <span>تایید و بازگشت به فاکتور</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: OFFICIAL SELLER QUICK EDIT MODAL ================= */}
+      {isOfficialSellerModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-2xs">
+                  <Building2 className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-slate-800">
+                    مشخصات فروشنده رسمی (فاکتور دارایی)
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    این اطلاعات در بالای فاکتور رسمی ثبت، ذخیره و چاپ می‌شود.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsOfficialSellerModalOpen(false)}
+                className="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Form Fields */}
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">
+                  ۱. نام فروشنده / نام شرکت و شخص حقوقی <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={officialSellerName}
+                  onChange={(e) => setOfficialSellerName(e.target.value)}
+                  placeholder="مثال: شرکت تجارت گستر ایرانیان"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">
+                    ۲. شماره اقتصادی (کد اقتصادی دارایی) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={officialEconomicCode}
+                    onChange={(e) => setOfficialEconomicCode(e.target.value)}
+                    placeholder="۱۲ رقم کد اقتصادی"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 text-left focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                    dir="ltr"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">
+                    ۳. شماره ثبت شرکت یا پروانه کسب <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={officialRegistrationNumber}
+                    onChange={(e) => setOfficialRegistrationNumber(e.target.value)}
+                    placeholder="شماره ثبت رسمی"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 text-left focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                    dir="ltr"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">
+                  ۴. شماره تلفن رسمی فروشنده <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={officialPhone}
+                  onChange={(e) => setOfficialPhone(e.target.value)}
+                  placeholder="تلفن ثابت یا همراه"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 text-left focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                  dir="ltr"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">
+                  ۵. نشانی و آدرس دقیق فروشنده رسمی <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  value={officialAddress}
+                  onChange={(e) => setOfficialAddress(e.target.value)}
+                  rows={2}
+                  placeholder="نشانی کامل جهت درج در سربرگ بالای فاکتور رسمی..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none leading-relaxed"
+                />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => handleSaveOfficialSellerInfo(true)}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-xs cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>ذخیره در این فاکتور و تنظیمات دائمی</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSaveOfficialSellerInfo(false)}
+                className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer active:scale-95 transition-all"
+              >
+                <span>فقط اعمال در این فاکتور</span>
               </button>
             </div>
           </div>

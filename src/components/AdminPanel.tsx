@@ -2284,7 +2284,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           اطلاعات فروشنده رسمی (جهت درج در بالای فاکتورهای رسمی)
                         </h4>
                         <p className="text-[11px] text-slate-600 font-medium mt-0.5">
-                          طبق الزامات امور مالیاتی، در فاکتور رسمی نام، شماره اقتصادی، شماره ثبت، تلفن و آدرس فروشنده در بالای فاکتور درج می‌گردد.
+                          طبق الزامات قانون پایانه‌های فروشگاهی و سامانه مودیان، در بالای فاکتور رسمی نام، شماره اقتصادی، شماره ثبت، تلفن و آدرس فروشنده ثبت و نشان داده می‌شود.
                         </p>
                       </div>
                     </div>
@@ -2293,11 +2293,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-xs">
-                    {/* Economic Code */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
+                    {/* نام شخص حقیقی یا حقوقی (فروشنده رسمی) */}
                     <div>
                       <label className="block text-slate-800 font-bold mb-1.5">
-                        شماره اقتصادی (کد اقتصادی دارایی) <span className="text-rose-500">*</span>
+                        ۱. نام فروشنده رسمی / نام شرکت <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="sellerName"
+                        value={formData.sellerName || ''}
+                        onChange={handleInputChange}
+                        placeholder={formData.storeName || 'مثال: شرکت تجارت گستر ایرانیان'}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                    </div>
+
+                    {/* شماره اقتصادی */}
+                    <div>
+                      <label className="block text-slate-800 font-bold mb-1.5">
+                        ۲. شماره اقتصادی (کد اقتصادی دارایی) <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="text"
@@ -2310,10 +2325,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       />
                     </div>
 
-                    {/* Registration Number */}
+                    {/* شماره ثبت / پروانه کسب */}
                     <div>
                       <label className="block text-slate-800 font-bold mb-1.5">
-                        شماره ثبت شرکت یا پروانه کسب <span className="text-rose-500">*</span>
+                        ۳. شماره ثبت شرکت یا پروانه کسب <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="text"
@@ -2326,7 +2341,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       />
                     </div>
 
-                    {/* National Code / ID */}
+                    {/* شماره تلفن رسمی */}
+                    <div>
+                      <label className="block text-slate-800 font-bold mb-1.5">
+                        ۴. شماره تلفن رسمی فروشنده <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="phone"
+                        value={formData.phone || ''}
+                        onChange={handleInputChange}
+                        placeholder={formData.mobile || 'مثال: ۰۲۱۸۸۸۸۸۸۸۸'}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-left font-bold"
+                        dir="ltr"
+                      />
+                    </div>
+
+                    {/* شناسه ملی / کد ملی */}
                     <div>
                       <label className="block text-slate-800 font-bold mb-1.5">
                         شناسه ملی (شرکت‌ها) / کد ملی <span className="text-rose-500">*</span>
@@ -2340,6 +2371,88 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-left font-bold"
                         dir="ltr"
                       />
+                    </div>
+
+                    {/* کد پستی */}
+                    <div>
+                      <label className="block text-slate-800 font-bold mb-1.5">
+                        کد پستی ۱۰ رقمی اقامتگاه قانونی
+                      </label>
+                      <input
+                        type="text"
+                        name="postalCode"
+                        value={formData.postalCode || ''}
+                        onChange={handleInputChange}
+                        placeholder="مثال: ۱۴۷۸۹۶۵۴۳۲"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-left font-bold"
+                        dir="ltr"
+                      />
+                    </div>
+
+                    {/* نشانی و آدرس دقیق رسمی فروشنده */}
+                    <div className="sm:col-span-2 lg:col-span-3">
+                      <label className="block text-slate-800 font-bold mb-1.5">
+                        ۵. نشانی و آدرس دقیق فروشنده رسمی (جهت درج در بالای فاکتور) <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="address"
+                        value={formData.address || ''}
+                        onChange={handleInputChange}
+                        placeholder="مثال: تهران، میدان ونک، خیابان ملاصدرا، پلاک ۱۲، واحد ۴"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-800 font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* پیش‌نمایش زنده سربرگ فروشنده در بالای فاکتور رسمی */}
+                  <div className="bg-white/80 rounded-xl border border-emerald-200/90 p-3 text-[11px] space-y-1.5">
+                    <div className="flex items-center justify-between text-emerald-900 font-bold border-b border-emerald-100 pb-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>پیش‌نمایش مشخصات فروشنده در بالای فاکتورهای رسمی دارایی:</span>
+                      </span>
+                      <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-mono">
+                        نمایش در سربرگ
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-700 pt-1">
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">نام فروشنده:</span>
+                        <strong className="text-slate-900 font-black truncate block">
+                          {formData.sellerName || formData.storeName || '---'}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">شماره اقتصادی:</span>
+                        <strong className="font-mono text-slate-900 font-bold block" dir="ltr">
+                          {formData.economicCode ? toPersianDigits(formData.economicCode) : '---'}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">شماره ثبت / مجوز:</span>
+                        <strong className="font-mono text-slate-900 font-bold block" dir="ltr">
+                          {formData.registrationNumber ? toPersianDigits(formData.registrationNumber) : (formData.nationalCode ? toPersianDigits(formData.nationalCode) : '---')}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">شماره تلفن:</span>
+                        <strong className="font-mono text-slate-900 font-bold block" dir="ltr">
+                          {(formData.phone || formData.mobile) ? toPersianDigits(formData.phone || formData.mobile) : '---'}
+                        </strong>
+                      </div>
+                      <div className="col-span-2 sm:col-span-4 text-[10px] text-slate-600 border-t border-slate-100 pt-1 flex flex-wrap justify-between gap-1">
+                        <span>
+                          <strong className="text-slate-500">آدرس: </strong>
+                          {formData.address || 'نشانی ثبت نشده'}
+                        </span>
+                        {formData.postalCode && (
+                          <span>
+                            <strong className="text-slate-500">کد پستی: </strong>
+                            <span className="font-mono">{toPersianDigits(formData.postalCode)}</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

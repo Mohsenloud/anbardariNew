@@ -21,7 +21,8 @@ import {
   Layers,
   FileClock,
   ShieldAlert,
-  Globe
+  Globe,
+  Building2
 } from 'lucide-react';
 
 interface InvoiceQuickDetailsModalProps {
@@ -119,6 +120,51 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
 
         {/* Modal Content */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs text-slate-700">
+          {/* مشخصات فروشنده رسمی در فاکتورهای رسمی دارایی */}
+          {invoice.type === 'official' && (
+            <div className="bg-gradient-to-r from-emerald-50 to-teal-50/70 p-3.5 rounded-2xl border border-emerald-300/80 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between pb-1.5 border-b border-emerald-200">
+                <div className="flex items-center gap-1.5 font-black text-slate-900 text-xs">
+                  <Building2 className="w-4 h-4 text-emerald-700" />
+                  <span>مشخصات فروشنده رسمی (فاکتور دارایی):</span>
+                </div>
+                <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-md">
+                  سربرگ رسمی
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-700 pt-0.5">
+                <div>
+                  <span className="text-slate-400 block text-[10px]">نام فروشنده:</span>
+                  <strong className="text-slate-900 font-bold truncate block">
+                    {invoice.sellerName || settings.sellerName || settings.storeName || '---'}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">شماره اقتصادی:</span>
+                  <strong className="font-mono text-slate-900 font-bold block" dir="ltr">
+                    {invoice.sellerEconomicCode || settings.economicCode ? toPersianDigits(invoice.sellerEconomicCode || settings.economicCode) : '---'}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">شماره ثبت / مجوز:</span>
+                  <strong className="font-mono text-slate-900 font-bold block" dir="ltr">
+                    {toPersianDigits(invoice.sellerRegistrationNumber || settings.registrationNumber || invoice.sellerNationalCode || settings.nationalCode || '---')}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px]">شماره تلفن:</span>
+                  <strong className="font-mono text-slate-900 font-bold block" dir="ltr">
+                    {(invoice.sellerPhone || settings.phone || settings.mobile) ? toPersianDigits(invoice.sellerPhone || settings.phone || settings.mobile) : '---'}
+                  </strong>
+                </div>
+                <div className="col-span-2 sm:col-span-4 text-[10px] text-slate-600 border-t border-emerald-200/50 pt-1">
+                  <span className="text-slate-400">نشانی و آدرس: </span>
+                  <span className="text-slate-800 font-medium">{invoice.sellerAddress || settings.address || 'نشانی ثبت نشده'}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Customer & Status Top Strip */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Customer info */}
@@ -332,7 +378,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
           {invoice.notes && (
             <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs">
               <span className="text-slate-500 font-bold block mb-1">یادداشت و توضیحات فاکتور:</span>
-              <p className="text-slate-800 leading-relaxed">{invoice.notes}</p>
+              <p className="text-slate-800 leading-relaxed whitespace-pre-line font-medium">{invoice.notes}</p>
             </div>
           )}
         </div>

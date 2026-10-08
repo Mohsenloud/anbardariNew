@@ -682,21 +682,34 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
 
                   <div className="space-y-1 text-slate-600 leading-relaxed">
                     <p>
-                      <strong className="text-slate-800">نام شخص یا شرکت:</strong> {settings?.storeName || '—'}
+                      <strong className="text-slate-800">نام شخص یا شرکت:</strong>{' '}
+                      {currInv.type === 'official' ? (currInv.sellerName || settings?.sellerName || settings?.storeName || '—') : (settings?.storeName || '—')}
                     </p>
-                    {storePhone && (
+                    {currInv.type === 'official' && (currInv.sellerEconomicCode || settings?.economicCode) && (
                       <p>
-                        <strong className="text-slate-800">تلفن تماس:</strong> <span className="font-mono">{toPersianDigits(storePhone)}</span>
+                        <strong className="text-slate-800">شماره اقتصادی:</strong>{' '}
+                        <span className="font-mono font-bold" dir="ltr">{toPersianDigits(currInv.sellerEconomicCode || settings?.economicCode || '')}</span>
                       </p>
                     )}
-                    {settings?.nationalCode && (
+                    {currInv.type === 'official' && (currInv.sellerRegistrationNumber || settings?.registrationNumber || currInv.sellerNationalCode || settings?.nationalCode) && (
+                      <p>
+                        <strong className="text-slate-800">شماره ثبت / مجوز:</strong>{' '}
+                        <span className="font-mono font-bold" dir="ltr">{toPersianDigits(currInv.sellerRegistrationNumber || settings?.registrationNumber || currInv.sellerNationalCode || settings?.nationalCode || '')}</span>
+                      </p>
+                    )}
+                    {(currInv.sellerPhone || storePhone) && (
+                      <p>
+                        <strong className="text-slate-800">تلفن تماس:</strong> <span className="font-mono">{toPersianDigits(currInv.sellerPhone || storePhone || '')}</span>
+                      </p>
+                    )}
+                    {currInv.type !== 'official' && settings?.nationalCode && (
                       <p>
                         <strong className="text-slate-800">شناسه ملی / ثبت:</strong> <span className="font-mono">{toPersianDigits(settings.nationalCode)}</span>
                       </p>
                     )}
-                    {settings?.address && (
+                    {(currInv.sellerAddress || settings?.address) && (
                       <p>
-                        <strong className="text-slate-800">نشانی فروشگاه:</strong> {settings.address}
+                        <strong className="text-slate-800">نشانی فروشگاه:</strong> {currInv.sellerAddress || settings?.address}
                       </p>
                     )}
                   </div>

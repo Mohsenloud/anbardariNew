@@ -403,9 +403,9 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
 
             {/* توضیحات فاکتور */}
             {invoice.notes && (
-              <div className="pt-0.5">
-                <span className="font-bold text-slate-800">توضیحات: </span>
-                <span className="text-slate-700 leading-relaxed">{invoice.notes}</span>
+              <div className="pt-0.5 text-slate-800 leading-relaxed whitespace-pre-line">
+                <span className="font-bold text-slate-900">توضیحات: </span>
+                <span className="text-slate-750 font-medium leading-relaxed whitespace-pre-line">{invoice.notes}</span>
               </div>
             )}
 
