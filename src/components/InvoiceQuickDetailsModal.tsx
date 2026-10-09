@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Invoice, StoreSettings, AppUser } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { 
@@ -22,7 +22,9 @@ import {
   FileClock,
   ShieldAlert,
   Globe,
-  Building2
+  Building2,
+  ChevronUp,
+  SlidersHorizontal
 } from 'lucide-react';
 
 interface InvoiceQuickDetailsModalProps {
@@ -64,6 +66,28 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
   const isUnpaid = invoice.paymentStatus === 'unpaid';
   const remainingDebt = Math.max(0, invoice.finalTotal - (isPaid ? invoice.finalTotal : (invoice.paidAmount || 0)));
   const totalItemCount = invoice.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const actionsDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setIsActionsOpen(false);
+  }, [isOpen, invoice?.id]);
+
+  useEffect(() => {
+    if (!isActionsOpen) return;
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      if (actionsDropdownRef.current && !actionsDropdownRef.current.contains(e.target as Node)) {
+        setIsActionsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isActionsOpen]);
 
   return (
     <div 
@@ -383,140 +407,194 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
           )}
         </div>
 
-        {/* Footer Actions Toolbar */}
-        <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shrink-0">
-          {/* Secondary Actions Row */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {/* Convert Proforma if proforma */}
-            {invoice.isProforma && onConvertProforma && (
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onConvertProforma(invoice);
-                }}
-                className="min-h-[38px] px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
-              >
-                <ArrowRightLeft className="w-4 h-4" />
-                <span>تبدیل به فاکتور رسمی</span>
-              </button>
-            )}
-
-            {/* Edit */}
-            {onEditInvoice && (
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onEditInvoice(invoice);
-                }}
-                className="min-h-[38px] px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <Pencil className="w-4 h-4" />
-                <span>ویرایش</span>
-              </button>
-            )}
-
-            {/* Settle / Payment */}
-            {onOpenPaymentModal && !isPaid && (
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onOpenPaymentModal(invoice);
-                }}
-                className="min-h-[38px] px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <CheckCircle className="w-4 h-4 text-emerald-600" />
-                <span>ثبت دریافتی</span>
-              </button>
-            )}
-
-            {/* Export customer */}
-            {onExportCustomer && (
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onExportCustomer(invoice);
-                }}
-                className="min-h-[38px] px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                title="خروجی اکسل فاکتورها و حواله‌های این مشتری"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-purple-600" />
-                <span className="hidden sm:inline">اکسپورت مشتری</span>
-              </button>
-            )}
-
-            {/* Public Web Link for Customer */}
-            {onOpenShareLinkModal && (
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onOpenShareLinkModal(invoice);
-                }}
-                className="min-h-[38px] px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                title="ایجاد و اشتراک لینک نسخه تحت وب برای مشتری (بدون نیاز به دانلود PDF)"
-              >
-                <Globe className="w-4 h-4 text-sky-600" />
-                <span>لینک آنلاین مشتری</span>
-              </button>
-            )}
-
-            {canDelete && (
-              <>
-                {/* Return */}
-                {onReturnInvoiceToStock && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onReturnInvoiceToStock(invoice);
-                    }}
-                    title={invoice.isProforma ? 'لغو و حذف پیش‌فاکتور' : 'مرجوعی به انبار'}
-                    className="min-h-[38px] min-w-[38px] p-2 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-xl border border-amber-200 cursor-pointer flex items-center justify-center"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                  </button>
-                )}
-
-                {/* Delete */}
-                {onDeleteInvoice && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onDeleteInvoice(invoice.id);
-                    }}
-                    title="حذف سند"
-                    className="min-h-[38px] min-w-[38px] p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl border border-rose-200 cursor-pointer flex items-center justify-center"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Primary View & Print and Close Buttons */}
-          <div className="flex items-center gap-2">
+        {/* Footer Actions Toolbar - بهینه‌سازی و خلوت‌سازی با منوی دراپ‌دان عملیات */}
+        <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2.5 shrink-0">
+          {/* Primary View & Print Button (سمت راست - دسترسی سریع و برجسته) */}
+          <div className="flex-1 sm:flex-initial">
             <button
               type="button"
+              id="invoice-details-view-print-btn"
               onClick={() => {
                 onClose();
                 onViewInvoice(invoice);
               }}
-              className="flex-1 sm:flex-initial min-h-[40px] px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-emerald-200 cursor-pointer"
+              className="w-full sm:w-auto min-h-[40px] px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-200/70 cursor-pointer"
             >
-              <Printer className="w-4 h-4" />
+              <Printer className="w-4 h-4 shrink-0" />
               <span>مشاهده و چاپ کامل فاکتور</span>
             </button>
+          </div>
 
+          {/* Secondary Actions & Close (سمت چپ - تجمیع در دراپ‌دان خلوت و دکمه بستن) */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Actions Dropdown */}
+            <div className="relative" ref={actionsDropdownRef}>
+              <button
+                type="button"
+                id="invoice-details-actions-dropdown-btn"
+                data-testid="invoice-details-actions-btn"
+                onClick={() => setIsActionsOpen((prev) => !prev)}
+                className={`min-h-[40px] px-3 sm:px-3.5 py-2 border rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer ${
+                  isActionsOpen
+                    ? 'bg-slate-200 text-slate-900 border-slate-300'
+                    : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300/80'
+                }`}
+                title="سایر عملیات فاکتور"
+                aria-expanded={isActionsOpen}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                <span>عملیات</span>
+                {(!isPaid || invoice.isProforma) && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                )}
+                <ChevronUp className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isActionsOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Dropup Menu (Opens upward inside modal) */}
+              {isActionsOpen && (
+                <div 
+                  className="absolute bottom-full left-0 mb-2 w-56 sm:w-64 bg-white rounded-2xl border border-slate-200/90 shadow-2xl z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100 text-right"
+                  role="menu"
+                >
+                  {/* Convert Proforma if proforma */}
+                  {invoice.isProforma && onConvertProforma && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsActionsOpen(false);
+                        onClose();
+                        onConvertProforma(invoice);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 transition-colors cursor-pointer"
+                      role="menuitem"
+                    >
+                      <ArrowRightLeft className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <span>تبدیل به فاکتور رسمی</span>
+                    </button>
+                  )}
+
+                  {/* Register Payment (if unpaid/partial) */}
+                  {onOpenPaymentModal && !isPaid && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsActionsOpen(false);
+                        onClose();
+                        onOpenPaymentModal(invoice);
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl text-emerald-800 bg-emerald-50/70 hover:bg-emerald-100 transition-colors cursor-pointer"
+                      role="menuitem"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>ثبت دریافتی (تسویه)</span>
+                      </div>
+                      <span className="text-[10px] bg-emerald-200/60 text-emerald-900 px-1.5 py-0.5 rounded-md font-mono">
+                        {toPersianDigits(formatPrice(remainingDebt, settings.currency))}
+                      </span>
+                    </button>
+                  )}
+
+                  {/* Edit Invoice */}
+                  {onEditInvoice && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsActionsOpen(false);
+                        onClose();
+                        onEditInvoice(invoice);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-blue-800 hover:bg-blue-50 transition-colors cursor-pointer"
+                      role="menuitem"
+                    >
+                      <Pencil className="w-4 h-4 text-blue-600 shrink-0" />
+                      <span>ویرایش فاکتور</span>
+                    </button>
+                  )}
+
+                  {/* Public Web Link for Customer */}
+                  {onOpenShareLinkModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsActionsOpen(false);
+                        onClose();
+                        onOpenShareLinkModal(invoice);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-sky-800 hover:bg-sky-50 transition-colors cursor-pointer"
+                      role="menuitem"
+                    >
+                      <Globe className="w-4 h-4 text-sky-600 shrink-0" />
+                      <span>لینک آنلاین مشتری</span>
+                    </button>
+                  )}
+
+                  {/* Export Customer to Excel */}
+                  {onExportCustomer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsActionsOpen(false);
+                        onClose();
+                        onExportCustomer(invoice);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-purple-800 hover:bg-purple-50 transition-colors cursor-pointer"
+                      role="menuitem"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-purple-600 shrink-0" />
+                      <span>اکسپورت مشتری</span>
+                    </button>
+                  )}
+
+                  {/* Destructive actions (Divider + Return / Delete) */}
+                  {canDelete && (
+                    <>
+                      <div className="my-1 border-t border-slate-100" />
+
+                      {/* Return to stock */}
+                      {onReturnInvoiceToStock && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsActionsOpen(false);
+                            onClose();
+                            onReturnInvoiceToStock(invoice);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-amber-800 hover:bg-amber-50 transition-colors cursor-pointer"
+                          role="menuitem"
+                        >
+                          <RotateCcw className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span>{invoice.isProforma ? 'لغو و حذف پیش‌فاکتور' : 'مرجوعی به انبار'}</span>
+                        </button>
+                      )}
+
+                      {/* Delete */}
+                      {onDeleteInvoice && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsActionsOpen(false);
+                            onClose();
+                            onDeleteInvoice(invoice.id);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
+                          role="menuitem"
+                        >
+                          <Trash2 className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span>حذف سند</span>
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Close Button */}
             <button
               type="button"
               onClick={onClose}
-              className="min-h-[40px] px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+              className="min-h-[40px] px-3.5 sm:px-4 py-2 bg-slate-200 hover:bg-slate-300 active:scale-95 text-slate-700 rounded-xl font-bold text-xs transition-all cursor-pointer"
             >
               بستن
             </button>
