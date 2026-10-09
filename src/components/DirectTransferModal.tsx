@@ -51,8 +51,6 @@ export const DirectTransferModal: React.FC<DirectTransferModalProps> = ({
   currentUserName,
   onSave,
 }) => {
-  if (!isOpen) return null;
-
   // Header and Type State (شماره‌گذاری ترتیبی و منظم حواله انتقال و خروج بدون رندوم)
   const [transferNumber, setTransferNumber] = useState<string>(() => StorageService.getNextTransferNumber());
   const [title, setTitle] = useState<string>('');
@@ -293,6 +291,8 @@ export const DirectTransferModal: React.FC<DirectTransferModalProps> = ({
 
     onClose();
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/70 backdrop-blur-sm overflow-y-auto">

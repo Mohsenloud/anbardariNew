@@ -390,6 +390,7 @@ export interface PrintLayoutSettings {
 
   // ۲. ابعاد جدول، ردیف‌ها و ستون‌ها
   tableRowPaddingY: number; // ارتفاع و پدینگ عمودی ردیف‌های جدول (۲ تا ۱۶ پیکسل)
+  tableRowMinHeight?: number; // حداقل ارتفاع هر ردیف جدول بر حسب پیکسل (۲۲ تا ۶۰)
   tableCellPaddingX: number; // پدینگ افقی سلول‌های جدول (۲ تا ۱۲ پیکسل)
   tableBorderStyle: 'bordered' | 'striped' | 'minimal' | 'modern'; // سبک خطوط جدول
   tableBorderColor: string; // رنگ خطوط و کادرهای جدول
@@ -436,6 +437,7 @@ export const DEFAULT_PRINT_LAYOUT: PrintLayoutSettings = {
   notesFontSize: 10,
 
   tableRowPaddingY: 6,
+  tableRowMinHeight: 34,
   tableCellPaddingX: 8,
   tableBorderStyle: 'bordered',
   tableBorderColor: '#cbd5e1',

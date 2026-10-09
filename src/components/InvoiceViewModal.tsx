@@ -24,11 +24,15 @@ import {
   ExternalLink,
   Smartphone,
   Download,
-  FileSpreadsheet
+  FileSpreadsheet,
+  SlidersHorizontal
 } from 'lucide-react';
 import { SimpleInvoiceLayout } from './SimpleInvoiceLayout';
 import { InvoiceShareLinkModal } from './InvoiceShareLinkModal';
+import { InvoiceTableDimensionsPanel } from './InvoiceTableDimensionsPanel';
+import { getPrintLayoutCssVariables, getPrintLayoutCssRules } from '../utils/printLayoutHelper';
 import { StorageService } from '../utils/storage';
+import { DEFAULT_PRINT_LAYOUT, PrintLayoutSettings } from '../types';
 
 interface InvoiceViewModalProps {
   invoice: Invoice | null;
@@ -58,6 +62,43 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   const [activeInvoice, setActiveInvoice] = useState<Invoice>(invoice!);
   const [activeSettings, setActiveSettings] = useState<StoreSettings>(settings);
   const [notification, setNotification] = useState<string | null>(null);
+  const [isDimensionsPanelOpen, setIsDimensionsPanelOpen] = useState(false);
+  const [currentPrintLayout, setCurrentPrintLayout] = useState<PrintLayoutSettings>(() => ({
+    ...DEFAULT_PRINT_LAYOUT,
+    ...(settings.printLayout || {}),
+  }));
+
+  useEffect(() => {
+    if (settings.printLayout) {
+      setCurrentPrintLayout((prev) => ({
+        ...prev,
+        ...settings.printLayout,
+      }));
+    }
+  }, [settings.printLayout]);
+
+  const handleSavePrintLayout = () => {
+    const updatedSettings = {
+      ...activeSettings,
+      printLayout: currentPrintLayout,
+    };
+    StorageService.saveSettings(updatedSettings);
+    setActiveSettings(updatedSettings);
+    setNotification('ابعاد و تنظیمات جدول فاکتور با موفقیت ذخیره گردید.');
+    setTimeout(() => setNotification(null), 3500);
+  };
+
+  const handleResetPrintLayout = () => {
+    setCurrentPrintLayout({ ...DEFAULT_PRINT_LAYOUT });
+    const updatedSettings = {
+      ...activeSettings,
+      printLayout: { ...DEFAULT_PRINT_LAYOUT },
+    };
+    StorageService.saveSettings(updatedSettings);
+    setActiveSettings(updatedSettings);
+    setNotification('ابعاد جدول به مقادیر پیش‌فرض بازگردانده شد.');
+    setTimeout(() => setNotification(null), 3500);
+  };
 
   useEffect(() => {
     if (invoice) {
@@ -113,6 +154,25 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
     StorageService.saveInvoicePrintPreferences({ orientation });
   }, [orientation]);
 
+  const buyerMobile = useMemo(() => {
+    if (!invoice) return '';
+    if (invoice.customerPhone && invoice.customerPhone.trim()) return invoice.customerPhone.trim();
+    try {
+      const customers = StorageService.getCustomers();
+      if (invoice.customerId) {
+        const found = customers.find((c) => c.id === invoice.customerId);
+        if (found?.phone) return found.phone;
+      }
+      if (invoice.customerName) {
+        const found = customers.find(
+          (c) => c.name.trim().toLowerCase() === invoice.customerName.trim().toLowerCase()
+        );
+        if (found?.phone) return found.phone;
+      }
+    } catch {}
+    return '';
+  }, [invoice?.customerPhone, invoice?.customerId, invoice?.customerName]);
+
   if (!invoice) return null;
 
   const currentTemplate = template;
@@ -122,6 +182,20 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   const isA5Portrait = isA5 && !isLandscape;
   const isA4Landscape = !isA5 && isLandscape;
   const isA4Portrait = !isA5 && !isLandscape;
+  const scaleRatio = isA5 ? (isLandscape ? 0.88 : 0.85) : (isLandscape ? 0.96 : 1.0);
+  const liveRowMinH = Math.max(18, Math.round((currentPrintLayout.tableRowMinHeight || 34) * scaleRatio));
+  const liveRowPy = Math.max(1, Math.round((currentPrintLayout.tableRowPaddingY ?? 6) * scaleRatio));
+  const liveCellPx = Math.max(2, Math.round((currentPrintLayout.tableCellPaddingX ?? 8) * scaleRatio));
+  const liveHeaderH = Math.max(24, Math.round(liveRowMinH * 1.08));
+  const liveTableBodyFontSize = Math.max(8, Math.round((currentPrintLayout.tableBodySize || 11) * scaleRatio));
+  const liveTableHeaderFontSize = Math.max(8, Math.round((currentPrintLayout.tableHeaderSize || 11) * scaleRatio));
+  const liveColWidthIndex = Math.round((currentPrintLayout.colWidthIndex || 38) * scaleRatio);
+  const liveColWidthCode = Math.round((currentPrintLayout.colWidthCode || 75) * scaleRatio);
+  const liveColWidthQty = Math.round((currentPrintLayout.colWidthQty || 60) * scaleRatio);
+  const liveColWidthUnit = Math.round((currentPrintLayout.colWidthUnit || 52) * scaleRatio);
+  const liveColWidthPrice = Math.round((currentPrintLayout.colWidthPrice || 110) * scaleRatio);
+  const liveColWidthDiscount = Math.round((currentPrintLayout.colWidthDiscount || 75) * scaleRatio);
+  const liveColWidthTotal = Math.round((currentPrintLayout.colWidthTotal || 155) * scaleRatio);
 
   const officialTaxPercent = settings.officialTaxPercent ?? settings.taxPercent ?? 10;
   const isOfficial = currentTemplate === 'official';
@@ -139,24 +213,6 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   const effectiveFinalTotal = (effectiveTaxAmount > 0 && (!invoice.taxAmount || invoice.taxAmount === 0))
     ? taxableAmount + effectiveTaxAmount
     : invoice.finalTotal;
-
-  const buyerMobile = useMemo(() => {
-    if (invoice.customerPhone && invoice.customerPhone.trim()) return invoice.customerPhone.trim();
-    try {
-      const customers = StorageService.getCustomers();
-      if (invoice.customerId) {
-        const found = customers.find((c) => c.id === invoice.customerId);
-        if (found?.phone) return found.phone;
-      }
-      if (invoice.customerName) {
-        const found = customers.find(
-          (c) => c.name.trim().toLowerCase() === invoice.customerName.trim().toLowerCase()
-        );
-        if (found?.phone) return found.phone;
-      }
-    } catch {}
-    return '';
-  }, [invoice.customerPhone, invoice.customerId, invoice.customerName]);
 
   const handlePrint = () => {
     const docTitle = invoice.isProforma
@@ -527,6 +583,22 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                       افقی
                     </button>
                   </div>
+
+                  {/* Table Dimensions Adjustment Button */}
+                  <button
+                    type="button"
+                    id="invoice-table-dimensions-btn"
+                    onClick={() => setIsDimensionsPanelOpen((prev) => !prev)}
+                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 shrink-0 border shadow-xs ${
+                      isDimensionsPanelOpen
+                        ? 'bg-emerald-600 border-emerald-400 text-white shadow-emerald-900/50 ring-2 ring-emerald-500/40'
+                        : 'bg-emerald-950/70 border-emerald-600/50 text-emerald-300 hover:bg-emerald-900 hover:text-white'
+                    }`}
+                    title="تنظیم مستقیم ارتفاع ردیف‌ها و عرض ستون‌های جدول فاکتور"
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>تنظیم ابعاد جدول (ارتفاع و عرض)</span>
+                  </button>
                 </>
               )}
 
@@ -605,11 +677,25 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
 
             </div>
           </div>
+
+          {/* Interactive Table Cell Dimensions Panel */}
+          <InvoiceTableDimensionsPanel
+            isOpen={isDimensionsPanelOpen}
+            onClose={() => setIsDimensionsPanelOpen(false)}
+            layout={currentPrintLayout}
+            onChangeLayout={(newLayout) => setCurrentPrintLayout(newLayout)}
+            onSaveAsDefault={handleSavePrintLayout}
+            onResetToDefault={handleResetPrintLayout}
+            pageSize={pageSize}
+            orientation={orientation}
+          />
         </div>
 
         {/* Dynamic Paper Format & Orientation Styles for Invoices */}
         {currentTemplate !== 'thermal' && (
           <style>{`
+            ${getPrintLayoutCssRules('#printable-invoice, .standard-invoice-layout, .simple-invoice-layout')}
+
             @media print {
               @page {
                 size: ${pageSize.toUpperCase()} ${orientation} !important;
@@ -660,18 +746,31 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             #printable-invoice table th {
               vertical-align: middle !important;
               box-sizing: border-box !important;
+              padding-top: var(--print-table-row-py, 6px) !important;
+              padding-bottom: var(--print-table-row-py, 6px) !important;
+              padding-left: var(--print-table-cell-px, 8px) !important;
+              padding-right: var(--print-table-cell-px, 8px) !important;
+              height: var(--print-table-header-h, 36px) !important;
+              font-size: var(--print-table-header-size, 11px) !important;
             }
             #printable-invoice table tbody tr {
-              height: auto !important;
+              height: var(--print-table-row-min-h, 34px) !important;
               page-break-inside: avoid !important;
               break-inside: avoid !important;
             }
             #printable-invoice table tbody td {
+              padding-top: var(--print-table-row-py, 6px) !important;
+              padding-bottom: var(--print-table-row-py, 6px) !important;
+              padding-left: var(--print-table-cell-px, 8px) !important;
+              padding-right: var(--print-table-cell-px, 8px) !important;
+              height: var(--print-table-row-min-h, 34px) !important;
+              min-height: var(--print-table-row-min-h, 34px) !important;
               vertical-align: middle !important;
               box-sizing: border-box !important;
               line-height: 1.4 !important;
               word-break: break-word !important;
               overflow-wrap: break-word !important;
+              font-size: var(--print-table-body-size, 11px) !important;
             }
 
             /* === A4 PORTRAIT === */
@@ -682,17 +781,6 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
               padding: 24px 30px !important;
               font-size: 13px !important;
             }
-            #printable-invoice.paper-a4.paper-portrait table th {
-              padding: 6px 10px !important;
-              font-size: 12px !important;
-              height: 38px !important;
-            }
-            #printable-invoice.paper-a4.paper-portrait table tbody td {
-              padding: 6px 10px !important;
-              font-size: 12px !important;
-              height: 36px !important;
-              min-height: 36px !important;
-            }
 
             /* === A4 LANDSCAPE === */
             #printable-invoice.paper-a4.paper-landscape {
@@ -701,17 +789,6 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
               min-height: 806px !important;
               padding: 18px 26px !important;
               font-size: 12px !important;
-            }
-            #printable-invoice.paper-a4.paper-landscape table th {
-              padding: 5px 8px !important;
-              font-size: 11.5px !important;
-              height: 34px !important;
-            }
-            #printable-invoice.paper-a4.paper-landscape table tbody td {
-              padding: 5px 8px !important;
-              font-size: 11.5px !important;
-              height: 32px !important;
-              min-height: 32px !important;
             }
             #printable-invoice.paper-a4.paper-landscape .invoice-signatures {
               padding-top: 12px !important;
@@ -731,17 +808,6 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             }
             #printable-invoice.paper-a5.paper-portrait h2 {
               font-size: 15px !important;
-            }
-            #printable-invoice.paper-a5.paper-portrait table th {
-              padding: 4px 6px !important;
-              font-size: 10px !important;
-              height: 30px !important;
-            }
-            #printable-invoice.paper-a5.paper-portrait table tbody td {
-              padding: 4px 6px !important;
-              font-size: 10px !important;
-              height: 28px !important;
-              min-height: 28px !important;
             }
             #printable-invoice.paper-a5.paper-portrait .invoice-header {
               padding-bottom: 8px !important;
@@ -776,17 +842,6 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             #printable-invoice.paper-a5.paper-landscape h2 {
               font-size: 14px !important;
             }
-            #printable-invoice.paper-a5.paper-landscape table th {
-              padding: 3px 5px !important;
-              font-size: 9.5px !important;
-              height: 26px !important;
-            }
-            #printable-invoice.paper-a5.paper-landscape table tbody td {
-              padding: 3px 5px !important;
-              font-size: 9.5px !important;
-              height: 24px !important;
-              min-height: 24px !important;
-            }
             #printable-invoice.paper-a5.paper-landscape .invoice-header {
               padding-bottom: 6px !important;
               margin-bottom: 4px !important;
@@ -816,10 +871,34 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
         )}
 
         {/* Printable Paper Area */}
-        <div className="overflow-x-auto overflow-y-auto p-2 sm:p-8 bg-slate-100/60 print:p-0 print:bg-white flex justify-center">
+        <div className="overflow-x-auto overflow-y-auto p-2 sm:p-8 bg-slate-100/60 print:p-0 print:bg-white flex flex-col items-center">
+          {/* Quick interactive toolbar right above paper in preview */}
+          {currentTemplate !== 'thermal' && (
+            <div className="no-print max-w-[840px] w-full mb-2.5 flex items-center justify-between text-xs px-1">
+              <span className="text-slate-500 text-[11px] font-medium flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>پیش‌نمایش چاپ فاکتور ({pageSize.toUpperCase()} {orientation === 'portrait' ? 'عمودی' : 'افقی'})</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsDimensionsPanelOpen((prev) => !prev)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border font-bold text-xs transition-all cursor-pointer shadow-2xs ${
+                  isDimensionsPanelOpen
+                    ? 'bg-emerald-600 border-emerald-500 text-white shadow-xs'
+                    : 'bg-white hover:bg-emerald-50 border-slate-300 hover:border-emerald-400 text-slate-700 hover:text-emerald-700'
+                }`}
+                title="تنظیم مستقیم ارتفاع ردیف‌ها و عرض سلول‌های جدول فاکتور"
+              >
+                <SlidersHorizontal className={`w-3.5 h-3.5 ${isDimensionsPanelOpen ? 'text-white' : 'text-emerald-600'}`} />
+                <span>{isDimensionsPanelOpen ? 'بستن تنظیمات ابعاد جدول' : 'تنظیم ارتفاع و عرض جدول'}</span>
+              </button>
+            </div>
+          )}
+
           {/* Paper Container */}
           <div
             id="printable-invoice"
+            style={currentTemplate !== 'thermal' ? getPrintLayoutCssVariables(currentPrintLayout, pageSize, orientation) : undefined}
             className={`print-container bg-white shadow-md print:shadow-none print:border-none border border-slate-200 transition-all flex flex-col justify-between ${
               currentTemplate === 'thermal'
                 ? 'w-full max-w-[340px] p-4 text-[12px]'
@@ -832,7 +911,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             {currentTemplate === 'simple' ? (
               <SimpleInvoiceLayout 
                 invoice={invoice} 
-                settings={settings} 
+                settings={{ ...activeSettings, printLayout: currentPrintLayout }} 
                 pageSize={pageSize}
                 orientation={orientation}
               />
@@ -973,16 +1052,6 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                       <div><strong>خریدار:</strong> {invoice.customerName || 'مشتری محترم'}</div>
                       <div><strong>موبایل خریدار:</strong> <span className="font-mono">{buyerMobile ? toPersianDigits(buyerMobile) : '---'}</span></div>
                       {invoice.customerAddress && <div><strong>آدرس:</strong> {invoice.customerAddress}</div>}
-                      <div>
-                        <strong>وضعیت پرداخت:</strong>{' '}
-                        <span className="font-semibold text-slate-900">
-                          {invoice.paymentStatus === 'paid'
-                            ? 'تسویه کامل'
-                            : invoice.paymentStatus === 'partial'
-                            ? 'بیعانه'
-                            : 'نسیه / بدهکار'}
-                        </span>
-                      </div>
                     </div>
                   )}
                 </div>
@@ -991,15 +1060,131 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                 <div className="invoice-table-box overflow-x-auto flex-1 flex flex-col justify-start my-auto">
                   <table className="w-full text-right border-collapse text-xs border border-slate-300">
                     <thead>
-                      <tr className="bg-slate-100 text-slate-800 border-b border-slate-300">
-                        <th className="p-2 border-l border-slate-300 w-8 text-center" style={{ height: '36px' }}>ردیف</th>
-                        <th className="p-2 border-l border-slate-300">کد کالا</th>
-                        <th className="p-2 border-l border-slate-300">شرح کالا یا خدمات</th>
-                        <th className="p-2 border-l border-slate-300 text-center">تعداد</th>
-                        <th className="p-2 border-l border-slate-300 text-center">واحد</th>
-                        <th className="p-2 border-l border-slate-300 text-left">قیمت واحد ({settings.currency})</th>
-                        <th className="p-2 border-l border-slate-300 text-left">تخفیف</th>
-                        <th className="p-2 text-left">مبلغ کل ({settings.currency})</th>
+                      <tr className="bg-slate-100 text-slate-800 border-b border-slate-300" style={{ height: `${liveHeaderH}px` }}>
+                        <th 
+                          className="border-l border-slate-300 text-center align-middle" 
+                          style={{ 
+                            width: `${liveColWidthIndex}px`,
+                            minWidth: `${liveColWidthIndex}px`,
+                            paddingTop: `${liveRowPy}px`,
+                            paddingBottom: `${liveRowPy}px`,
+                            paddingLeft: `${liveCellPx}px`,
+                            paddingRight: `${liveCellPx}px`,
+                            height: `${liveHeaderH}px`,
+                            fontSize: `${liveTableHeaderFontSize}px`
+                          }}
+                        >
+                          ردیف
+                        </th>
+                        {currentPrintLayout.showItemCodeCol !== false && (
+                          <th 
+                            className="border-l border-slate-300 align-middle"
+                            style={{ 
+                              width: `${liveColWidthCode}px`,
+                              minWidth: `${liveColWidthCode}px`,
+                              paddingTop: `${liveRowPy}px`,
+                              paddingBottom: `${liveRowPy}px`,
+                              paddingLeft: `${liveCellPx}px`,
+                              paddingRight: `${liveCellPx}px`,
+                              height: `${liveHeaderH}px`,
+                              fontSize: `${liveTableHeaderFontSize}px`
+                            }}
+                          >
+                            کد کالا
+                          </th>
+                        )}
+                        <th 
+                          className="border-l border-slate-300 align-middle"
+                          style={{
+                            paddingTop: `${liveRowPy}px`,
+                            paddingBottom: `${liveRowPy}px`,
+                            paddingLeft: `${liveCellPx}px`,
+                            paddingRight: `${liveCellPx}px`,
+                            height: `${liveHeaderH}px`,
+                            fontSize: `${liveTableHeaderFontSize}px`
+                          }}
+                        >
+                          شرح کالا یا خدمات
+                        </th>
+                        <th 
+                          className="border-l border-slate-300 text-center align-middle"
+                          style={{ 
+                            width: `${liveColWidthQty}px`,
+                            minWidth: `${liveColWidthQty}px`,
+                            paddingTop: `${liveRowPy}px`,
+                            paddingBottom: `${liveRowPy}px`,
+                            paddingLeft: `${liveCellPx}px`,
+                            paddingRight: `${liveCellPx}px`,
+                            height: `${liveHeaderH}px`,
+                            fontSize: `${liveTableHeaderFontSize}px`
+                          }}
+                        >
+                          تعداد
+                        </th>
+                        {currentPrintLayout.showItemUnitCol !== false && (
+                          <th 
+                            className="border-l border-slate-300 text-center align-middle"
+                            style={{ 
+                              width: `${liveColWidthUnit}px`,
+                              minWidth: `${liveColWidthUnit}px`,
+                              paddingTop: `${liveRowPy}px`,
+                              paddingBottom: `${liveRowPy}px`,
+                              paddingLeft: `${liveCellPx}px`,
+                              paddingRight: `${liveCellPx}px`,
+                              height: `${liveHeaderH}px`,
+                              fontSize: `${liveTableHeaderFontSize}px`
+                            }}
+                          >
+                            واحد
+                          </th>
+                        )}
+                        <th 
+                          className="border-l border-slate-300 text-left align-middle"
+                          style={{ 
+                            width: `${liveColWidthPrice}px`,
+                            minWidth: `${liveColWidthPrice}px`,
+                            paddingTop: `${liveRowPy}px`,
+                            paddingBottom: `${liveRowPy}px`,
+                            paddingLeft: `${liveCellPx}px`,
+                            paddingRight: `${liveCellPx}px`,
+                            height: `${liveHeaderH}px`,
+                            fontSize: `${liveTableHeaderFontSize}px`
+                          }}
+                        >
+                          قیمت واحد ({settings.currency})
+                        </th>
+                        {currentPrintLayout.showItemDiscountCol !== false && (
+                          <th 
+                            className="border-l border-slate-300 text-left align-middle"
+                            style={{ 
+                              width: `${liveColWidthDiscount}px`,
+                              minWidth: `${liveColWidthDiscount}px`,
+                              paddingTop: `${liveRowPy}px`,
+                              paddingBottom: `${liveRowPy}px`,
+                              paddingLeft: `${liveCellPx}px`,
+                              paddingRight: `${liveCellPx}px`,
+                              height: `${liveHeaderH}px`,
+                              fontSize: `${liveTableHeaderFontSize}px`
+                            }}
+                          >
+                            تخفیف
+                          </th>
+                        )}
+                        <th 
+                          className="text-left align-middle"
+                          style={{ 
+                            width: `${liveColWidthTotal}px`,
+                            minWidth: `${liveColWidthTotal}px`,
+                            paddingTop: `${liveRowPy}px`,
+                            paddingBottom: `${liveRowPy}px`,
+                            paddingLeft: `${liveCellPx}px`,
+                            paddingRight: `${liveCellPx}px`,
+                            height: `${liveHeaderH}px`,
+                            fontSize: `${liveTableHeaderFontSize}px`
+                          }}
+                        >
+                          مبلغ کل ({settings.currency})
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1009,14 +1194,51 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                           className={`border-b border-slate-200 ${
                             idx % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'
                           }`}
+                          style={{ height: `${liveRowMinH}px` }}
                         >
                           <td 
-                            className="p-2 border-l border-slate-200 text-center align-middle font-['Vazirmatn']"
+                            className="border-l border-slate-200 text-center align-middle font-['Vazirmatn']"
+                            style={{
+                              width: `${liveColWidthIndex}px`,
+                              minWidth: `${liveColWidthIndex}px`,
+                              paddingTop: `${liveRowPy}px`,
+                              paddingBottom: `${liveRowPy}px`,
+                              paddingLeft: `${liveCellPx}px`,
+                              paddingRight: `${liveCellPx}px`,
+                              height: `${liveRowMinH}px`,
+                              fontSize: `${liveTableBodyFontSize}px`
+                            }}
                           >
                             {toPersianDigits(idx + 1)}
                           </td>
-                          <td className="p-2 border-l border-slate-200 text-slate-600 align-middle font-mono">{toPersianDigits(item.productCode || '---')}</td>
-                          <td className="p-2 border-l border-slate-200 font-medium text-slate-900 align-middle">
+                          {currentPrintLayout.showItemCodeCol !== false && (
+                            <td 
+                              className="border-l border-slate-200 text-slate-600 align-middle font-mono"
+                              style={{
+                                width: `${liveColWidthCode}px`,
+                                minWidth: `${liveColWidthCode}px`,
+                                paddingTop: `${liveRowPy}px`,
+                                paddingBottom: `${liveRowPy}px`,
+                                paddingLeft: `${liveCellPx}px`,
+                                paddingRight: `${liveCellPx}px`,
+                                height: `${liveRowMinH}px`,
+                                fontSize: `${liveTableBodyFontSize}px`
+                              }}
+                            >
+                              {toPersianDigits(item.productCode || '---')}
+                            </td>
+                          )}
+                          <td 
+                            className="border-l border-slate-200 font-medium text-slate-900 align-middle"
+                            style={{
+                              paddingTop: `${liveRowPy}px`,
+                              paddingBottom: `${liveRowPy}px`,
+                              paddingLeft: `${liveCellPx}px`,
+                              paddingRight: `${liveCellPx}px`,
+                              height: `${liveRowMinH}px`,
+                              fontSize: `${liveTableBodyFontSize}px`
+                            }}
+                          >
                             <div>{item.productName}</div>
                             {item.variantName && (
                               <div className="text-[10px] text-purple-700 mt-0.5">
@@ -1029,14 +1251,82 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                               </div>
                             )}
                           </td>
-                          <td className="p-2 border-l border-slate-200 text-center font-bold align-middle font-['Vazirmatn']">{toPersianDigits(item.quantity)}</td>
-                          <td className="p-2 border-l border-slate-200 text-center text-slate-600 align-middle">{item.unit || 'عدد'}</td>
-                          <td className="p-2 border-l border-slate-200 text-left font-['Vazirmatn'] align-middle">{formatPrice(item.unitPrice, '', true)}</td>
-                          <td className="p-2 border-l border-slate-200 text-left text-slate-600 font-['Vazirmatn'] align-middle">
-                            {item.discount > 0 ? formatPrice(item.discount, '', true) : '۰'}
-                          </td>
                           <td 
-                            className="p-2 text-left font-bold text-slate-900 font-['Vazirmatn'] align-middle"
+                            className="border-l border-slate-200 text-center font-bold align-middle font-['Vazirmatn']"
+                            style={{
+                              width: `${liveColWidthQty}px`,
+                              minWidth: `${liveColWidthQty}px`,
+                              paddingTop: `${liveRowPy}px`,
+                              paddingBottom: `${liveRowPy}px`,
+                              paddingLeft: `${liveCellPx}px`,
+                              paddingRight: `${liveCellPx}px`,
+                              height: `${liveRowMinH}px`,
+                              fontSize: `${liveTableBodyFontSize}px`
+                            }}
+                          >
+                            {toPersianDigits(item.quantity)}
+                          </td>
+                          {currentPrintLayout.showItemUnitCol !== false && (
+                            <td 
+                              className="border-l border-slate-200 text-center text-slate-600 align-middle"
+                              style={{
+                                width: `${liveColWidthUnit}px`,
+                                minWidth: `${liveColWidthUnit}px`,
+                                paddingTop: `${liveRowPy}px`,
+                                paddingBottom: `${liveRowPy}px`,
+                                paddingLeft: `${liveCellPx}px`,
+                                paddingRight: `${liveCellPx}px`,
+                                height: `${liveRowMinH}px`,
+                                fontSize: `${liveTableBodyFontSize}px`
+                              }}
+                            >
+                              {item.unit || 'عدد'}
+                            </td>
+                          )}
+                          <td 
+                            className="border-l border-slate-200 text-left font-['Vazirmatn'] align-middle"
+                            style={{
+                              width: `${liveColWidthPrice}px`,
+                              minWidth: `${liveColWidthPrice}px`,
+                              paddingTop: `${liveRowPy}px`,
+                              paddingBottom: `${liveRowPy}px`,
+                              paddingLeft: `${liveCellPx}px`,
+                              paddingRight: `${liveCellPx}px`,
+                              height: `${liveRowMinH}px`,
+                              fontSize: `${liveTableBodyFontSize}px`
+                            }}
+                          >
+                            {formatPrice(item.unitPrice, '', true)}
+                          </td>
+                          {currentPrintLayout.showItemDiscountCol !== false && (
+                            <td 
+                              className="border-l border-slate-200 text-left text-slate-600 font-['Vazirmatn'] align-middle"
+                              style={{
+                                width: `${liveColWidthDiscount}px`,
+                                minWidth: `${liveColWidthDiscount}px`,
+                                paddingTop: `${liveRowPy}px`,
+                                paddingBottom: `${liveRowPy}px`,
+                                paddingLeft: `${liveCellPx}px`,
+                                paddingRight: `${liveCellPx}px`,
+                                height: `${liveRowMinH}px`,
+                                fontSize: `${liveTableBodyFontSize}px`
+                              }}
+                            >
+                              {item.discount > 0 ? formatPrice(item.discount, '', true) : '۰'}
+                            </td>
+                          )}
+                          <td 
+                            className="text-left font-bold text-slate-900 font-['Vazirmatn'] align-middle"
+                            style={{
+                              width: `${liveColWidthTotal}px`,
+                              minWidth: `${liveColWidthTotal}px`,
+                              paddingTop: `${liveRowPy}px`,
+                              paddingBottom: `${liveRowPy}px`,
+                              paddingLeft: `${liveCellPx}px`,
+                              paddingRight: `${liveCellPx}px`,
+                              height: `${liveRowMinH}px`,
+                              fontSize: `${liveTableBodyFontSize}px`
+                            }}
                           >
                             {formatPrice(item.total, '', true)}
                           </td>

@@ -44,8 +44,6 @@ export const CustomerStatementsReportModal: React.FC<CustomerStatementsReportMod
   settings,
   onSelectCustomerForStatement,
 }) => {
-  if (!isOpen) return null;
-
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'debtor' | 'settled' | 'creditor'>('all');
   const [sortBy, setSortBy] = useState<'debt_desc' | 'name' | 'activity'>('debt_desc');
@@ -140,6 +138,8 @@ export const CustomerStatementsReportModal: React.FC<CustomerStatementsReportMod
   const handleExportExcel = () => {
     exportAllCustomerStatementsToExcel(customers, invoices, transactions, settings);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div

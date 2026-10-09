@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   X, 
   CreditCard, 
@@ -41,10 +41,9 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
   settings,
   onConfirmPayment,
 }) => {
-  if (!isOpen || !customer) return null;
-
   // Filter regular unpaid/partially-paid invoices for this customer
   const unpaidCustomerInvoices = useMemo(() => {
+    if (!customer) return [];
     return invoices
       .filter((inv) => {
         if (inv.isProforma) return false;
@@ -72,6 +71,19 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
       return sum + remaining;
     }, 0);
   });
+
+  // Sync state whenever modal opens or customer changes
+  useEffect(() => {
+    if (isOpen && customer) {
+      setSelectedInvoiceIds(unpaidCustomerInvoices.map((i) => i.id));
+      setCustomDepositAmount(
+        unpaidCustomerInvoices.reduce((sum, inv) => {
+          const remaining = Math.max(0, inv.finalTotal - (inv.paidAmount || 0));
+          return sum + remaining;
+        }, 0)
+      );
+    }
+  }, [isOpen, customer, unpaidCustomerInvoices]);
 
   const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'card' | 'cash' | 'cheque'>('bank_transfer');
   const [referenceNumber, setReferenceNumber] = useState('');
@@ -194,6 +206,8 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
     onConfirmPayment(updates, details);
     onClose();
   };
+
+  if (!isOpen || !customer) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/75 backdrop-blur-xs overflow-y-auto">

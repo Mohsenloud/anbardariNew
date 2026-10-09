@@ -38,9 +38,7 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
   onClose,
   onUpdateInvoice,
 }) => {
-  if (!isOpen || !invoice) return null;
-
-  const existingLink = invoice.shareLink;
+  const existingLink = invoice?.shareLink;
   const [token, setToken] = useState<string>(existingLink?.token || '');
   const [enabled, setEnabled] = useState<boolean>(existingLink ? existingLink.enabled !== false : true);
   const [isOneTime, setIsOneTime] = useState<boolean>(existingLink?.isOneTime || false);
@@ -68,6 +66,7 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
 
   // If no link exists yet, automatically initialize one
   useEffect(() => {
+    if (!isOpen || !invoice) return;
     if (!invoice.shareLink) {
       handleGenerateOrUpdate(false);
     } else {
@@ -78,7 +77,7 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
       setPinCode(invoice.shareLink.pinCode || '');
       setAllowPdfDownload(invoice.shareLink.allowPdfDownload !== false);
     }
-  }, [invoice.id]);
+  }, [isOpen, invoice?.id]);
 
   const calculateExpiresAt = (preset: 'never' | '24h' | '3d' | '7d' | '30d'): string | null => {
     if (preset === 'never') return null;
@@ -89,6 +88,7 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
   };
 
   const handleGenerateOrUpdate = async (regenerate = false) => {
+    if (!invoice) return;
     try {
       setIsSaving(true);
       const computedExpiry = calculateExpiresAt(expiryPreset);
@@ -121,6 +121,7 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
   };
 
   const handleToggleEnabled = async () => {
+    if (!invoice) return;
     const nextState = !enabled;
     setEnabled(nextState);
     try {
@@ -234,6 +235,8 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
 
   const currentViewCount = Number(existingLink?.viewCount) || 0;
   const isExpired = existingLink?.expiresAt && new Date(existingLink.expiresAt).getTime() < Date.now();
+
+  if (!isOpen || !invoice) return null;
 
   return (
     <div

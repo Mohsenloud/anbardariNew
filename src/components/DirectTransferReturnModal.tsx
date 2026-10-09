@@ -47,17 +47,28 @@ export const DirectTransferReturnModal: React.FC<DirectTransferReturnModalProps>
   currentUserName,
   onSaveReturn,
 }) => {
-  if (!isOpen || !transfer) return null;
-
   // Initialize return quantities per item based on remaining unreturned quantity
   const [returnQtys, setReturnQtys] = useState<Record<string, number>>(() => {
     const initial: Record<string, number> = {};
-    transfer.items.forEach((item) => {
-      const remaining = Math.max(0, item.quantity - (item.returnedQuantity || 0));
-      initial[item.id] = remaining; // Default to return full remaining
-    });
+    if (transfer?.items) {
+      transfer.items.forEach((item) => {
+        const remaining = Math.max(0, item.quantity - (item.returnedQuantity || 0));
+        initial[item.id] = remaining; // Default to return full remaining
+      });
+    }
     return initial;
   });
+
+  useEffect(() => {
+    if (isOpen && transfer?.items) {
+      const initial: Record<string, number> = {};
+      transfer.items.forEach((item) => {
+        const remaining = Math.max(0, item.quantity - (item.returnedQuantity || 0));
+        initial[item.id] = remaining;
+      });
+      setReturnQtys(initial);
+    }
+  }, [isOpen, transfer]);
 
   // Returner and Vehicle State
   const [returnerName, setReturnerName] = useState<string>('');
@@ -179,6 +190,8 @@ export const DirectTransferReturnModal: React.FC<DirectTransferReturnModalProps>
 
     onClose();
   };
+
+  if (!isOpen || !transfer) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/70 backdrop-blur-sm overflow-y-auto">

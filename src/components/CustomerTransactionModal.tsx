@@ -54,8 +54,6 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
   onSaveTransaction,
   editingTransaction,
 }) => {
-  if (!isOpen || !customer) return null;
-
   // Transaction type: deposit (واریز) or debt (بدهی)
   const [txnType, setTxnType] = useState<'deposit' | 'debt'>(
     editingTransaction ? editingTransaction.type : initialType
@@ -87,6 +85,9 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
 
   // Calculate current customer net balance
   const fullLedger = useMemo(() => {
+    if (!customer) {
+      return { customer: null as any, entries: [], totalDebit: 0, totalCredit: 0, netBalance: 0 };
+    }
     return StorageService.buildCustomerLedger(customer, invoices, transactions);
   }, [customer, invoices, transactions]);
 
@@ -256,6 +257,8 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
 
     onClose();
   };
+
+  if (!isOpen || !customer) return null;
 
   return (
     <div

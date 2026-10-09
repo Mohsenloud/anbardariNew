@@ -50,8 +50,15 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
   const formatPersianPrice = (val: number) => toPersianDigits(Math.round(val || 0).toLocaleString('en-US'));
 
   // Adaptive typography and spacing based on sheet size and orientation
-  const tableCellPy = isA5Landscape ? 'py-1' : isA5Portrait ? 'py-1.5' : isA4Landscape ? 'py-2' : 'py-2.5';
-  const tableCellPx = isA5Landscape ? 'px-1.5' : isA5Portrait ? 'px-2' : 'px-2.5 sm:px-3';
+  const scaleRatio = isA5 ? (isLandscape ? 0.88 : 0.85) : (isLandscape ? 0.96 : 1.0);
+  const layout = settings.printLayout;
+  const customRowMinH = layout?.tableRowMinHeight;
+  const defaultRowMin = isA5 ? (isLandscape ? 24 : 28) : (isLandscape ? 32 : 36);
+  const rowMinH = customRowMinH ? Math.max(18, Math.round(customRowMinH * scaleRatio)) : defaultRowMin;
+  const rowPy = layout?.tableRowPaddingY !== undefined ? Math.max(1, Math.round(layout.tableRowPaddingY * scaleRatio)) : (isA5Landscape ? 4 : isA5Portrait ? 6 : 8);
+  const cellPx = layout?.tableCellPaddingX !== undefined ? Math.max(2, Math.round(layout.tableCellPaddingX * scaleRatio)) : (isA5Landscape ? 6 : isA5Portrait ? 8 : 10);
+  const headerH = Math.max(24, Math.round(rowMinH * 1.08));
+
   const tableFontSize = isA5Landscape ? 'text-[9px]' : isA5Portrait ? 'text-[10px]' : isA4Landscape ? 'text-[11.5px]' : 'text-xs';
   const signatureHeight = isA5Landscape ? 'min-h-[46px]' : isA5Portrait ? 'min-h-[60px]' : isA4Landscape ? 'min-h-[72px]' : 'min-h-[82px]';
 
@@ -147,16 +154,6 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
                   <span className="font-bold text-slate-800">{toPersianDigits(invoice.dueDate)}</span>
                 </div>
               )}
-              <div className="flex justify-between items-center gap-2 pt-0.5 border-t border-slate-200">
-                <span className="text-slate-600 font-medium">وضعیت:</span>
-                <span className="font-bold text-slate-900">
-                  {invoice.paymentStatus === 'paid'
-                    ? 'تسویه شده'
-                    : invoice.paymentStatus === 'partial'
-                    ? 'پرداخت مرحله‌ای'
-                    : 'در انتظار پرداخت'}
-                </span>
-              </div>
             </div>
           </div>
         </div>
@@ -256,21 +253,21 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
         <div className="border border-slate-700 rounded-md overflow-hidden bg-white shadow-2xs">
           <table className={`w-full text-right border-collapse ${tableFontSize}`}>
             <thead>
-              <tr className="bg-slate-100 text-slate-900 font-bold border-b border-slate-700 divide-x divide-x-reverse divide-slate-400">
-                <th className={`${tableCellPy} ${tableCellPx} text-center align-middle`} style={{ width: settings.printLayout?.colWidthIndex ? `${settings.printLayout.colWidthIndex}px` : '32px' }}>ردیف</th>
+              <tr className="bg-slate-100 text-slate-900 font-bold border-b border-slate-700 divide-x divide-x-reverse divide-slate-400" style={{ height: `${headerH}px` }}>
+                <th className="text-center align-middle" style={{ width: settings.printLayout?.colWidthIndex ? `${settings.printLayout.colWidthIndex}px` : '32px', minWidth: settings.printLayout?.colWidthIndex ? `${settings.printLayout.colWidthIndex}px` : '32px', paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px`, height: `${headerH}px` }}>ردیف</th>
                 {settings.printLayout?.showItemCodeCol !== false && (
-                  <th className={`${tableCellPy} ${tableCellPx} text-center align-middle`} style={{ width: settings.printLayout?.colWidthCode ? `${settings.printLayout.colWidthCode}px` : (isA5 ? '56px' : '80px') }}>کد کالا</th>
+                  <th className="text-center align-middle" style={{ width: settings.printLayout?.colWidthCode ? `${settings.printLayout.colWidthCode}px` : (isA5 ? '56px' : '80px'), minWidth: settings.printLayout?.colWidthCode ? `${settings.printLayout.colWidthCode}px` : (isA5 ? '56px' : '80px'), paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px`, height: `${headerH}px` }}>کد کالا</th>
                 )}
-                <th className={`${tableCellPy} ${tableCellPx} text-right align-middle`}>شرح کالا یا خدمات</th>
-                <th className={`${tableCellPy} ${tableCellPx} text-center align-middle`} style={{ width: settings.printLayout?.colWidthQty ? `${settings.printLayout.colWidthQty}px` : (isA5 ? '48px' : '64px') }}>تعداد</th>
+                <th className="text-right align-middle" style={{ paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px`, height: `${headerH}px` }}>شرح کالا یا خدمات</th>
+                <th className="text-center align-middle" style={{ width: settings.printLayout?.colWidthQty ? `${settings.printLayout.colWidthQty}px` : (isA5 ? '48px' : '64px'), minWidth: settings.printLayout?.colWidthQty ? `${settings.printLayout.colWidthQty}px` : (isA5 ? '48px' : '64px'), paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px`, height: `${headerH}px` }}>تعداد</th>
                 {settings.printLayout?.showItemUnitCol !== false && (
-                  <th className={`${tableCellPy} ${tableCellPx} text-center align-middle`} style={{ width: settings.printLayout?.colWidthUnit ? `${settings.printLayout.colWidthUnit}px` : (isA5 ? '40px' : '56px') }}>واحد</th>
+                  <th className="text-center align-middle" style={{ width: settings.printLayout?.colWidthUnit ? `${settings.printLayout.colWidthUnit}px` : (isA5 ? '40px' : '56px'), minWidth: settings.printLayout?.colWidthUnit ? `${settings.printLayout.colWidthUnit}px` : (isA5 ? '40px' : '56px'), paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px`, height: `${headerH}px` }}>واحد</th>
                 )}
-                <th className={`${tableCellPy} ${tableCellPx} text-left align-middle`} style={{ width: settings.printLayout?.colWidthPrice ? `${settings.printLayout.colWidthPrice}px` : (isA5 ? '88px' : '112px') }}>قیمت واحد ({settings.currency})</th>
+                <th className="text-left align-middle" style={{ width: settings.printLayout?.colWidthPrice ? `${settings.printLayout.colWidthPrice}px` : (isA5 ? '88px' : '112px'), minWidth: settings.printLayout?.colWidthPrice ? `${settings.printLayout.colWidthPrice}px` : (isA5 ? '88px' : '112px'), paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px`, height: `${headerH}px` }}>قیمت واحد ({settings.currency})</th>
                 {hasDiscounts && settings.printLayout?.showItemDiscountCol !== false && (
-                  <th className={`${tableCellPy} ${tableCellPx} text-left align-middle`} style={{ width: settings.printLayout?.colWidthDiscount ? `${settings.printLayout.colWidthDiscount}px` : (isA5 ? '64px' : '80px') }}>تخفیف</th>
+                  <th className="text-left align-middle" style={{ width: settings.printLayout?.colWidthDiscount ? `${settings.printLayout.colWidthDiscount}px` : (isA5 ? '64px' : '80px'), minWidth: settings.printLayout?.colWidthDiscount ? `${settings.printLayout.colWidthDiscount}px` : (isA5 ? '64px' : '80px'), paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px`, height: `${headerH}px` }}>تخفیف</th>
                 )}
-                <th className={`${tableCellPy} ${tableCellPx} text-left align-middle`} style={{ width: settings.printLayout?.colWidthTotal ? `${settings.printLayout.colWidthTotal}px` : (isA5 ? '135px' : '165px'), minWidth: isA5 ? '120px' : '150px' }}>مبلغ کل ({settings.currency})</th>
+                <th className="text-left align-middle" style={{ width: settings.printLayout?.colWidthTotal ? `${settings.printLayout.colWidthTotal}px` : (isA5 ? '135px' : '165px'), minWidth: isA5 ? '120px' : '150px', paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px`, height: `${headerH}px` }}>مبلغ کل ({settings.currency})</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-300">
@@ -280,16 +277,17 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
                   className={`divide-x divide-x-reverse divide-slate-300 ${
                     idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'
                   }`}
+                  style={{ height: `${rowMinH}px` }}
                 >
-                  <td className={`${tableCellPy} ${tableCellPx} text-center text-slate-700 font-medium font-['Vazirmatn'] align-middle`}>
+                  <td className="text-center text-slate-700 font-medium font-['Vazirmatn'] align-middle" style={{ height: `${rowMinH}px`, paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px` }}>
                     {toPersianDigits(idx + 1)}
                   </td>
                   {settings.printLayout?.showItemCodeCol !== false && (
-                    <td className={`${tableCellPy} ${tableCellPx} text-center text-slate-600 font-mono text-[10px] align-middle`}>
+                    <td className="text-center text-slate-600 font-mono text-[10px] align-middle" style={{ height: `${rowMinH}px`, paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px` }}>
                       {toPersianDigits(item.productCode || '---')}
                     </td>
                   )}
-                  <td className={`${tableCellPy} ${tableCellPx} text-right align-middle`}>
+                  <td className="text-right align-middle" style={{ height: `${rowMinH}px`, paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px` }}>
                     <div className="font-bold text-slate-900">{item.productName}</div>
                     {item.variantName && (
                       <div className="text-[10px] text-slate-600 mt-0.5">
@@ -302,23 +300,23 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
                       </div>
                     )}
                   </td>
-                  <td className={`${tableCellPy} ${tableCellPx} text-center font-black text-slate-900 font-['Vazirmatn'] align-middle`}>
+                  <td className="text-center font-black text-slate-900 font-['Vazirmatn'] align-middle" style={{ height: `${rowMinH}px`, paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px` }}>
                     {toPersianDigits(item.quantity)}
                   </td>
                   {settings.printLayout?.showItemUnitCol !== false && (
-                    <td className={`${tableCellPy} ${tableCellPx} text-center text-slate-700 align-middle`}>
+                    <td className="text-center text-slate-700 align-middle" style={{ height: `${rowMinH}px`, paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px` }}>
                       {item.unit || 'عدد'}
                     </td>
                   )}
-                  <td className={`${tableCellPy} ${tableCellPx} text-left font-medium text-slate-800 font-['Vazirmatn'] tabular-nums align-middle`}>
+                  <td className="text-left font-medium text-slate-800 font-['Vazirmatn'] tabular-nums align-middle" style={{ height: `${rowMinH}px`, paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px` }}>
                     {formatPersianPrice(item.unitPrice)}
                   </td>
                   {hasDiscounts && settings.printLayout?.showItemDiscountCol !== false && (
-                    <td className={`${tableCellPy} ${tableCellPx} text-left text-slate-700 font-['Vazirmatn'] tabular-nums align-middle`}>
+                    <td className="text-left text-slate-700 font-['Vazirmatn'] tabular-nums align-middle" style={{ height: `${rowMinH}px`, paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px` }}>
                       {(item.discount || 0) > 0 ? formatPersianPrice(item.discount || 0) : '۰'}
                     </td>
                   )}
-                  <td className={`${tableCellPy} ${tableCellPx} text-left font-black text-slate-900 font-['Vazirmatn'] tabular-nums align-middle`} style={{ width: settings.printLayout?.colWidthTotal ? `${settings.printLayout.colWidthTotal}px` : (isA5 ? '135px' : '165px'), minWidth: isA5 ? '120px' : '150px' }}>
+                  <td className="text-left font-black text-slate-900 font-['Vazirmatn'] tabular-nums align-middle" style={{ width: settings.printLayout?.colWidthTotal ? `${settings.printLayout.colWidthTotal}px` : (isA5 ? '135px' : '165px'), minWidth: isA5 ? '120px' : '150px', height: `${rowMinH}px`, paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px` }}>
                     {formatPersianPrice(item.total)}
                   </td>
                 </tr>
@@ -326,23 +324,23 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
             </tbody>
             {/* ردیف جمع جدول */}
             <tfoot>
-              <tr className="bg-slate-100/95 font-bold border-t-2 border-slate-700 divide-x divide-x-reverse divide-slate-400 text-slate-900">
-                <td colSpan={2} className={`${tableCellPy} ${tableCellPx} text-center text-slate-700`}>
+              <tr className="bg-slate-100/95 font-bold border-t-2 border-slate-700 divide-x divide-x-reverse divide-slate-400 text-slate-900" style={{ height: `${rowMinH}px` }}>
+                <td colSpan={2} className="text-center text-slate-700 align-middle" style={{ paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px` }}>
                   جمع اقلام:
                 </td>
-                <td className={`${tableCellPy} ${tableCellPx} text-right`}>
+                <td className="text-right align-middle" style={{ paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px` }}>
                   {toPersianDigits(invoice.items.length)} ردیف کالایی
                 </td>
-                <td className={`${tableCellPy} ${tableCellPx} text-center font-black font-['Vazirmatn']`}>
+                <td className="text-center font-black font-['Vazirmatn'] align-middle" style={{ paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px` }}>
                   {toPersianDigits(totalQuantity)}
                 </td>
-                <td className={`${tableCellPy} ${tableCellPx} text-center text-slate-600`}>
+                <td className="text-center text-slate-600 align-middle" style={{ paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px` }}>
                   مجموع
                 </td>
-                <td colSpan={hasDiscounts ? 2 : 1} className={`${tableCellPy} ${tableCellPx} text-left text-slate-700`}>
+                <td colSpan={hasDiscounts ? 2 : 1} className="text-left text-slate-700 align-middle" style={{ paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px` }}>
                   جمع ناخالص:
                 </td>
-                <td className={`${tableCellPy} ${tableCellPx} text-left font-black text-slate-900 font-['Vazirmatn'] tabular-nums`}>
+                <td className="text-left font-black text-slate-900 font-['Vazirmatn'] tabular-nums align-middle" style={{ paddingTop: `${rowPy}px`, paddingBottom: `${rowPy}px`, paddingLeft: `${cellPx}px`, paddingRight: `${cellPx}px` }}>
                   {formatPersianPrice(invoice.subtotal)}
                 </td>
               </tr>

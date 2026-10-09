@@ -1406,7 +1406,7 @@ export const printElementInNewWindow = (
           <span style="font-size: 13px; font-weight: 500;">آماده‌سازی چاپ ${title} (${paperSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'})</span>
           <button class="top-print-btn" onclick="window.print()">باز کردن پرینتر (Print)</button>
         </div>
-        <div class="print-wrapper">
+        <div class="print-wrapper" style="${element.getAttribute('style') || ''}">
           ${element.innerHTML}
         </div>
         <script>

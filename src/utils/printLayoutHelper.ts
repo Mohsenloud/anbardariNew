@@ -31,10 +31,11 @@ export function getPrintLayoutCssVariables(
   const marginMm = cfg.pageMarginMm || (isA5 ? 4 : 6);
 
   // Exact minimum row height so all single-line rows are uniform, while expanding dynamically with longer content
-  const rowMinHeight = Math.max(
-    22,
-    Math.round((isA5 ? (isLandscape ? 24 : 28) : (isLandscape ? 32 : 36)) * scaleRatio)
-  );
+  const customMinH = cfg.tableRowMinHeight;
+  const baseDefaultRowMin = isA5 ? (isLandscape ? 24 : 28) : (isLandscape ? 32 : 36);
+  const rowMinHeight = customMinH
+    ? Math.max(18, Math.round(customMinH * scaleRatio))
+    : Math.max(22, Math.round(baseDefaultRowMin * scaleRatio));
   const headerHeight = Math.max(24, Math.round(rowMinHeight * 1.08));
 
   return {
@@ -105,7 +106,7 @@ export function getPrintLayoutCssRules(containerSelector = '#printable-invoice, 
       box-sizing: border-box !important;
     }
     ${containerSelector} table tbody tr {
-      height: auto !important;
+      height: var(--print-table-row-min-h, 34px) !important;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }

@@ -58,15 +58,6 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
   onDeleteInvoice,
   onExportCustomer,
 }) => {
-  if (!isOpen || !invoice) return null;
-
-  const canDelete = !currentUser || currentUser.role === 'admin' || currentUser.role === 'supervisor' || Boolean(currentUser.permissions?.canDeleteInvoice);
-  const isPaid = invoice.paymentStatus === 'paid';
-  const isPartial = invoice.paymentStatus === 'partial';
-  const isUnpaid = invoice.paymentStatus === 'unpaid';
-  const remainingDebt = Math.max(0, invoice.finalTotal - (isPaid ? invoice.finalTotal : (invoice.paidAmount || 0)));
-  const totalItemCount = invoice.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const actionsDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -88,6 +79,15 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
       document.removeEventListener('touchstart', handleClickOutside);
     };
   }, [isActionsOpen]);
+
+  if (!isOpen || !invoice) return null;
+
+  const canDelete = !currentUser || currentUser.role === 'admin' || currentUser.role === 'supervisor' || Boolean(currentUser.permissions?.canDeleteInvoice);
+  const isPaid = invoice.paymentStatus === 'paid';
+  const isPartial = invoice.paymentStatus === 'partial';
+  const isUnpaid = invoice.paymentStatus === 'unpaid';
+  const remainingDebt = Math.max(0, invoice.finalTotal - (isPaid ? invoice.finalTotal : (invoice.paidAmount || 0)));
+  const totalItemCount = invoice.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
 
   return (
     <div 

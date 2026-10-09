@@ -86,8 +86,6 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   onUpdatePaymentStatus,
   initialFormType = 'none',
 }) => {
-  if (!isOpen || !customer) return null;
-
   // Active sub-modal for registering deposit or debt
   const [activeTxnModalType, setActiveTxnModalType] = useState<'deposit' | 'debt' | null>(
     initialFormType && initialFormType !== 'none' ? initialFormType : null
@@ -230,11 +228,23 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
   // Build the complete customer ledger
   const fullLedger = useMemo(() => {
+    if (!customer) {
+      return { 
+        customer: null as any, 
+        entries: [], 
+        totalDebit: 0, 
+        totalCredit: 0, 
+        netBalance: 0,
+        balanceStatus: 'settled' as const,
+        unpaidInvoicesCount: 0,
+      };
+    }
     return StorageService.buildCustomerLedger(customer, activeInvoices, transactions);
   }, [customer, activeInvoices, transactions, ledgerVersion]);
 
   // Unpaid invoices for this customer
   const unpaidInvoices = useMemo(() => {
+    if (!customer) return [];
     return activeInvoices
       .filter((inv) => {
         if (inv.isProforma) return false;
@@ -380,6 +390,8 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
       setIsSendingTelegram(false);
     }
   };
+
+  if (!isOpen || !customer) return null;
 
   return (
     <div 
