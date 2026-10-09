@@ -54,7 +54,14 @@ import {
   Sparkles,
   Coins,
   Wallet,
-  Phone
+  Phone,
+  Truck,
+  ArrowDownRight,
+  History,
+  Clock,
+  ArrowUpRight,
+  PieChart,
+  Filter
 } from 'lucide-react';
 
 const getAvatarBgClass = (color?: string, role?: string) => {
@@ -234,8 +241,51 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
   }, [invoices, currentDate]);
 
   const recentInvoices = useMemo(() => {
-    return [...invoices].reverse().slice(0, 5);
+    return [...invoices].reverse().slice(0, 8);
   }, [invoices]);
+
+  const [recentInvoicesFilter, setRecentInvoicesFilter] = useState<'all' | 'confirmed' | 'draft' | 'cancelled'>('all');
+
+  const filteredRecentInvoices = useMemo(() => {
+    if (recentInvoicesFilter === 'all') return recentInvoices.slice(0, 5);
+    if (recentInvoicesFilter === 'confirmed') return invoices.filter(inv => !inv.isProforma).reverse().slice(0, 5);
+    if (recentInvoicesFilter === 'draft') return invoices.filter(inv => inv.isProforma).reverse().slice(0, 5);
+    if (recentInvoicesFilter === 'cancelled') return invoices.filter(inv => inv.notes?.includes('لغو')).reverse().slice(0, 5);
+    return recentInvoices.slice(0, 5);
+  }, [invoices, recentInvoices, recentInvoicesFilter]);
+
+  // Customer Receivables (مطالبات و بدهی مشتریان)
+  const { totalCustomerReceivables, debtorCustomersCount, topDebtors } = useMemo(() => {
+    const allTxns = StorageService.getCustomerTransactions();
+    let totalReceivables = 0;
+    let debtorCount = 0;
+    const debtorList: Array<{ customer: Customer; balance: number }> = [];
+
+    customers.forEach((c) => {
+      const ledger = StorageService.buildCustomerLedger(c, invoices, allTxns);
+      if (ledger.netBalance > 0) {
+        totalReceivables += ledger.netBalance;
+        debtorCount += 1;
+        debtorList.push({ customer: c, balance: ledger.netBalance });
+      }
+    });
+
+    debtorList.sort((a, b) => b.balance - a.balance);
+
+    return {
+      totalCustomerReceivables: totalReceivables,
+      debtorCustomersCount: debtorCount,
+      topDebtors: debtorList.slice(0, 5),
+    };
+  }, [customers, invoices]);
+
+  // Warehouse inventory valuation (ارزش ریالی انبار)
+  const totalInventoryValuation = useMemo(() => {
+    return products.reduce((sum, p) => {
+      const unitValue = p.buyPrice || p.sellPrice || 0;
+      return sum + (p.stock * unitValue);
+    }, 0);
+  }, [products]);
 
   const lowStockProducts = useMemo(() => {
     return products.filter((p) => p.stock <= p.minStockAlert);
@@ -664,947 +714,929 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-4 sm:space-y-6 select-none">
-      {/* DESKTOP TOP KPI METRIC CARDS */}
-      <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        {/* Card 1: فروش امروز */}
-        <div
-          onClick={() => canInvoicesList && onNavigate('invoices')}
-          className={`bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex items-center justify-between transition-all ${
-            canInvoicesList ? 'cursor-pointer hover:border-emerald-400 hover:shadow-sm active:scale-99' : ''
-          }`}
-        >
-          <div className="space-y-1">
-            <span className="text-xs font-bold text-slate-400 block">فروش امروز</span>
-            <span className="text-lg lg:text-xl font-black text-slate-900 block">
-              {formatPrice(todayRevenue)}
-            </span>
-            <span className="text-[11px] font-semibold text-emerald-600 block">
-              {toPersianDigits(todayInvoices.length)} فاکتور تایید شده امروز
-            </span>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100 shadow-xs">
-            <TrendingUp className="w-6 h-6 stroke-[2.4]" />
-          </div>
-        </div>
-
-        {/* Card 2: مجموع فروش کل */}
-        <div
-          onClick={() => canReports ? setActiveSubTab('charts') : (canInvoicesList && onNavigate('invoices'))}
-          className={`bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex items-center justify-between transition-all ${
-            (canReports || canInvoicesList) ? 'cursor-pointer hover:border-teal-400 hover:shadow-sm active:scale-99' : ''
-          }`}
-        >
-          <div className="space-y-1">
-            <span className="text-xs font-bold text-slate-400 block">مجموع فروش کل سامانه</span>
-            <span className="text-lg lg:text-xl font-black text-teal-700 block">
-              {formatPrice(totalRevenue)}
-            </span>
-            <span className="text-[11px] font-semibold text-slate-500 block">
-              {toPersianDigits(confirmedInvoices.length)} کل فاکتورهای رسمی
-            </span>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0 border border-teal-100 shadow-xs">
-            <DollarSign className="w-6 h-6 stroke-[2.4]" />
-          </div>
-        </div>
-
-        {/* Card 3: موجودی اقلام انبار */}
-        <div
-          onClick={() => canInventory && onNavigate('inventory')}
-          className={`bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex items-center justify-between transition-all ${
-            canInventory ? 'cursor-pointer hover:border-amber-400 hover:shadow-sm active:scale-99' : ''
-          }`}
-        >
-          <div className="space-y-1">
-            <span className="text-xs font-bold text-slate-400 block">اقلام تعریف شده انبار</span>
-            <span className="text-lg lg:text-xl font-black text-slate-900 block">
-              {toPersianDigits(products.length)} قلم کالا
-            </span>
-            {lowStockProducts.length > 0 ? (
-              <span className="text-[11px] font-bold text-rose-600 flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3 shrink-0 text-rose-500" />
-                <span>{toPersianDigits(lowStockProducts.length)} قلم به نقطه سفارش رسیده</span>
-              </span>
-            ) : (
-              <span className="text-[11px] font-semibold text-emerald-600 block">
-                موجودی انبار در محدوده امن
-              </span>
-            )}
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 border border-amber-100 shadow-xs">
-            <Boxes className="w-6 h-6 stroke-[2.4]" />
-          </div>
-        </div>
-
-        {/* Card 4: مشتریان و مخاطبین */}
-        <div
-          onClick={() => canCustomers && onNavigate('customers')}
-          className={`bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex items-center justify-between transition-all ${
-            canCustomers ? 'cursor-pointer hover:border-indigo-400 hover:shadow-sm active:scale-99' : ''
-          }`}
-        >
-          <div className="space-y-1">
-            <span className="text-xs font-bold text-slate-400 block">طرف‌حساب‌ها و خریداران</span>
-            <span className="text-lg lg:text-xl font-black text-slate-900 block">
-              {toPersianDigits(customers.length)} مخاطب
-            </span>
-            <span className="text-[11px] font-semibold text-indigo-600 block">
-              مدیریت حساب و سوابق خرید
-            </span>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100 shadow-xs">
-            <Users className="w-6 h-6 stroke-[2.4]" />
-          </div>
-        </div>
-      </div>
-
-      {/* 2. SUB-TABS: "داشبورد" vs "نمودارها" (With Orange Indicator) */}
-      <div className="flex items-center justify-center border-b border-slate-200/80">
-        {/* Tab 1: داشبورد */}
-        <button
-          type="button"
-          id="tab-btn-dashboard"
-          onClick={() => setActiveSubTab('dashboard')}
-          className={`flex-1 flex items-center justify-center gap-2 pb-2.5 text-sm sm:text-base font-extrabold transition-all relative cursor-pointer ${
-            activeSubTab === 'dashboard'
-              ? 'text-slate-900'
-              : 'text-slate-400 hover:text-slate-600'
-          }`}
-        >
-          <LayoutGrid className="w-4 h-4 stroke-[2.2]" />
-          <span>داشبورد سریع</span>
-          {activeSubTab === 'dashboard' && (
-            <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-[#f05a28] rounded-full" />
-          )}
-        </button>
-
-        {/* Tab 2: نمودارها (Only if user has reports permission) */}
-        {canReports && (
-          <button
-            type="button"
-            id="tab-btn-charts"
-            onClick={() => setActiveSubTab('charts')}
-            className={`flex-1 flex items-center justify-center gap-2 pb-2.5 text-sm sm:text-base font-extrabold transition-all relative cursor-pointer ${
-              activeSubTab === 'charts'
-                ? 'text-slate-900'
-                : 'text-slate-400 hover:text-slate-600'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4 stroke-[2.2]" />
-            <span>نمودارها و آمار</span>
-            {activeSubTab === 'charts' && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-[#f05a28] rounded-full" />
-            )}
-          </button>
-        )}
-      </div>
-
-      {/* 3. MAIN DASHBOARD CONTENT */}
+    <div className="w-full max-w-7xl mx-auto flex flex-col space-y-4 sm:space-y-6 select-none pb-8">
+      {/* MAIN WORKSTATION vs CHARTS TAB */}
       {activeSubTab === 'dashboard' ? (
         <>
-          {/* MOBILE VIEW (< 1024px) */}
-          <div className="lg:hidden space-y-3.5">
-            {/* ROW 1: TWO LARGE CARDS (SIDE BY SIDE) */}
-          <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            {/* Left Card: صدور فاکتور جدید */}
-            {canInvoice ? (
-              <div
-                id="card-quick-new-invoice-mobile"
-                onClick={() => onNewInvoice()}
-                className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-center items-center text-center cursor-pointer hover:border-emerald-300 hover:shadow-md transition-all active:scale-98 min-h-[155px]"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-md shadow-emerald-500/25 flex items-center justify-center text-white mb-2.5">
-                  <PlusCircle className="w-7 h-7 stroke-[2.2]" />
+          {/* ===================== WORKSTATION COMMAND HUB (AT VERY TOP ON MOBILE VIA order-1) ===================== */}
+          <div className="order-1 lg:order-2 bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-xs p-4 sm:p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0">
+                  <LayoutGrid className="w-4 h-4 stroke-[2.2]" />
                 </div>
-                <span className="text-sm sm:text-base font-extrabold text-slate-800">
-                  صدور فاکتور
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
-                  فروش نقدی، اعتباری و رسمی
-                </span>
-              </div>
-            ) : canInventory ? (
-              <div
-                id="card-inventory-list-mobile"
-                onClick={() => onNavigate('inventory')}
-                className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-center items-center text-center cursor-pointer hover:border-amber-300 hover:shadow-md transition-all active:scale-98 min-h-[155px]"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 shadow-md shadow-amber-500/25 flex items-center justify-center text-white mb-2.5">
-                  <Boxes className="w-7 h-7 stroke-[2.2]" />
-                </div>
-                <span className="text-sm sm:text-base font-extrabold text-slate-800">
-                  موجودی انبار
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
-                  کاردکس و گردش اقلام
-                </span>
-              </div>
-            ) : (
-              <div
-                id="card-invoices-list-mobile"
-                onClick={() => onNavigate('invoices')}
-                className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-center items-center text-center cursor-pointer hover:border-sky-300 hover:shadow-md transition-all active:scale-98 min-h-[155px]"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 shadow-md shadow-sky-500/25 flex items-center justify-center text-white mb-2.5">
-                  <ReceiptText className="w-7 h-7 stroke-[2.2]" />
-                </div>
-                <span className="text-sm sm:text-base font-extrabold text-slate-800">
-                  لیست سفارشات
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
-                  مشاهده و بررسی فاکتورها
-                </span>
-              </div>
-            )}
-
-            {/* Right Card: Context-Sensitive to Permissions */}
-            {canReports ? (
-              <div
-                id="card-reports"
-                onClick={() => setActiveSubTab('charts')}
-                className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-center items-center text-center cursor-pointer hover:border-orange-300 hover:shadow-md transition-all active:scale-98 min-h-[155px]"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#f05a28] to-orange-600 shadow-md shadow-orange-500/25 flex items-center justify-center text-white mb-2.5">
-                  <BarChart3 className="w-7 h-7 stroke-[2.2]" />
-                </div>
-                <span className="text-sm sm:text-base font-extrabold text-slate-800">
-                  گزارشات
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
-                  فروش، سود و آمار انبار
-                </span>
-              </div>
-            ) : canInvoice ? (
-              <div
-                id="card-quick-new-invoice"
-                onClick={() => onNewInvoice()}
-                className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-center items-center text-center cursor-pointer hover:border-emerald-300 hover:shadow-md transition-all active:scale-98 min-h-[155px]"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-md shadow-emerald-500/25 flex items-center justify-center text-white mb-2.5">
-                  <PlusCircle className="w-7 h-7 stroke-[2.2]" />
-                </div>
-                <span className="text-sm sm:text-base font-extrabold text-slate-800">
-                  صدور فاکتور
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
-                  فروش نقدی، اعتباری و چاپ
-                </span>
-              </div>
-            ) : canInvoicesList ? (
-              <div
-                id="card-invoices-list"
-                onClick={() => onNavigate('invoices')}
-                className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-center items-center text-center cursor-pointer hover:border-sky-300 hover:shadow-md transition-all active:scale-98 min-h-[155px]"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 shadow-md shadow-sky-500/25 flex items-center justify-center text-white mb-2.5">
-                  <ReceiptText className="w-7 h-7 stroke-[2.2]" />
-                </div>
-                <span className="text-sm sm:text-base font-extrabold text-slate-800">
-                  لیست سفارشات
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
-                  مشاهده و جستجوی فاکتورها
-                </span>
-              </div>
-            ) : canCustomers ? (
-              <div
-                id="card-customers"
-                onClick={() => onNavigate('customers')}
-                className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-center items-center text-center cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all active:scale-98 min-h-[155px]"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 shadow-md shadow-indigo-500/25 flex items-center justify-center text-white mb-2.5">
-                  <Users className="w-7 h-7 stroke-[2.2]" />
-                </div>
-                <span className="text-sm sm:text-base font-extrabold text-slate-800">
-                  مشتریان
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
-                  ثبت و مدیریت خریداران
-                </span>
-              </div>
-            ) : canInventory ? (
-              <div
-                id="card-inventory-list"
-                onClick={() => onNavigate('inventory')}
-                className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-center items-center text-center cursor-pointer hover:border-amber-300 hover:shadow-md transition-all active:scale-98 min-h-[155px]"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 shadow-md shadow-amber-500/25 flex items-center justify-center text-white mb-2.5">
-                  <Boxes className="w-7 h-7 stroke-[2.2]" />
-                </div>
-                <span className="text-sm sm:text-base font-extrabold text-slate-800">
-                  موجودی انبار
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
-                  کاردکس و گردش اقلام
-                </span>
-              </div>
-            ) : (
-              <div
-                id="card-inventory-readonly"
-                className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-center items-center text-center min-h-[155px]"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center mb-2.5">
-                  <Package className="w-7 h-7 stroke-[2.2]" />
-                </div>
-                <span className="text-sm sm:text-base font-extrabold text-slate-800">
-                  کاتالوگ کالاها
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium mt-0.5">
-                  {toPersianDigits(products.length)} قلم کالای تعریف شده
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* ROW 2: عملیات کالا / عملیات سریع (GOODS & QUICK OPERATIONS) */}
-          {(permittedOperations.length > 0 || canInvoicesList) && (
-            <div
-              id="card-goods-operations"
-              className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 space-y-3.5"
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
-                    <Package className="w-4 h-4 stroke-[2.2]" />
-                  </div>
-                  <span className="text-sm sm:text-base font-extrabold text-slate-800">
-                    {canInventory ? 'عملیات کالا و انبار' : 'عملیات سریع فروش'}
+                <div>
+                  <h2 className="text-sm sm:text-base font-black text-slate-900">
+                    مرکز فرماندهی و عملیات سامانه
+                  </h2>
+                  <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
+                    دسترسی سریع به ماژول‌های فروش، انبارداری، حسابداری و تنظیمات
                   </span>
                 </div>
-                <span className="text-[11px] font-medium text-slate-400">
-                  {canInventory ? 'انبارداری و گردش اقلام' : 'دسترسی‌های مجاز کاربر'}
-                </span>
               </div>
 
-              {/* Circular Action Buttons */}
-              {permittedOperations.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-                  {permittedOperations.map((op) => {
-                    const IconComp = op.icon;
-                    return (
-                      <button
-                        key={op.id}
-                        type="button"
-                        id={`btn-goods-${op.id}`}
-                        onClick={op.onClick}
-                        className="flex flex-col items-center justify-center group cursor-pointer"
-                      >
-                        <div className={`w-13 h-13 sm:w-14 sm:h-14 rounded-full border ${op.borderClass} ${op.bgClass} ${op.textClass} flex items-center justify-center shadow-xs ${op.hoverBgClass} ${op.hoverTextClass} ${op.hoverBorderClass} group-active:scale-95 transition-all`}>
-                          <IconComp className="w-6 h-6 stroke-[2.4]" />
-                        </div>
-                        <span className={`text-xs font-extrabold text-slate-700 mt-2 ${op.hoverLabelClass}`}>
-                          {op.label}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Status Stat Boxes (Visible only to users with invoice viewing access) */}
-              {canInvoicesList && (
-                <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-100">
-                  {/* Right: پیش نویس */}
-                  <div 
-                    onClick={() => setActiveStatusFilter('draft')}
-                    className="bg-slate-100/80 hover:bg-slate-200/70 rounded-xl py-2 px-1 text-center cursor-pointer transition-colors"
-                  >
-                    <div className="text-sm font-extrabold text-amber-600">
-                      {toPersianDigits(draftInvoices.length)}
-                    </div>
-                    <div className="text-[11px] font-bold text-slate-500 mt-0.5">
-                      پیش نویس
-                    </div>
-                  </div>
-
-                  {/* Center: تایید شده */}
-                  <div 
-                    onClick={() => setActiveStatusFilter('confirmed')}
-                    className="bg-slate-100/80 hover:bg-slate-200/70 rounded-xl py-2 px-1 text-center cursor-pointer transition-colors"
-                  >
-                    <div className="text-sm font-extrabold text-teal-600">
-                      {toPersianDigits(confirmedInvoices.length)}
-                    </div>
-                    <div className="text-[11px] font-bold text-slate-500 mt-0.5">
-                      تایید شده
-                    </div>
-                  </div>
-
-                  {/* Left: لغو شده */}
-                  <div 
-                    onClick={() => setActiveStatusFilter('cancelled')}
-                    className="bg-slate-100/80 hover:bg-slate-200/70 rounded-xl py-2 px-1 text-center cursor-pointer transition-colors"
-                  >
-                    <div className="text-sm font-extrabold text-rose-500">
-                      {toPersianDigits(cancelledInvoices.length)}
-                    </div>
-                    <div className="text-[11px] font-bold text-slate-500 mt-0.5">
-                      لغو شده
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ROW 3: عملیات ویژه و سریع فروش و مالی (فاکتور فروش سریع + ثبت واریزی مشتری) */}
-          {(canInvoice || canCustomers || canAdmin) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Card 1: فاکتور فروش سریع */}
-              {canInvoice && (
-                <div
-                  id="banner-quick-invoice"
-                  onClick={() => onNewInvoice()}
-                  className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 text-white rounded-2xl p-3.5 sm:p-4 shadow-md shadow-emerald-600/15 flex items-center justify-between cursor-pointer hover:shadow-lg hover:brightness-105 active:scale-99 transition-all"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white text-emerald-600 shadow-sm flex items-center justify-center shrink-0">
-                      <Plus className="w-6 h-6 stroke-[3]" />
-                    </div>
-
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-sm sm:text-base font-black text-white truncate">
-                        فاکتور فروش سریع
-                      </span>
-                      <span className="text-[11px] font-medium text-emerald-100/90 mt-0.5 truncate">
-                        ثبت فوری اقلام و فاکتور فروش
-                      </span>
-                    </div>
-                  </div>
-
+              {/* Quick Actions & Tab Switch */}
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                {canReports && (
                   <button
                     type="button"
-                    id="quick-invoice-options-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onNewInvoice();
-                    }}
-                    className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-colors shrink-0"
+                    id="btn-hub-switch-charts"
+                    onClick={() => setActiveSubTab('charts')}
+                    className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                    title="مشاهده آمار و تحلیل مالی"
                   >
-                    <ChevronLeft className="w-5 h-5" />
+                    <BarChart3 className="w-3.5 h-3.5 text-slate-500" />
+                    <span>آمار و تحلیل</span>
                   </button>
-                </div>
-              )}
-
-              {/* Card 2: ثبت واریزی از مشتری */}
-              {(canCustomers || canInvoice || canAdmin) && (
-                <div
-                  id="banner-quick-customer-deposit"
-                  onClick={() => setIsDepositPickerOpen(true)}
-                  className="bg-gradient-to-r from-teal-700 via-emerald-700 to-cyan-800 text-white rounded-2xl p-3.5 sm:p-4 shadow-md shadow-teal-700/15 flex items-center justify-between cursor-pointer hover:shadow-lg hover:brightness-105 active:scale-99 transition-all"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/20 backdrop-blur-xs text-amber-300 shadow-sm flex items-center justify-center shrink-0">
-                      <Coins className="w-6 h-6 stroke-[2.4]" />
-                    </div>
-
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-sm sm:text-base font-black text-white truncate">
-                        ثبت واریزی از مشتری
-                      </span>
-                      <span className="text-[11px] font-medium text-teal-100/90 mt-0.5 truncate">
-                        دریافت نقد، پوز، چک و تسویه بدهی
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    id="quick-deposit-options-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsDepositPickerOpen(true);
-                    }}
-                    className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-colors shrink-0"
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ROW 4: ویرایش مشخصات انبار (Only visible if canManageInventory or canAccessAdmin) */}
-          {(canInventory || canAdmin) && (
-            <div
-              id="card-warehouse-settings"
-              onClick={() => setIsWarehouseModalOpen(true)}
-              className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex items-start gap-3.5 cursor-pointer hover:border-slate-300 hover:shadow-sm active:scale-99 transition-all"
-            >
-              {/* Right: Dark Octagon/Shield Container with Warehouse Icon */}
-              <div className="w-11 h-11 rounded-2xl bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-sm">
-                <Warehouse className="w-5 h-5 stroke-[2.2] text-amber-300" />
-              </div>
-
-              {/* Left: Text Content */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm sm:text-base font-extrabold text-slate-900">
-                    ویرایش مشخصات انبار
-                  </span>
-                  <ChevronLeft className="w-4 h-4 text-slate-400" />
-                </div>
-                <p className="text-xs text-slate-500 font-medium leading-relaxed mt-1">
-                  شما می توانید برای هر یک از ۳ انبار خود یک نام تعریف کنید و یکی را پیش فرض نمایید.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* DESKTOP VIEW (≥ 1024px) */}
-        <div className="hidden lg:grid lg:grid-cols-12 gap-6 items-start">
-          {/* RIGHT COLUMN (8 COLS): CORE WORKSTATION */}
-          <div className="lg:col-span-8 space-y-5">
-            {/* 1. GOODS & WAREHOUSE OPERATIONS CARD */}
-            <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs p-5 space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                    <Boxes className="w-4 h-4 stroke-[2.4]" />
-                  </div>
-                  <h3 className="font-extrabold text-slate-900 text-base">عملیات کالا و گردش انبار</h3>
-                </div>
-                <span className="text-xs text-slate-400 font-medium">دسته‌بندی‌های اصلی سیستم</span>
-              </div>
-
-              {/* Action Buttons Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 py-2">
-                {permittedOperations.map((op) => {
-                  const Icon = op.icon;
-                  return (
-                    <div
-                      key={`desk-${op.id}`}
-                      id={`desk-btn-op-${op.id}`}
-                      onClick={op.onClick}
-                      className="group flex flex-col items-center justify-center text-center p-3 rounded-2xl hover:bg-slate-50 transition-all cursor-pointer border border-transparent hover:border-slate-200/80"
-                    >
-                      <div className={`w-14 h-14 rounded-full border-2 ${op.borderClass} ${op.bgClass} ${op.textClass} ${op.hoverBgClass} ${op.hoverTextClass} ${op.hoverBorderClass} flex items-center justify-center mb-2.5 transition-all group-hover:scale-105 shadow-xs`}>
-                        <Icon className="w-6 h-6 stroke-[2.2]" />
-                      </div>
-                      <span className={`text-xs sm:text-sm font-extrabold text-slate-700 ${op.hoverLabelClass} transition-colors line-clamp-1`}>
-                        {op.label}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Status Counters */}
-              <div className="grid grid-cols-3 gap-3 pt-3 border-t border-slate-100">
-                {/* پیش‌نویس */}
-                <div
-                  id="desk-filter-draft"
-                  onClick={() => canInvoicesList && onNavigate('invoices')}
-                  className={`p-3 rounded-2xl border border-slate-200/80 bg-slate-50 flex items-center justify-between transition-all ${
-                    canInvoicesList ? 'cursor-pointer hover:border-slate-300 hover:bg-slate-100/70' : ''
-                  }`}
-                >
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-500 block">پیش‌نویس‌ها</span>
-                    <span className="text-xs text-slate-400 font-medium">سفارشات در انتظار</span>
-                  </div>
-                  <span className="bg-slate-800 text-white font-black text-sm px-2.5 py-1 rounded-xl">
-                    {toPersianDigits(draftInvoices.length)}
-                  </span>
-                </div>
-
-                {/* تایید شده */}
-                <div
-                  id="desk-filter-confirmed"
-                  onClick={() => canInvoicesList && onNavigate('invoices')}
-                  className={`p-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/50 flex items-center justify-between transition-all ${
-                    canInvoicesList ? 'cursor-pointer hover:border-emerald-300 hover:bg-emerald-50' : ''
-                  }`}
-                >
-                  <div>
-                    <span className="text-[11px] font-bold text-emerald-800 block">تایید شده</span>
-                    <span className="text-xs text-emerald-600/80 font-medium">فاکتورهای رسمی</span>
-                  </div>
-                  <span className="bg-emerald-600 text-white font-black text-sm px-2.5 py-1 rounded-xl">
-                    {toPersianDigits(confirmedInvoices.length)}
-                  </span>
-                </div>
-
-                {/* لغو شده */}
-                <div
-                  id="desk-filter-cancelled"
-                  onClick={() => canInvoicesList && onNavigate('invoices')}
-                  className={`p-3 rounded-2xl border border-rose-200/80 bg-rose-50/50 flex items-center justify-between transition-all ${
-                    canInvoicesList ? 'cursor-pointer hover:border-rose-300 hover:bg-rose-50' : ''
-                  }`}
-                >
-                  <div>
-                    <span className="text-[11px] font-bold text-rose-800 block">لغو شده</span>
-                    <span className="text-xs text-rose-600/80 font-medium">فاکتورهای ابطالی</span>
-                  </div>
-                  <span className="bg-rose-600 text-white font-black text-sm px-2.5 py-1 rounded-xl">
-                    {toPersianDigits(cancelledInvoices.length)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* 3. QUICK ACTION BANNERS: NEW INVOICE & CUSTOMER DEPOSIT */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Card 1: صدور فاکتور فروش سریع */}
-              {canInvoice && (
-                <div
-                  id="desk-card-quick-invoice-banner"
-                  onClick={onNewInvoice}
-                  className="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-3xl p-4 sm:p-5 text-white flex flex-col justify-between shadow-md shadow-emerald-600/15 cursor-pointer hover:from-emerald-700 hover:to-teal-800 active:scale-99 transition-all group min-h-[145px]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
-                        <Plus className="w-6 h-6 stroke-[3]" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-black text-base sm:text-lg">فاکتور فروش سریع (POS)</span>
-                          <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-bold">Alt+N</span>
-                        </div>
-                        <span className="text-xs text-emerald-100 font-medium mt-0.5 block">
-                          صدور فاکتور رسمی / عادی، بارکدخوان و چاپ
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 pt-2.5 border-t border-white/20 flex items-center justify-between">
-                    <span className="text-[11px] text-emerald-100 font-medium">فروش نقدی، اعتباری و رسمی</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onNewInvoice();
-                      }}
-                      className="px-3.5 py-1.5 bg-white text-emerald-800 hover:bg-emerald-50 rounded-xl text-xs font-black transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>صدور فاکتور</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Card 2: ثبت واریزی و تسویه مشتری */}
-              {(canCustomers || canInvoice || canAdmin) && (
-                <div
-                  id="desk-card-customer-deposit-banner"
-                  onClick={() => setIsDepositPickerOpen(true)}
-                  className="bg-gradient-to-r from-teal-700 via-emerald-700 to-cyan-800 rounded-3xl p-4 sm:p-5 text-white flex flex-col justify-between shadow-md shadow-teal-700/15 cursor-pointer hover:brightness-105 active:scale-99 transition-all group min-h-[145px]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-xs text-amber-300 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
-                        <Coins className="w-6 h-6 stroke-[2.4]" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-black text-base sm:text-lg">ثبت واریزی از مشتری</span>
-                          <span className="text-[10px] bg-amber-400 text-slate-900 px-2 py-0.5 rounded-full font-extrabold">امور مالی</span>
-                        </div>
-                        <span className="text-xs text-teal-100 font-medium mt-0.5 block">
-                          دریافت نقد، پوز، چک بانکی و تسویه حساب
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 pt-2.5 border-t border-white/20 flex items-center justify-between">
-                    <span className="text-[11px] text-teal-100 font-medium">تسویه بدهی طرف‌حساب</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsDepositPickerOpen(true);
-                      }}
-                      className="px-3.5 py-1.5 bg-white text-teal-800 hover:bg-teal-50 rounded-xl text-xs font-black transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Coins className="w-3.5 h-3.5 text-amber-500" />
-                      <span>ثبت واریزی مشتری</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 4. WAREHOUSE SETTINGS CARD */}
-            {(canInventory || canAdmin) && (
-              <div
-                id="desk-card-warehouse-settings"
-                onClick={() => setIsWarehouseModalOpen(true)}
-                className="bg-white rounded-3xl border border-slate-200/90 shadow-xs p-4 sm:p-5 flex items-center justify-between cursor-pointer hover:border-slate-300 hover:shadow-sm transition-all"
-              >
-                <div className="flex items-center gap-3.5">
-                  <div className="w-11 h-11 rounded-2xl bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-sm">
-                    <Warehouse className="w-5 h-5 stroke-[2.2] text-amber-300" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm sm:text-base font-extrabold text-slate-900">
-                        مشخصات و انبارهای تعریف شده
-                      </span>
-                      <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
-                        انبار پیش‌فرض: {defaultWarehouse?.name || 'انبار مرکزی'}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">
-                      امکان پیکربندی نام ۳ انبار، انتخاب انبار فعال و سوییچ سریع در هنگام ثبت ورودی و خروجی
-                    </p>
-                  </div>
-                </div>
+                )}
 
                 <button
                   type="button"
-                  onClick={() => setIsWarehouseModalOpen(true)}
-                  className="text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+                  id="btn-hub-more-features"
+                  onClick={() => setIsMoreFeaturesModalOpen(true)}
+                  className="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                  title="فهرست تمامی امکانات سامانه"
                 >
-                  ویرایش مشخصات
+                  <MoreHorizontal className="w-3.5 h-3.5 text-purple-600" />
+                  <span>بیشتر امکانات</span>
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-hub-update-cache"
+                  onClick={() => setIsUpdateModalOpen(true)}
+                  className="p-1.5 sm:px-2.5 sm:py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                  title="بروزرسانی برنامه و پاکسازی حافظه موقت"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isUpdatingApp ? 'animate-spin' : ''}`} />
+                  <span className="hidden md:inline">بروزرسانی کش</span>
                 </button>
               </div>
-            )}
+            </div>
+
+            {/* THREE OPERATION CLUSTERS */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4">
+              {/* CLUSTER 1: فروش و صندوقداری */}
+              <div className="p-3.5 sm:p-4 rounded-2xl border border-emerald-200/70 bg-gradient-to-b from-emerald-50/40 to-white space-y-3 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
+                        <ReceiptText className="w-4 h-4" />
+                      </div>
+                      <span className="font-black text-xs sm:text-sm text-slate-800">
+                        فروش و صندوقداری
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
+                      POS
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    صدور فاکتور جدید، بارکدخوان، تسویه واریزی مشتری و پیگیری سفارشات
+                  </p>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  {canInvoice && (
+                    <button
+                      type="button"
+                      id="hub-btn-new-invoice"
+                      onClick={() => onNewInvoice()}
+                      className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-xs font-black transition-all flex items-center justify-between shadow-xs cursor-pointer"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Plus className="w-4 h-4 stroke-[3]" />
+                        <span>صدور فاکتور جدید</span>
+                      </span>
+                      <span className="text-[10px] bg-emerald-700/80 px-1.5 py-0.5 rounded text-emerald-100 font-mono">
+                        Alt+N
+                      </span>
+                    </button>
+                  )}
+
+                  {(canCustomers || canInvoice || canAdmin) && (
+                    <button
+                      type="button"
+                      id="hub-btn-customer-deposit"
+                      onClick={() => setIsDepositPickerOpen(true)}
+                      className="w-full py-2 px-3 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Coins className="w-3.5 h-3.5 text-amber-500" />
+                        <span>ثبت واریزی و تسویه مشتری</span>
+                      </span>
+                      <ChevronLeft className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+                  )}
+
+                  {canInvoicesList && (
+                    <button
+                      type="button"
+                      id="hub-btn-invoices-list"
+                      onClick={() => onNavigate('invoices')}
+                      className="w-full py-2 px-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-slate-500" />
+                        <span>لیست و مدیریت فاکتورها</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        {toPersianDigits(invoices.length)}
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* CLUSTER 2: مدیریت انبار و زنجیره اقلام */}
+              <div className="p-3.5 sm:p-4 rounded-2xl border border-amber-200/70 bg-gradient-to-b from-amber-50/40 to-white space-y-3 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-amber-600 text-white flex items-center justify-center">
+                        <Boxes className="w-4 h-4" />
+                      </div>
+                      <span className="font-black text-xs sm:text-sm text-slate-800">
+                        انبارداری و زنجیره کالا
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md">
+                      {defaultWarehouse?.name || 'انبار'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    موجودی، حواله خرید، خروج امانی/تعمیرات، انبارگردانی و تفکیک شعب
+                  </p>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  {canInventory && (
+                    <button
+                      type="button"
+                      id="hub-btn-inventory-items"
+                      onClick={() => onNavigate('inventory')}
+                      className="w-full py-2 px-3 bg-white hover:bg-amber-50 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Boxes className="w-3.5 h-3.5 text-amber-600" />
+                        <span>کالاها و گردش موجودی</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        {toPersianDigits(products.length)}
+                      </span>
+                    </button>
+                  )}
+
+                  {canPurchases && (
+                    <button
+                      type="button"
+                      id="hub-btn-purchases"
+                      onClick={() => onNavigate('purchases')}
+                      className="w-full py-2 px-3 bg-white hover:bg-orange-50 text-orange-900 border border-orange-200 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <ShoppingCart className="w-3.5 h-3.5 text-orange-600" />
+                        <span>فاکتور خرید (ورود به انبار)</span>
+                      </span>
+                      <ChevronLeft className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+                  )}
+
+                  {canInventory && (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        id="hub-btn-direct-transfers"
+                        onClick={() => onNavigate('direct-transfers')}
+                        className="py-1.5 px-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer truncate"
+                        title="خروج و ورود بدون فاکتور (امانی/تعمیرات)"
+                      >
+                        <ArrowLeftRight className="w-3 h-3 text-cyan-600 shrink-0" />
+                        <span className="truncate">امانی/تعمیرات</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        id="hub-btn-stock-audit"
+                        onClick={() => setIsAuditModalOpen(true)}
+                        className="py-1.5 px-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer truncate"
+                        title="انبارگردانی و تطبیق موجودی فیزیکی"
+                      >
+                        <RotateCw className="w-3 h-3 text-emerald-600 shrink-0" />
+                        <span className="truncate">انبارگردانی</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {(canInventory || canAdmin) && (
+                    <button
+                      type="button"
+                      id="hub-btn-warehouse-settings"
+                      onClick={() => setIsWarehouseModalOpen(true)}
+                      className="w-full py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Warehouse className="w-3 h-3 text-slate-500" />
+                      <span>پیکربندی ۳ انبار و پیش‌فرض</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* CLUSTER 3: طرف‌حساب‌ها، حسابداری و سامانه */}
+              <div className="p-3.5 sm:p-4 rounded-2xl border border-indigo-200/70 bg-gradient-to-b from-indigo-50/40 to-white space-y-3 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
+                        <Users className="w-4 h-4" />
+                      </div>
+                      <span className="font-black text-xs sm:text-sm text-slate-800">
+                        طرف‌حساب‌ها و مدیریت
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-md">
+                      سیستم
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    مدیریت مشتریان، گزارشات سود و تراز مالی، کاربران و تنظیمات چاپ
+                  </p>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  {canCustomers && (
+                    <button
+                      type="button"
+                      id="hub-btn-customers"
+                      onClick={() => onNavigate('customers')}
+                      className="w-full py-2 px-3 bg-white hover:bg-indigo-50 text-indigo-900 border border-indigo-200 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>مشتریان و حساب‌ها</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        {toPersianDigits(customers.length)}
+                      </span>
+                    </button>
+                  )}
+
+                  {canReports && (
+                    <button
+                      type="button"
+                      id="hub-btn-reports-analytics"
+                      onClick={() => setActiveSubTab('charts')}
+                      className="w-full py-2 px-3 bg-white hover:bg-purple-50 text-purple-900 border border-purple-200 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <BarChart3 className="w-3.5 h-3.5 text-purple-600" />
+                        <span>گزارشات و تحلیل سود</span>
+                      </span>
+                      <ChevronLeft className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+                  )}
+
+                  {canAdmin && (
+                    <button
+                      type="button"
+                      id="hub-btn-admin-panel"
+                      onClick={() => onNavigate('admin')}
+                      className="w-full py-2 px-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-slate-600" />
+                        <span>کاربران، نقش‌ها و پرسنل</span>
+                      </span>
+                      <ChevronLeft className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    id="hub-btn-settings"
+                    onClick={() => {
+                      if (onOpenSettings) onOpenSettings();
+                      else onNavigate('admin');
+                    }}
+                    className="w-full py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Store className="w-3 h-3 text-slate-500" />
+                    <span>تنظیمات فروشگاه و قالب چاپ</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* LEFT COLUMN (4 COLS): RECENT ACTIVITY & SYSTEM FEED */}
-          <div className="lg:col-span-4 space-y-5">
-            {/* 1. RECENT INVOICES FEED */}
-            <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs p-5 space-y-3.5">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <ReceiptText className="w-4 h-4 text-emerald-600 stroke-[2.4]" />
-                  <h4 className="font-extrabold text-slate-900 text-sm">آخرین فاکتورهای صادر شده</h4>
+          {/* ===================== EXECUTIVE FINANCIAL & OPERATIONAL KPIS (BELOW HUB ON MOBILE, ABOVE HUB ON DESKTOP) ===================== */}
+          <div className="order-2 lg:order-1 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            {/* KPI 1: فروش امروز */}
+            <div
+              onClick={() => canInvoicesList && onNavigate('invoices')}
+              className={`bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between transition-all ${
+                canInvoicesList ? 'cursor-pointer hover:border-emerald-300 hover:shadow-sm active:scale-99' : ''
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-400">فروش امروز</span>
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+                  <TrendingUp className="w-4 h-4 stroke-[2.4]" />
                 </div>
-                {canInvoicesList && (
-                  <button
-                    type="button"
-                    onClick={() => onNavigate('invoices')}
-                    className="text-xs font-bold text-emerald-600 hover:underline cursor-pointer"
-                  >
-                    مشاهده همه
-                  </button>
-                )}
               </div>
-
-              {recentInvoices.length === 0 ? (
-                <div className="text-center py-6 text-xs text-slate-400">
-                  هنوز فاکتوری در سامانه ثبت نشده است.
+              <div className="mt-2.5">
+                <span className="text-lg lg:text-xl font-black text-slate-900 block font-mono tabular-nums">
+                  {formatPrice(todayRevenue)}
+                </span>
+                <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-700 mt-1">
+                  <span>{toPersianDigits(todayInvoices.length)} فاکتور ثبت شده</span>
+                  {canInvoice && (
+                    <span className="text-emerald-600 hover:underline font-bold">+ صدور جدید</span>
+                  )}
                 </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {recentInvoices.map((inv, idx) => {
-                    const isPaid = inv.paymentStatus === 'paid';
-                    const isPartial = inv.paymentStatus === 'partial';
-                    return (
-                      <div
-                        key={inv.id}
-                        className={`p-2.5 rounded-2xl border border-slate-200/80 ${
-                          idx % 2 === 1 ? 'bg-slate-100/75' : 'bg-white'
-                        } hover:border-slate-300 transition-all flex items-center justify-between text-xs`}
-                      >
-                        <div className="space-y-0.5 min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-extrabold text-slate-900 truncate">
-                              {inv.customerName || 'مشتری آزاد / متفرقه'}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              #{inv.invoiceNumber}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                            <span>{toPersianDigits(inv.date)}</span>
-                            <span className="font-black text-slate-800">
-                              {formatPrice(inv.finalTotal || 0)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span
-                            className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
-                              isPaid
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : isPartial
-                                ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                : 'bg-rose-50 text-rose-700 border-rose-200'
-                            }`}
-                          >
-                            {isPaid ? 'تسویه' : isPartial ? 'قسطی' : 'نسیه'}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => onViewInvoice(inv)}
-                            title="مشاهده فاکتور"
-                            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              </div>
             </div>
 
-            {/* 2. LOW STOCK ALERT PANEL */}
-            <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs p-5 space-y-3.5">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-500 stroke-[2.4]" />
-                  <h4 className="font-extrabold text-slate-900 text-sm">هشدارهای کسری انبار</h4>
+            {/* KPI 2: کل فروش سامانه */}
+            <div
+              onClick={() => canReports ? setActiveSubTab('charts') : (canInvoicesList && onNavigate('invoices'))}
+              className={`bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between transition-all ${
+                (canReports || canInvoicesList) ? 'cursor-pointer hover:border-teal-300 hover:shadow-sm active:scale-99' : ''
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-400">مجموع فروش کل</span>
+                <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center border border-teal-100">
+                  <DollarSign className="w-4 h-4 stroke-[2.4]" />
                 </div>
-                {canInventory && (
-                  <button
-                    type="button"
-                    onClick={() => onNavigate('inventory')}
-                    className="text-xs font-bold text-amber-600 hover:underline cursor-pointer"
-                  >
-                    مدیریت موجودی
-                  </button>
-                )}
               </div>
-
-              {lowStockProducts.length === 0 ? (
-                <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-emerald-50/60 border border-emerald-100 text-emerald-800 text-xs font-bold">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                  <span>کلیه کالاهای انبار دارای موجودی کافی و بالاتر از حداقل هشدار هستند.</span>
+              <div className="mt-2.5">
+                <span className="text-lg lg:text-xl font-black text-teal-800 block font-mono tabular-nums">
+                  {formatPrice(totalRevenue)}
+                </span>
+                <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mt-1">
+                  <span>{toPersianDigits(confirmedInvoices.length)} فاکتور تایید شده</span>
+                  <span className="text-teal-600 font-bold">رسمی</span>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  {lowStockProducts.slice(0, 4).map((p, idx) => (
-                    <div
-                      key={p.id}
-                      className={`p-2.5 rounded-2xl border flex items-center justify-between text-xs ${
-                        idx % 2 === 1
-                          ? 'bg-rose-100/60 border-rose-200'
-                          : 'bg-rose-50/50 border-rose-100'
-                      }`}
-                    >
-                      <div className="space-y-0.5 min-w-0">
-                        <span className="font-extrabold text-rose-900 block truncate">{p.name}</span>
-                        <span className="text-[10px] text-rose-600 block">
-                          موجودی: {toPersianDigits(p.stock)} {p.unit} (حداقل: {toPersianDigits(p.minStockAlert)})
+              </div>
+            </div>
+
+            {/* KPI 3: مطالبات از مشتریان (بدهی طرف‌حساب‌ها) */}
+            <div
+              onClick={() => {
+                if (canCustomers || canInvoice || canAdmin) {
+                  setDepositFilterOnlyDebtors(true);
+                  setIsDepositPickerOpen(true);
+                }
+              }}
+              className={`bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between transition-all ${
+                (canCustomers || canInvoice || canAdmin) ? 'cursor-pointer hover:border-rose-300 hover:shadow-sm active:scale-99' : ''
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-400">مطالبات و طلب از مشتریان</span>
+                <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100">
+                  <Wallet className="w-4 h-4 stroke-[2.4]" />
+                </div>
+              </div>
+              <div className="mt-2.5">
+                <span className="text-lg lg:text-xl font-black text-rose-700 block font-mono tabular-nums">
+                  {formatPrice(totalCustomerReceivables)}
+                </span>
+                <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mt-1">
+                  <span>{toPersianDigits(debtorCustomersCount)} طرف‌حساب بدهکار</span>
+                  <span className="text-rose-600 font-bold">تسویه سریع ←</span>
+                </div>
+              </div>
+            </div>
+
+            {/* KPI 4: سرمایه و موجودی اقلام انبار */}
+            <div
+              onClick={() => canInventory && onNavigate('inventory')}
+              className={`bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between transition-all ${
+                canInventory ? 'cursor-pointer hover:border-amber-300 hover:shadow-sm active:scale-99' : ''
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-400">اقلام و سرمایه انبار</span>
+                <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100">
+                  <Boxes className="w-4 h-4 stroke-[2.4]" />
+                </div>
+              </div>
+              <div className="mt-2.5">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-lg lg:text-xl font-black text-slate-900 block font-mono tabular-nums">
+                    {toPersianDigits(products.length)} <span className="text-xs font-normal text-slate-500">قلم</span>
+                  </span>
+                  <span className="text-xs font-bold text-slate-500 font-mono">
+                    {formatPrice(totalInventoryValuation)}
+                  </span>
+                </div>
+                <div className="mt-1">
+                  {lowStockProducts.length > 0 ? (
+                    <div className="flex items-center justify-between text-[11px] font-bold text-rose-600">
+                      <span className="flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                        <span>{toPersianDigits(lowStockProducts.length)} قلم به حداقل رسیده</span>
+                      </span>
+                      <span className="text-rose-700 underline">بررسی</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-600">
+                      <span>موجودی اقلام در وضعیت امن</span>
+                      <span>کاردکس فعال</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ===================== 2-COLUMN SPLIT WORKSPACE ===================== */}
+          <div className="order-3 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+            {/* RIGHT COLUMN (7 or 8 COLS): OPERATIONAL FEED & ALERTS */}
+            <div className="lg:col-span-7 xl:col-span-8 space-y-4">
+              {/* 1. CRITICAL STOCK REPLENISHMENT ALERTS (IF ANY LOW STOCK) */}
+              {lowStockProducts.length > 0 ? (
+                <div className="bg-rose-50/70 border border-rose-200/90 rounded-2xl sm:rounded-3xl p-4 sm:p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center">
+                        <AlertTriangle className="w-4 h-4 stroke-[2.4]" />
+                      </div>
+                      <div>
+                        <h3 className="font-extrabold text-rose-950 text-sm sm:text-base">
+                          هشدارهای فوری کسری موجودی انبار ({toPersianDigits(lowStockProducts.length)} قلم)
+                        </h3>
+                        <span className="text-[11px] text-rose-700 font-medium">
+                          اقلامی که موجودی آن‌ها به حداقل نقطه سفارش رسیده یا تمام شده است
                         </span>
                       </div>
-                      {canInventory && (
-                        <button
-                          type="button"
-                          onClick={() => onNavigate('inventory')}
-                          className="px-2.5 py-1 bg-white hover:bg-rose-100 text-rose-700 font-bold text-[11px] rounded-lg border border-rose-200 shadow-xs transition-colors cursor-pointer shrink-0"
-                        >
-                          تامین
-                        </button>
-                      )}
                     </div>
-                  ))}
+
+                    {canPurchases && (
+                      <button
+                        type="button"
+                        onClick={() => onNavigate('purchases')}
+                        className="text-xs font-black bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-xl transition-colors cursor-pointer shadow-xs"
+                      >
+                        ثبت فاکتور خرید
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {lowStockProducts.slice(0, 4).map((p) => (
+                      <div
+                        key={`alert-${p.id}`}
+                        className="p-2.5 rounded-xl bg-white border border-rose-200/80 flex items-center justify-between text-xs shadow-2xs"
+                      >
+                        <div className="min-w-0 pr-1">
+                          <span className="font-black text-slate-800 block truncate">
+                            {p.name}
+                          </span>
+                          <span className="text-[11px] text-rose-600 font-bold block mt-0.5">
+                            موجودی فعلی: {toPersianDigits(p.stock)} {p.unit} (حداقل: {toPersianDigits(p.minStockAlert)})
+                          </span>
+                        </div>
+                        {canInventory && (
+                          <button
+                            type="button"
+                            onClick={() => onNavigate('inventory')}
+                            className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] rounded-lg border border-rose-200 transition-colors cursor-pointer shrink-0"
+                          >
+                            تامین
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {lowStockProducts.length > 4 && (
+                    <div className="text-left pt-1">
+                      <button
+                        type="button"
+                        onClick={() => onNavigate('inventory')}
+                        className="text-xs font-bold text-rose-700 hover:underline cursor-pointer"
+                      >
+                        مشاهده همه {toPersianDigits(lowStockProducts.length)} قلم کالای کسری ←
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-emerald-50/50 border border-emerald-200/80 rounded-2xl p-3.5 flex items-center justify-between text-xs text-emerald-900">
+                  <div className="flex items-center gap-2 font-bold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>وضعیت موجودی انبارها مطلوب است؛ هیچ کالایی در نقطه بحرانی قرار ندارد.</span>
+                  </div>
+                  {canInventory && (
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('inventory')}
+                      className="text-[11px] font-extrabold text-emerald-700 hover:underline cursor-pointer"
+                    >
+                      مشاهده کاردکس
+                    </button>
+                  )}
                 </div>
               )}
+
+              {/* 2. RECENT INVOICES STREAM WITH QUICK FILTER */}
+              <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-xs p-4 sm:p-5 space-y-3.5">
+                {/* Header with Quick Status Filter Tabs */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-black text-slate-900 text-sm sm:text-base">
+                        آخرین فاکتورهای ثبت شده
+                      </h3>
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        گردش فروش و وضعیت تسویه سفارشات اخیر
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Filter tabs */}
+                  <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl text-xs overflow-x-auto">
+                    <button
+                      type="button"
+                      onClick={() => setRecentInvoicesFilter('all')}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
+                        recentInvoicesFilter === 'all'
+                          ? 'bg-white text-slate-900 shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      همه ({toPersianDigits(invoices.length)})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRecentInvoicesFilter('confirmed')}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
+                        recentInvoicesFilter === 'confirmed'
+                          ? 'bg-white text-teal-800 shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      تایید ({toPersianDigits(confirmedInvoices.length)})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRecentInvoicesFilter('draft')}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
+                        recentInvoicesFilter === 'draft'
+                          ? 'bg-white text-amber-800 shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      پیش‌نویس ({toPersianDigits(draftInvoices.length)})
+                    </button>
+                    {cancelledInvoices.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setRecentInvoicesFilter('cancelled')}
+                        className={`px-2.5 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
+                          recentInvoicesFilter === 'cancelled'
+                            ? 'bg-white text-rose-800 shadow-2xs'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        لغو ({toPersianDigits(cancelledInvoices.length)})
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Invoices List */}
+                {filteredRecentInvoices.length === 0 ? (
+                  <div className="py-10 text-center text-slate-400 text-xs space-y-2">
+                    <p>هیچ فاکتوری در این وضعیت یافت نشد.</p>
+                    {canInvoice && (
+                      <button
+                        type="button"
+                        onClick={() => onNewInvoice()}
+                        className="text-emerald-700 font-bold hover:underline cursor-pointer"
+                      >
+                        + صدور اولین فاکتور فروش
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {filteredRecentInvoices.map((inv) => {
+                      const isPaid = inv.paymentStatus === 'paid';
+                      const isPartial = inv.paymentStatus === 'partial';
+
+                      return (
+                        <div
+                          key={`rec-${inv.id}`}
+                          onClick={() => onViewInvoice(inv)}
+                          className="p-3 rounded-2xl border border-slate-200/80 hover:border-slate-300 hover:bg-slate-50/70 transition-all cursor-pointer flex items-center justify-between text-xs group"
+                        >
+                          <div className="space-y-1 min-w-0 flex-1 pr-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-extrabold text-slate-900 group-hover:text-emerald-800 transition-colors truncate">
+                                {inv.customerName || 'مشتری آزاد / متفرقه'}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                #{inv.invoiceNumber}
+                              </span>
+                              {inv.isProforma && (
+                                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
+                                  پیش‌فاکتور
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                              <span>{toPersianDigits(inv.date)}</span>
+                              <span aria-hidden="true">·</span>
+                              <span>{toPersianDigits(inv.items?.length || 0)} قلم کالا</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="text-left space-y-0.5">
+                              <span className="text-xs sm:text-sm font-black text-slate-900 block font-mono tabular-nums">
+                                {formatPrice(inv.finalTotal || 0)}
+                              </span>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block border ${
+                                  isPaid
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : isPartial
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                    : 'bg-rose-50 text-rose-700 border-rose-200'
+                                }`}
+                              >
+                                {isPaid ? 'تسویه کامل' : isPartial ? 'قسطی / بیعانه' : 'نسیه'}
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onViewInvoice(inv);
+                              }}
+                              className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
+                              title="مشاهده جزئیات فاکتور"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {canInvoicesList && (
+                  <div className="pt-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('invoices')}
+                      className="text-xs font-bold text-slate-600 hover:text-slate-900 hover:underline cursor-pointer"
+                    >
+                      مشاهده تمامی فاکتورها در بخش مدیریت فاکتورها ←
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* 3. QUICK SYSTEM SHORTCUTS */}
-            <div className="bg-slate-900 text-white rounded-3xl p-5 space-y-3.5 shadow-md">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold text-slate-300">امکانات و ابزارهای سریع</span>
-                <span className="text-[10px] text-amber-400 font-bold bg-amber-400/15 px-2 py-0.5 rounded-full">
-                  {currentUser?.roleTitle || roleConfig?.label || 'دسترسی مجاز'}
-                </span>
-              </div>
+            {/* LEFT COLUMN (5 or 4 COLS): DEBTORS, WAREHOUSES & FAST SHORTCUTS */}
+            <div className="lg:col-span-5 xl:col-span-4 space-y-4">
+              {/* 1. TOP OUTSTANDING DEBTORS (مشتریان بدهکار جهت تسویه سریع) */}
+              <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-xs p-4 sm:p-5 space-y-3.5">
+                <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                      <Wallet className="w-4 h-4 stroke-[2.2]" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-slate-900 text-sm">
+                        بدهکاران نیازمند تسویه
+                      </h4>
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        طرف‌حساب‌های با بیشترین مانده بدهی
+                      </span>
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                {canInvoice && (
-                  <button
-                    type="button"
-                    onClick={onNewInvoice}
-                    className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-right font-bold text-slate-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
-                  >
-                    <PlusCircle className="w-4 h-4 text-emerald-400" />
-                    <span>فاکتور جدید</span>
-                  </button>
+                  {(canCustomers || canInvoice || canAdmin) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDepositFilterOnlyDebtors(true);
+                        setIsDepositPickerOpen(true);
+                      }}
+                      className="text-xs font-bold text-rose-600 hover:underline cursor-pointer"
+                    >
+                      تسویه
+                    </button>
+                  )}
+                </div>
+
+                {topDebtors.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-slate-400">
+                    تمامی حساب‌های مشتریان تسویه است و مانده بدهی وجود ندارد.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {topDebtors.map(({ customer: cust, balance }) => (
+                      <div
+                        key={`debtor-${cust.id}`}
+                        className="p-2.5 rounded-xl border border-slate-200/80 bg-slate-50/50 hover:bg-slate-100/70 transition-all flex items-center justify-between text-xs"
+                      >
+                        <div className="min-w-0 pr-1">
+                          <span className="font-extrabold text-slate-800 block truncate">
+                            {cust.name}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
+                            {cust.phone ? toPersianDigits(cust.phone) : 'بدون شماره'}
+                          </span>
+                        </div>
+
+                        <div className="text-left space-y-1 shrink-0">
+                          <span className="text-xs font-black text-rose-700 block font-mono tabular-nums">
+                            {formatPrice(balance)}
+                          </span>
+                          {(canCustomers || canInvoice || canAdmin) && (
+                            <button
+                              type="button"
+                              onClick={() => setDepositSelectedCustomer(cust)}
+                              className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded-md transition-colors cursor-pointer shadow-xs"
+                            >
+                              ثبت واریزی
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
-                {canInvoicesList && (
-                  <button
-                    type="button"
-                    onClick={() => onNavigate('invoices')}
-                    className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-right font-bold text-slate-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
-                  >
-                    <ReceiptText className="w-4 h-4 text-sky-400" />
-                    <span>لیست سفارشات</span>
-                  </button>
-                )}
-                {canInventory && (
-                  <button
-                    type="button"
-                    onClick={() => onNavigate('inventory')}
-                    className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-right font-bold text-slate-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
-                  >
-                    <Boxes className="w-4 h-4 text-amber-400" />
-                    <span>انبار و کالاها</span>
-                  </button>
-                )}
-                {canPurchases && (
-                  <button
-                    type="button"
-                    onClick={() => onNavigate('purchases')}
-                    className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-right font-bold text-slate-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
-                  >
-                    <ShoppingCart className="w-4 h-4 text-orange-400" />
-                    <span>فاکتور خرید</span>
-                  </button>
-                )}
+
                 {canCustomers && (
                   <button
                     type="button"
                     onClick={() => onNavigate('customers')}
-                    className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-right font-bold text-slate-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                    className="w-full text-center py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                   >
-                    <Users className="w-4 h-4 text-purple-400" />
-                    <span>مشتریان</span>
+                    مشاهده تمامی {toPersianDigits(customers.length)} مخاطب و دفاتر حساب
                   </button>
                 )}
+              </div>
 
-                {/* More Features Button */}
-                <button
-                  type="button"
-                  id="btn-desktop-more-features"
-                  onClick={() => setIsMoreFeaturesModalOpen(true)}
-                  className="p-2.5 rounded-xl bg-purple-950/50 hover:bg-purple-900/60 border border-purple-800/50 text-right font-bold text-purple-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+              {/* 2. ACTIVE WAREHOUSE & INVENTORY STRUCTURE */}
+              {(canInventory || canAdmin) && (
+                <div
+                  id="card-active-warehouse-status"
+                  onClick={() => setIsWarehouseModalOpen(true)}
+                  className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-xs p-4 sm:p-5 space-y-3 cursor-pointer hover:border-amber-300 transition-all"
                 >
-                  <MoreHorizontal className="w-4 h-4 text-purple-400" />
-                  <span>بیشتر امکانات...</span>
-                </button>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-slate-900 text-amber-300 flex items-center justify-center shadow-xs">
+                        <Warehouse className="w-4 h-4 stroke-[2.2]" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-slate-900 text-xs sm:text-sm">
+                          انبار پیش‌فرض سامانه
+                        </h4>
+                        <span className="text-[11px] font-bold text-amber-800">
+                          {defaultWarehouse?.name || 'انبار مرکزی'}
+                        </span>
+                      </div>
+                    </div>
 
-                {/* Update App & Clear Browser Cache */}
-                <button
-                  type="button"
-                  id="btn-desktop-clear-cache"
-                  onClick={() => setIsUpdateModalOpen(true)}
-                  className="col-span-2 p-2.5 rounded-xl bg-sky-950/60 hover:bg-sky-900/70 border border-sky-800/50 text-right font-bold text-sky-200 hover:text-white transition-colors flex items-center justify-between cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <RefreshCw className={`w-4 h-4 text-sky-400 ${isUpdatingApp ? 'animate-spin' : ''}`} />
-                    <span>بروزرسانی برنامه و پاکسازی کش</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsWarehouseModalOpen(true);
+                      }}
+                      className="text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                    >
+                      تغییر
+                    </button>
                   </div>
-                  <span className="text-[10px] text-sky-300 font-normal bg-sky-900/80 px-2 py-0.5 rounded-md">
-                    نسخه جدید
+
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    سامانه از ۳ انبار تفکیک‌شده پشتیبانی می‌کند. برای تعیین انبار پیش‌فرض در صدور فاکتور و ورود کالا، روی این بخش کلیک کنید.
+                  </p>
+                </div>
+              )}
+
+              {/* 3. FAST SHORTCUTS & APP HEALTH */}
+              <div className="bg-slate-900 text-white rounded-2xl sm:rounded-3xl p-4 sm:p-5 space-y-3 shadow-md">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-200">
+                    نگهداری و ابزارهای سریع
                   </span>
-                </button>
+                  <span className="text-[10px] text-amber-400 font-bold bg-amber-400/15 px-2 py-0.5 rounded-full">
+                    آماده به کار
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {canInvoice && (
+                    <button
+                      type="button"
+                      onClick={onNewInvoice}
+                      className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-right font-bold text-slate-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span className="truncate">فاکتور جدید</span>
+                    </button>
+                  )}
+
+                  {canInvoicesList && (
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('invoices')}
+                      className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-right font-bold text-slate-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                    >
+                      <ReceiptText className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                      <span className="truncate">سفارشات</span>
+                    </button>
+                  )}
+
+                  {canInventory && (
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('inventory')}
+                      className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-right font-bold text-slate-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                    >
+                      <Boxes className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span className="truncate">انبار و کالا</span>
+                    </button>
+                  )}
+
+                  {canPurchases && (
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('purchases')}
+                      className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-right font-bold text-slate-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                    >
+                      <ShoppingCart className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                      <span className="truncate">خرید کالا</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setIsUpdateModalOpen(true)}
+                    className="col-span-2 p-2.5 rounded-xl bg-sky-950/70 hover:bg-sky-900 border border-sky-800/60 text-right font-bold text-sky-200 hover:text-white transition-colors flex items-center justify-between cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <RefreshCw className={`w-3.5 h-3.5 text-sky-400 ${isUpdatingApp ? 'animate-spin' : ''}`} />
+                      <span>بروزرسانی نسخه برنامه و پاکسازی کش</span>
+                    </div>
+                    <span className="text-[10px] text-sky-300 font-mono">PWA</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </>
-    ) : (
-      /* CHARTS & ANALYTICS SUB-TAB (RESPONSIVE GRID) */
+        </>
+      ) : (
+        /* ===================== CHARTS & FINANCIAL ANALYTICS TAB ===================== */
         <div className="space-y-5">
+          <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-4 sm:p-5 shadow-xs flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center">
+                <BarChart3 className="w-5 h-5 stroke-[2.2] text-amber-400" />
+              </div>
+              <div>
+                <h3 className="font-black text-slate-900 text-sm sm:text-base">
+                  گزارشات و تحلیل مالی
+                </h3>
+                <span className="text-[11px] text-slate-400 font-medium">
+                  نمای تحلیلی فروش، توزیع پرداخت‌ها و وضعیت اقلام انبار
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              id="btn-charts-back-to-dashboard"
+              onClick={() => setActiveSubTab('dashboard')}
+              className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>پیشخوان عملیات</span>
+            </button>
+          </div>
+
           {/* Revenue & Sales Summary Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
             <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
               <span className="text-xs text-slate-400 font-bold block">فروش کل سامانه</span>
-              <span className="text-base sm:text-lg font-black text-slate-900 mt-1 block">
+              <span className="text-base sm:text-lg font-black text-slate-900 mt-1 block font-mono tabular-nums">
                 {formatPrice(totalRevenue)}
               </span>
               <span className="text-[10px] text-emerald-600 font-semibold mt-0.5 block">
@@ -1614,7 +1646,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
 
             <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
               <span className="text-xs text-slate-400 font-bold block">فروش امروز</span>
-              <span className="text-base sm:text-lg font-black text-teal-600 mt-1 block">
+              <span className="text-base sm:text-lg font-black text-teal-600 mt-1 block font-mono tabular-nums">
                 {formatPrice(todayRevenue)}
               </span>
               <span className="text-[10px] text-slate-400 font-semibold mt-0.5 block">
@@ -1624,7 +1656,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
 
             <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
               <span className="text-xs text-slate-400 font-bold block">میانگین هر فاکتور</span>
-              <span className="text-base sm:text-lg font-black text-blue-600 mt-1 block">
+              <span className="text-base sm:text-lg font-black text-blue-600 mt-1 block font-mono tabular-nums">
                 {formatPrice(confirmedInvoices.length ? Math.round(totalRevenue / confirmedInvoices.length) : 0)}
               </span>
               <span className="text-[10px] text-slate-400 font-semibold mt-0.5 block">
@@ -1634,7 +1666,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
 
             <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
               <span className="text-xs text-slate-400 font-bold block">مشتریان فعال</span>
-              <span className="text-base sm:text-lg font-black text-purple-600 mt-1 block">
+              <span className="text-base sm:text-lg font-black text-purple-600 mt-1 block font-mono tabular-nums">
                 {toPersianDigits(customers.length)} مخاطب
               </span>
               <span className="text-[10px] text-slate-400 font-semibold mt-0.5 block">
@@ -1643,8 +1675,9 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
             </div>
           </div>
 
-          {/* Top Selling Products / Inventory Status in 2 Columns on Desktop */}
+          {/* 2 Columns on Desktop */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {/* Column 1: Inventory stock list */}
             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                 <span className="font-extrabold text-slate-800 text-sm sm:text-base">وضعیت کالاهای انبار</span>
@@ -1658,7 +1691,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                   const isLow = p.stock <= p.minStockAlert;
                   return (
                     <div
-                      key={p.id}
+                      key={`chart-p-${p.id}`}
                       className={`flex items-center justify-between text-xs py-2 px-2.5 rounded-xl transition-colors ${
                         idx % 2 === 1 ? 'bg-slate-100/70' : 'bg-white'
                       }`}
@@ -1668,8 +1701,8 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                         <span className="font-bold text-slate-800 truncate max-w-[200px] sm:max-w-xs">{p.name}</span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-slate-500">{formatPrice(p.sellPrice)}</span>
-                        <span className={`px-2.5 py-0.5 rounded-lg font-bold text-[11px] ${
+                        <span className="text-slate-500 font-mono">{formatPrice(p.sellPrice)}</span>
+                        <span className={`px-2.5 py-0.5 rounded-lg font-bold text-[11px] font-mono ${
                           isLow ? 'bg-rose-50 text-rose-600 border border-rose-200' : 'bg-slate-100 text-slate-700'
                         }`}>
                           {toPersianDigits(p.stock)} {p.unit}
@@ -1689,6 +1722,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
               </button>
             </div>
 
+            {/* Column 2: Payment Status Breakdown */}
             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4 flex flex-col justify-between">
               <div className="space-y-3">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -1702,11 +1736,11 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                   <div>
                     <div className="flex justify-between text-xs font-bold mb-1">
                       <span className="text-emerald-700">تسویه کامل نقدی/کارتخوان</span>
-                      <span>{toPersianDigits(invoices.filter(i => i.paymentStatus === 'paid').length)} فاکتور</span>
+                      <span className="font-mono">{toPersianDigits(invoices.filter(i => i.paymentStatus === 'paid').length)} فاکتور</span>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                       <div
-                        className="bg-emerald-500 h-full rounded-full"
+                        className="bg-emerald-500 h-full rounded-full transition-all"
                         style={{ width: `${invoices.length ? (invoices.filter(i => i.paymentStatus === 'paid').length / invoices.length) * 100 : 0}%` }}
                       />
                     </div>
@@ -1715,11 +1749,11 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                   <div>
                     <div className="flex justify-between text-xs font-bold mb-1">
                       <span className="text-amber-700">پرداخت قسطی / بیعانه</span>
-                      <span>{toPersianDigits(invoices.filter(i => i.paymentStatus === 'partial').length)} فاکتور</span>
+                      <span className="font-mono">{toPersianDigits(invoices.filter(i => i.paymentStatus === 'partial').length)} فاکتور</span>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                       <div
-                        className="bg-amber-500 h-full rounded-full"
+                        className="bg-amber-500 h-full rounded-full transition-all"
                         style={{ width: `${invoices.length ? (invoices.filter(i => i.paymentStatus === 'partial').length / invoices.length) * 100 : 0}%` }}
                       />
                     </div>
@@ -1728,11 +1762,11 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                   <div>
                     <div className="flex justify-between text-xs font-bold mb-1">
                       <span className="text-rose-700">نسیه / پرداخت‌نشده</span>
-                      <span>{toPersianDigits(invoices.filter(i => i.paymentStatus === 'unpaid').length)} فاکتور</span>
+                      <span className="font-mono">{toPersianDigits(invoices.filter(i => i.paymentStatus === 'unpaid').length)} فاکتور</span>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                       <div
-                        className="bg-rose-500 h-full rounded-full"
+                        className="bg-rose-500 h-full rounded-full transition-all"
                         style={{ width: `${invoices.length ? (invoices.filter(i => i.paymentStatus === 'unpaid').length / invoices.length) * 100 : 0}%` }}
                       />
                     </div>

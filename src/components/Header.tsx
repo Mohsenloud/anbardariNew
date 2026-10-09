@@ -9,7 +9,6 @@ import {
   Boxes, 
   Users, 
   BarChart3, 
-  PlusCircle, 
   FileSpreadsheet,
   ShieldCheck,
   Menu,
@@ -367,21 +366,6 @@ export const Header: React.FC<HeaderProps> = ({
                   </>
                 )}
               </div>
-            )}
-
-            {/* Quick Primary New Invoice Action Button */}
-            {(!currentUser || currentUser.permissions.canCreateInvoice) && (
-              <button
-                type="button"
-                id="header-new-invoice-btn"
-                onClick={onOpenNewInvoice}
-                title="صدور فاکتور جدید"
-                aria-label="صدور فاکتور جدید"
-                className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white px-2.5 sm:px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold shadow-sm shadow-emerald-200 transition-all cursor-pointer"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span className="hidden sm:inline">فاکتور جدید</span>
-              </button>
             )}
           </div>
         </div>
