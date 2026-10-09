@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { StoreSettings, AppUser } from '../types';
 import { StorageService } from '../utils/storage';
 import { toPersianDigits, getCurrentJalaliDate, getCurrentJalaliTime } from '../utils/jalali';
@@ -15,6 +15,8 @@ import {
   ShieldCheck,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
   X,
   User,
   LogOut,
@@ -25,14 +27,22 @@ import {
   Building2,
   Sparkles,
   Lock,
-  Layers
+  Layers,
+  Truck,
+  History,
+  ArrowDownRight
 } from 'lucide-react';
+
+export type InventorySubTabKey = 'items' | 'inbound-receipts' | 'exit-slips' | 'direct-transfers' | 'movements';
 
 export interface SidebarProps {
   settings?: StoreSettings;
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  inventorySubTab?: InventorySubTabKey;
+  onSelectInventorySubTab?: (subTab: InventorySubTabKey) => void;
   lowStockCount: number;
+  pendingInboundCount?: number;
   currentUser?: AppUser | null;
   users?: AppUser[];
   onSwitchUser?: (user: AppUser) => void;
@@ -50,7 +60,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   settings,
   activeTab,
   setActiveTab,
+  inventorySubTab = 'items',
+  onSelectInventorySubTab,
   lowStockCount,
+  pendingInboundCount = 0,
   currentUser,
   users = [],
   onSwitchUser,
@@ -66,6 +79,68 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const safeSettings = settings || StorageService.getSettings();
   const currentDate = getCurrentJalaliDate();
   const currentTime = getCurrentJalaliTime();
+
+  // Accordion state for inventory sub-items
+  const [isInventoryExpanded, setIsInventoryExpanded] = useState<boolean>(() => activeTab === 'inventory');
+  const [isInventoryFlyoutOpen, setIsInventoryFlyoutOpen] = useState(false);
+  const flyoutRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (activeTab === 'inventory') {
+      setIsInventoryExpanded(true);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (flyoutRef.current && !flyoutRef.current.contains(e.target as Node)) {
+        setIsInventoryFlyoutOpen(false);
+      }
+    };
+    if (isInventoryFlyoutOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isInventoryFlyoutOpen]);
+
+  // Inventory 5 sub-items requested by user
+  const inventorySubItems: Array<{
+    id: InventorySubTabKey;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: string;
+    badgeClass?: string;
+  }> = [
+    {
+      id: 'items',
+      label: 'کالاها و موجودی',
+      icon: Boxes,
+      badge: lowStockCount > 0 ? `${toPersianDigits(lowStockCount)} هشدار` : undefined,
+      badgeClass: 'bg-amber-500 text-white',
+    },
+    {
+      id: 'inbound-receipts',
+      label: 'حواله‌های ورود کالا',
+      icon: ArrowDownRight,
+      badge: (pendingInboundCount > 0) ? `${toPersianDigits(pendingInboundCount)} منتظر` : undefined,
+      badgeClass: 'bg-rose-500 text-white',
+    },
+    {
+      id: 'exit-slips',
+      label: 'برگه‌های خروج انبار',
+      icon: Truck,
+    },
+    {
+      id: 'direct-transfers',
+      label: 'خروج و ورود بدون فاکتور (امانی/تعمیرات)',
+      icon: ArrowRightLeft,
+    },
+    {
+      id: 'movements',
+      label: 'گردش و کاردکس',
+      icon: History,
+    },
+  ];
 
   // Close mobile drawer on Escape key
   useEffect(() => {
@@ -302,6 +377,206 @@ export const Sidebar: React.FC<SidebarProps> = ({
               // If it's new-invoice, we already show it prominently above, but also keep in list if collapsed
               if (isPrimaryAction && !isCollapsedDesktop) {
                 return null;
+              }
+
+              // Special handling for inventory tab: render accordion with 5 sub-items
+              if (item.id === 'inventory') {
+                if (isCollapsedDesktop) {
+                  return (
+                    <div key={item.id} className="relative group/inv" ref={flyoutRef}>
+                      <button
+                        type="button"
+                        id="sidebar-item-inventory-collapsed"
+                        onClick={() => {
+                          item.onClick();
+                          setIsInventoryFlyoutOpen((prev) => !prev);
+                        }}
+                        onMouseEnter={() => setIsInventoryFlyoutOpen(true)}
+                        title={`${item.label}: ${item.description}`}
+                        className={`w-full flex items-center justify-center h-11 rounded-xl transition-all cursor-pointer relative ${
+                          isActive
+                            ? 'bg-emerald-50 text-emerald-900 font-black shadow-2xs border border-emerald-200/80'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                        }`}
+                      >
+                        {isActive && (
+                          <span className="absolute right-0 top-2 bottom-2 w-1 bg-emerald-600 rounded-l-full" />
+                        )}
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                          isActive
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'bg-slate-100/80 text-slate-600 group-hover/inv:bg-slate-200 group-hover/inv:text-slate-900'
+                        }`}>
+                          <Icon className="w-4 h-4 stroke-[2.2]" />
+                        </div>
+                        {item.badge && (
+                          <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-500 rounded-full ring-2 ring-white" />
+                        )}
+                      </button>
+
+                      {/* Collapsed Flyout Popover */}
+                      {isInventoryFlyoutOpen && (
+                        <div 
+                          onMouseLeave={() => setIsInventoryFlyoutOpen(false)}
+                          className="absolute right-full top-0 mr-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-50 text-right animate-in fade-in zoom-in-95 duration-150"
+                        >
+                          <div className="px-2.5 py-1.5 border-b border-slate-100 mb-1 flex items-center justify-between">
+                            <span className="text-xs font-black text-slate-800">مدیریت انبار و کالا</span>
+                            <span className="text-[10px] text-slate-400">بخش‌های انبار</span>
+                          </div>
+                          <div className="space-y-0.5">
+                            {inventorySubItems.map((sub) => {
+                              const isSubActive = activeTab === 'inventory' && (inventorySubTab || 'items') === sub.id;
+                              const SubIcon = sub.icon;
+                              return (
+                                <button
+                                  key={sub.id}
+                                  type="button"
+                                  id={`sidebar-flyout-sub-${sub.id}`}
+                                  onClick={() => {
+                                    setActiveTab('inventory');
+                                    onSelectInventorySubTab?.(sub.id);
+                                    setIsInventoryFlyoutOpen(false);
+                                  }}
+                                  className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl text-right text-xs transition-colors cursor-pointer ${
+                                    isSubActive
+                                      ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                                      : 'text-slate-700 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <SubIcon className={`w-4 h-4 shrink-0 ${isSubActive ? 'text-white' : 'text-slate-500'}`} />
+                                    <span className="truncate">{sub.label}</span>
+                                  </div>
+                                  {sub.badge && (
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
+                                      isSubActive ? 'bg-white/20 text-white' : (sub.badgeClass || 'bg-amber-100 text-amber-800')
+                                    }`}>
+                                      {sub.badge}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                // Expanded Desktop Mode: Accordion with 5 sub-items
+                return (
+                  <div key={item.id} className="space-y-1">
+                    <div
+                      className={`w-full flex items-center justify-between rounded-xl transition-all group relative px-2.5 py-2 text-right ${
+                        isActive
+                          ? 'bg-emerald-50 text-emerald-900 font-black shadow-2xs border border-emerald-200/80'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                      }`}
+                    >
+                      {isActive && (
+                        <span className="absolute right-0 top-2 bottom-2 w-1 bg-emerald-600 rounded-l-full" />
+                      )}
+
+                      <div 
+                        onClick={() => {
+                          if (activeTab !== 'inventory') {
+                            setActiveTab('inventory');
+                            setIsInventoryExpanded(true);
+                          } else {
+                            setIsInventoryExpanded(!isInventoryExpanded);
+                          }
+                        }}
+                        className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer"
+                      >
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                          isActive
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'bg-slate-100/80 text-slate-600 group-hover:bg-slate-200 group-hover:text-slate-900'
+                        }`}>
+                          <Icon className="w-4 h-4 stroke-[2.2]" />
+                        </div>
+
+                        <div className="flex-1 min-w-0 text-right">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className={`text-xs font-black truncate ${
+                              isActive ? 'text-emerald-950' : 'text-slate-800'
+                            }`}>
+                              {item.label}
+                            </span>
+                            {item.badge && (
+                              <span className="bg-amber-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.2 shrink-0 shadow-2xs">
+                                {item.badge}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                            {item.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Accordion Toggle Chevron */}
+                      <button
+                        type="button"
+                        id="sidebar-inventory-accordion-toggle"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsInventoryExpanded(!isInventoryExpanded);
+                        }}
+                        className="w-6 h-6 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 flex items-center justify-center transition-colors shrink-0 cursor-pointer"
+                        title={isInventoryExpanded ? 'بستن زیرمجموعه‌ها' : 'مشاهده زیرمجموعه‌ها'}
+                      >
+                        {isInventoryExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-emerald-700" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-slate-500" />
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Accordion Sub-items */}
+                    {isInventoryExpanded && (
+                      <div className="mr-3 pr-2.5 border-r-2 border-emerald-300/70 my-1 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                        {inventorySubItems.map((sub) => {
+                          const isSubActive = activeTab === 'inventory' && (inventorySubTab || 'items') === sub.id;
+                          const SubIcon = sub.icon;
+                          return (
+                            <button
+                              key={sub.id}
+                              type="button"
+                              id={`sidebar-subitem-${sub.id}`}
+                              onClick={() => {
+                                setActiveTab('inventory');
+                                onSelectInventorySubTab?.(sub.id);
+                              }}
+                              className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-right transition-all cursor-pointer group text-xs ${
+                                isSubActive
+                                  ? 'bg-emerald-600 text-white font-black shadow-xs shadow-emerald-600/25 ring-1 ring-emerald-500'
+                                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/90 font-medium'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <SubIcon className={`w-3.5 h-3.5 shrink-0 transition-colors ${
+                                  isSubActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-700'
+                                }`} />
+                                <span className="truncate">{sub.label}</span>
+                              </div>
+                              {sub.badge && (
+                                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
+                                  isSubActive ? 'bg-white/20 text-white' : (sub.badgeClass || 'bg-amber-100 text-amber-800')
+                                }`}>
+                                  {sub.badge}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
               }
 
               return (
@@ -601,6 +876,116 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 const isPrimaryAction = item.id === 'new-invoice';
 
                 if (isPrimaryAction) return null; // already shown prominently above
+
+                // Special handling for inventory tab in mobile drawer: render accordion with 5 sub-items
+                if (item.id === 'inventory') {
+                  return (
+                    <div key={item.id} className="space-y-1">
+                      <div
+                        className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-right transition-all ${
+                          isActive
+                            ? 'bg-emerald-50 text-emerald-950 font-black border border-emerald-200 shadow-2xs'
+                            : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div
+                          onClick={() => {
+                            if (activeTab !== 'inventory') {
+                              setActiveTab('inventory');
+                              setIsInventoryExpanded(true);
+                            } else {
+                              setIsInventoryExpanded(!isInventoryExpanded);
+                            }
+                          }}
+                          className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                        >
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            isActive
+                              ? 'bg-emerald-600 text-white shadow-2xs'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            <Icon className="w-4 h-4 stroke-[2.2]" />
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-xs font-black truncate">
+                                {item.label}
+                              </span>
+                              {item.badge && (
+                                <span className="bg-amber-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.2 shrink-0">
+                                  {item.badge}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-400 truncate mt-0.5 font-medium">
+                              {item.description}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Accordion Toggle Chevron Button */}
+                        <button
+                          type="button"
+                          id="mobile-drawer-inventory-accordion-toggle"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsInventoryExpanded(!isInventoryExpanded);
+                          }}
+                          className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 flex items-center justify-center transition-colors shrink-0 cursor-pointer"
+                          title={isInventoryExpanded ? 'بستن زیرمجموعه‌ها' : 'مشاهده زیرمجموعه‌ها'}
+                        >
+                          {isInventoryExpanded ? (
+                            <ChevronUp className="w-4 h-4 text-emerald-700" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-slate-500" />
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Mobile Accordion Sub-items */}
+                      {isInventoryExpanded && (
+                        <div className="mr-3.5 pr-2.5 border-r-2 border-emerald-300/80 my-1 space-y-1 animate-in fade-in slide-in-from-top-1 duration-150">
+                          {inventorySubItems.map((sub) => {
+                            const isSubActive = activeTab === 'inventory' && (inventorySubTab || 'items') === sub.id;
+                            const SubIcon = sub.icon;
+                            return (
+                              <button
+                                key={sub.id}
+                                type="button"
+                                id={`mobile-drawer-subitem-${sub.id}`}
+                                onClick={() => {
+                                  setActiveTab('inventory');
+                                  onSelectInventorySubTab?.(sub.id);
+                                  onCloseMobile();
+                                }}
+                                className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-right transition-all cursor-pointer ${
+                                  isSubActive
+                                    ? 'bg-emerald-600 text-white font-black shadow-xs shadow-emerald-600/20 ring-1 ring-emerald-500'
+                                    : 'text-slate-700 hover:bg-slate-100 font-medium'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <SubIcon className={`w-3.5 h-3.5 shrink-0 ${
+                                    isSubActive ? 'text-white' : 'text-slate-400'
+                                  }`} />
+                                  <span className="text-xs truncate">{sub.label}</span>
+                                </div>
+                                {sub.badge && (
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
+                                    isSubActive ? 'bg-white/20 text-white' : (sub.badgeClass || 'bg-amber-100 text-amber-800')
+                                  }`}>
+                                    {sub.badge}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
 
                 return (
                   <button

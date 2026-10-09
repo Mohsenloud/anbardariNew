@@ -1560,6 +1560,7 @@ export default function App() {
 
   // Low stock count for alert badge
   const lowStockCount = products.filter((p) => p.stock <= p.minStockAlert).length;
+  const pendingInboundCount = inboundReceipts.filter((r) => r.status === 'pending_verification').length;
 
   // 0. Dedicated Customer Public Web Invoice view (Zero login required for customers)
   if (publicInvoiceToken) {
@@ -1620,7 +1621,10 @@ export default function App() {
         settings={settings}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        inventorySubTab={inventorySubTab}
+        onSelectInventorySubTab={(sub) => setInventorySubTab(sub)}
         lowStockCount={lowStockCount}
+        pendingInboundCount={pendingInboundCount}
         currentUser={currentUser}
         users={users}
         onSwitchUser={handleSwitchUser}
@@ -1777,6 +1781,7 @@ export default function App() {
               onConfirmInboundReceipt={handleConfirmInboundReceipt}
               selectedInboundReceiptId={selectedInboundReceiptId}
               initialSubTab={inventorySubTab}
+              onSubTabChange={(sub) => setInventorySubTab(sub)}
               onUpdateSettings={handleSaveSettings}
               onToast={showToast}
             />
