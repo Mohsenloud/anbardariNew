@@ -823,21 +823,21 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                   <table className="w-full text-right text-xs">
                     <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                       <tr>
-                        <th className="py-2.5 px-3 w-10 text-center">#</th>
-                        <th className="py-2.5 px-3">شرح کالا یا خدمات</th>
-                        <th className="py-2.5 px-3 text-center">تعداد / مقدار</th>
-                        <th className="py-2.5 px-3 text-left">قیمت واحد</th>
-                        <th className="py-2.5 px-3 text-left">تخفیف</th>
-                        <th className="py-2.5 px-3 text-left">مبلغ کل ({settings?.currency || 'تومان'})</th>
+                        <th className="py-2.5 px-3 w-10 text-center align-middle">#</th>
+                        <th className="py-2.5 px-3 align-middle">شرح کالا یا خدمات</th>
+                        <th className="py-2.5 px-3 text-center align-middle">تعداد / مقدار</th>
+                        <th className="py-2.5 px-3 text-left align-middle">قیمت واحد</th>
+                        <th className="py-2.5 px-3 text-left align-middle">تخفیف</th>
+                        <th className="py-2.5 px-3 text-left align-middle">مبلغ کل ({settings?.currency || 'تومان'})</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {(currInv.items || []).map((item, idx) => (
                         <tr key={item.id || idx} className="hover:bg-slate-50/60 transition-colors">
-                          <td className="py-2.5 px-3 text-center font-mono text-slate-400">
+                          <td className="py-2.5 px-3 text-center font-mono text-slate-400 align-middle">
                             {toPersianDigits(idx + 1)}
                           </td>
-                          <td className="py-2.5 px-3">
+                          <td className="py-2.5 px-3 align-middle">
                             <span className="font-bold text-slate-900">{item.productName}</span>
                             {item.variantName && (
                               <span className="mr-1.5 text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded font-medium">
@@ -855,16 +855,16 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                               </span>
                             )}
                           </td>
-                          <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800">
+                          <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800 align-middle">
                             {toPersianDigits(item.quantity)} <span className="text-[10px] font-normal text-slate-500">{item.unit}</span>
                           </td>
-                          <td className="py-2.5 px-3 text-left font-mono text-slate-700">
+                          <td className="py-2.5 px-3 text-left font-mono text-slate-700 align-middle">
                             {formatPrice(item.unitPrice, '')}
                           </td>
-                          <td className="py-2.5 px-3 text-left font-mono text-rose-600">
+                          <td className="py-2.5 px-3 text-left font-mono text-rose-600 align-middle">
                             {item.discount > 0 ? formatPrice(item.discount, '') : '—'}
                           </td>
-                          <td className="py-2.5 px-3 text-left font-mono font-bold text-slate-900">
+                          <td className="py-2.5 px-3 text-left font-mono font-bold text-slate-900 align-middle">
                             {formatPrice(item.total, '')}
                           </td>
                         </tr>

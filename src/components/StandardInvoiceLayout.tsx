@@ -261,20 +261,20 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
         <table className="w-full text-right border-collapse text-xs border border-slate-300">
           <thead>
             <tr className="bg-slate-100 text-slate-900 border-b border-slate-300 font-bold">
-              <th className={`border-l border-slate-300 text-center ${isA5 ? 'p-1 text-[9px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthIndex ? `${settings.printLayout.colWidthIndex}px` : '38px' }}>ردیف</th>
+              <th className={`border-l border-slate-300 text-center align-middle ${isA5 ? 'p-1 text-[9px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthIndex ? `${settings.printLayout.colWidthIndex}px` : '38px' }}>ردیف</th>
               {settings.printLayout?.showItemCodeCol !== false && (
-                <th className={`border-l border-slate-300 ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthCode ? `${settings.printLayout.colWidthCode}px` : '75px' }}>کد کالا</th>
+                <th className={`border-l border-slate-300 align-middle ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthCode ? `${settings.printLayout.colWidthCode}px` : '75px' }}>کد کالا</th>
               )}
-              <th className={`border-l border-slate-300 ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`}>شرح کالا یا خدمات</th>
-              <th className={`border-l border-slate-300 text-center ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthQty ? `${settings.printLayout.colWidthQty}px` : '60px' }}>تعداد</th>
+              <th className={`border-l border-slate-300 align-middle ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`}>شرح کالا یا خدمات</th>
+              <th className={`border-l border-slate-300 text-center align-middle ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthQty ? `${settings.printLayout.colWidthQty}px` : '60px' }}>تعداد</th>
               {settings.printLayout?.showItemUnitCol !== false && (
-                <th className={`border-l border-slate-300 text-center ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthUnit ? `${settings.printLayout.colWidthUnit}px` : '55px' }}>واحد</th>
+                <th className={`border-l border-slate-300 text-center align-middle ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthUnit ? `${settings.printLayout.colWidthUnit}px` : '55px' }}>واحد</th>
               )}
-              <th className={`border-l border-slate-300 text-left ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthPrice ? `${settings.printLayout.colWidthPrice}px` : '95px' }}>قیمت واحد ({settings.currency})</th>
+              <th className={`border-l border-slate-300 text-left align-middle ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthPrice ? `${settings.printLayout.colWidthPrice}px` : '95px' }}>قیمت واحد ({settings.currency})</th>
               {settings.printLayout?.showItemDiscountCol !== false && (
-                <th className={`border-l border-slate-300 text-left ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthDiscount ? `${settings.printLayout.colWidthDiscount}px` : '75px' }}>تخفیف</th>
+                <th className={`border-l border-slate-300 text-left align-middle ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthDiscount ? `${settings.printLayout.colWidthDiscount}px` : '75px' }}>تخفیف</th>
               )}
-              <th className={`text-left ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthTotal ? `${settings.printLayout.colWidthTotal}px` : (isA5 ? '135px' : '165px'), minWidth: isA5 ? '120px' : '150px' }}>مبلغ کل ({settings.currency})</th>
+              <th className={`text-left align-middle ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthTotal ? `${settings.printLayout.colWidthTotal}px` : (isA5 ? '135px' : '165px'), minWidth: isA5 ? '120px' : '150px' }}>مبلغ کل ({settings.currency})</th>
             </tr>
           </thead>
           <tbody>
@@ -285,15 +285,15 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
                   idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'
                 }`}
               >
-                <td className={`border-l border-slate-200 text-center ${isA5 ? 'p-1 text-[9px]' : 'p-2'}`}>
+                <td className={`border-l border-slate-200 text-center align-middle font-['Vazirmatn'] ${isA5 ? 'p-1 text-[9px]' : 'p-2'}`}>
                   {toPersianDigits(idx + 1)}
                 </td>
                 {settings.printLayout?.showItemCodeCol !== false && (
-                  <td className={`border-l border-slate-200 text-slate-600 font-mono ${isA5 ? 'p-1 text-[9px]' : 'p-2'}`}>
+                  <td className={`border-l border-slate-200 text-slate-600 font-mono align-middle ${isA5 ? 'p-1 text-[9px]' : 'p-2'}`}>
                     {toPersianDigits(item.productCode || '---')}
                   </td>
                 )}
-                <td className={`border-l border-slate-200 font-bold text-slate-900 ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`}>
+                <td className={`border-l border-slate-200 font-bold text-slate-900 align-middle ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`}>
                   <div>{item.productName}</div>
                   {item.variantName && (
                     <div className={`text-purple-700 font-normal mt-0.5 ${isA5 ? 'text-[8px]' : 'text-[9px]'}`}>
@@ -306,23 +306,23 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
                     </div>
                   )}
                 </td>
-                <td className={`border-l border-slate-200 text-center font-bold ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`}>
+                <td className={`border-l border-slate-200 text-center font-bold align-middle font-['Vazirmatn'] ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`}>
                   {toPersianDigits(item.quantity)}
                 </td>
                 {settings.printLayout?.showItemUnitCol !== false && (
-                  <td className={`border-l border-slate-200 text-center text-slate-600 ${isA5 ? 'p-1 text-[9px]' : 'p-2'}`}>
+                  <td className={`border-l border-slate-200 text-center text-slate-600 align-middle ${isA5 ? 'p-1 text-[9px]' : 'p-2'}`}>
                     {item.unit || 'عدد'}
                   </td>
                 )}
-                <td className={`border-l border-slate-200 text-left font-['Vazirmatn'] ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`}>
+                <td className={`border-l border-slate-200 text-left font-['Vazirmatn'] align-middle ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`}>
                   {formatPrice(item.unitPrice, '', true)}
                 </td>
                 {settings.printLayout?.showItemDiscountCol !== false && (
-                  <td className={`border-l border-slate-200 text-left text-slate-600 font-['Vazirmatn'] ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`}>
+                  <td className={`border-l border-slate-200 text-left text-slate-600 font-['Vazirmatn'] align-middle ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`}>
                     {item.discount > 0 ? formatPrice(item.discount, '', true) : '۰'}
                   </td>
                 )}
-                <td className={`text-left font-bold text-slate-900 font-['Vazirmatn'] ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthTotal ? `${settings.printLayout.colWidthTotal}px` : (isA5 ? '135px' : '165px'), minWidth: isA5 ? '120px' : '150px' }}>
+                <td className={`text-left font-bold text-slate-900 font-['Vazirmatn'] align-middle ${isA5 ? 'p-1 text-[9.5px]' : 'p-2'}`} style={{ width: settings.printLayout?.colWidthTotal ? `${settings.printLayout.colWidthTotal}px` : (isA5 ? '135px' : '165px'), minWidth: isA5 ? '120px' : '150px' }}>
                   {formatPrice(item.total, '', true)}
                 </td>
               </tr>

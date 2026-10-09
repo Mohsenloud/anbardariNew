@@ -700,12 +700,48 @@ export const exportElementToPdf = async (
           (el as HTMLElement).style.setProperty('height', 'auto', 'important');
         });
 
-        // Ensure all tables occupy full width without truncation
+        // Ensure all tables occupy full width and have adaptive row heights with uniform minimum baseline
         const tables = clonedElement.querySelectorAll('table');
+        const defaultMinRowH = isA5 ? (isLandscape ? 24 : 28) : (isLandscape ? 32 : 36);
         tables.forEach((tbl) => {
-          (tbl as HTMLElement).style.setProperty('width', '100%', 'important');
-          (tbl as HTMLElement).style.setProperty('min-width', '100%', 'important');
-          (tbl as HTMLElement).style.setProperty('table-layout', 'auto', 'important');
+          const tblEl = tbl as HTMLElement;
+          tblEl.style.setProperty('width', '100%', 'important');
+          tblEl.style.setProperty('min-width', '100%', 'important');
+          tblEl.style.setProperty('table-layout', 'auto', 'important');
+          tblEl.style.setProperty('border-collapse', 'collapse', 'important');
+
+          tblEl.querySelectorAll('thead th').forEach((th) => {
+            const thEl = th as HTMLElement;
+            thEl.style.setProperty('vertical-align', 'middle', 'important');
+            thEl.style.setProperty('box-sizing', 'border-box', 'important');
+          });
+
+          tblEl.querySelectorAll('tbody tr').forEach((tr) => {
+            const trEl = tr as HTMLElement;
+            trEl.style.setProperty('height', 'auto', 'important');
+            trEl.style.setProperty('min-height', `${defaultMinRowH}px`, 'important');
+            trEl.style.setProperty('page-break-inside', 'avoid', 'important');
+            trEl.style.setProperty('break-inside', 'avoid', 'important');
+
+            trEl.querySelectorAll('td').forEach((td) => {
+              const tdEl = td as HTMLElement;
+              tdEl.style.setProperty('height', `${defaultMinRowH}px`, 'important');
+              tdEl.style.setProperty('min-height', `${defaultMinRowH}px`, 'important');
+              tdEl.style.setProperty('vertical-align', 'middle', 'important');
+              tdEl.style.setProperty('box-sizing', 'border-box', 'important');
+              tdEl.style.setProperty('line-height', '1.4', 'important');
+              tdEl.style.setProperty('word-break', 'break-word', 'important');
+              tdEl.style.setProperty('overflow-wrap', 'break-word', 'important');
+              tdEl.style.setProperty('overflow', 'visible', 'important');
+
+              tdEl.querySelectorAll('*').forEach((child) => {
+                const cEl = child as HTMLElement;
+                cEl.style.setProperty('overflow', 'visible', 'important');
+                cEl.style.setProperty('max-height', 'none', 'important');
+                cEl.style.setProperty('line-height', '1.4', 'important');
+              });
+            });
+          });
         });
 
         // Ensure 3-column signature boxes render side-by-side
@@ -1011,11 +1047,48 @@ export const generatePdfBlob = async (
           (el as HTMLElement).style.setProperty('height', 'auto', 'important');
         });
 
+        // Ensure all tables occupy full width and have adaptive row heights with uniform minimum baseline
         const tables = clonedElement.querySelectorAll('table');
+        const defaultMinRowH = isA5 ? (isLandscape ? 24 : 28) : (isLandscape ? 32 : 36);
         tables.forEach((tbl) => {
-          (tbl as HTMLElement).style.setProperty('width', '100%', 'important');
-          (tbl as HTMLElement).style.setProperty('min-width', '100%', 'important');
-          (tbl as HTMLElement).style.setProperty('table-layout', 'auto', 'important');
+          const tblEl = tbl as HTMLElement;
+          tblEl.style.setProperty('width', '100%', 'important');
+          tblEl.style.setProperty('min-width', '100%', 'important');
+          tblEl.style.setProperty('table-layout', 'auto', 'important');
+          tblEl.style.setProperty('border-collapse', 'collapse', 'important');
+
+          tblEl.querySelectorAll('thead th').forEach((th) => {
+            const thEl = th as HTMLElement;
+            thEl.style.setProperty('vertical-align', 'middle', 'important');
+            thEl.style.setProperty('box-sizing', 'border-box', 'important');
+          });
+
+          tblEl.querySelectorAll('tbody tr').forEach((tr) => {
+            const trEl = tr as HTMLElement;
+            trEl.style.setProperty('height', 'auto', 'important');
+            trEl.style.setProperty('min-height', `${defaultMinRowH}px`, 'important');
+            trEl.style.setProperty('page-break-inside', 'avoid', 'important');
+            trEl.style.setProperty('break-inside', 'avoid', 'important');
+
+            trEl.querySelectorAll('td').forEach((td) => {
+              const tdEl = td as HTMLElement;
+              tdEl.style.setProperty('height', `${defaultMinRowH}px`, 'important');
+              tdEl.style.setProperty('min-height', `${defaultMinRowH}px`, 'important');
+              tdEl.style.setProperty('vertical-align', 'middle', 'important');
+              tdEl.style.setProperty('box-sizing', 'border-box', 'important');
+              tdEl.style.setProperty('line-height', '1.4', 'important');
+              tdEl.style.setProperty('word-break', 'break-word', 'important');
+              tdEl.style.setProperty('overflow-wrap', 'break-word', 'important');
+              tdEl.style.setProperty('overflow', 'visible', 'important');
+
+              tdEl.querySelectorAll('*').forEach((child) => {
+                const cEl = child as HTMLElement;
+                cEl.style.setProperty('overflow', 'visible', 'important');
+                cEl.style.setProperty('max-height', 'none', 'important');
+                cEl.style.setProperty('line-height', '1.4', 'important');
+              });
+            });
+          });
         });
 
         // Ensure 3-column signature boxes render side-by-side

@@ -30,6 +30,13 @@ export function getPrintLayoutCssVariables(
   const sigH = Math.max(30, Math.round(cfg.signatureBoxHeight * scaleRatio));
   const marginMm = cfg.pageMarginMm || (isA5 ? 4 : 6);
 
+  // Exact minimum row height so all single-line rows are uniform, while expanding dynamically with longer content
+  const rowMinHeight = Math.max(
+    22,
+    Math.round((isA5 ? (isLandscape ? 24 : 28) : (isLandscape ? 32 : 36)) * scaleRatio)
+  );
+  const headerHeight = Math.max(24, Math.round(rowMinHeight * 1.08));
+
   return {
     ['--print-base-font-size' as any]: `${baseFont}px`,
     ['--print-header-title-size' as any]: `${headerTitle}px`,
@@ -40,6 +47,8 @@ export function getPrintLayoutCssVariables(
     ['--print-notes-size' as any]: `${notes}px`,
     ['--print-table-row-py' as any]: `${py}px`,
     ['--print-table-cell-px' as any]: `${px}px`,
+    ['--print-table-row-min-h' as any]: `${rowMinHeight}px`,
+    ['--print-table-header-h' as any]: `${headerHeight}px`,
     ['--print-theme-color' as any]: cfg.themeColor || '#0f172a',
     ['--print-border-color' as any]: cfg.tableBorderColor || '#cbd5e1',
     ['--print-sig-height' as any]: `${sigH}px`,
@@ -57,7 +66,7 @@ export function getPrintLayoutCssVariables(
 /**
  * Returns scoped CSS rules that apply the variables to elements inside print containers
  */
-export function getPrintLayoutCssRules(containerSelector = '#printable-invoice, #printable-exit-slip, .print-container'): string {
+export function getPrintLayoutCssRules(containerSelector = '#printable-invoice, #printable-invoice-offscreen, #printable-exit-slip, .print-container, .standard-invoice-layout, .simple-invoice-layout'): string {
   return `
     ${containerSelector} {
       font-size: var(--print-base-font-size, 12px) !important;
@@ -79,6 +88,11 @@ export function getPrintLayoutCssRules(containerSelector = '#printable-invoice, 
     ${containerSelector} .exit-slip-meta-grid {
       font-size: var(--print-header-meta-size, 11px) !important;
     }
+    ${containerSelector} table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+      table-layout: auto !important;
+    }
     ${containerSelector} table th {
       font-size: var(--print-table-header-size, 11px) !important;
       padding-top: var(--print-table-row-py, 6px) !important;
@@ -86,14 +100,29 @@ export function getPrintLayoutCssRules(containerSelector = '#printable-invoice, 
       padding-left: var(--print-table-cell-px, 8px) !important;
       padding-right: var(--print-table-cell-px, 8px) !important;
       border-color: var(--print-border-color, #cbd5e1) !important;
+      vertical-align: middle !important;
+      height: var(--print-table-header-h, 36px) !important;
+      box-sizing: border-box !important;
     }
-    ${containerSelector} table td {
+    ${containerSelector} table tbody tr {
+      height: auto !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+    ${containerSelector} table tbody td {
       font-size: var(--print-table-body-size, 11px) !important;
       padding-top: var(--print-table-row-py, 6px) !important;
       padding-bottom: var(--print-table-row-py, 6px) !important;
       padding-left: var(--print-table-cell-px, 8px) !important;
       padding-right: var(--print-table-cell-px, 8px) !important;
       border-color: var(--print-border-color, #cbd5e1) !important;
+      height: var(--print-table-row-min-h, 34px) !important;
+      min-height: var(--print-table-row-min-h, 34px) !important;
+      vertical-align: middle !important;
+      box-sizing: border-box !important;
+      line-height: 1.4 !important;
+      word-break: break-word !important;
+      overflow-wrap: break-word !important;
     }
     ${containerSelector} .invoice-totals-box,
     ${containerSelector} .invoice-totals-box * {

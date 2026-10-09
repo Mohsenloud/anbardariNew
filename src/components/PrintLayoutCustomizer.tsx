@@ -299,20 +299,20 @@ export const LiveInvoicePreviewSheet: React.FC<LivePreviewSheetProps> = ({
                 className={config.tableZebraStriping !== false && idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'}
                 style={{ fontSize: `${config.tableBodySize}px` }}
               >
-                <td className="text-center text-slate-400 font-mono" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{toPersianDigits(idx + 1)}</td>
+                <td className="text-center text-slate-400 font-mono align-middle" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{toPersianDigits(idx + 1)}</td>
                 {config.showItemCodeCol !== false && (
-                  <td className="text-slate-600 font-mono" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{toPersianDigits(item.code)}</td>
+                  <td className="text-slate-600 font-mono align-middle" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{toPersianDigits(item.code)}</td>
                 )}
-                <td className="font-bold text-slate-900" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{item.name}</td>
-                <td className="text-center font-bold" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{toPersianDigits(item.qty)}</td>
+                <td className="font-bold text-slate-900 align-middle" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{item.name}</td>
+                <td className="text-center font-bold align-middle" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{toPersianDigits(item.qty)}</td>
                 {config.showItemUnitCol !== false && (
-                  <td className="text-center text-slate-500" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{item.unit}</td>
+                  <td className="text-center text-slate-500 align-middle" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{item.unit}</td>
                 )}
-                <td className="text-left font-mono" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{formatPrice(item.price, '', false)}</td>
+                <td className="text-left font-mono align-middle" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{formatPrice(item.price, '', false)}</td>
                 {config.showItemDiscountCol !== false && (
-                  <td className="text-left font-mono text-slate-500" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{item.discount > 0 ? formatPrice(item.discount, '', false) : '۰'}</td>
+                  <td className="text-left font-mono text-slate-500 align-middle" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{item.discount > 0 ? formatPrice(item.discount, '', false) : '۰'}</td>
                 )}
-                <td className="text-left font-mono font-bold text-slate-900" style={{ width: `${config.colWidthTotal}px`, minWidth: `${config.colWidthTotal}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>
+                <td className="text-left font-mono font-bold text-slate-900 align-middle" style={{ width: `${config.colWidthTotal}px`, minWidth: `${config.colWidthTotal}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>
                   {formatPrice(item.total, '', false)}
                 </td>
               </tr>

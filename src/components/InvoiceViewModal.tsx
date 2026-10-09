@@ -652,6 +652,28 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
               justify-content: space-between;
             }
 
+            #printable-invoice table {
+              width: 100% !important;
+              border-collapse: collapse !important;
+              table-layout: auto !important;
+            }
+            #printable-invoice table th {
+              vertical-align: middle !important;
+              box-sizing: border-box !important;
+            }
+            #printable-invoice table tbody tr {
+              height: auto !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            #printable-invoice table tbody td {
+              vertical-align: middle !important;
+              box-sizing: border-box !important;
+              line-height: 1.4 !important;
+              word-break: break-word !important;
+              overflow-wrap: break-word !important;
+            }
+
             /* === A4 PORTRAIT === */
             #printable-invoice.paper-a4.paper-portrait {
               width: 100% !important;
@@ -660,10 +682,16 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
               padding: 24px 30px !important;
               font-size: 13px !important;
             }
-            #printable-invoice.paper-a4.paper-portrait table th,
-            #printable-invoice.paper-a4.paper-portrait table td {
+            #printable-invoice.paper-a4.paper-portrait table th {
               padding: 6px 10px !important;
               font-size: 12px !important;
+              height: 38px !important;
+            }
+            #printable-invoice.paper-a4.paper-portrait table tbody td {
+              padding: 6px 10px !important;
+              font-size: 12px !important;
+              height: 36px !important;
+              min-height: 36px !important;
             }
 
             /* === A4 LANDSCAPE === */
@@ -674,10 +702,16 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
               padding: 18px 26px !important;
               font-size: 12px !important;
             }
-            #printable-invoice.paper-a4.paper-landscape table th,
-            #printable-invoice.paper-a4.paper-landscape table td {
+            #printable-invoice.paper-a4.paper-landscape table th {
               padding: 5px 8px !important;
               font-size: 11.5px !important;
+              height: 34px !important;
+            }
+            #printable-invoice.paper-a4.paper-landscape table tbody td {
+              padding: 5px 8px !important;
+              font-size: 11.5px !important;
+              height: 32px !important;
+              min-height: 32px !important;
             }
             #printable-invoice.paper-a4.paper-landscape .invoice-signatures {
               padding-top: 12px !important;
@@ -698,10 +732,16 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             #printable-invoice.paper-a5.paper-portrait h2 {
               font-size: 15px !important;
             }
-            #printable-invoice.paper-a5.paper-portrait table th,
-            #printable-invoice.paper-a5.paper-portrait table td {
-              padding: 3px 5px !important;
+            #printable-invoice.paper-a5.paper-portrait table th {
+              padding: 4px 6px !important;
               font-size: 10px !important;
+              height: 30px !important;
+            }
+            #printable-invoice.paper-a5.paper-portrait table tbody td {
+              padding: 4px 6px !important;
+              font-size: 10px !important;
+              height: 28px !important;
+              min-height: 28px !important;
             }
             #printable-invoice.paper-a5.paper-portrait .invoice-header {
               padding-bottom: 8px !important;
@@ -736,10 +776,16 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             #printable-invoice.paper-a5.paper-landscape h2 {
               font-size: 14px !important;
             }
-            #printable-invoice.paper-a5.paper-landscape table th,
-            #printable-invoice.paper-a5.paper-landscape table td {
-              padding: 2.5px 4.5px !important;
+            #printable-invoice.paper-a5.paper-landscape table th {
+              padding: 3px 5px !important;
               font-size: 9.5px !important;
+              height: 26px !important;
+            }
+            #printable-invoice.paper-a5.paper-landscape table tbody td {
+              padding: 3px 5px !important;
+              font-size: 9.5px !important;
+              height: 24px !important;
+              min-height: 24px !important;
             }
             #printable-invoice.paper-a5.paper-landscape .invoice-header {
               padding-bottom: 6px !important;
@@ -965,13 +1011,12 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                           }`}
                         >
                           <td 
-                            className="p-2 border-l border-slate-200 text-center"
-                            style={idx === 0 ? { height: '30px' } : undefined}
+                            className="p-2 border-l border-slate-200 text-center align-middle font-['Vazirmatn']"
                           >
                             {toPersianDigits(idx + 1)}
                           </td>
-                          <td className="p-2 border-l border-slate-200 text-slate-600">{toPersianDigits(item.productCode || '---')}</td>
-                          <td className="p-2 border-l border-slate-200 font-medium text-slate-900">
+                          <td className="p-2 border-l border-slate-200 text-slate-600 align-middle font-mono">{toPersianDigits(item.productCode || '---')}</td>
+                          <td className="p-2 border-l border-slate-200 font-medium text-slate-900 align-middle">
                             <div>{item.productName}</div>
                             {item.variantName && (
                               <div className="text-[10px] text-purple-700 mt-0.5">
@@ -984,15 +1029,14 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                               </div>
                             )}
                           </td>
-                          <td className="p-2 border-l border-slate-200 text-center font-bold">{toPersianDigits(item.quantity)}</td>
-                          <td className="p-2 border-l border-slate-200 text-center text-slate-600">{item.unit || 'عدد'}</td>
-                          <td className="p-2 border-l border-slate-200 text-left font-['Vazirmatn']">{formatPrice(item.unitPrice, '', true)}</td>
-                          <td className="p-2 border-l border-slate-200 text-left text-slate-600 font-['Vazirmatn']">
+                          <td className="p-2 border-l border-slate-200 text-center font-bold align-middle font-['Vazirmatn']">{toPersianDigits(item.quantity)}</td>
+                          <td className="p-2 border-l border-slate-200 text-center text-slate-600 align-middle">{item.unit || 'عدد'}</td>
+                          <td className="p-2 border-l border-slate-200 text-left font-['Vazirmatn'] align-middle">{formatPrice(item.unitPrice, '', true)}</td>
+                          <td className="p-2 border-l border-slate-200 text-left text-slate-600 font-['Vazirmatn'] align-middle">
                             {item.discount > 0 ? formatPrice(item.discount, '', true) : '۰'}
                           </td>
                           <td 
-                            className="p-2 text-left font-bold text-slate-900 font-['Vazirmatn']"
-                            style={idx === 0 ? { fontSize: '12px', textAlign: 'left' } : undefined}
+                            className="p-2 text-left font-bold text-slate-900 font-['Vazirmatn'] align-middle"
                           >
                             {formatPrice(item.total, '', true)}
                           </td>
