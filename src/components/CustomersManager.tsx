@@ -30,6 +30,7 @@ import {
   LayoutGrid,
   ArrowUpDown,
   ChevronDown,
+  ChevronUp,
   SlidersHorizontal,
   FileText,
   Eye,
@@ -92,6 +93,8 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   const [transactionCustomer, setTransactionCustomer] = useState<Customer | null>(null);
   const [transactionInitialType, setTransactionInitialType] = useState<'deposit' | 'debt'>('deposit');
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
+  const [isDetailActionsOpen, setIsDetailActionsOpen] = useState(false);
+  const detailActionsDropdownRef = useRef<HTMLDivElement>(null);
   const [isStatementsReportOpen, setIsStatementsReportOpen] = useState(false);
   const [isActionsDropdownOpen, setIsActionsDropdownOpen] = useState(false);
   const actionsDropdownRef = useRef<HTMLDivElement>(null);
@@ -101,14 +104,17 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
       if (actionsDropdownRef.current && !actionsDropdownRef.current.contains(event.target as Node)) {
         setIsActionsDropdownOpen(false);
       }
+      if (detailActionsDropdownRef.current && !detailActionsDropdownRef.current.contains(event.target as Node)) {
+        setIsDetailActionsOpen(false);
+      }
     };
-    if (isActionsDropdownOpen) {
+    if (isActionsDropdownOpen || isDetailActionsOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isActionsDropdownOpen]);
+  }, [isActionsDropdownOpen, isDetailActionsOpen]);
 
   // Helper to open separate transaction window (deposit / debt)
   const handleOpenTransaction = (cust: Customer, type: 'deposit' | 'debt' = 'deposit') => {
@@ -1338,9 +1344,10 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                 </div>
               </div>
 
-              {/* Footer Actions */}
-              <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0">
-                <div className="flex items-center gap-2 flex-wrap">
+              {/* Footer Actions - بهینه‌سازی و خلوت‌سازی با منوی دراپ‌دان عملیات */}
+              <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2.5 shrink-0">
+                {/* Primary Action Button (سمت راست - صورتحساب مالی مشتری) */}
+                <div className="flex-1 sm:flex-initial">
                   <button
                     type="button"
                     onClick={() => {
@@ -1348,94 +1355,153 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                       setDetailCustomer(null);
                       setStatementCustomer(target);
                     }}
-                    className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                    className="w-full sm:w-auto min-h-[40px] px-4 py-2 bg-purple-600 hover:bg-purple-700 active:scale-98 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md shadow-purple-200/70 cursor-pointer"
                   >
-                    <ReceiptText className="w-4 h-4" />
-                    <span>صورتحساب مالی</span>
+                    <ReceiptText className="w-4 h-4 shrink-0" />
+                    <span>مشاهده صورتحساب مالی</span>
                   </button>
-
-                  {hasDebt && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const target = detailCustomer;
-                        setDetailCustomer(null);
-                        handleOpenTransaction(target, 'deposit');
-                      }}
-                      className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                    >
-                      <CreditCard className="w-4 h-4" />
-                      <span>ثبت واریزی به حساب</span>
-                    </button>
-                  )}
-
-                  {(!currentUser || currentUser.permissions.canCreateInvoice) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const target = detailCustomer;
-                        setDetailCustomer(null);
-                        onSelectCustomerForInvoice(target);
-                      }}
-                      className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>صدور فاکتور جدید</span>
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const target = detailCustomer;
-                      setDetailCustomer(null);
-                      handleOpenEdit(target);
-                    }}
-                    className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                    <span>ویرایش مشخصات</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const target = detailCustomer;
-                      setDetailCustomer(null);
-                      setExportModalCustomer(target);
-                      setIsExportModalOpen(true);
-                    }}
-                    className="px-3 py-2 bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                    title="خروجی اطلاعات مشتری به اکسل"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600" />
-                    <span>خروجی اکسل</span>
-                  </button>
-
-                  {(!currentUser || currentUser.role === 'admin' || currentUser.permissions.canManageCustomers) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const target = detailCustomer;
-                        setDetailCustomer(null);
-                        setCustomerToDelete(target);
-                      }}
-                      className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                      title="حذف این مشتری"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                      <span>حذف مشتری</span>
-                    </button>
-                  )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setDetailCustomer(null)}
-                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
-                >
-                  بستن
-                </button>
+                {/* Secondary Actions & Close (سمت چپ - منوی یکپارچه عملیات و دکمه بستن) */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Actions Dropdown */}
+                  <div className="relative" ref={detailActionsDropdownRef}>
+                    <button
+                      type="button"
+                      id="customer-details-actions-dropdown-btn"
+                      onClick={() => setIsDetailActionsOpen((prev) => !prev)}
+                      className={`min-h-[40px] px-3 sm:px-3.5 py-2 border rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer ${
+                        isDetailActionsOpen
+                          ? 'bg-slate-200 text-slate-900 border-slate-300'
+                          : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300/80'
+                      }`}
+                      title="سایر عملیات مشتری"
+                      aria-expanded={isDetailActionsOpen}
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                      <span>عملیات</span>
+                      {hasDebt && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" title="دارای بدهی" />
+                      )}
+                      <ChevronUp className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isDetailActionsOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {/* Dropup Menu (باز شدن به سمت بالا داخل مدال) */}
+                    {isDetailActionsOpen && (
+                      <div 
+                        className="absolute bottom-full left-0 mb-2 w-56 sm:w-60 bg-white rounded-2xl border border-slate-200/90 shadow-2xl z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100 text-right"
+                        role="menu"
+                      >
+                        {/* New Invoice */}
+                        {(!currentUser || currentUser.permissions.canCreateInvoice) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const target = detailCustomer;
+                              setIsDetailActionsOpen(false);
+                              setDetailCustomer(null);
+                              onSelectCustomerForInvoice(target);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-emerald-800 bg-emerald-50/70 hover:bg-emerald-100 transition-colors cursor-pointer"
+                            role="menuitem"
+                          >
+                            <Plus className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>صدور فاکتور جدید</span>
+                          </button>
+                        )}
+
+                        {/* Register Deposit / Payment */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const target = detailCustomer;
+                            setIsDetailActionsOpen(false);
+                            setDetailCustomer(null);
+                            handleOpenTransaction(target, 'deposit');
+                          }}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
+                            hasDebt 
+                              ? 'text-emerald-800 bg-emerald-50/50 hover:bg-emerald-100' 
+                              : 'text-slate-700 hover:bg-slate-100'
+                          }`}
+                          role="menuitem"
+                        >
+                          <CreditCard className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>ثبت واریزی به حساب</span>
+                          {hasDebt && (
+                            <span className="mr-auto text-[10px] font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md">بدهکار</span>
+                          )}
+                        </button>
+
+                        {/* Edit Customer Profile */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const target = detailCustomer;
+                            setIsDetailActionsOpen(false);
+                            setDetailCustomer(null);
+                            handleOpenEdit(target);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                          role="menuitem"
+                        >
+                          <Edit3 className="w-4 h-4 text-blue-600 shrink-0" />
+                          <span>ویرایش مشخصات مشتری</span>
+                        </button>
+
+                        {/* Excel Export */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const target = detailCustomer;
+                            setIsDetailActionsOpen(false);
+                            setDetailCustomer(null);
+                            setExportModalCustomer(target);
+                            setIsExportModalOpen(true);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                          role="menuitem"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 text-purple-600 shrink-0" />
+                          <span>خروجی اکسل و سوابق</span>
+                        </button>
+
+                        {/* Delete Customer */}
+                        {(!currentUser || currentUser.role === 'admin' || currentUser.permissions.canManageCustomers) && (
+                          <>
+                            <div className="my-1 border-t border-slate-100" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const target = detailCustomer;
+                                setIsDetailActionsOpen(false);
+                                setDetailCustomer(null);
+                                setCustomerToDelete(target);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
+                              role="menuitem"
+                            >
+                              <Trash2 className="w-4 h-4 text-rose-600 shrink-0" />
+                              <span>حذف مشتری</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Close Modal Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDetailActionsOpen(false);
+                      setDetailCustomer(null);
+                    }}
+                    className="min-h-[40px] px-3.5 sm:px-4 py-2 bg-slate-200/90 hover:bg-slate-300 active:scale-98 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    بستن
+                  </button>
+                </div>
               </div>
             </div>
           </div>
