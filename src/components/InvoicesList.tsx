@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Invoice, StoreSettings, AppUser, Product, Customer } from '../types';
 import { formatPrice, toPersianDigits, formatNumber } from '../utils/jalali';
 import { exportInvoicesToCsv } from '../utils/csvExport';
@@ -15,6 +15,7 @@ import {
   Trash2, 
   RotateCcw, 
   ReceiptText, 
+  FileText,
   CheckCircle, 
   Clock, 
   AlertCircle, 
@@ -157,7 +158,31 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
 
   // UI declutter states
   const [showStats, setShowStats] = useState(false);
-  const [isToolsOpen, setIsToolsOpen] = useState(false);
+  const [isActionsDropdownOpen, setIsActionsDropdownOpen] = useState(false);
+  const actionsDropdownRef = useRef<HTMLDivElement>(null);
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+  const [isDocTypeDropdownOpen, setIsDocTypeDropdownOpen] = useState(false);
+  const docTypeDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (actionsDropdownRef.current && !actionsDropdownRef.current.contains(target)) {
+        setIsActionsDropdownOpen(false);
+      }
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(target)) {
+        setIsStatusDropdownOpen(false);
+      }
+      if (docTypeDropdownRef.current && !docTypeDropdownRef.current.contains(target)) {
+        setIsDocTypeDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
     const unsub = StorageService.subscribe(() => {
@@ -340,164 +365,175 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   return (
     <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 pb-16 px-2 sm:px-4">
       {/* 1. Header Card (Decluttered & Streamlined) */}
-      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 shrink-0">
-            <ReceiptText className="w-5 h-5 sm:w-6 sm:h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base sm:text-lg font-black text-slate-800">
+      <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div className="flex items-center justify-between gap-3">
+          {/* Title */}
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <span className="p-1.5 sm:p-2 rounded-xl bg-emerald-50 text-emerald-700 shrink-0">
+              <ReceiptText className="w-4 h-4 sm:w-5 sm:h-5" />
+            </span>
+            <div className="flex items-center gap-2 min-w-0 truncate">
+              <h2 className="text-sm sm:text-lg font-bold text-slate-800 truncate">
                 لیست و مدیریت فاکتورها
               </h2>
-              <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold">
+              <span className="text-[11px] sm:text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold shrink-0">
                 {toPersianDigits(invoices.length)} سند
               </span>
             </div>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              صدور، چاپ، پیگیری وصول مطالبات و تسویه فاکتورها
-            </p>
           </div>
-        </div>
 
-        {/* Top Action Buttons: Primary + Tools Dropdown */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Toggle Financial Summary Stats */}
-          <button
-            type="button"
-            onClick={() => setShowStats((prev) => !prev)}
-            className={`min-h-[40px] px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
-              showStats 
-                ? 'bg-slate-900 text-white border-slate-900 shadow-xs' 
-                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-            }`}
-            title="نمایش یا پنهان‌سازی خلاصه آمار فروش و مطالبات"
-          >
-            <BarChart3 className="w-4 h-4" />
-            <span className="hidden sm:inline">آمار مالی</span>
-            {showStats ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-
-          {/* Secondary Tools Menu */}
-          <div className="relative">
+          {/* Single Compact Actions Dropdown Beside / In Front of Title */}
+          <div className="relative shrink-0" ref={actionsDropdownRef}>
             <button
               type="button"
-              id="invoices-tools-menu-btn"
-              onClick={() => setIsToolsOpen((prev) => !prev)}
-              className="min-h-[40px] px-3 py-2 rounded-xl text-xs font-bold bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-all cursor-pointer flex items-center gap-1.5"
-              title="سایر ابزارها، تسویه تجمیعی و خروجی‌ها"
+              id="invoices-actions-dropdown-btn"
+              data-testid="invoices-tools-menu-btn"
+              onClick={() => setIsActionsDropdownOpen((prev) => !prev)}
+              className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-900 border border-emerald-200/90 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+              title="عملیات و امکانات فاکتورها"
             >
-              <SlidersHorizontal className="w-4 h-4 text-slate-500" />
-              <span>عملیات و خروجی‌ها</span>
+              <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-700" />
+              <span>عملیات</span>
               {debtorCustomers.length > 0 && (
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
               )}
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              <ChevronDown className={`w-3.5 h-3.5 text-emerald-600 transition-transform duration-200 ${isActionsDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            {isToolsOpen && (
-              <>
-                <div 
-                  className="fixed inset-0 z-30" 
-                  onClick={() => setIsToolsOpen(false)} 
-                />
-                <div className="absolute left-0 mt-1.5 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-40 text-xs text-right animate-in fade-in duration-100">
+            {/* Dropdown Menu */}
+            {isActionsDropdownOpen && (
+              <div className="absolute left-0 top-full mt-1.5 w-60 sm:w-64 bg-white rounded-2xl border border-slate-200/90 shadow-xl z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100">
+                {/* 1. فاکتور جدید */}
+                {canCreate && (
                   <button
                     type="button"
+                    id="invoices-list-new-btn"
                     onClick={() => {
-                      setIsToolsOpen(false);
-                      setIsBulkPickerOpen(true);
+                      setIsActionsDropdownOpen(false);
+                      onNewInvoice();
                     }}
-                    className="w-full px-3.5 py-2.5 flex items-center justify-between hover:bg-amber-50/70 text-slate-700 hover:text-amber-900 font-bold transition-colors cursor-pointer"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-emerald-800 bg-emerald-50 hover:bg-emerald-100 transition-colors cursor-pointer text-right"
                   >
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-amber-600" />
-                      <span>تسویه تجمیعی مشتری</span>
-                    </div>
-                    {debtorCustomers.length > 0 && (
-                      <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full text-[10px]">
-                        {toPersianDigits(debtorCustomers.length)} بدهکار
-                      </span>
-                    )}
+                    <Plus className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>فاکتور جدید</span>
                   </button>
+                )}
 
-                  <div className="h-px bg-slate-100 my-1" />
+                {/* 2. پیش‌فاکتور جدید */}
+                {canCreate && onNewProforma && (
+                  <button
+                    type="button"
+                    id="invoices-list-new-proforma-btn"
+                    onClick={() => {
+                      setIsActionsDropdownOpen(false);
+                      onNewProforma();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-indigo-800 bg-indigo-50 hover:bg-indigo-100 transition-colors cursor-pointer text-right"
+                  >
+                    <FileClock className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span>پیش‌فاکتور جدید</span>
+                  </button>
+                )}
 
-                  {canAccessAdmin && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsToolsOpen(false);
-                          setCustomerExportSelected(null);
-                          setIsCustomerExportModalOpen(true);
-                        }}
-                        className="w-full px-3.5 py-2.5 flex items-center gap-2 hover:bg-emerald-50 text-emerald-900 font-bold transition-colors cursor-pointer"
-                      >
-                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                        <span>اکسپورت اکسل و PDF فاکتورها و حواله‌ها</span>
-                      </button>
+                <div className="my-1 border-t border-slate-100" />
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsToolsOpen(false);
-                          const filterLabel = statusFilter === 'all' ? 'همه' : statusFilter === 'paid' ? 'تسویه_شده' : statusFilter === 'partial' ? 'اقساطی' : 'نسیه';
-                          exportInvoicesListToExcel(filteredInvoices, settings, undefined, `فاکتورها_و_حواله_ها_${filterLabel}_${filteredInvoices.length}_سند`);
-                        }}
-                        disabled={filteredInvoices.length === 0}
-                        className="w-full px-3.5 py-2 flex items-center gap-2 hover:bg-slate-50 text-slate-700 font-medium transition-colors cursor-pointer disabled:opacity-50"
-                      >
-                        <Download className="w-4 h-4 text-emerald-600" />
-                        <span>دانلود مستقیم اکسل (XLSX) لیست جاری ({toPersianDigits(filteredInvoices.length)})</span>
-                      </button>
+                {/* 3. خلاصه آمار مالی */}
+                <button
+                  type="button"
+                  id="invoices-toggle-stats-btn"
+                  onClick={() => {
+                    setIsActionsDropdownOpen(false);
+                    setShowStats((prev) => !prev);
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl transition-colors cursor-pointer text-right ${
+                    showStats ? 'bg-slate-100 text-slate-900' : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-slate-600 shrink-0" />
+                    <span>{showStats ? 'پنهان‌سازی آمار مالی' : 'نمایش خلاصه آمار مالی'}</span>
+                  </div>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${showStats ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
+                    {showStats ? 'روشن' : 'خاموش'}
+                  </span>
+                </button>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsToolsOpen(false);
-                          const filterLabel = statusFilter === 'all' ? 'همه' : statusFilter === 'paid' ? 'تسویه_شده' : statusFilter === 'partial' ? 'اقساطی' : 'نسیه';
-                          exportInvoicesToCsv(filteredInvoices, settings, `گزارش_فاکتورها_${filterLabel}_${filteredInvoices.length}_فقره`);
-                        }}
-                        disabled={filteredInvoices.length === 0}
-                        className="w-full px-3.5 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-slate-500 font-normal text-[11px] transition-colors cursor-pointer disabled:opacity-50"
-                      >
-                        <FileSpreadsheet className="w-3.5 h-3.5 text-slate-400" />
-                        <span>خروجی فرمت متنی CSV (نرم‌افزارهای حسابداری)</span>
-                      </button>
-                    </>
+                {/* 4. تسویه تجمیعی مشتری */}
+                <button
+                  type="button"
+                  id="invoices-bulk-payment-btn"
+                  onClick={() => {
+                    setIsActionsDropdownOpen(false);
+                    setIsBulkPickerOpen(true);
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:text-amber-900 hover:bg-amber-50/70 transition-colors cursor-pointer text-right"
+                >
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>تسویه تجمیعی مشتری</span>
+                  </div>
+                  {debtorCustomers.length > 0 && (
+                    <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
+                      {toPersianDigits(debtorCustomers.length)} بدهکار
+                    </span>
                   )}
-                </div>
-              </>
+                </button>
+
+                {canAccessAdmin && (
+                  <>
+                    <div className="my-1 border-t border-slate-100" />
+
+                    {/* 5. اکسپورت اکسل و PDF */}
+                    <button
+                      type="button"
+                      id="invoices-export-modal-btn"
+                      onClick={() => {
+                        setIsActionsDropdownOpen(false);
+                        setCustomerExportSelected(null);
+                        setIsCustomerExportModalOpen(true);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl text-emerald-800 hover:bg-emerald-50 transition-colors cursor-pointer text-right"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>اکسپورت اکسل و PDF فاکتورها</span>
+                    </button>
+
+                    {/* 6. دانلود مستقیم اکسل */}
+                    <button
+                      type="button"
+                      id="invoices-export-excel-direct-btn"
+                      onClick={() => {
+                        setIsActionsDropdownOpen(false);
+                        const filterLabel = statusFilter === 'all' ? 'همه' : statusFilter === 'paid' ? 'تسویه_شده' : statusFilter === 'partial' ? 'اقساطی' : 'نسیه';
+                        exportInvoicesListToExcel(filteredInvoices, settings, undefined, `فاکتورها_و_حواله_ها_${filterLabel}_${filteredInvoices.length}_سند`);
+                      }}
+                      disabled={filteredInvoices.length === 0}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer text-right disabled:opacity-50"
+                    >
+                      <Download className="w-4 h-4 text-slate-500 shrink-0" />
+                      <span>دانلود اکسل لیست جاری ({toPersianDigits(filteredInvoices.length)})</span>
+                    </button>
+
+                    {/* 7. خروجی متنی CSV */}
+                    <button
+                      type="button"
+                      id="invoices-export-csv-btn"
+                      onClick={() => {
+                        setIsActionsDropdownOpen(false);
+                        const filterLabel = statusFilter === 'all' ? 'همه' : statusFilter === 'paid' ? 'تسویه_شده' : statusFilter === 'partial' ? 'اقساطی' : 'نسیه';
+                        exportInvoicesToCsv(filteredInvoices, settings, `گزارش_فاکتورها_${filterLabel}_${filteredInvoices.length}_فقره`);
+                      }}
+                      disabled={filteredInvoices.length === 0}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-xl text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer text-right disabled:opacity-50"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>خروجی فرمت متنی CSV</span>
+                    </button>
+                  </>
+                )}
+              </div>
             )}
           </div>
-
-          {/* Proforma Button */}
-          {canCreate && onNewProforma && (
-            <button
-              id="invoices-list-new-proforma-btn"
-              type="button"
-              onClick={onNewProforma}
-              className="min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all cursor-pointer flex items-center gap-1.5"
-            >
-              <FileClock className="w-4 h-4 text-indigo-600" />
-              <span className="hidden sm:inline">پیش‌فاکتور جدید</span>
-              <span className="sm:hidden">پیش‌فاکتور</span>
-            </button>
-          )}
-
-          {/* Main Primary Action: New Invoice */}
-          {canCreate && (
-            <button
-              id="invoices-list-new-btn"
-              type="button"
-              onClick={onNewInvoice}
-              className="min-h-[40px] px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4" />
-              <span>فاکتور جدید</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -557,79 +593,248 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
       {/* 3. Main Data Container */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
         {/* Unified Clean Filter & Search Toolbar */}
-        <div className="p-3 sm:p-3.5 border-b border-slate-200/80 bg-slate-50/50 space-y-2.5">
-          {/* Row 1: Search + Document Type Switcher + Sort */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 justify-between">
-            {/* Search Input */}
-            <div className="relative flex-1 group">
-              <Search className="w-4 h-4 text-slate-400 group-focus-within:text-emerald-600 absolute right-3 top-1/2 -translate-y-1/2 transition-colors pointer-events-none" />
-              <input
-                type="text"
-                id="invoices-search-input"
-                placeholder="جستجوی فاکتور، خریدار، تلفن، چک..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full min-h-[38px] bg-white border border-slate-200 rounded-xl pr-9 pl-8 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 cursor-pointer"
-                  title="پاک کردن"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+        <div className="p-3 sm:p-3.5 border-b border-slate-200/80 bg-slate-50/50 flex flex-col md:flex-row items-stretch md:items-center gap-2.5 justify-between">
+          {/* Search Input */}
+          <div className="relative flex-1 group min-w-0">
+            <Search className="w-4 h-4 text-slate-400 group-focus-within:text-emerald-600 absolute right-3 top-1/2 -translate-y-1/2 transition-colors pointer-events-none" />
+            <input
+              type="text"
+              id="invoices-search-input"
+              placeholder="جستجوی فاکتور، خریدار، تلفن، چک..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full min-h-[38px] bg-white border border-slate-200 rounded-xl pr-9 pl-8 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all shadow-2xs"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 cursor-pointer"
+                title="پاک کردن"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Filter Dropdowns & Controls */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 1. Document Type Dropdown */}
+            <div className="relative shrink-0" ref={docTypeDropdownRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDocTypeDropdownOpen((prev) => !prev);
+                  setIsStatusDropdownOpen(false);
+                }}
+                className={`flex items-center gap-1.5 min-h-[38px] px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-2xs cursor-pointer ${
+                  docTypeFilter === 'all'
+                    ? 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    : docTypeFilter === 'regular'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                    : 'bg-indigo-50 text-indigo-800 border-indigo-300'
+                }`}
+              >
+                <FileText className={`w-3.5 h-3.5 ${
+                  docTypeFilter === 'regular' ? 'text-emerald-600' : docTypeFilter === 'proforma' ? 'text-indigo-600' : 'text-slate-400'
+                }`} />
+                <span>
+                  {docTypeFilter === 'all' && 'همه اسناد'}
+                  {docTypeFilter === 'regular' && 'فقط فاکتورها'}
+                  {docTypeFilter === 'proforma' && 'فقط پیش‌فاکتور'}
+                </span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
+                  docTypeFilter === 'all' ? 'bg-slate-100 text-slate-600' : 'bg-white/80 font-bold'
+                }`}>
+                  {docTypeFilter === 'all' && toPersianDigits(invoices.length)}
+                  {docTypeFilter === 'regular' && toPersianDigits(regularInvoicesCount)}
+                  {docTypeFilter === 'proforma' && toPersianDigits(proformaInvoicesCount)}
+                </span>
+                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isDocTypeDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isDocTypeDropdownOpen && (
+                <div className="absolute right-0 top-full mt-1.5 w-48 sm:w-52 bg-white rounded-xl border border-slate-200/90 shadow-xl z-40 p-1 space-y-0.5 animate-in fade-in duration-100">
+                  <button
+                    type="button"
+                    id="doc-filter-all"
+                    onClick={() => {
+                      setDocTypeFilter('all');
+                      setIsDocTypeDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 text-xs rounded-lg transition-colors cursor-pointer ${
+                      docTypeFilter === 'all' ? 'bg-slate-900 text-white font-bold' : 'text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>همه اسناد</span>
+                    </div>
+                    <span className="text-[10px] opacity-80 font-mono">({toPersianDigits(invoices.length)})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="doc-filter-regular"
+                    onClick={() => {
+                      setDocTypeFilter('regular');
+                      setIsDocTypeDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 text-xs rounded-lg transition-colors cursor-pointer ${
+                      docTypeFilter === 'regular' ? 'bg-emerald-600 text-white font-bold' : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>فاکتورهای فروش</span>
+                    </div>
+                    <span className="text-[10px] opacity-80 font-mono">({toPersianDigits(regularInvoicesCount)})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="doc-filter-proforma"
+                    onClick={() => {
+                      setDocTypeFilter('proforma');
+                      setIsDocTypeDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 text-xs rounded-lg transition-colors cursor-pointer ${
+                      docTypeFilter === 'proforma' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileClock className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>پیش‌فاکتورها</span>
+                    </div>
+                    <span className="text-[10px] opacity-80 font-mono">({toPersianDigits(proformaInvoicesCount)})</span>
+                  </button>
+                </div>
               )}
             </div>
 
-            {/* Document Type Segmented Pills */}
-            <div className="flex bg-slate-200/70 p-0.5 rounded-xl text-xs font-bold shrink-0 self-start sm:self-auto">
+            {/* 2. Status Dropdown */}
+            <div className="relative shrink-0" ref={statusDropdownRef}>
               <button
                 type="button"
-                id="doc-filter-all"
-                onClick={() => setDocTypeFilter('all')}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap text-[11px] ${
-                  docTypeFilter === 'all'
-                    ? 'bg-white text-slate-900 shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
+                onClick={() => {
+                  setIsStatusDropdownOpen((prev) => !prev);
+                  setIsDocTypeDropdownOpen(false);
+                }}
+                className={`flex items-center gap-1.5 min-h-[38px] px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-2xs cursor-pointer ${
+                  statusFilter === 'all'
+                    ? 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    : statusFilter === 'paid'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                    : statusFilter === 'partial'
+                    ? 'bg-amber-50 text-amber-800 border-amber-300'
+                    : 'bg-rose-50 text-rose-800 border-rose-300'
                 }`}
               >
-                همه ({toPersianDigits(invoices.length)})
+                {statusFilter === 'all' && <Filter className="w-3.5 h-3.5 text-slate-400" />}
+                {statusFilter === 'paid' && <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />}
+                {statusFilter === 'partial' && <Clock className="w-3.5 h-3.5 text-amber-600" />}
+                {statusFilter === 'unpaid' && <AlertCircle className="w-3.5 h-3.5 text-rose-600" />}
+                <span>
+                  {statusFilter === 'all' && 'وضعیت: همه'}
+                  {statusFilter === 'paid' && 'تسویه شده'}
+                  {statusFilter === 'partial' && 'بیعانه'}
+                  {statusFilter === 'unpaid' && 'نسیه'}
+                </span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
+                  statusFilter === 'all' ? 'bg-slate-100 text-slate-600' : 'bg-white/80 font-bold'
+                }`}>
+                  {statusFilter === 'all' && toPersianDigits(statusCounts.all)}
+                  {statusFilter === 'paid' && toPersianDigits(statusCounts.paid)}
+                  {statusFilter === 'partial' && toPersianDigits(statusCounts.partial)}
+                  {statusFilter === 'unpaid' && toPersianDigits(statusCounts.unpaid)}
+                </span>
+                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isStatusDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
-              <button
-                type="button"
-                id="doc-filter-regular"
-                onClick={() => setDocTypeFilter('regular')}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap text-[11px] ${
-                  docTypeFilter === 'regular'
-                    ? 'bg-emerald-600 text-white shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                فاکتورها ({toPersianDigits(regularInvoicesCount)})
-              </button>
-              <button
-                type="button"
-                id="doc-filter-proforma"
-                onClick={() => setDocTypeFilter('proforma')}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap text-[11px] ${
-                  docTypeFilter === 'proforma'
-                    ? 'bg-indigo-600 text-white shadow-2xs font-bold'
-                    : 'text-indigo-700 hover:text-indigo-900'
-                }`}
-              >
-                پیش‌فاکتور ({toPersianDigits(proformaInvoicesCount)})
-              </button>
+
+              {isStatusDropdownOpen && (
+                <div className="absolute right-0 top-full mt-1.5 w-52 sm:w-56 bg-white rounded-xl border border-slate-200/90 shadow-xl z-40 p-1 space-y-0.5 animate-in fade-in duration-100">
+                  <button
+                    type="button"
+                    id="filter-inv-all"
+                    onClick={() => {
+                      setStatusFilter('all');
+                      setIsStatusDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 text-xs rounded-lg transition-colors cursor-pointer ${
+                      statusFilter === 'all' ? 'bg-slate-900 text-white font-bold' : 'text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Filter className="w-3.5 h-3.5" />
+                      <span>همه وضعیت‌ها</span>
+                    </div>
+                    <span className="text-[10px] opacity-80 font-mono">({toPersianDigits(statusCounts.all)})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="filter-inv-paid"
+                    onClick={() => {
+                      setStatusFilter('paid');
+                      setIsStatusDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 text-xs rounded-lg transition-colors cursor-pointer ${
+                      statusFilter === 'paid' ? 'bg-emerald-600 text-white font-bold' : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>تسویه شده</span>
+                    </div>
+                    <span className="text-[10px] opacity-80 font-mono">({toPersianDigits(statusCounts.paid)})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="filter-inv-partial"
+                    onClick={() => {
+                      setStatusFilter('partial');
+                      setIsStatusDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 text-xs rounded-lg transition-colors cursor-pointer ${
+                      statusFilter === 'partial' ? 'bg-amber-600 text-white font-bold' : 'text-slate-700 hover:bg-amber-50 hover:text-amber-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-3.5 h-3.5 text-amber-500" />
+                      <span>بیعانه / ناقص</span>
+                    </div>
+                    <span className="text-[10px] opacity-80 font-mono">({toPersianDigits(statusCounts.partial)})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="filter-inv-unpaid"
+                    onClick={() => {
+                      setStatusFilter('unpaid');
+                      setIsStatusDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 text-xs rounded-lg transition-colors cursor-pointer ${
+                      statusFilter === 'unpaid' ? 'bg-rose-600 text-white font-bold' : 'text-slate-700 hover:bg-rose-50 hover:text-rose-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+                      <span>نسیه / باز</span>
+                    </div>
+                    <span className="text-[10px] opacity-80 font-mono">({toPersianDigits(statusCounts.unpaid)})</span>
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Sorting Dropdown */}
-            <div className="relative shrink-0 w-36 sm:w-44">
+            {/* 3. Sorting Dropdown */}
+            <div className="relative shrink-0 min-w-[125px]">
               <select
                 id="invoices-sort-select"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as SortOption)}
-                className="w-full min-h-[38px] appearance-none bg-white border border-slate-200 rounded-xl pr-7 pl-6 py-1.5 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-slate-500/20 focus:border-slate-400 outline-none cursor-pointer"
+                className="w-full min-h-[38px] appearance-none bg-white border border-slate-200 rounded-xl pr-7 pl-6 py-1.5 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-slate-500/20 focus:border-slate-400 outline-none cursor-pointer shadow-2xs"
               >
                 <option value="date-desc">جدیدترین تاریخ</option>
                 <option value="date-asc">قدیمی‌ترین تاریخ</option>
@@ -638,71 +843,29 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                 <option value="debt-desc">بیشترین مانده طلب</option>
                 <option value="customer-asc">نام خریدار</option>
               </select>
-              <ArrowUpDown className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ArrowUpDown className="w-3 h-3 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <ChevronDown className="w-3 h-3 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
-          </div>
 
-          {/* Row 2: Status Chips & Summary Counter */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            {/* Reset Filter Button (Active when filters applied) */}
+            {(statusFilter !== 'all' || docTypeFilter !== 'all' || searchQuery) && (
               <button
-                id="filter-inv-all"
                 type="button"
-                onClick={() => setStatusFilter('all')}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                  statusFilter === 'all'
-                    ? 'bg-slate-900 text-white shadow-2xs'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                }`}
+                onClick={() => {
+                  setStatusFilter('all');
+                  setDocTypeFilter('all');
+                  setSearchQuery('');
+                }}
+                className="flex items-center gap-1 min-h-[38px] px-2.5 py-1.5 rounded-xl border border-rose-200 text-rose-700 bg-rose-50 hover:bg-rose-100 text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
+                title="پاک کردن همه فیلترها"
               >
-                همه ({toPersianDigits(statusCounts.all)})
+                <RotateCcw className="w-3 h-3 text-rose-600" />
+                <span>حذف فیلترها</span>
               </button>
+            )}
 
-              <button
-                id="filter-inv-paid"
-                type="button"
-                onClick={() => setStatusFilter('paid')}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                  statusFilter === 'paid'
-                    ? 'bg-emerald-600 text-white shadow-2xs'
-                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200/70 hover:bg-emerald-100'
-                }`}
-              >
-                <CheckCircle className="w-3 h-3" />
-                <span>تسویه شده ({toPersianDigits(statusCounts.paid)})</span>
-              </button>
-
-              <button
-                id="filter-inv-partial"
-                type="button"
-                onClick={() => setStatusFilter('partial')}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                  statusFilter === 'partial'
-                    ? 'bg-amber-600 text-white shadow-2xs'
-                    : 'bg-amber-50 text-amber-800 border border-amber-200/70 hover:bg-amber-100'
-                }`}
-              >
-                <Clock className="w-3 h-3" />
-                <span>بیعانه ({toPersianDigits(statusCounts.partial)})</span>
-              </button>
-
-              <button
-                id="filter-inv-unpaid"
-                type="button"
-                onClick={() => setStatusFilter('unpaid')}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                  statusFilter === 'unpaid'
-                    ? 'bg-rose-600 text-white shadow-2xs'
-                    : 'bg-rose-50 text-rose-800 border border-rose-200/70 hover:bg-rose-100'
-                }`}
-              >
-                <AlertCircle className="w-3 h-3" />
-                <span>نسیه ({toPersianDigits(statusCounts.unpaid)})</span>
-              </button>
-            </div>
-
-            <div className="text-[11px] text-slate-500 font-medium">
+            {/* Counter */}
+            <div className="text-[11px] text-slate-500 font-medium whitespace-nowrap self-center mr-auto">
               نمایش <strong className="text-slate-800 font-mono">{toPersianDigits(filteredInvoices.length)}</strong> از <strong className="text-slate-800 font-mono">{toPersianDigits(invoices.length)}</strong> سند
             </div>
           </div>

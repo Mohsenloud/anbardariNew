@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Product, ProductVariant, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData, InboundReceipt, InboundReceiptItem, DirectTransfer, Customer } from '../types';
 import { toPersianDigits, toEnglishDigits, getCurrentJalaliDate, getCurrentJalaliTime, formatPrice, formatNumber, formatThousands } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
@@ -50,7 +50,8 @@ import {
   Hash,
   FolderTree,
   Tag,
-  BarChart3
+  BarChart3,
+  ChevronDown
 } from 'lucide-react';
 import {
   generateNextProductCode,
@@ -219,6 +220,24 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     setProductTableView(mode);
     localStorage.setItem('inventory_product_table_view', mode);
   };
+
+  // Header Actions Dropdown state & ref
+  const [isActionsDropdownOpen, setIsActionsDropdownOpen] = useState(false);
+  const actionsDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (actionsDropdownRef.current && !actionsDropdownRef.current.contains(event.target as Node)) {
+        setIsActionsDropdownOpen(false);
+      }
+    };
+    if (isActionsDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isActionsDropdownOpen]);
 
   // Combined & Deduped Categories list
   const categories = useMemo(() => {
@@ -854,134 +873,129 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
         </div>
       </div>
 
-      {/* Quick Action & Active Tab Title for Mobile (In Page Flow) */}
-      <div className="sm:hidden flex items-center justify-between gap-2 px-1 -mt-1">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 truncate">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
-          <span className="truncate">
-            {activeSubTab === 'items' && 'کالاها و موجودی انبار'}
-            {activeSubTab === 'inbound-receipts' && 'حواله‌های ورود و رسید انبار'}
-            {activeSubTab === 'exit-slips' && 'برگه‌های خروج و تحویل انبار'}
-            {activeSubTab === 'direct-transfers' && 'خروج و ورود بدون فاکتور (امانی/تعمیرات)'}
-            {activeSubTab === 'movements' && 'کاردکس و تاریخچه گردش کالا'}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button
-            type="button"
-            id="mobile-warehouse-stats-btn"
-            onClick={() => setIsStatsModalOpen(true)}
-            className="flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
-            title="مشاهده آمار و وضعیت انبار"
-          >
-            <BarChart3 className="w-3.5 h-3.5 text-blue-600" />
-            <span>آمار</span>
-            {lowStockCount > 0 && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            id="mobile-quick-add-product-btn"
-            onClick={handleOpenNewProduct}
-            className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>کالای جدید</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Top Header Card (Desktop & Tablet) */}
-      <div className="hidden sm:flex flex-col gap-4 bg-white p-5 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs">
-        {/* Top Tier: Title & Description */}
-        <div className="flex items-center gap-3">
-          <span className="p-2.5 rounded-2xl bg-blue-50 text-blue-700 shrink-0 shadow-2xs">
-            <PackageCheck className="w-6 h-6" />
-          </span>
-          <div>
-            <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-tight">
+      {/* Top Header Card (Mobile & Desktop) */}
+      <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+        {/* Top Tier: Title & Single Compact Actions Dropdown Beside Title */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <span className="p-1.5 sm:p-2 rounded-xl bg-blue-50 text-blue-700 shrink-0 shadow-2xs">
+              <PackageCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+            </span>
+            <h2 className="text-sm sm:text-lg font-black text-slate-900 truncate">
               مدیریت انبار و موجودی کالاها
             </h2>
-            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              کنترل لحظه‌ای موجودی، برگه‌های خروج انبارداری (حواله تحویل)، رسید ورود و تاریخچه گردش کالا
-            </p>
+          </div>
+
+          {/* Single Compact Actions Dropdown Beside Title */}
+          <div className="relative shrink-0" ref={actionsDropdownRef}>
+            <button
+              type="button"
+              id="inventory-actions-dropdown-btn"
+              onClick={() => setIsActionsDropdownOpen(!isActionsDropdownOpen)}
+              className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 active:scale-95 text-blue-900 border border-blue-200/90 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+              title="عملیات و ابزارهای انبار"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-blue-700" />
+              <span>عملیات</span>
+              {lowStockCount > 0 && (
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              )}
+              <ChevronDown className={`w-3.5 h-3.5 text-blue-600 transition-transform duration-200 ${isActionsDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {isActionsDropdownOpen && (
+              <div className="absolute left-0 top-full mt-1.5 w-56 sm:w-60 bg-white rounded-2xl border border-slate-200/90 shadow-xl z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100">
+                {/* 1. کالای جدید */}
+                <button
+                  type="button"
+                  id="add-new-product-btn"
+                  onClick={() => {
+                    setIsActionsDropdownOpen(false);
+                    handleOpenNewProduct();
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-emerald-800 bg-emerald-50 hover:bg-emerald-100 transition-colors cursor-pointer text-right"
+                >
+                  <Plus className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>کالای جدید</span>
+                </button>
+
+                <div className="my-1 border-t border-slate-100" />
+
+                {/* 2. خلاصه آمار انبار */}
+                <button
+                  type="button"
+                  id="open-inventory-stats-modal-btn"
+                  onClick={() => {
+                    setIsActionsDropdownOpen(false);
+                    setIsStatsModalOpen(true);
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl text-blue-800 bg-blue-50 hover:bg-blue-100 transition-colors cursor-pointer text-right"
+                >
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span>خلاصه آمار انبار</span>
+                  </div>
+                  {lowStockCount > 0 && (
+                    <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+                      {toPersianDigits(lowStockCount)} کسری
+                    </span>
+                  )}
+                </button>
+
+                {/* 3. دسته‌بندی‌ها */}
+                <button
+                  type="button"
+                  id="manage-categories-btn"
+                  onClick={() => {
+                    setIsActionsDropdownOpen(false);
+                    setIsCategoryModalOpen(true);
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:text-indigo-900 hover:bg-indigo-50 transition-colors cursor-pointer text-right"
+                >
+                  <div className="flex items-center gap-2">
+                    <FolderTree className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span>دسته‌بندی‌ها</span>
+                  </div>
+                  <span className="bg-indigo-100 text-indigo-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                    {toPersianDigits(categories.length)}
+                  </span>
+                </button>
+
+                {/* 4. خروجی اکسل */}
+                <button
+                  type="button"
+                  id="export-inventory-excel-btn"
+                  onClick={() => {
+                    setIsActionsDropdownOpen(false);
+                    exportProductsToExcel(products);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer text-right"
+                >
+                  <Download className="w-4 h-4 text-slate-500 shrink-0" />
+                  <span>خروجی اکسل کالاها</span>
+                </button>
+
+                {/* 5. ورود از اکسل */}
+                <button
+                  type="button"
+                  id="import-inventory-excel-btn"
+                  onClick={() => {
+                    setIsActionsDropdownOpen(false);
+                    setIsImportModalOpen(true);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl text-emerald-800 bg-emerald-50 hover:bg-emerald-100 transition-colors cursor-pointer text-right"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>ورود کالاها از اکسل</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Action Buttons Row Below Title (Stats Modal, Categories, Excel Export/Import & New Product) */}
-        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100">
-          {/* Warehouse Stats Summary Button */}
-          <button
-            type="button"
-            id="open-inventory-stats-modal-btn"
-            onClick={() => setIsStatsModalOpen(true)}
-            title="مشاهده آمار جامع موجودی، کسری‌ها و برگه‌های خروج در پنجره جداگانه"
-            className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 active:scale-95 text-blue-900 border border-blue-200/90 hover:border-blue-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-          >
-            <BarChart3 className="w-4 h-4 text-blue-600" />
-            <span>خلاصه آمار انبار</span>
-            {lowStockCount > 0 && (
-              <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full shadow-2xs">
-                {toPersianDigits(lowStockCount)} کسری
-              </span>
-            )}
-          </button>
-
-          {/* Category Management Button */}
-          <button
-            type="button"
-            id="manage-categories-btn"
-            onClick={() => setIsCategoryModalOpen(true)}
-            title="مدیریت و تعریف دسته‌بندی‌های محصولات (قطعات، لوازم جانبی و...)"
-            className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 active:scale-95 text-indigo-900 border border-indigo-200/90 hover:border-indigo-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-          >
-            <FolderTree className="w-4 h-4 text-indigo-600" />
-            <span>دسته‌بندی‌ها</span>
-            <span className="bg-indigo-200/70 text-indigo-900 text-[10px] font-mono px-1.5 py-0.2 rounded-full font-bold">
-              {toPersianDigits(categories.length)}
-            </span>
-          </button>
-
-          {/* Excel Export */}
-          <button
-            type="button"
-            id="export-inventory-excel-btn"
-            onClick={() => exportProductsToExcel(products)}
-            title="خروجی فایل اکسل از همه کالاها و تنوع‌ها"
-            className="flex items-center gap-1.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 border border-slate-200/90 hover:border-slate-300 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-          >
-            <Download className="w-4 h-4 text-slate-500" />
-            <span>خروجی اکسل</span>
-          </button>
-
-          {/* Excel Import */}
-          <button
-            type="button"
-            id="import-inventory-excel-btn"
-            onClick={() => setIsImportModalOpen(true)}
-            title="ورود کالاها و تنوع‌ها از فایل اکسل"
-            className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-800 border border-emerald-200 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>ورود از اکسل</span>
-          </button>
-
-          {/* New Product */}
-          <button
-            id="add-new-product-btn"
-            onClick={handleOpenNewProduct}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200/80 cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>کالای جدید</span>
-          </button>
-        </div>
-
-        {/* Bottom Tier: Sub-Tab Navigation Bar */}
-        <div className="border-t border-slate-100/90 pt-3.5 flex items-center justify-between gap-3 overflow-x-auto no-scrollbar">
+        {/* Bottom Tier: Sub-Tab Navigation Bar (Desktop & Tablet) */}
+        <div className="hidden sm:flex border-t border-slate-100/90 pt-3.5 mt-3.5 items-center justify-between gap-3 overflow-x-auto no-scrollbar">
           {/* Sub Tab Switcher */}
           <div className="flex items-center bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/90 gap-1.5 shadow-2xs shrink-0">
             {/* Tab 1: کالاها و موجودی */}
@@ -1119,26 +1133,28 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           {/* Filters Bar */}
           <div className="p-2.5 sm:p-3.5 border-b border-slate-200/80 bg-slate-50/70 flex flex-col md:flex-row gap-2 sm:gap-2.5 md:gap-3 items-stretch md:items-center justify-between">
             {/* Search */}
-            <div className="relative flex-1 max-w-sm">
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                id="inventory-search-input"
-                placeholder="جستجو در کالاها (نام یا کد)..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white border border-slate-200/90 rounded-xl pr-9 pl-8 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all shadow-2xs"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-0.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
-                  title="پاک کردن جستجو"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+            <div className="flex items-center gap-2 flex-1 max-w-sm">
+              <div className="relative flex-1 min-w-0">
+                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  id="inventory-search-input"
+                  placeholder="جستجو در کالاها (نام یا کد)..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white border border-slate-200/90 rounded-xl pr-9 pl-8 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all shadow-2xs"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-0.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                    title="پاک کردن جستجو"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Category & Status & Layout Controls Group */}

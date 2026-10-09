@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Customer, Invoice, StoreSettings, AppUser, CustomerTransaction } from '../types';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
@@ -30,6 +30,7 @@ import {
   LayoutGrid,
   ArrowUpDown,
   ChevronDown,
+  SlidersHorizontal,
   FileText,
   Eye,
   User,
@@ -92,6 +93,22 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   const [transactionInitialType, setTransactionInitialType] = useState<'deposit' | 'debt'>('deposit');
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
   const [isStatementsReportOpen, setIsStatementsReportOpen] = useState(false);
+  const [isActionsDropdownOpen, setIsActionsDropdownOpen] = useState(false);
+  const actionsDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (actionsDropdownRef.current && !actionsDropdownRef.current.contains(event.target as Node)) {
+        setIsActionsDropdownOpen(false);
+      }
+    };
+    if (isActionsDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isActionsDropdownOpen]);
 
   // Helper to open separate transaction window (deposit / debt)
   const handleOpenTransaction = (cust: Customer, type: 'deposit' | 'debt' = 'deposit') => {
@@ -296,76 +313,116 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
       {/* Header */}
-      <div className="flex flex-col gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-purple-50 text-purple-700">
-              <Users className="w-5 h-5" />
+      <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div className="flex items-center justify-between gap-3">
+          {/* Title */}
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <span className="p-1.5 sm:p-2 rounded-xl bg-purple-50 text-purple-700 shrink-0">
+              <Users className="w-4 h-4 sm:w-5 sm:h-5" />
             </span>
-            <h2 className="text-xl font-bold text-slate-800">مدیریت مشتریان و خریداران</h2>
+            <h2 className="text-sm sm:text-lg font-bold text-slate-800 truncate">
+              مدیریت مشتریان و خریداران
+            </h2>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            دفترچه مشتریان، تاریخچه خریدها و ثبت سریع فاکتور برای مشتری
-          </p>
-        </div>
 
-        {/* Action Buttons Row Below Title */}
-        <div className="flex items-center gap-2 pt-3 border-t border-slate-100 flex-wrap">
-          <button
-            type="button"
-            id="open-customer-statements-report-btn"
-            onClick={() => setIsStatementsReportOpen(true)}
-            title="مشاهده گزارش کلی بدهکاران، واریزی‌ها و صورتحساب همه مشتریان"
-            className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shadow-purple-200 cursor-pointer"
-          >
-            <ReceiptText className="w-4 h-4" />
-            <span>گزارش صورتحساب مشتریان</span>
-          </button>
+          {/* Single Compact Actions Dropdown Beside Title */}
+          <div className="relative shrink-0" ref={actionsDropdownRef}>
+            <button
+              type="button"
+              id="customers-actions-dropdown-btn"
+              onClick={() => setIsActionsDropdownOpen(!isActionsDropdownOpen)}
+              className="flex items-center gap-1.5 bg-purple-50 hover:bg-purple-100 active:scale-95 text-purple-900 border border-purple-200/90 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+              title="عملیات و امکانات"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-purple-700" />
+              <span>عملیات</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-purple-600 transition-transform duration-200 ${isActionsDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
 
-          <button
-            type="button"
-            id="export-person-invoices-slips-btn"
-            onClick={() => {
-              setExportModalCustomer(null);
-              setIsExportModalOpen(true);
-            }}
-            title="خروجی فاکتورها و حواله‌های خروج یک شخص با جزییات کامل اکسل"
-            className="flex items-center gap-1.5 bg-purple-50 hover:bg-purple-100 active:scale-95 text-purple-800 border border-purple-300 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600" />
-            <span>اکسپورت اسناد و حواله‌های شخص</span>
-          </button>
+            {/* Dropdown Menu */}
+            {isActionsDropdownOpen && (
+              <div className="absolute left-0 top-full mt-1.5 w-56 sm:w-60 bg-white rounded-2xl border border-slate-200/90 shadow-xl z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100">
+                {/* 1. مشتری جدید */}
+                <button
+                  type="button"
+                  id="add-customer-btn"
+                  onClick={() => {
+                    setIsActionsDropdownOpen(false);
+                    handleOpenNew();
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-emerald-800 bg-emerald-50 hover:bg-emerald-100 transition-colors cursor-pointer text-right"
+                >
+                  <UserPlus className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>مشتری جدید</span>
+                </button>
 
-          <button
-            type="button"
-            id="export-customers-excel-btn"
-            onClick={() => exportCustomersToExcel(customers)}
-            title="خروجی فایل اکسل مشتریان"
-            className="flex items-center gap-1.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 border border-slate-300 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span className="hidden sm:inline">خروجی اکسل مشتریان</span>
-          </button>
+                <div className="my-1 border-t border-slate-100" />
 
-          <button
-            type="button"
-            id="import-customers-excel-btn"
-            onClick={() => setIsImportModalOpen(true)}
-            title="ورود مشتریان از فایل اکسل"
-            className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-800 border border-emerald-300 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-            <span>ورود از اکسل</span>
-          </button>
+                {/* 2. گزارش صورتحساب مشتریان */}
+                <button
+                  type="button"
+                  id="open-customer-statements-report-btn"
+                  onClick={() => {
+                    setIsActionsDropdownOpen(false);
+                    setIsStatementsReportOpen(true);
+                  }}
+                  title="مشاهده گزارش کلی بدهکاران، واریزی‌ها و صورتحساب همه مشتریان"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:text-purple-900 hover:bg-purple-50 transition-colors cursor-pointer text-right"
+                >
+                  <ReceiptText className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>گزارش صورتحساب مشتریان</span>
+                </button>
 
-          <button
-            id="add-customer-btn"
-            onClick={handleOpenNew}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200 cursor-pointer"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>مشتری جدید</span>
-          </button>
+                {/* 3. اکسپورت اسناد و حواله‌های شخص */}
+                <button
+                  type="button"
+                  id="export-person-invoices-slips-btn"
+                  onClick={() => {
+                    setIsActionsDropdownOpen(false);
+                    setExportModalCustomer(null);
+                    setIsExportModalOpen(true);
+                  }}
+                  title="خروجی فاکتورها و حواله‌های خروج یک شخص با جزییات کامل اکسل"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:text-purple-900 hover:bg-purple-50 transition-colors cursor-pointer text-right"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                  <span>اکسپورت اسناد و حواله‌ها</span>
+                </button>
+
+                <div className="my-1 border-t border-slate-100" />
+
+                {/* 4. خروجی فایل اکسل مشتریان */}
+                <button
+                  type="button"
+                  id="export-customers-excel-btn"
+                  onClick={() => {
+                    setIsActionsDropdownOpen(false);
+                    exportCustomersToExcel(customers);
+                  }}
+                  title="خروجی فایل اکسل مشتریان"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer text-right"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <span>خروجی اکسل مشتریان</span>
+                </button>
+
+                {/* 5. ورود مشتریان از فایل اکسل */}
+                <button
+                  type="button"
+                  id="import-customers-excel-btn"
+                  onClick={() => {
+                    setIsActionsDropdownOpen(false);
+                    setIsImportModalOpen(true);
+                  }}
+                  title="ورود مشتریان از فایل اکسل"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer text-right"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>ورود از اکسل</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
