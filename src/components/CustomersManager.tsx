@@ -474,8 +474,8 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
 
-              {/* View Mode Toggle Switcher */}
-              <div className="flex items-center bg-slate-200/60 p-0.5 rounded-xl border border-slate-200/80 text-xs shadow-2xs shrink-0">
+              {/* View Mode Toggle Switcher (Hidden on mobile) */}
+              <div className="hidden sm:flex items-center bg-slate-200/60 p-0.5 rounded-xl border border-slate-200/80 text-xs shadow-2xs shrink-0">
                 <button
                   type="button"
                   id="customers-view-table-btn"
@@ -827,159 +827,49 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
               </table>
             </div>
 
-            {/* Mobile Row Items View */}
-            <div className="block sm:hidden divide-y divide-slate-100 p-3 space-y-3">
-              {filteredCustomers.map((cust, index) => {
-                const m = customerMetrics.get(cust.id);
-                const customerInvoices = m?.invoices || [];
-                const totalSpent = m?.totalSpent || 0;
-                const custLedger = m?.ledger || StorageService.buildCustomerLedger(cust, invoices, transactions);
-                const hasDebt = m?.hasDebt ?? (custLedger.netBalance > 0);
-                const hasCredit = m?.hasCredit ?? (custLedger.netBalance < 0);
-                const isSettled = m?.isSettled ?? ((customerInvoices.length > 0 || custLedger.entries.length > 0) && custLedger.netBalance === 0);
-
-                return (
-                  <div
-                    key={cust.id}
-                    className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-3"
-                  >
-                    {/* Row 1: Index, Name, Debt status */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div 
-                        onClick={() => setDetailCustomer(cust)}
-                        className="flex items-center gap-2 cursor-pointer"
-                      >
-                        <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-500 font-mono text-[11px] font-bold flex items-center justify-center shrink-0">
-                          {toPersianDigits(index + 1)}
-                        </span>
-                        <div>
-                          <div className="font-bold text-slate-900 text-xs">
-                            {cust.name}
-                          </div>
-                          {cust.nationalId && (
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              کد ملی: {toPersianDigits(cust.nationalId)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Financial Status Badge */}
-                      {hasDebt ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 shrink-0 font-mono">
-                          بدهکار: {formatPrice(custLedger.netBalance, settings.currency)}
-                        </span>
-                      ) : hasCredit ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 shrink-0 font-mono">
-                          بستانکار: {formatPrice(Math.abs(custLedger.netBalance), settings.currency)}
-                        </span>
-                      ) : isSettled ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
-                          تسویه کامل
-                        </span>
-                      ) : null}
-                    </div>
-
-                    {/* Row 2: Phone */}
-                    {cust.phone && (
-                      <div className="text-xs bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 flex items-center justify-between">
-                        <span className="text-[11px] text-slate-500">شماره تماس:</span>
-                        <a
-                          href={`tel:${cust.phone}`}
-                          className="font-mono text-slate-800 font-bold hover:text-emerald-700 hover:underline"
-                        >
-                          {toPersianDigits(cust.phone)}
-                        </a>
-                      </div>
-                    )}
-
-                    {/* Row 3: Action Buttons */}
-                    <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-slate-100 flex-wrap">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {/* Details Button */}
-                        <button
-                          type="button"
-                          onClick={() => setDetailCustomer(cust)}
-                          className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-800 border border-purple-300 shadow-2xs cursor-pointer"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-purple-700" />
-                          <span>جزئیات</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setStatementCustomer(cust)}
-                          className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 cursor-pointer"
-                        >
-                          <ReceiptText className="w-3.5 h-3.5" />
-                          <span>صورتحساب</span>
-                        </button>
-
-                        {hasDebt && (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenTransaction(cust, 'deposit')}
-                            className="flex items-center gap-1 text-[11px] font-bold px-2 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs cursor-pointer"
-                          >
-                            <CreditCard className="w-3.5 h-3.5" />
-                            <span>واریزی</span>
-                          </button>
-                        )}
-
-                        {(!currentUser || currentUser.permissions.canCreateInvoice) && (
-                          <button
-                            type="button"
-                            onClick={() => onSelectCustomerForInvoice(cust)}
-                            className="flex items-center gap-1 text-[11px] font-bold px-2 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-pointer"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>فاکتور</span>
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setExportModalCustomer(cust);
-                            setIsExportModalOpen(true);
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-purple-700 hover:bg-purple-50 rounded-lg cursor-pointer"
-                          title="اکسپورت اکسل"
-                        >
-                          <FileSpreadsheet className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(cust)}
-                          className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
-                          title="ویرایش"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        {(!currentUser || currentUser.role === 'admin' || currentUser.permissions.canManageCustomers) && (
-                          <button
-                            type="button"
-                            onClick={() => setCustomerToDelete(cust)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
-                            title="حذف"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
+            {/* Mobile Single-Line Items View: فقط نام و موبایل در یک خط با کلیک جهت باز شدن جزئیات */}
+            <div className="block sm:hidden divide-y divide-slate-100 bg-white">
+              {filteredCustomers.map((cust, index) => (
+                <div
+                  key={cust.id}
+                  onClick={() => setDetailCustomer(cust)}
+                  className="flex items-center justify-between gap-3 px-3.5 py-3 hover:bg-purple-50/40 active:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  {/* نام مشتری (با کلیک، جزئیات کامل مشتری باز می‌شود) */}
+                  <div className="flex items-center gap-2 min-w-0 flex-1 group">
+                    <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 group-hover:bg-purple-100 group-hover:text-purple-700 font-mono text-[10px] font-bold flex items-center justify-center shrink-0 transition-colors">
+                      {toPersianDigits(index + 1)}
+                    </span>
+                    <span className="font-bold text-slate-800 text-xs group-hover:text-purple-700 transition-colors truncate">
+                      {cust.name}
+                    </span>
                   </div>
-                );
-              })}
+
+                  {/* شماره موبایل مشتری */}
+                  <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                    {cust.phone ? (
+                      <a
+                        href={`tel:${cust.phone}`}
+                        className="font-mono text-xs font-semibold text-slate-600 hover:text-emerald-700 dir-ltr py-1 px-2 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors inline-block"
+                        title="تماس با مشتری"
+                      >
+                        {toPersianDigits(cust.phone)}
+                      </a>
+                    ) : (
+                      <span className="text-slate-300 font-mono text-xs px-2">---</span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         ) : (
           /* ========================================================
              CARD / GRID VIEW (نمایش کارتی در صورت تمایل کاربر)
              ======================================================== */
-          <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            {/* Desktop Grid View */}
+            <div className="hidden sm:grid p-4 sm:p-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredCustomers.map((cust, index) => {
               const m = customerMetrics.get(cust.id);
               const customerInvoices = m?.invoices || [];
@@ -1173,6 +1063,43 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                 </div>
               );
             })}
+            </div>
+
+            {/* Mobile Single-Line Items View */}
+            <div className="block sm:hidden divide-y divide-slate-100 bg-white">
+              {filteredCustomers.map((cust, index) => (
+                <div
+                  key={cust.id}
+                  onClick={() => setDetailCustomer(cust)}
+                  className="flex items-center justify-between gap-3 px-3.5 py-3 hover:bg-purple-50/40 active:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  {/* نام مشتری (با کلیک، جزئیات کامل مشتری باز می‌شود) */}
+                  <div className="flex items-center gap-2 min-w-0 flex-1 group">
+                    <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 group-hover:bg-purple-100 group-hover:text-purple-700 font-mono text-[10px] font-bold flex items-center justify-center shrink-0 transition-colors">
+                      {toPersianDigits(index + 1)}
+                    </span>
+                    <span className="font-bold text-slate-800 text-xs group-hover:text-purple-700 transition-colors truncate">
+                      {cust.name}
+                    </span>
+                  </div>
+
+                  {/* شماره موبایل مشتری */}
+                  <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                    {cust.phone ? (
+                      <a
+                        href={`tel:${cust.phone}`}
+                        className="font-mono text-xs font-semibold text-slate-600 hover:text-emerald-700 dir-ltr py-1 px-2 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors inline-block"
+                        title="تماس با مشتری"
+                      >
+                        {toPersianDigits(cust.phone)}
+                      </a>
+                    ) : (
+                      <span className="text-slate-300 font-mono text-xs px-2">---</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -1469,6 +1396,37 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                     <Edit3 className="w-3.5 h-3.5" />
                     <span>ویرایش مشخصات</span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = detailCustomer;
+                      setDetailCustomer(null);
+                      setExportModalCustomer(target);
+                      setIsExportModalOpen(true);
+                    }}
+                    className="px-3 py-2 bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="خروجی اطلاعات مشتری به اکسل"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600" />
+                    <span>خروجی اکسل</span>
+                  </button>
+
+                  {(!currentUser || currentUser.role === 'admin' || currentUser.permissions.canManageCustomers) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = detailCustomer;
+                        setDetailCustomer(null);
+                        setCustomerToDelete(target);
+                      }}
+                      className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="حذف این مشتری"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      <span>حذف مشتری</span>
+                    </button>
+                  )}
                 </div>
 
                 <button
