@@ -86,6 +86,12 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
   const isPaid = invoice.paymentStatus === 'paid';
   const isPartial = invoice.paymentStatus === 'partial';
   const isUnpaid = invoice.paymentStatus === 'unpaid';
+  const isProformaInvoice = Boolean(
+    invoice.isProforma ||
+    invoice.invoiceNumber?.toUpperCase().startsWith('PF') ||
+    invoice.invoiceNumber?.toUpperCase().startsWith('PRE') ||
+    (invoice.type as string) === 'proforma'
+  );
   const remainingDebt = Math.max(0, invoice.finalTotal - (isPaid ? invoice.finalTotal : (invoice.paidAmount || 0)));
   const totalItemCount = invoice.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
 
@@ -100,14 +106,14 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
         <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
-              invoice.isProforma ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-400/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+              isProformaInvoice ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-400/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
             }`}>
-              {invoice.isProforma ? <FileClock className="w-5 h-5" /> : <ReceiptText className="w-5 h-5" />}
+              {isProformaInvoice ? <FileClock className="w-5 h-5" /> : <ReceiptText className="w-5 h-5" />}
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-extrabold text-base sm:text-lg">
-                  {invoice.isProforma ? 'جزئیات پیش‌فاکتور' : 'جزئیات فاکتور فروش'}
+                  {isProformaInvoice ? 'جزئیات پیش‌فاکتور' : 'جزئیات فاکتور فروش'}
                 </h3>
                 <span className="font-mono font-bold bg-white/20 text-white text-xs px-2.5 py-0.5 rounded-lg border border-white/20">
                   {toPersianDigits(invoice.invoiceNumber)}
@@ -410,7 +416,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
         {/* Footer Actions Toolbar - بهینه‌سازی و خلوت‌سازی با منوی دراپ‌دان عملیات */}
         <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2.5 shrink-0">
           {/* Primary View & Print Button (سمت راست - دسترسی سریع و برجسته) */}
-          <div className="flex-1 sm:flex-initial">
+          <div className="flex-1 sm:flex-initial flex items-center gap-2">
             <button
               type="button"
               id="invoice-details-view-print-btn"
@@ -418,10 +424,10 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                 onClose();
                 onViewInvoice(invoice);
               }}
-              className="w-full sm:w-auto min-h-[40px] px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-200/70 cursor-pointer"
+              className="min-h-[40px] px-3.5 sm:px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-emerald-200/70 cursor-pointer"
             >
               <Printer className="w-4 h-4 shrink-0" />
-              <span>مشاهده و چاپ کامل فاکتور</span>
+              <span>{isProformaInvoice ? 'مشاهده و چاپ پیش‌فاکتور' : 'مشاهده و چاپ فاکتور'}</span>
             </button>
           </div>
 
@@ -444,8 +450,8 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
               >
                 <SlidersHorizontal className="w-3.5 h-3.5 text-slate-600 shrink-0" />
                 <span>عملیات</span>
-                {(!isPaid || invoice.isProforma) && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                {(!isPaid || isProformaInvoice) && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
                 )}
                 <ChevronUp className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isActionsOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -457,19 +463,28 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                   role="menu"
                 >
                   {/* Convert Proforma if proforma */}
-                  {invoice.isProforma && onConvertProforma && (
+                  {isProformaInvoice && (
                     <button
                       type="button"
+                      id="details-actions-convert-proforma-btn"
                       onClick={() => {
                         setIsActionsOpen(false);
                         onClose();
-                        onConvertProforma(invoice);
+                        if (onConvertProforma) {
+                          onConvertProforma(invoice);
+                        }
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 transition-colors cursor-pointer"
+                      className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-bold rounded-xl text-indigo-950 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/80 transition-all cursor-pointer shadow-2xs group"
                       role="menuitem"
+                      title="تبدیل پیش‌فاکتور به فاکتور فروش نهایی و کسر از موجودی انبار"
                     >
-                      <ArrowRightLeft className="w-4 h-4 text-indigo-600 shrink-0" />
-                      <span>تبدیل به فاکتور رسمی</span>
+                      <div className="flex items-center gap-2">
+                        <ArrowRightLeft className="w-4 h-4 text-indigo-600 shrink-0 group-hover:rotate-180 transition-transform duration-300" />
+                        <span className="font-extrabold text-indigo-900">تبدیل به فاکتور</span>
+                      </div>
+                      <span className="text-[10px] bg-indigo-200/80 text-indigo-800 px-1.5 py-0.5 rounded-md font-semibold">
+                        فروش
+                      </span>
                     </button>
                   )}
 

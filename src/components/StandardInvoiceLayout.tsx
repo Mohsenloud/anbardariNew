@@ -196,9 +196,6 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
                 isA5 ? 'px-2 py-0.5 text-[9px]' : 'px-3 py-1 text-xs'
               }`}>
                 <span>مشخصات خریدار</span>
-                <span className="text-[10px] text-slate-500 font-bold">
-                  وضعیت تسویه: {invoice.paymentStatus === 'paid' ? 'تسویه کامل' : invoice.paymentStatus === 'partial' ? 'بیعانه' : 'نسیه / بدهکار'}
-                </span>
               </div>
               <div className={`grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1 text-slate-700 ${
                 isA5 ? 'p-1.5 leading-snug' : 'p-2.5 leading-normal'

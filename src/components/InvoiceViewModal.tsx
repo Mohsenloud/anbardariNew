@@ -183,12 +183,23 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   const isA4Landscape = !isA5 && isLandscape;
   const isA4Portrait = !isA5 && !isLandscape;
   const scaleRatio = isA5 ? (isLandscape ? 0.88 : 0.85) : (isLandscape ? 0.96 : 1.0);
+  const isProformaInvoice = Boolean(
+    invoice.isProforma || 
+    invoice.invoiceNumber?.toUpperCase().startsWith('PF') || 
+    invoice.invoiceNumber?.toUpperCase().startsWith('PRE') || 
+    (invoice.type as string) === 'proforma'
+  );
   const liveRowMinH = Math.max(18, Math.round((currentPrintLayout.tableRowMinHeight || 34) * scaleRatio));
-  const liveRowPy = Math.max(1, Math.round((currentPrintLayout.tableRowPaddingY ?? 6) * scaleRatio));
+  const liveRowPy = Math.max(0, Math.round((currentPrintLayout.tableRowPaddingY ?? 6) * scaleRatio));
   const liveCellPx = Math.max(2, Math.round((currentPrintLayout.tableCellPaddingX ?? 8) * scaleRatio));
   const liveHeaderH = Math.max(24, Math.round(liveRowMinH * 1.08));
   const liveTableBodyFontSize = Math.max(8, Math.round((currentPrintLayout.tableBodySize || 11) * scaleRatio));
   const liveTableHeaderFontSize = Math.max(8, Math.round((currentPrintLayout.tableHeaderSize || 11) * scaleRatio));
+  const liveBaseFontSize = Math.max(8, Math.round((currentPrintLayout.baseFontSize || 12) * scaleRatio));
+  const liveHeaderTitleSize = Math.max(11, Math.round((currentPrintLayout.headerTitleSize || 18) * scaleRatio));
+  const liveHeaderMetaSize = Math.max(8, Math.round((currentPrintLayout.headerMetaSize || 11) * scaleRatio));
+  const liveTotalsSize = Math.max(10, Math.round((currentPrintLayout.totalsSize || 13) * scaleRatio));
+  const liveNotesSize = Math.max(8, Math.round((currentPrintLayout.notesFontSize || 10) * scaleRatio));
   const liveColWidthIndex = Math.round((currentPrintLayout.colWidthIndex || 38) * scaleRatio);
   const liveColWidthCode = Math.round((currentPrintLayout.colWidthCode || 75) * scaleRatio);
   const liveColWidthQty = Math.round((currentPrintLayout.colWidthQty || 60) * scaleRatio);
@@ -252,13 +263,6 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
       ),
       `---------------------------------`,
       `جمع کل: *${formatPrice(invoice.finalTotal, settings.currency)}*`,
-      `وضعیت پرداخت: ${
-        invoice.paymentStatus === 'paid'
-          ? 'تسویه کامل'
-          : invoice.paymentStatus === 'partial'
-          ? `بیعانه (پرداختی: ${formatPrice(invoice.paidAmount || 0, settings.currency)})`
-          : 'نسیه'
-      }`,
       settings.phone ? `تلفن فروشگاه: ${toPersianDigits(settings.phone)}` : '',
       `با تشکر از حسن انتخاب شما`
     ].filter(Boolean);
@@ -597,7 +601,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                     title="تنظیم مستقیم ارتفاع ردیف‌ها و عرض ستون‌های جدول فاکتور"
                   >
                     <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>تنظیم ابعاد جدول (ارتفاع و عرض)</span>
+                    <span>تنظیم ابعاد، ارتفاع و فونت جدول</span>
                   </button>
                 </>
               )}
@@ -608,7 +612,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
               {/* Group 3: Auxiliary Actions (Convert Proforma, Edit, WhatsApp, Share) */}
               <div className="flex items-center gap-1.5 shrink-0">
                 {/* Convert Proforma to Official Invoice button */}
-                {invoice.isProforma && onConvertProforma && (
+                {isProformaInvoice && onConvertProforma && (
                   <button
                     type="button"
                     id="modal-convert-proforma-btn"
@@ -746,31 +750,43 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             #printable-invoice table th {
               vertical-align: middle !important;
               box-sizing: border-box !important;
-              padding-top: var(--print-table-row-py, 6px) !important;
-              padding-bottom: var(--print-table-row-py, 6px) !important;
-              padding-left: var(--print-table-cell-px, 8px) !important;
-              padding-right: var(--print-table-cell-px, 8px) !important;
-              height: var(--print-table-header-h, 36px) !important;
-              font-size: var(--print-table-header-size, 11px) !important;
+              padding-top: ${liveRowPy}px !important;
+              padding-bottom: ${liveRowPy}px !important;
+              padding-left: ${liveCellPx}px !important;
+              padding-right: ${liveCellPx}px !important;
+              height: ${liveHeaderH}px !important;
+              font-size: ${liveTableHeaderFontSize}px !important;
             }
             #printable-invoice table tbody tr {
-              height: var(--print-table-row-min-h, 34px) !important;
+              height: ${liveRowMinH}px !important;
               page-break-inside: avoid !important;
               break-inside: avoid !important;
             }
             #printable-invoice table tbody td {
-              padding-top: var(--print-table-row-py, 6px) !important;
-              padding-bottom: var(--print-table-row-py, 6px) !important;
-              padding-left: var(--print-table-cell-px, 8px) !important;
-              padding-right: var(--print-table-cell-px, 8px) !important;
-              height: var(--print-table-row-min-h, 34px) !important;
-              min-height: var(--print-table-row-min-h, 34px) !important;
+              padding-top: ${liveRowPy}px !important;
+              padding-bottom: ${liveRowPy}px !important;
+              padding-left: ${liveCellPx}px !important;
+              padding-right: ${liveCellPx}px !important;
+              height: ${liveRowMinH}px !important;
               vertical-align: middle !important;
               box-sizing: border-box !important;
               line-height: 1.4 !important;
               word-break: break-word !important;
               overflow-wrap: break-word !important;
-              font-size: var(--print-table-body-size, 11px) !important;
+              font-size: ${liveTableBodyFontSize}px !important;
+            }
+            #printable-invoice .invoice-header h1,
+            #printable-invoice .invoice-header h2 {
+              font-size: ${liveHeaderTitleSize}px !important;
+            }
+            #printable-invoice .invoice-meta,
+            #printable-invoice .customer-info-bar,
+            #printable-invoice .invoice-customer-card {
+              font-size: ${liveHeaderMetaSize}px !important;
+            }
+            #printable-invoice .invoice-totals-box,
+            #printable-invoice .invoice-totals-box * {
+              font-size: ${liveTotalsSize}px !important;
             }
 
             /* === A4 PORTRAIT === */
@@ -874,24 +890,95 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
         <div className="overflow-x-auto overflow-y-auto p-2 sm:p-8 bg-slate-100/60 print:p-0 print:bg-white flex flex-col items-center">
           {/* Quick interactive toolbar right above paper in preview */}
           {currentTemplate !== 'thermal' && (
-            <div className="no-print max-w-[840px] w-full mb-2.5 flex items-center justify-between text-xs px-1">
+            <div className="no-print max-w-[840px] w-full mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs px-1">
               <span className="text-slate-500 text-[11px] font-medium flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>پیش‌نمایش چاپ فاکتور ({pageSize.toUpperCase()} {orientation === 'portrait' ? 'عمودی' : 'افقی'})</span>
+                <span>پیش‌نمایش چاپ ({pageSize.toUpperCase()} {orientation === 'portrait' ? 'عمودی' : 'افقی'})</span>
               </span>
-              <button
-                type="button"
-                onClick={() => setIsDimensionsPanelOpen((prev) => !prev)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border font-bold text-xs transition-all cursor-pointer shadow-2xs ${
-                  isDimensionsPanelOpen
-                    ? 'bg-emerald-600 border-emerald-500 text-white shadow-xs'
-                    : 'bg-white hover:bg-emerald-50 border-slate-300 hover:border-emerald-400 text-slate-700 hover:text-emerald-700'
-                }`}
-                title="تنظیم مستقیم ارتفاع ردیف‌ها و عرض سلول‌های جدول فاکتور"
-              >
-                <SlidersHorizontal className={`w-3.5 h-3.5 ${isDimensionsPanelOpen ? 'text-white' : 'text-emerald-600'}`} />
-                <span>{isDimensionsPanelOpen ? 'بستن تنظیمات ابعاد جدول' : 'تنظیم ارتفاع و عرض جدول'}</span>
-              </button>
+
+              {/* Quick dimension & font action buttons right above sheet */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {/* Quick Font Size Controls */}
+                <div className="inline-flex items-center gap-1 bg-white border border-slate-300 rounded-lg px-2 py-0.5 shadow-3xs text-[11px]">
+                  <span className="text-slate-500 font-medium">سایز قلم:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextBody = Math.max(8, (currentPrintLayout.tableBodySize || 11) - 1);
+                      const nextHdr = Math.max(8, (currentPrintLayout.tableHeaderSize || 11) - 1);
+                      const nextBase = Math.max(8, (currentPrintLayout.baseFontSize || 12) - 1);
+                      setCurrentPrintLayout((prev) => ({ ...prev, tableBodySize: nextBody, tableHeaderSize: nextHdr, baseFontSize: nextBase }));
+                    }}
+                    className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                    title="کاهش سایز فونت جدول"
+                  >
+                    -
+                  </button>
+                  <span className="font-mono font-bold text-slate-800 px-1">
+                    {toPersianDigits(currentPrintLayout.tableBodySize || 11)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextBody = Math.min(18, (currentPrintLayout.tableBodySize || 11) + 1);
+                      const nextHdr = Math.min(18, (currentPrintLayout.tableHeaderSize || 11) + 1);
+                      const nextBase = Math.min(18, (currentPrintLayout.baseFontSize || 12) + 1);
+                      setCurrentPrintLayout((prev) => ({ ...prev, tableBodySize: nextBody, tableHeaderSize: nextHdr, baseFontSize: nextBase }));
+                    }}
+                    className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                    title="افزایش سایز فونت جدول"
+                  >
+                    +
+                  </button>
+                </div>
+
+                {/* Quick Row Height Controls */}
+                <div className="inline-flex items-center gap-1 bg-white border border-slate-300 rounded-lg px-2 py-0.5 shadow-3xs text-[11px]">
+                  <span className="text-slate-500 font-medium">ارتفاع ردیف:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextH = Math.max(18, (currentPrintLayout.tableRowMinHeight || 34) - 2);
+                      const nextPy = Math.max(0, Math.min(22, Math.round((nextH - 18) * 0.35)));
+                      setCurrentPrintLayout((prev) => ({ ...prev, tableRowMinHeight: nextH, tableRowPaddingY: nextPy }));
+                    }}
+                    className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                    title="کاهش ارتفاع و فشرده‌سازی ردیف‌ها"
+                  >
+                    -
+                  </button>
+                  <span className="font-mono font-bold text-slate-800 px-1">
+                    {toPersianDigits(currentPrintLayout.tableRowMinHeight || 34)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextH = Math.min(85, (currentPrintLayout.tableRowMinHeight || 34) + 2);
+                      const nextPy = Math.max(0, Math.min(22, Math.round((nextH - 18) * 0.35)));
+                      setCurrentPrintLayout((prev) => ({ ...prev, tableRowMinHeight: nextH, tableRowPaddingY: nextPy }));
+                    }}
+                    className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                    title="افزایش ارتفاع ردیف‌های جدول"
+                  >
+                    +
+                  </button>
+                </div>
+
+                {/* Full Dimensions & Typography Panel Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setIsDimensionsPanelOpen((prev) => !prev)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border font-bold text-xs transition-all cursor-pointer shadow-2xs ${
+                    isDimensionsPanelOpen
+                      ? 'bg-emerald-600 border-emerald-500 text-white shadow-xs'
+                      : 'bg-white hover:bg-emerald-50 border-slate-300 hover:border-emerald-400 text-slate-700 hover:text-emerald-700'
+                  }`}
+                  title="باز کردن پنل کامل تنظیم ارتفاع، ابعاد و فونت‌ها"
+                >
+                  <SlidersHorizontal className={`w-3.5 h-3.5 ${isDimensionsPanelOpen ? 'text-white' : 'text-emerald-600'}`} />
+                  <span>{isDimensionsPanelOpen ? 'بستن تنظیمات ابعاد' : 'تنظیمات پیشرفته ابعاد و فونت'}</span>
+                </button>
+              </div>
             </div>
           )}
 

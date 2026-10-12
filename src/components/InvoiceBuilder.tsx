@@ -1755,100 +1755,89 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                         )}
                       </div>
 
-                      {/* Delete Item Button */}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(item.id)}
-                        className="text-slate-300 hover:text-rose-500 p-1.5 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
-                        title="حذف ردیف"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                      {/* Action buttons: Description/Edit button & Delete button */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenMobileEditItem(item)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 hover:bg-amber-50 text-slate-600 hover:text-amber-800 border border-slate-200/80 hover:border-amber-300 font-bold text-[11px] transition-all cursor-pointer shadow-2xs active:scale-95"
+                          title={item.description ? 'ویرایش توضیح ردیف (چاپ و PDF)' : 'افزودن توضیح ردیف (چاپ و PDF)'}
+                        >
+                          <FileText className={`w-3.5 h-3.5 ${item.description ? 'text-amber-600' : 'text-slate-500'}`} />
+                          <span>{item.description ? 'توضیح' : 'افزودن توضیح'}</span>
+                        </button>
 
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">
-                            {item.productName}
-                          </span>
-                          {isService ? (
-                            <span className="text-[10px] bg-amber-50 text-amber-700 font-bold px-1.5 py-0.5 rounded-md border border-amber-200">
-                              خدماتی / بدون کالا
-                            </span>
-                          ) : item.productCode ? (
-                            <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-1.5 py-0.5 rounded-md font-mono" dir="ltr">
-                              #{item.productCode}
-                            </span>
-                          ) : null}
-                          {item.variantName && (
-                            <span className="text-[10px] bg-purple-100 text-purple-800 font-bold px-1.5 py-0.5 rounded-md border border-purple-200 flex items-center gap-1">
-                              <Layers className="w-3 h-3 text-purple-600" />
-                              <span>{item.variantName}</span>
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5 flex-wrap">
-                          <span>قیمت واحد:</span>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenMobileEditItem(item)}
-                            className="font-bold text-slate-800 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 px-2 py-0.5 rounded-lg border border-slate-200/80 hover:border-emerald-300 flex items-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95"
-                            title="کلیک جهت ویرایش قیمت، تخفیف یا توضیحات این ردیف"
-                          >
-                            <span>{formatPrice(item.unitPrice)}</span>
-                            <Pencil className="w-2.5 h-2.5 text-slate-400 hover:text-emerald-600" />
-                          </button>
-                          {item.unit && <span className="text-slate-400 font-normal">({item.unit})</span>}
-                        </div>
-
-                        {/* Item Description (توضیحات اختصاصی ردیف کالا یا خدمت جهت چاپ و PDF) */}
-                        {item.description ? (
-                          <div className="mt-1.5 flex items-start gap-1.5 text-[11px] text-slate-700 bg-amber-50/80 border border-amber-200/80 rounded-xl px-2.5 py-1.5">
-                            <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-                            <div className="flex-1 min-w-0">
-                              <span className="font-bold text-amber-800 text-[10px] ml-1">توضیح چاپ:</span>
-                              <span className="text-slate-700 leading-tight break-words">{item.description}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenMobileEditItem(item)}
-                              className="text-amber-700 hover:text-amber-900 font-bold text-[10px] underline cursor-pointer shrink-0"
-                              title="ویرایش توضیح این ردیف"
-                            >
-                              ویرایش
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="mt-1">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenMobileEditItem(item)}
-                              className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 px-1.5 py-0.5 rounded-md transition-colors cursor-pointer"
-                              title="افزودن توضیح اختصاصی برای این ردیف جهت نمایش در چاپ و PDF"
-                            >
-                              <Plus className="w-3 h-3 stroke-[2.5]" />
-                              <span>افزودن توضیح ردیف (چاپ و PDF)</span>
-                            </button>
-                          </div>
-                        )}
+                        {/* Delete Item Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveItem(item.id)}
+                          className="text-slate-300 hover:text-rose-500 p-1.5 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
+                          title="حذف ردیف"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
 
-                    {/* Quantity & Row Total Bar */}
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                      {/* Quantity Selector: [-] [editable input] [+] */}
-                      <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/70 shadow-2xs">
+                    {/* Product Name & Unit Price Row (قیمت واحد روبروی نام کالا) */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
+                        <span className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">
+                          {item.productName}
+                        </span>
+                        {isService ? (
+                          <span className="text-[10px] bg-amber-50 text-amber-700 font-bold px-1.5 py-0.5 rounded-md border border-amber-200 shrink-0">
+                            خدماتی / بدون کالا
+                          </span>
+                        ) : item.productCode ? (
+                          <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-1.5 py-0.5 rounded-md font-mono shrink-0" dir="ltr">
+                            #{item.productCode}
+                          </span>
+                        ) : null}
+                        {item.variantName && (
+                          <span className="text-[10px] bg-purple-100 text-purple-800 font-bold px-1.5 py-0.5 rounded-md border border-purple-200 flex items-center gap-1 shrink-0">
+                            <Layers className="w-3 h-3 text-purple-600" />
+                            <span>{item.variantName}</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Unit Price Button (روبروی نام کالا) */}
+                      <div className="text-[11px] text-slate-500 flex items-center gap-1.5 shrink-0">
+                        <span className="text-slate-400 font-medium">قیمت واحد:</span>
                         <button
                           type="button"
-                          onClick={() => handleAdjustQuantity(item.id, -1)}
-                          className="w-8 h-8 rounded-lg bg-white shadow-2xs text-slate-700 hover:bg-rose-50 hover:text-rose-600 active:scale-95 flex items-center justify-center transition-all cursor-pointer shrink-0"
-                          title="کاهش تعداد"
+                          onClick={() => handleOpenMobileEditItem(item)}
+                          className="font-bold text-slate-800 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 px-2 py-0.5 rounded-lg border border-slate-200/80 hover:border-emerald-300 flex items-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95"
+                          title="کلیک جهت ویرایش قیمت، تخفیف یا توضیحات این ردیف"
                         >
-                          <Minus className="w-3.5 h-3.5" />
+                          <span>{formatPrice(item.unitPrice)}</span>
+                          <Pencil className="w-2.5 h-2.5 text-slate-400 hover:text-emerald-600" />
                         </button>
+                        {item.unit && <span className="text-slate-400 font-normal">({item.unit})</span>}
+                      </div>
+                    </div>
 
+                    {/* Item Description (نمایش توضیحات ثبت‌شده ردیف جهت چاپ و PDF) */}
+                    {item.description && (
+                      <div 
+                        onClick={() => handleOpenMobileEditItem(item)}
+                        className="mt-1.5 flex items-start gap-1.5 text-[11px] text-slate-700 bg-amber-50/80 border border-amber-200/80 rounded-xl px-2.5 py-1.5 cursor-pointer hover:bg-amber-100/70 transition-colors"
+                        title="کلیک برای ویرایش توضیح چاپ"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <span className="font-bold text-amber-800 text-[10px] ml-1">توضیح چاپ:</span>
+                          <span className="text-slate-700 leading-tight break-words">{item.description}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Quantity & Row Total Bar */}
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                      {/* Quantity Input (بدون دکمه‌های منفی و مثبت) */}
+                      <div className="flex items-center gap-1.5 bg-slate-100/90 px-2.5 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                        <span className="text-[11px] font-bold text-slate-500">تعداد:</span>
                         <input
                           type="text"
                           inputMode="numeric"
@@ -1871,19 +1860,11 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                               handleSetQuantity(item.id, 1);
                             }
                           }}
-                          className="w-12 h-8 text-center text-xs font-black text-slate-900 bg-white/90 hover:bg-white focus:bg-white rounded-md border border-transparent focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none transition-all"
-                          title="جهت تغییر دستی تعداد، روی عدد کلیک کنید"
+                          className="w-14 h-7 text-center text-xs font-black text-slate-900 bg-white rounded-lg border border-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none transition-all shadow-2xs"
+                          title="تعداد کالا"
                           placeholder="۱"
                         />
-
-                        <button
-                          type="button"
-                          onClick={() => handleAdjustQuantity(item.id, 1)}
-                          className="w-8 h-8 rounded-lg bg-white shadow-2xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 active:scale-95 flex items-center justify-center transition-all cursor-pointer shrink-0"
-                          title="افزایش تعداد"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
+                        {item.unit && <span className="text-[11px] text-slate-600 font-bold">{item.unit}</span>}
                       </div>
 
                       {/* Row Total */}
@@ -3420,7 +3401,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                             <span className="text-[11px] font-black">ویرایش</span>
                           </button>
 
-                          {/* Add / Stepper */}
+                          {/* Add button / Variants */}
                           {p.hasVariants && p.variants && p.variants.length > 0 ? (
                             <button
                               type="button"
@@ -3439,34 +3420,6 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                                 </span>
                               )}
                             </button>
-                          ) : inInvoice ? (
-                            <div className="flex items-center gap-0.5 bg-white border border-emerald-300 rounded-xl p-0.5 shadow-2xs shrink-0">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDecrementProduct(p);
-                                }}
-                                className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-700 flex items-center justify-center text-xs transition-colors cursor-pointer"
-                                title="کاهش تعداد"
-                              >
-                                <Minus className="w-3.5 h-3.5" />
-                              </button>
-                              <span className="px-2 text-xs font-black text-emerald-700 min-w-[22px] text-center font-mono">
-                                {toPersianDigits(totalQtyInInvoice)}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAddProduct(p);
-                                }}
-                                className="w-7 h-7 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center text-xs transition-colors cursor-pointer"
-                                title="افزایش تعداد"
-                              >
-                                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                              </button>
-                            </div>
                           ) : (
                             <button
                               type="button"
@@ -3474,11 +3427,20 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                                 e.stopPropagation();
                                 handleAddProduct(p);
                               }}
-                              className="flex items-center justify-center gap-1 bg-slate-900 hover:bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-all shadow-2xs cursor-pointer active:scale-[0.98] whitespace-nowrap"
+                              className={`flex items-center justify-center gap-1 text-xs font-bold px-3 py-1.5 rounded-xl transition-all shadow-2xs cursor-pointer active:scale-[0.98] whitespace-nowrap ${
+                                inInvoice
+                                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                  : 'bg-slate-900 hover:bg-emerald-600 text-white'
+                              }`}
                               title="افزودن به فاکتور"
                             >
                               <Plus className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
                               <span className="text-[11px] font-black">افزودن</span>
+                              {inInvoice && (
+                                <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-md font-black font-mono">
+                                  {toPersianDigits(totalQtyInInvoice)}
+                                </span>
+                              )}
                             </button>
                           )}
                         </div>

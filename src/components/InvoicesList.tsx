@@ -1668,10 +1668,10 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           setQuickDetailsInvoice(null);
           handleOpenShareModal(inv);
         }}
-        onConvertProforma={onConvertProforma ? (inv) => {
+        onConvertProforma={(inv) => {
           setQuickDetailsInvoice(null);
           handleOpenConvertModal(inv);
-        } : undefined}
+        }}
         onReturnInvoiceToStock={onReturnInvoiceToStock ? (inv) => {
           setQuickDetailsInvoice(null);
           setInvoiceToReturn(inv);
