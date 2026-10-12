@@ -51,6 +51,7 @@ import {
 } from 'lucide-react';
 import { StorageService } from '../utils/storage';
 import { broadcastLivePreview } from '../utils/livePreviewSync';
+import { InvoiceDateModal } from './InvoiceDateModal';
 import {
   generateNextProductCode,
   generateProductBarcode,
@@ -305,6 +306,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState<boolean>(false);
+  const [isDateModalOpen, setIsDateModalOpen] = useState<boolean>(false);
 
   // Mobile & Desktop Quick Item Edit Modal (Price, Discount & Row Description)
   const [mobileEditingItem, setMobileEditingItem] = useState<InvoiceItem | null>(null);
@@ -1340,7 +1342,16 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
           <div className="flex items-center justify-between px-3 py-1.5 bg-slate-50/70">
             {/* Meta Info: Date and Template */}
             <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
-              <span className="font-mono text-slate-700 font-bold">{invoiceDate}</span>
+              <button
+                type="button"
+                onClick={() => setIsDateModalOpen(true)}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white hover:bg-emerald-50 active:scale-95 border border-slate-200 hover:border-emerald-400 text-slate-700 hover:text-emerald-800 font-bold transition-all cursor-pointer shadow-2xs group"
+                title="کلیک برای تغییر تاریخ فاکتور یا پیش‌فاکتور"
+              >
+                <Calendar className="w-3 h-3 text-emerald-600 group-hover:scale-110 transition-transform" />
+                <span className="font-mono font-bold text-slate-800 group-hover:text-emerald-900">{toPersianDigits(invoiceDate)}</span>
+                <Pencil className="w-2.5 h-2.5 text-slate-400 group-hover:text-emerald-600" />
+              </button>
               <span>•</span>
               <span className="text-slate-700 font-bold">
                 {invoiceType === 'standard' ? 'قالب استاندارد' : invoiceType === 'official' ? 'قالب رسمی' : invoiceType === 'simple' ? 'قالب ساده' : 'فیش پرینتر'}
@@ -2001,10 +2012,17 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   <span className="text-slate-400 font-normal">شماره:</span>
                   <span>{toPersianDigits(invoiceNumber)}</span>
                 </span>
-                <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-800 px-2 py-0.5 rounded-lg font-['Vazirmatn'] text-[11px] font-bold border border-slate-200/60">
-                  <span className="text-slate-400 font-normal">تاریخ:</span>
-                  <span>{toPersianDigits(invoiceDate)}</span>
-                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsDateModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 bg-white hover:bg-emerald-50 active:scale-95 text-slate-800 hover:text-emerald-900 px-2.5 py-1 rounded-lg font-['Vazirmatn'] text-[11px] font-bold border border-slate-200 hover:border-emerald-400 shadow-2xs transition-all cursor-pointer group"
+                  title="کلیک برای تغییر تاریخ صدور فاکتور / پیش‌فاکتور"
+                >
+                  <Calendar className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
+                  <span className="text-slate-500 font-normal">تاریخ:</span>
+                  <span className="font-mono text-emerald-700 font-extrabold">{toPersianDigits(invoiceDate)}</span>
+                  <Pencil className="w-3 h-3 text-slate-400 group-hover:text-emerald-600 transition-colors" />
+                </button>
                 <button
                   type="button"
                   onClick={() => setIsSettingsModalOpen(true)}
@@ -4447,15 +4465,35 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    تاریخ صدور:
-                  </label>
-                  <input
-                    type="text"
-                    value={invoiceDate}
-                    onChange={(e) => setInvoiceDate(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 text-center focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      تاریخ صدور:
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsDateModalOpen(true)}
+                      className="text-[10px] text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Calendar className="w-3 h-3 text-emerald-600" />
+                      <span>تقویم شمسی</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={invoiceDate}
+                      onChange={(e) => setInvoiceDate(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 text-center focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsDateModalOpen(true)}
+                      className="h-9 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl flex items-center justify-center cursor-pointer transition-colors shrink-0"
+                      title="انتخاب از تقویم"
+                    >
+                      <Calendar className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -5581,6 +5619,19 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
           </div>
         </div>
       )}
+
+      {/* MODAL: INVOICE / PROFORMA DATE PICKER (تغییر تاریخ فاکتور یا پیش‌فاکتور) */}
+      <InvoiceDateModal
+        isOpen={isDateModalOpen}
+        currentDate={invoiceDate}
+        invoiceNumber={invoiceNumber}
+        isProforma={isProforma}
+        onSave={(newDate) => {
+          setInvoiceDate(newDate);
+          showToast(`تاریخ سند به ${toPersianDigits(newDate)} تغییر یافت.`);
+        }}
+        onClose={() => setIsDateModalOpen(false)}
+      />
     </div>
   );
 };

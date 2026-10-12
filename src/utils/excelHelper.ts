@@ -3,6 +3,13 @@ import { Product, ProductVariant, Customer, Invoice, ExitSlipData, CustomerTrans
 import { getCurrentJalaliDate } from './jalali';
 import { generateNextProductCode } from './codeGenerator';
 import { StorageService } from './storage';
+import {
+  tokenizeSearchQuery,
+  checkInvoiceMatchesSearch,
+  checkItemMatchesSearch,
+  checkInvoiceMetadataMatches,
+  normalizeDateString
+} from './searchHelper';
 
 // Helper to normalize strings for header matching
 function normalizeKey(str: string): string {
@@ -306,6 +313,7 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
   const { customer, currency = 'تومان' } = options;
   const exitSlipLogs = options.exitSlipLogs || StorageService.getExitSlipLogs();
   const isAllCustomers = !customer || customer.id === 'all';
+  const searchTokens = tokenizeSearchQuery(options.searchQuery || '');
 
   // 1. Filter customer invoices
   let customerInvoices = options.invoices.filter((inv) => {
@@ -317,31 +325,20 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
   });
 
   // 2. Apply filters
-  if (options.searchQuery && options.searchQuery.trim()) {
-    const q = options.searchQuery.trim().toLowerCase();
+  if (searchTokens.length > 0) {
     customerInvoices = customerInvoices.filter((inv) => {
       const slip = exitSlipLogs[inv.id];
-      const slipNum = slip?.slipNumber || '';
-      return (
-        inv.invoiceNumber.toLowerCase().includes(q) ||
-        slipNum.toLowerCase().includes(q) ||
-        inv.customerName.toLowerCase().includes(q) ||
-        (inv.customerPhone && inv.customerPhone.includes(q)) ||
-        (inv.notes && inv.notes.toLowerCase().includes(q)) ||
-        (slip?.receiverName && slip.receiverName.toLowerCase().includes(q)) ||
-        (slip?.vehicleInfo && slip.vehicleInfo.toLowerCase().includes(q)) ||
-        inv.items.some((it) => it.productName.toLowerCase().includes(q) || (it.variantName && it.variantName.toLowerCase().includes(q)))
-      );
+      return checkInvoiceMatchesSearch(inv, slip, searchTokens);
     });
   }
 
   if (options.dateFrom && options.dateFrom.trim()) {
-    const from = options.dateFrom.trim();
-    customerInvoices = customerInvoices.filter((i) => i.date >= from);
+    const from = normalizeDateString(options.dateFrom);
+    customerInvoices = customerInvoices.filter((i) => normalizeDateString(i.date) >= from);
   }
   if (options.dateTo && options.dateTo.trim()) {
-    const to = options.dateTo.trim();
-    customerInvoices = customerInvoices.filter((i) => i.date <= to);
+    const to = normalizeDateString(options.dateTo);
+    customerInvoices = customerInvoices.filter((i) => normalizeDateString(i.date) <= to);
   }
   if (options.docType === 'regular') {
     customerInvoices = customerInvoices.filter((i) => !i.isProforma);
@@ -434,33 +431,38 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
     const docTypeFa = inv.isProforma ? 'پیش‌فاکتور' : 'فاکتور فروش قطعی';
 
     if (inv.items.length === 0) {
-      itemRows.push({
-        'ردیف': itemCounter++,
-        'تاریخ': inv.date,
-        'شماره فاکتور': inv.invoiceNumber,
-        'شماره حواله خروج': slipNum,
-        'طرف حساب / خریدار': inv.customerName || 'مشتری گذری',
-        'نوع و نام جنس': '(بدون قلم کالا)',
-        'تنوع / مدل': '—',
-        'مقدار جنس': 0,
-        'واحد سنجش': '—',
-        'نوع سند': docTypeFa,
-        'کد کالا': '—',
-        [`فی واحد (${currency})`]: 0,
-        [`تخفیف ردیف (${currency})`]: 0,
-        [`مبلغ کل ردیف (${currency})`]: 0,
-        'وضعیت تسویه فاکتور': payStatusFa,
-        [`مبلغ پرداختی فاکتور (${currency})`]: inv.paidAmount || 0,
-        [`مانده فاکتور (${currency})`]: Math.max(0, inv.finalTotal - (inv.paidAmount || 0)),
-        'شیوه پرداخت': payMethodFa,
-        'وضعیت تحویل فیزیکی بار': slip.isDelivered ? 'تحویل شد' : 'در انتظار تحویل',
-        'تاریخ و ساعت تحویل': slip.deliveredAt || '—',
-        'نام راننده / گیرنده': slip.receiverName || '—',
-        'مشخصات خودرو': slip.vehicleInfo || '—',
-        'توضیحات فاکتور': inv.notes || '',
-      });
+      if (searchTokens.length === 0 || checkInvoiceMetadataMatches(inv, slip, searchTokens)) {
+        itemRows.push({
+          'ردیف': itemCounter++,
+          'تاریخ': inv.date,
+          'شماره فاکتور': inv.invoiceNumber,
+          'شماره حواله خروج': slipNum,
+          'طرف حساب / خریدار': inv.customerName || 'مشتری گذری',
+          'نوع و نام جنس': '(بدون قلم کالا)',
+          'تنوع / مدل': '—',
+          'مقدار جنس': 0,
+          'واحد سنجش': '—',
+          'نوع سند': docTypeFa,
+          'کد کالا': '—',
+          [`فی واحد (${currency})`]: 0,
+          [`تخفیف ردیف (${currency})`]: 0,
+          [`مبلغ کل ردیف (${currency})`]: 0,
+          'وضعیت تسویه فاکتور': payStatusFa,
+          [`مبلغ پرداختی فاکتور (${currency})`]: inv.paidAmount || 0,
+          [`مانده فاکتور (${currency})`]: Math.max(0, inv.finalTotal - (inv.paidAmount || 0)),
+          'شیوه پرداخت': payMethodFa,
+          'وضعیت تحویل فیزیکی بار': slip.isDelivered ? 'تحویل شد' : 'در انتظار تحویل',
+          'تاریخ و ساعت تحویل': slip.deliveredAt || '—',
+          'نام راننده / گیرنده': slip.receiverName || '—',
+          'مشخصات خودرو': slip.vehicleInfo || '—',
+          'توضیحات فاکتور': inv.notes || '',
+        });
+      }
     } else {
       for (const it of inv.items) {
+        if (searchTokens.length > 0 && !checkItemMatchesSearch(it, inv, slip, searchTokens)) {
+          continue;
+        }
         itemRows.push({
           'ردیف': itemCounter++,
           'تاریخ': inv.date,
@@ -533,29 +535,34 @@ export function exportPersonInvoicesAndExitSlipsToExcel(options: ExportPersonOpt
     const docTypeFa = inv.isProforma ? 'پیش‌فاکتور' : 'فاکتور قطعی';
 
     if (inv.items.length === 0) {
-      slipRows.push({
-        'ردیف': slipCounter++,
-        'تاریخ حواله': inv.date,
-        'شماره حواله خروج (بیجک)': slipNum,
-        'شماره فاکتور متناظر': inv.invoiceNumber,
-        'نام طرف حساب / خریدار': inv.customerName || 'مشتری گذری',
-        'نوع جنس / نام کالای تحویلی': '(بدون قلم کالا)',
-        'تنوع / مدل کالا': '—',
-        'مقدار تحویلی': 0,
-        'واحد سنجش': '—',
-        'نوع فاکتور': docTypeFa,
-        'وضعیت تحویل فیزیکی بار': isDeliveredFa,
-        'تاریخ و ساعت تحویل': slip.deliveredAt || '—',
-        'انباردار تحویل‌دهنده': slip.deliveredBy || '—',
-        'نام راننده / تحویل‌گیرنده': slip.receiverName || '—',
-        'تلفن تماس راننده': slip.receiverPhone || '—',
-        'مشخصات خودرو و پلاک': slip.vehicleInfo || '—',
-        'شماره بارنامه / یادداشت خروج': slip.deliveryNotes || '—',
-        'وضعیت چاپ برگه خروج': printStatusFa,
-        'زمان آخرین چاپ': slip.lastPrintedAt || '—',
-      });
+      if (searchTokens.length === 0 || checkInvoiceMetadataMatches(inv, slip, searchTokens)) {
+        slipRows.push({
+          'ردیف': slipCounter++,
+          'تاریخ حواله': inv.date,
+          'شماره حواله خروج (بیجک)': slipNum,
+          'شماره فاکتور متناظر': inv.invoiceNumber,
+          'نام طرف حساب / خریدار': inv.customerName || 'مشتری گذری',
+          'نوع جنس / نام کالای تحویلی': '(بدون قلم کالا)',
+          'تنوع / مدل کالا': '—',
+          'مقدار تحویلی': 0,
+          'واحد سنجش': '—',
+          'نوع فاکتور': docTypeFa,
+          'وضعیت تحویل فیزیکی بار': isDeliveredFa,
+          'تاریخ و ساعت تحویل': slip.deliveredAt || '—',
+          'انباردار تحویل‌دهنده': slip.deliveredBy || '—',
+          'نام راننده / تحویل‌گیرنده': slip.receiverName || '—',
+          'تلفن تماس راننده': slip.receiverPhone || '—',
+          'مشخصات خودرو و پلاک': slip.vehicleInfo || '—',
+          'شماره بارنامه / یادداشت خروج': slip.deliveryNotes || '—',
+          'وضعیت چاپ برگه خروج': printStatusFa,
+          'زمان آخرین چاپ': slip.lastPrintedAt || '—',
+        });
+      }
     } else {
       for (const it of inv.items) {
+        if (searchTokens.length > 0 && !checkItemMatchesSearch(it, inv, slip, searchTokens)) {
+          continue;
+        }
         slipRows.push({
           'ردیف': slipCounter++,
           'تاریخ حواله': inv.date,

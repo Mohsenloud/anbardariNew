@@ -188,12 +188,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       if (res.success) {
         setTelegramBackupResult({
           success: true,
-          message: res.message || 'نسخه پشتیبان پایگاه‌داده (فایل اسکریپت SQL) با موفقیت به تلگرام ثبت‌شده در سیستم ارسال شد.',
+          message: res.message || 'نسخه‌های پشتیبان پایگاه‌داده (فایل‌های SQL و JSON) با موفقیت به تلگرام ثبت‌شده در سیستم ارسال شدند.',
         });
       } else {
         setTelegramBackupResult({
           success: false,
-          message: res.error || res.message || 'خطا در ارسال فایل SQL به تلگرام.',
+          message: res.error || res.message || 'خطا در ارسال فایل‌های پشتیبان به تلگرام.',
         });
       }
     } catch (err: any) {
@@ -209,18 +209,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleDownloadSqlDump = async () => {
     setIsDownloadingSql(true);
     try {
-      const res = await fetch('/api/database/export-sql');
-      if (!res.ok) throw new Error('خطا در دریافت فایل SQL از سرور');
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const today = new Date().toISOString().slice(0, 10);
-      a.download = `mana_db_${today}.sql`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      const ok = await StorageService.downloadPostgresSqlDump();
+      if (!ok) {
+        alert('خطا در دریافت فایل SQL از سرور.');
+      }
     } catch (err: any) {
       alert('خطا در دانلود اسکریپت SQL: ' + (err?.message || ''));
     } finally {
@@ -1942,17 +1934,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onClick={handleSendSqlBackupToTelegram}
                   disabled={isSendingTelegramBackup}
                   className="flex-1 py-2.5 px-4 bg-sky-600 hover:bg-sky-500 active:scale-98 text-white rounded-xl text-xs font-black transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  title="ارسال مستقیم فایل اسکریپت SQL دیتابیس به تلگرام ثبت‌شده در سیستم"
+                  title="ارسال مستقیم فایل‌های اسکریپت SQL و بکاپ JSON دیتابیس به تلگرام ثبت‌شده در سیستم"
                 >
                   {isSendingTelegramBackup ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin text-white" />
-                      <span>در حال آماده‌سازی و ارسال فایل SQL به تلگرام...</span>
+                      <span>در حال آماده‌سازی و ارسال فایل‌های SQL و JSON به تلگرام...</span>
                     </>
                   ) : (
                     <>
                       <Send className="w-4 h-4 text-sky-200" />
-                      <span>ارسال فایل SQL دیتابیس به تلگرام</span>
+                      <span>ارسال فایل‌های پشتیبان (SQL + JSON) به تلگرام</span>
                     </>
                   )}
                 </button>

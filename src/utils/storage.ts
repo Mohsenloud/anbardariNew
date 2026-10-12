@@ -1216,12 +1216,29 @@ export const StorageService = {
     error?: string;
   }> {
     try {
-      let payload: any = {};
-      if (typeof optionsOrFilename === 'string') {
-        payload = { filename: optionsOrFilename };
-      } else if (optionsOrFilename && typeof optionsOrFilename === 'object') {
-        payload = optionsOrFilename;
+      // 1. اول اطلاعات کلاینت را در سرور ذخیره و همگام می‌کنیم تا دیتابیس سرور حتماً شامل تمام کالاهای جدید باشد
+      try {
+        await this.pushToServer();
+      } catch (pushErr) {
+        console.warn('[Sync Before Telegram Backup]:', pushErr);
       }
+
+      // 2. اسنپ‌شات کامل کلاینت (شامل تمام ۱۷ کالا، فاکتورها، مشتریان و تنظیمات) را استخراج می‌کنیم
+      const clientSnapshot = this.exportAllDataAsObject();
+
+      let payload: any = {
+        clientData: clientSnapshot,
+        products: clientSnapshot.products,
+        customers: clientSnapshot.customers,
+        invoices: clientSnapshot.invoices,
+      };
+
+      if (typeof optionsOrFilename === 'string') {
+        payload.filename = optionsOrFilename;
+      } else if (optionsOrFilename && typeof optionsOrFilename === 'object') {
+        payload = { ...payload, ...optionsOrFilename };
+      }
+
       const res = await fetch('/api/telegram/send-backup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1269,7 +1286,15 @@ export const StorageService = {
 
   async downloadPostgresSqlDump(): Promise<boolean> {
     try {
-      const res = await fetch('/api/database/export-sql');
+      try {
+        await this.pushToServer();
+      } catch {}
+      const clientSnapshot = this.exportAllDataAsObject();
+      const res = await fetch('/api/database/export-sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientData: clientSnapshot }),
+      });
       if (!res.ok) throw new Error('خطا در دریافت فایل SQL از سرور');
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -3598,8 +3623,8 @@ export const StorageService = {
     };
   },
 
-  exportAllData(): string {
-    const backup = {
+  exportAllDataAsObject(): Record<string, any> {
+    return {
       version: '1.2',
       exportDate: getCurrentJalaliDate(),
       timestamp: new Date().toISOString(),
@@ -3613,9 +3638,17 @@ export const StorageService = {
       users: this.getUsers(),
       activityLogs: this.getActivityLogs(),
       directTransfers: this.getDirectTransfers(),
+      savedVehicles: this.getSavedVehicles(),
+      customerTransactions: this.getCustomerTransactions(),
+      categories: this.getCategories(),
       currentUserId: this.getActiveUser().id,
+      tombstones: this.getDeletedTombstones(),
+      deletedInvoiceIds: Array.from(this.getDeletedInvoiceIds()),
     };
-    return JSON.stringify(backup, null, 2);
+  },
+
+  exportAllData(): string {
+    return JSON.stringify(this.exportAllDataAsObject(), null, 2);
   },
 
   importAllData(jsonString: string): boolean {

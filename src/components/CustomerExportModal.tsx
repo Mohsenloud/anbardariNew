@@ -32,6 +32,14 @@ import { exportPersonInvoicesAndExitSlipsToExcel } from '../utils/excelHelper';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate, getCurrentJalaliTime } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
 import { exportElementToPdf, printElementInNewWindow } from '../utils/pdfHelper';
+import {
+  tokenizeSearchQuery,
+  checkInvoiceMatchesSearch,
+  checkItemMatchesSearch,
+  checkInvoiceMetadataMatches,
+  checkTokenMatchesText,
+  normalizeDateString
+} from '../utils/searchHelper';
 
 interface CustomerExportModalProps {
   isOpen: boolean;
@@ -137,15 +145,14 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
     return list;
   }, [customers, invoices]);
 
-  // Filtered customer list for selector
+  // Filtered customer list for selector (robust Persian/Arabic/English search)
   const filteredCustomerList = useMemo(() => {
     if (!customerSearch.trim()) return combinedCustomers;
-    const q = customerSearch.trim().toLowerCase();
-    return combinedCustomers.filter((c) =>
-      c.name.toLowerCase().includes(q) ||
-      (c.phone && c.phone.includes(q)) ||
-      (c.nationalId && c.nationalId.includes(q))
-    );
+    const tokens = tokenizeSearchQuery(customerSearch);
+    return combinedCustomers.filter((c) => {
+      const candidates = [c.name, c.phone, c.nationalId, c.address, c.notes];
+      return tokens.every((tok) => candidates.some((cand) => checkTokenMatchesText(tok, cand)));
+    });
   }, [combinedCustomers, customerSearch]);
 
   const isAllCustomers = selectedCustomerId === 'all' || !selectedCustomerId;
@@ -166,33 +173,29 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
     );
   }, [invoices, currentCustomer, isAllCustomers]);
 
+  // Tokenized search query for items & invoices
+  const searchTokens = useMemo(() => {
+    return tokenizeSearchQuery(itemSearch);
+  }, [itemSearch]);
+
   // Invoices after applying user filters
   const filteredCustomerInvoices = useMemo(() => {
     let result = [...targetInvoices];
 
-    if (itemSearch.trim()) {
-      const q = itemSearch.trim().toLowerCase();
+    if (searchTokens.length > 0) {
       result = result.filter((inv) => {
         const slip = exitSlipLogs[inv.id];
-        const slipNum = slip?.slipNumber || '';
-        return (
-          inv.invoiceNumber.toLowerCase().includes(q) ||
-          slipNum.toLowerCase().includes(q) ||
-          inv.customerName.toLowerCase().includes(q) ||
-          (inv.customerPhone && inv.customerPhone.includes(q)) ||
-          (inv.notes && inv.notes.toLowerCase().includes(q)) ||
-          (slip?.receiverName && slip.receiverName.toLowerCase().includes(q)) ||
-          (slip?.vehicleInfo && slip.vehicleInfo.toLowerCase().includes(q)) ||
-          inv.items.some((it) => it.productName.toLowerCase().includes(q) || (it.variantName && it.variantName.toLowerCase().includes(q)))
-        );
+        return checkInvoiceMatchesSearch(inv, slip, searchTokens);
       });
     }
 
     if (dateFrom.trim()) {
-      result = result.filter((i) => i.date >= dateFrom.trim());
+      const from = normalizeDateString(dateFrom);
+      result = result.filter((i) => normalizeDateString(i.date) >= from);
     }
     if (dateTo.trim()) {
-      result = result.filter((i) => i.date <= dateTo.trim());
+      const to = normalizeDateString(dateTo);
+      result = result.filter((i) => normalizeDateString(i.date) <= to);
     }
     if (docTypeFilter === 'regular') {
       result = result.filter((i) => !i.isProforma);
@@ -207,7 +210,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
 
     result.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.invoiceNumber || '').localeCompare(a.invoiceNumber || ''));
     return result;
-  }, [targetInvoices, itemSearch, dateFrom, dateTo, docTypeFilter, deliveryFilter, exitSlipLogs]);
+  }, [targetInvoices, searchTokens, dateFrom, dateTo, docTypeFilter, deliveryFilter, exitSlipLogs]);
 
   // Flattened detailed item rows (تاریخ، شماره فاکتور، شماره حواله، نوع و مقدار جنس)
   const detailedReportItems = useMemo(() => {
@@ -240,30 +243,35 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
       const isDelivered = Boolean(slip.isDelivered);
 
       if (inv.items.length === 0) {
-        list.push({
-          id: `${inv.id}-empty`,
-          invoiceId: inv.id,
-          date: inv.date || '',
-          invoiceNumber: inv.invoiceNumber,
-          slipNumber: slipNum,
-          customerName: inv.customerName || 'مشتری گذری',
-          customerPhone: inv.customerPhone || '',
-          productName: '(بدون قلم کالا)',
-          variantName: '',
-          quantity: 0,
-          unit: '—',
-          unitPrice: 0,
-          total: inv.finalTotal,
-          isProforma: !!inv.isProforma,
-          paymentStatus: inv.paymentStatus || 'unpaid',
-          isDelivered,
-          deliveredAt: slip.deliveredAt,
-          deliveredBy: slip.deliveredBy,
-          receiverName: slip.receiverName,
-          vehicleInfo: slip.vehicleInfo,
-        });
+        if (searchTokens.length === 0 || checkInvoiceMetadataMatches(inv, slip, searchTokens)) {
+          list.push({
+            id: `${inv.id}-empty`,
+            invoiceId: inv.id,
+            date: inv.date || '',
+            invoiceNumber: inv.invoiceNumber,
+            slipNumber: slipNum,
+            customerName: inv.customerName || 'مشتری گذری',
+            customerPhone: inv.customerPhone || '',
+            productName: '(بدون قلم کالا)',
+            variantName: '',
+            quantity: 0,
+            unit: '—',
+            unitPrice: 0,
+            total: inv.finalTotal,
+            isProforma: !!inv.isProforma,
+            paymentStatus: inv.paymentStatus || 'unpaid',
+            isDelivered,
+            deliveredAt: slip.deliveredAt,
+            deliveredBy: slip.deliveredBy,
+            receiverName: slip.receiverName,
+            vehicleInfo: slip.vehicleInfo,
+          });
+        }
       } else {
         inv.items.forEach((it, idx) => {
+          if (searchTokens.length > 0 && !checkItemMatchesSearch(it, inv, slip, searchTokens)) {
+            return;
+          }
           list.push({
             id: `${inv.id}-${it.productId || idx}`,
             invoiceId: inv.id,
@@ -291,7 +299,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
     });
 
     return list;
-  }, [filteredCustomerInvoices, exitSlipLogs]);
+  }, [filteredCustomerInvoices, exitSlipLogs, searchTokens]);
 
   // Stats calculation
   const stats = useMemo(() => {
@@ -306,8 +314,6 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
 
     let deliveredSlips = 0;
     let pendingSlips = 0;
-    let totalItemsCount = 0;
-    let totalPhysicalQty = 0;
 
     filteredCustomerInvoices.forEach((inv) => {
       const slip = exitSlipLogs[inv.id];
@@ -316,11 +322,10 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
       } else {
         pendingSlips++;
       }
-      inv.items.forEach((it) => {
-        totalItemsCount++;
-        totalPhysicalQty += (Number(it.quantity) || 0);
-      });
     });
+
+    const totalItemsCount = detailedReportItems.length;
+    const totalPhysicalQty = detailedReportItems.reduce((s, it) => s + (Number(it.quantity) || 0), 0);
 
     return {
       totalInvoices,
@@ -336,7 +341,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
       totalItemsCount,
       totalPhysicalQty,
     };
-  }, [filteredCustomerInvoices, exitSlipLogs]);
+  }, [filteredCustomerInvoices, exitSlipLogs, detailedReportItems]);
 
   // Handle Excel Export
   const handleExportExcel = () => {
@@ -512,39 +517,81 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                     type="text"
                     value={customerSearch}
                     onChange={(e) => setCustomerSearch(e.target.value)}
-                    placeholder="جستجوی نام یا تلفن مشتری..."
-                    className="w-full pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && filteredCustomerList.length > 0) {
+                        setSelectedCustomerId(filteredCustomerList[0].id);
+                      }
+                    }}
+                    placeholder="جستجوی نام، تلفن یا کد مشتری..."
+                    className="w-full pr-8.5 pl-8 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 shadow-2xs"
                   />
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  {customerSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setCustomerSearch('')}
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer"
+                      title="پاک کردن جستجوی مشتری"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
 
+            {/* Quick customer match suggestion */}
+            {customerSearch.trim() && filteredCustomerList.length > 0 && selectedCustomerId !== filteredCustomerList[0].id && (
+              <div className="flex items-center gap-2 pt-1 text-xs">
+                <span className="text-[11px] text-slate-500">منطبق‌ترین مشتری:</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCustomerId(filteredCustomerList[0].id)}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                >
+                  <Check className="w-3 h-3 text-emerald-600" />
+                  <span>انتخاب سریع «{filteredCustomerList[0].name}»</span>
+                </button>
+              </div>
+            )}
+
             {/* Selected Customer Details Chip */}
             {currentCustomer && (
-              <div className="p-2.5 bg-white rounded-xl border border-slate-200 text-xs flex flex-wrap items-center gap-x-4 gap-y-1.5 text-slate-600">
-                <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>{currentCustomer.name}</span>
+              <div className="p-2.5 bg-white rounded-xl border border-slate-200 text-xs flex flex-wrap items-center justify-between gap-2 text-slate-600">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>طرف حساب فعال: {currentCustomer.name}</span>
+                  </div>
+                  {currentCustomer.phone && (
+                    <div className="flex items-center gap-1">
+                      <Phone className="w-3 h-3 text-slate-400" />
+                      <span className="font-mono">{toPersianDigits(currentCustomer.phone)}</span>
+                    </div>
+                  )}
+                  {currentCustomer.nationalId && (
+                    <div className="flex items-center gap-1">
+                      <CreditCard className="w-3 h-3 text-slate-400" />
+                      <span>کد ملی/اقتصادی: <strong className="font-mono text-slate-700">{toPersianDigits(currentCustomer.nationalId)}</strong></span>
+                    </div>
+                  )}
+                  {currentCustomer.address && (
+                    <div className="flex items-center gap-1 text-[11px] text-slate-500 max-w-sm truncate">
+                      <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span>{currentCustomer.address}</span>
+                    </div>
+                  )}
                 </div>
-                {currentCustomer.phone && (
-                  <div className="flex items-center gap-1">
-                    <Phone className="w-3 h-3 text-slate-400" />
-                    <span className="font-mono">{toPersianDigits(currentCustomer.phone)}</span>
-                  </div>
-                )}
-                {currentCustomer.nationalId && (
-                  <div className="flex items-center gap-1">
-                    <CreditCard className="w-3 h-3 text-slate-400" />
-                    <span>کد ملی/اقتصادی: <strong className="font-mono text-slate-700">{toPersianDigits(currentCustomer.nationalId)}</strong></span>
-                  </div>
-                )}
-                {currentCustomer.address && (
-                  <div className="flex items-center gap-1 text-[11px] text-slate-500 max-w-sm truncate">
-                    <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                    <span>{currentCustomer.address}</span>
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCustomerId('all');
+                    setCustomerSearch('');
+                  }}
+                  className="px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors cursor-pointer shrink-0"
+                >
+                  ✕ تغییر به کلیه مشتریان
+                </button>
               </div>
             )}
           </div>
@@ -695,14 +742,30 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5 text-xs">
               {/* Search text */}
               <div className="sm:col-span-1">
-                <label className="text-[11px] text-slate-500 block mb-1">جستجو در اقلام / اسناد:</label>
-                <input
-                  type="text"
-                  value={itemSearch}
-                  onChange={(e) => setItemSearch(e.target.value)}
-                  placeholder="کالا، شماره فاکتور، حواله..."
-                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                />
+                <label className="text-[11px] text-slate-600 font-bold block mb-1">
+                  جستجو در اقلام / اسناد:
+                </label>
+                <div className="relative">
+                  <input
+                    id="export-search-input"
+                    type="text"
+                    value={itemSearch}
+                    onChange={(e) => setItemSearch(e.target.value)}
+                    placeholder="کالا، کد، فاکتور، حواله، مشتری..."
+                    className="w-full pr-8 pl-7 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 shadow-2xs"
+                  />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  {itemSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setItemSearch('')}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer"
+                      title="پاک کردن جستجو"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Date From */}
@@ -764,8 +827,11 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
 
             {(itemSearch || dateFrom || dateTo || docTypeFilter !== 'all' || deliveryFilter !== 'all') && (
               <div className="flex items-center justify-between pt-1">
-                <span className="text-[11px] text-emerald-700 font-semibold">
-                  فیلتر فعال است: نمایش {toPersianDigits(filteredCustomerInvoices.length)} سند ({toPersianDigits(detailedReportItems.length)} قلم کالا)
+                <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1.5">
+                  <Filter className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    فیلتر و جستجوی فعال: نمایش {toPersianDigits(filteredCustomerInvoices.length)} سند ({toPersianDigits(detailedReportItems.length)} سطر کالا)
+                  </span>
                 </span>
                 <button
                   id="clear-export-filters-btn"
@@ -778,7 +844,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                   }}
                   className="text-[11px] text-rose-600 hover:text-rose-800 font-bold underline cursor-pointer"
                 >
-                  پاک کردن همه فیلترها
+                  پاک کردن همه فیلترها و جستجو
                 </button>
               </div>
             )}

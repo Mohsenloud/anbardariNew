@@ -151,8 +151,9 @@ export function isTelegramConfigured(settings?: StoreSettings): boolean {
 
 export function formatInvoiceTelegramCaption(invoice: Invoice, settings?: StoreSettings): string {
   const store = settings?.storeName || 'سامانه حسابداری و فروشگاه';
+  const currency = settings?.currency || 'تومان';
   const lines: string[] = [
-    `🧾 <b>${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور فروش'} شماره ${invoice.invoiceNumber}</b>`,
+    `🧾 <b>${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور فروش'} شماره ${toPersianDigits(invoice.invoiceNumber)}</b>`,
     `🏢 <b>فروشگاه:</b> ${store}`,
     `👤 <b>خریدار:</b> ${invoice.customerName}`,
   ];
@@ -161,11 +162,20 @@ export function formatInvoiceTelegramCaption(invoice: Invoice, settings?: StoreS
     lines.push(`📞 <b>شماره تماس:</b> ${toPersianDigits(invoice.customerPhone)}`);
   }
 
-  lines.push(`💰 <b>مبلغ نهایی فاکتور:</b> ${formatPrice(invoice.finalTotal)}`);
+  lines.push(`💰 <b>مبلغ نهایی:</b> ${toPersianDigits(formatPrice(invoice.finalTotal))} ${currency}`);
   lines.push(`📅 <b>تاریخ صدور:</b> ${toPersianDigits(invoice.date)}`);
 
   if (invoice.items && invoice.items.length > 0) {
-    lines.push(`📦 <b>تعداد اقلام:</b> ${toPersianDigits(invoice.items.length)} ردیف کالا`);
+    lines.push(`📦 <b>اقلام فاکتور شده (${toPersianDigits(invoice.items.length)} قلم):</b>`);
+    invoice.items.slice(0, 15).forEach((item, idx) => {
+      const name = item.productName || item.name || 'کالا';
+      const qty = toPersianDigits(item.quantity);
+      const unit = item.unit ? ` ${item.unit}` : '';
+      lines.push(`▫️ ${toPersianDigits(idx + 1)}. ${name}: ${qty}${unit}`);
+    });
+    if (invoice.items.length > 15) {
+      lines.push(`▫️ <i>... و ${toPersianDigits(invoice.items.length - 15)} قلم دیگر</i>`);
+    }
   }
 
   lines.push('');
@@ -244,26 +254,46 @@ export function formatInboundReceiptTelegramCaption(
 }
 
 /**
- * گزارش متنی ساده و کوتاه فاکتور فروش
+ * گزارش متنی ساده و تفصیلی فاکتور فروش همراه با لیست اقلام
  */
 export function formatInvoiceTextReport(invoice: Invoice, settings?: StoreSettings): string {
   const store = settings?.storeName || 'سامانه حسابداری و بازرگانی';
+  const currency = settings?.currency || 'تومان';
+
+  // اقلام فاکتور شده
+  const itemsLines: string[] = [];
+  if (invoice.items && invoice.items.length > 0) {
+    itemsLines.push(`📦 <b>اقلام فاکتور شده (${toPersianDigits(invoice.items.length)} قلم):</b>`);
+    invoice.items.forEach((item, index) => {
+      const num = toPersianDigits(index + 1);
+      const name = item.productName || item.name || 'کالای بدون عنوان';
+      const qty = toPersianDigits(item.quantity);
+      const unit = item.unit ? ` ${item.unit}` : '';
+      const unitPrice = toPersianDigits(formatPrice(item.unitPrice || item.price || 0));
+      const lineTotal = toPersianDigits(
+        formatPrice(item.total || ((item.quantity || 1) * (item.unitPrice || item.price || 0)))
+      );
+      itemsLines.push(`  ▫️ ${num}. <b>${name}</b>: ${qty}${unit} × ${unitPrice} = <b>${lineTotal} ${currency}</b>`);
+    });
+  }
+
   const lines = [
     `🧾 <b>گزارش ثبت فاکتور فروش</b>`,
     `▫️ شماره فاکتور: <code>${toPersianDigits(invoice.invoiceNumber)}</code>`,
     `▫️ خریدار: <b>${invoice.customerName}</b>`,
     invoice.customerPhone ? `▫️ تلفن: <code>${toPersianDigits(invoice.customerPhone)}</code>` : '',
     `▫️ تاریخ صدور: ${toPersianDigits(invoice.date)}`,
-    `▫️ تعداد اقلام: ${toPersianDigits(invoice.items.length)} قلم کالا`,
-    `▫️ مبلغ کل: <b>${toPersianDigits(formatPrice(invoice.finalTotal))} تومان</b>`,
+    ...(itemsLines.length > 0 ? itemsLines : [`▫️ تعداد اقلام: ${toPersianDigits(invoice.items?.length || 0)} قلم کالا`]),
+    `▫️ مبلغ کل فاکتور: <b>${toPersianDigits(formatPrice(invoice.finalTotal))} ${currency}</b>`,
     `▫️ وضعیت پرداخت: ${invoice.paymentStatus === 'paid' ? '✅ تسویه کامل شده' : invoice.paymentStatus === 'partial' ? '⚠️ بیعانه / بخشی' : '⏳ نسیه / حساب دفتری'}`,
+    invoice.notes ? `▫️ توضیحات: <i>«${invoice.notes}»</i>` : '',
     store ? `🏪 <i>${store}</i>` : '',
   ].filter(Boolean);
   return lines.join('\n');
 }
 
 /**
- * گزارش متنی ساده و کوتاه فاکتور خرید کالا
+ * گزارش متنی فاکتور خرید کالا همراه با لیست اقلام
  */
 export function formatPurchaseInvoiceTextReport(purchaseInvoice: PurchaseInvoice, settings?: StoreSettings): string {
   const store = settings?.storeName || 'سامانه حسابداری و بازرگانی';
@@ -274,13 +304,27 @@ export function formatPurchaseInvoiceTextReport(purchaseInvoice: PurchaseInvoice
       ? '⚠️ پرداخت بخشی / بیعانه'
       : '⏳ حساب دفتری / نسیه';
 
+  const itemsLines: string[] = [];
+  if (purchaseInvoice.items && purchaseInvoice.items.length > 0) {
+    itemsLines.push(`📦 <b>اقلام فاکتور خرید (${toPersianDigits(purchaseInvoice.items.length)} قلم):</b>`);
+    purchaseInvoice.items.forEach((item, index) => {
+      const num = toPersianDigits(index + 1);
+      const name = item.productName || 'کالا';
+      const qty = toPersianDigits(item.quantity);
+      const unit = item.unit ? ` ${item.unit}` : '';
+      const unitPrice = toPersianDigits(formatPrice(item.buyPrice || 0));
+      const lineTotal = toPersianDigits(formatPrice(item.total || ((item.quantity || 1) * (item.buyPrice || 0))));
+      itemsLines.push(`  ▫️ ${num}. <b>${name}</b>: ${qty}${unit} × ${unitPrice} = <b>${lineTotal} ${currency}</b>`);
+    });
+  }
+
   const lines = [
     `🛒 <b>گزارش ثبت فاکتور خرید کالا</b>`,
     `▫️ شماره فاکتور: <code>${toPersianDigits(purchaseInvoice.invoiceNumber)}</code>`,
     `▫️ تامین‌کننده: <b>${purchaseInvoice.supplierName}</b>`,
     purchaseInvoice.supplierPhone ? `▫️ تلفن: <code>${toPersianDigits(purchaseInvoice.supplierPhone)}</code>` : '',
     `▫️ تاریخ صدور: ${toPersianDigits(purchaseInvoice.date)}`,
-    `▫️ تعداد اقلام: ${toPersianDigits(purchaseInvoice.items?.length || 0)} قلم کالا`,
+    ...(itemsLines.length > 0 ? itemsLines : [`▫️ تعداد اقلام: ${toPersianDigits(purchaseInvoice.items?.length || 0)} قلم کالا`]),
     `▫️ مبلغ نهایی: <b>${toPersianDigits(formatPrice(purchaseInvoice.finalTotal))} ${currency}</b>`,
     `▫️ وضعیت پرداخت: ${paymentLabel}`,
     purchaseInvoice.inboundReceiptId ? `▫️ وضعیت انبار: 📦 حواله ورود به انبار صادر شد` : '',
@@ -291,19 +335,38 @@ export function formatPurchaseInvoiceTextReport(purchaseInvoice: PurchaseInvoice
 }
 
 /**
- * گزارش متنی ساده و کوتاه پیش‌فاکتور
+ * گزارش متنی پیش‌فاکتور همراه با لیست اقلام
  */
 export function formatProformaTextReport(invoice: Invoice, settings?: StoreSettings): string {
   const store = settings?.storeName || 'سامانه حسابداری و بازرگانی';
+  const currency = settings?.currency || 'تومان';
+
+  const itemsLines: string[] = [];
+  if (invoice.items && invoice.items.length > 0) {
+    itemsLines.push(`📦 <b>اقلام پیش‌فاکتور (${toPersianDigits(invoice.items.length)} قلم):</b>`);
+    invoice.items.forEach((item, index) => {
+      const num = toPersianDigits(index + 1);
+      const name = item.productName || item.name || 'کالای بدون عنوان';
+      const qty = toPersianDigits(item.quantity);
+      const unit = item.unit ? ` ${item.unit}` : '';
+      const unitPrice = toPersianDigits(formatPrice(item.unitPrice || item.price || 0));
+      const lineTotal = toPersianDigits(
+        formatPrice(item.total || ((item.quantity || 1) * (item.unitPrice || item.price || 0)))
+      );
+      itemsLines.push(`  ▫️ ${num}. <b>${name}</b>: ${qty}${unit} × ${unitPrice} = <b>${lineTotal} ${currency}</b>`);
+    });
+  }
+
   const lines = [
     `📑 <b>گزارش صدور پیش‌فاکتور</b>`,
     `▫️ شماره: <code>${toPersianDigits(invoice.invoiceNumber)}</code>`,
     `▫️ مشتری: <b>${invoice.customerName}</b>`,
     invoice.customerPhone ? `▫️ تلفن: <code>${toPersianDigits(invoice.customerPhone)}</code>` : '',
     `▫️ تاریخ صدور: ${toPersianDigits(invoice.date)}`,
-    `▫️ تعداد اقلام: ${toPersianDigits(invoice.items.length)} قلم کالا`,
-    `▫️ مبلغ برآورد: <b>${toPersianDigits(formatPrice(invoice.finalTotal))} تومان</b>`,
+    ...(itemsLines.length > 0 ? itemsLines : [`▫️ تعداد اقلام: ${toPersianDigits(invoice.items.length)} قلم کالا`]),
+    `▫️ مبلغ برآورد: <b>${toPersianDigits(formatPrice(invoice.finalTotal))} ${currency}</b>`,
     `▫️ وضعیت: ⏳ در انتظار تایید مشتری`,
+    invoice.notes ? `▫️ توضیحات: <i>«${invoice.notes}»</i>` : '',
     store ? `🏪 <i>${store}</i>` : '',
   ].filter(Boolean);
   return lines.join('\n');

@@ -820,6 +820,11 @@ export default function App() {
       const paymentVal = status === 'paid' ? inv.finalTotal : (paidAmount || inv.paidAmount || 0);
       if (paymentVal > 0) {
         const cust = customers.find((c) => c.id === inv.customerId);
+        let balanceAfter: number | undefined = undefined;
+        if (cust) {
+          const ledger = StorageService.buildCustomerLedger(cust, updated, customerTransactions);
+          balanceAfter = ledger.netBalance;
+        }
         autoSendCustomerPaymentReportToTelegram(
           {
             id: `ctxn-${Date.now()}`,
@@ -837,7 +842,7 @@ export default function App() {
           },
           cust,
           liveSettings,
-          undefined,
+          balanceAfter,
           {
             onSuccess: (msg) => showToast(msg || '✈️ رسید دریافت وجه فاکتور به تلگرام ارسال گردید.'),
           }
@@ -883,6 +888,11 @@ export default function App() {
       if (sampleInv) {
         const cust = customers.find((c) => c.id === sampleInv.customerId);
         const totalPaidInBatch = updates.reduce((sum, u) => sum + (u.paidAmount || 0), 0);
+        let balanceAfter: number | undefined = undefined;
+        if (cust) {
+          const ledger = StorageService.buildCustomerLedger(cust, updated, customerTransactions);
+          balanceAfter = ledger.netBalance;
+        }
         autoSendCustomerPaymentReportToTelegram(
           {
             id: `ctxn-${Date.now()}`,
@@ -898,7 +908,7 @@ export default function App() {
           },
           cust,
           liveSettings,
-          undefined,
+          balanceAfter,
           {
             onSuccess: (msg) => showToast(msg || '✈️ رسید تسویه تجمیعی به تلگرام ارسال شد.'),
           }
@@ -1203,40 +1213,6 @@ export default function App() {
         ? `واریزی به مبلغ ${txn.amount.toLocaleString('fa-IR')} ${settings.currency} در حساب «${txn.customerName}» ثبت شد.`
         : `سند بدهی به مبلغ ${txn.amount.toLocaleString('fa-IR')} ${settings.currency} برای «${txn.customerName}» ثبت شد.`
     );
-
-    // ارسال خودکار رسید دریافت وجه از مشتری یا پرداخت به تامین‌کننده به تلگرام
-    const liveSettings = StorageService.getSettings() || settings;
-    if (liveSettings.telegramBotEnabled) {
-      if (txn.type === 'deposit' && liveSettings.telegramAutoSendCustomerPayment !== false) {
-        const cust = customers.find((c) => c.id === txn.customerId);
-        autoSendCustomerPaymentReportToTelegram(txn, cust, liveSettings, undefined, {
-          onStart: () => showToast('در حال ارسال رسید دریافت وجه به تلگرام...'),
-          onSuccess: (msg) => showToast(msg || '✈️ رسید دریافت وجه به تلگرام ارسال گردید.'),
-          onError: (err) => console.warn('[Telegram Auto-Send] Customer deposit error:', err),
-        });
-      } else if (txn.type === 'debt' && liveSettings.telegramAutoSendSupplierPayment !== false && (txn.title?.includes('پرداخت') || txn.title?.includes('تسویه'))) {
-        autoSendSupplierPaymentReportToTelegram(
-          {
-            supplierName: txn.customerName,
-            amount: txn.amount,
-            paymentMethod: txn.paymentMethod,
-            trackingNumber: txn.trackingNumber,
-            bankName: txn.bankName,
-            chequeDueDate: txn.chequeDueDate,
-            date: txn.date,
-            title: txn.title,
-            notes: txn.notes,
-            recordedBy: txn.recordedBy,
-          },
-          liveSettings,
-          {
-            onStart: () => showToast('در حال ارسال رسید پرداخت به تامین‌کننده به تلگرام...'),
-            onSuccess: (msg) => showToast(msg || '✈️ رسید پرداخت به تامین‌کننده به تلگرام ارسال گردید.'),
-            onError: (err) => console.warn('[Telegram Auto-Send] Supplier payment error:', err),
-          }
-        );
-      }
-    }
   };
 
   const handleDeleteCustomerTransaction = (txnId: string) => {

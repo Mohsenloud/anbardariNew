@@ -841,12 +841,22 @@ app.post('/api/database/force-sync', async (req, res) => {
 });
 
 // 1.4 Export Complete PostgreSQL .sql Script for mana_db
-app.get('/api/database/export-sql', async (req, res) => {
+app.all('/api/database/export-sql', async (req, res) => {
   try {
-    // 1. Try to get data from PostgreSQL if online, otherwise use local data
-    let data = await loadStateFromPostgres();
-    if (!data) {
-      data = readDatabase();
+    let data: any = req.body?.clientData || (req.body?.products ? req.body : null);
+    if (!data || !Array.isArray(data.products) || data.products.length === 0) {
+      const { data: converged } = await getLatestConvergedDatabase();
+      data = converged || await loadStateFromPostgres() || readDatabase();
+    } else {
+      // Auto-persist active client data
+      try {
+        await enqueueDbWrite(async () => {
+          writeDatabase(data, true, false);
+          if (getPostgresStatus().connected) {
+            await saveStateToPostgres(data);
+          }
+        });
+      } catch {}
     }
     const sqlScript = generatePostgresSqlDump(data);
     const filename = `mana_db_${new Date().toISOString().replace(/[:.]/g, '-')}.sql`;
@@ -1800,9 +1810,32 @@ app.post('/api/telegram/send-backup', async (req, res) => {
       });
     }
 
-    // 1. Try to get data from specific file if requested, or PostgreSQL if online, otherwise use converged data
+    // 1. Try to get data from incoming clientData (ensuring all user's active products are included),
+    // or from specific backup file, or converged database / PostgreSQL
     let dbPayload: any = null;
-    if (specificFilename) {
+
+    const incomingClientData = req.body?.clientData || (req.body?.products ? req.body : null);
+    if (
+      incomingClientData &&
+      typeof incomingClientData === 'object' &&
+      Array.isArray(incomingClientData.products) &&
+      incomingClientData.products.length > 0
+    ) {
+      dbPayload = incomingClientData;
+      // Auto-persist active client data to server storage & PostgreSQL so server state stays 100% updated
+      try {
+        await enqueueDbWrite(async () => {
+          writeDatabase(incomingClientData, true, false);
+          if (getPostgresStatus().connected) {
+            await saveStateToPostgres(incomingClientData);
+          }
+        });
+      } catch (err) {
+        console.warn('[Telegram Backup] Failed auto-saving client state:', err);
+      }
+    }
+
+    if (!dbPayload && specificFilename) {
       const specificPath = path.join(BACKUPS_DIR, specificFilename);
       if (fs.existsSync(specificPath)) {
         try {
@@ -1818,13 +1851,11 @@ app.post('/api/telegram/send-backup', async (req, res) => {
     }
 
     if (!dbPayload) {
-      dbPayload = await loadStateFromPostgres();
-      if (!dbPayload) {
-        dbPayload = dbData || readDatabase();
-      }
+      const { data: converged } = await getLatestConvergedDatabase();
+      dbPayload = converged || await loadStateFromPostgres() || dbData || readDatabase();
     }
 
-    // 2. Generate complete PostgreSQL .sql script (SQL file only, JSON is not sent)
+    // 2. Generate complete PostgreSQL .sql script
     const sqlScript = generatePostgresSqlDump(dbPayload);
     const now = new Date();
     const jalaliStr = getJalaliDateStr(now).replace(/\//g, '-');
@@ -1875,17 +1906,61 @@ app.post('/api/telegram/send-backup', async (req, res) => {
     }
 
     if (!response.ok || !teleData.ok) {
-      console.error('[Telegram API] send-backup failed:', teleData);
+      console.error('[Telegram API] send-backup SQL failed:', teleData);
       return res.status(400).json({
         success: false,
-        error: teleData.description || 'ارسال فایل پشتیبان به تلگرام با خطا مواجه شد. لطفاً دسترسی ربات به این چت را بررسی فرمایید.',
+        error: teleData.description || 'ارسال فایل SQL به تلگرام با خطا مواجه شد. لطفاً دسترسی ربات به این چت را بررسی فرمایید.',
       });
+    }
+
+    // 3. Also generate and send JSON backup file (علاوه بر فایل sql، فایل json را نیز قرار بده)
+    const jsonStr = JSON.stringify(dbPayload, null, 2);
+    const jsonSafeFilename = `mana_db_backup_${jalaliStr}_${timeStr}.json`;
+    const jsonBuffer = Buffer.from(jsonStr, 'utf-8');
+    const jsonBlob = new Blob([jsonBuffer], { type: 'application/json' });
+    const jsonSizeKb = Math.round(jsonBuffer.length / 1024);
+
+    const jsonCaption = [
+      '📦 <b>نسخه کامل داده‌های سامانه (فرمت استاندارد JSON)</b>',
+      `📅 <b>تاریخ:</b> ${jalaliDate} ساعت ${jalaliTime}`,
+      `📊 <b>آمار اطلاعات:</b> ${productsCount} کالا | ${invoicesCount} فاکتور | ${customersCount} طرف‌حساب`,
+      `💾 <b>حجم فایل:</b> ${jsonSizeKb} کیلوبایت (فرمت استاندارد .json)`,
+      '🔄 <i>این فایل حاوی کل داده‌های سیستم بوده و مستقیماً از بخش «مدیریت پشتیبان‌ها > بازیابی فایل JSON» قابل بازیابی و بارگذاری مجدد در برنامه می‌باشد.</i>',
+    ].join('\n');
+
+    const jsonFormData = new FormData();
+    jsonFormData.append('chat_id', chatId);
+    jsonFormData.append('document', jsonBlob, jsonSafeFilename);
+    jsonFormData.append('caption', jsonCaption);
+    jsonFormData.append('parse_mode', 'HTML');
+
+    let jsonResponse = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+      method: 'POST',
+      body: jsonFormData,
+    });
+    let jsonTeleData: any = await jsonResponse.json();
+
+    if (!jsonResponse.ok && jsonTeleData?.description && jsonTeleData.description.includes("can't parse entities")) {
+      const fallbackJsonFd = new FormData();
+      fallbackJsonFd.append('chat_id', chatId);
+      fallbackJsonFd.append('document', jsonBlob, jsonSafeFilename);
+      fallbackJsonFd.append('caption', jsonCaption.replace(/<[^>]+>/g, ''));
+      jsonResponse = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+        method: 'POST',
+        body: fallbackJsonFd,
+      });
+      jsonTeleData = await jsonResponse.json();
+    }
+
+    if (!jsonResponse.ok || !jsonTeleData.ok) {
+      console.warn('[Telegram API] send-backup JSON failed:', jsonTeleData);
     }
 
     return res.json({
       success: true,
-      message: `نسخه پشتیبان پایگاه‌داده («${safeFilename}») با موفقیت به تلگرام ثبت‌شده در سیستم ارسال گردید.`,
+      message: `نسخه‌های پشتیبان پایگاه‌داده (شامل هر دو فایل SQL و JSON) با موفقیت به تلگرام ثبت‌شده در سیستم ارسال گردیدند.`,
       result: teleData.result,
+      jsonResult: jsonTeleData?.result,
     });
   } catch (err: any) {
     console.error('[Telegram API] send-backup exception:', err);

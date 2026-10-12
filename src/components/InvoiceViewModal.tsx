@@ -25,10 +25,12 @@ import {
   Smartphone,
   Download,
   FileSpreadsheet,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Calendar
 } from 'lucide-react';
 import { SimpleInvoiceLayout } from './SimpleInvoiceLayout';
 import { InvoiceShareLinkModal } from './InvoiceShareLinkModal';
+import { InvoiceDateModal } from './InvoiceDateModal';
 import { InvoiceTableDimensionsPanel } from './InvoiceTableDimensionsPanel';
 import { getPrintLayoutCssVariables, getPrintLayoutCssRules } from '../utils/printLayoutHelper';
 import { StorageService } from '../utils/storage';
@@ -59,6 +61,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   const [showSocialModal, setShowSocialModal] = useState(false);
   const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
   const [isShareLinkModalOpen, setIsShareLinkModalOpen] = useState(false);
+  const [isDateModalOpen, setIsDateModalOpen] = useState(false);
   const [activeInvoice, setActiveInvoice] = useState<Invoice>(invoice!);
   const [activeSettings, setActiveSettings] = useState<StoreSettings>(settings);
   const [notification, setNotification] = useState<string | null>(null);
@@ -1073,7 +1076,15 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                         <div className={`flex flex-col items-center sm:items-start gap-1 mt-1 text-slate-600 ${isA5 ? 'text-[10px]' : 'text-xs'}`}>
                           <div className="flex items-center gap-1.5">
                             <span>تاریخ:</span>
-                            <strong className="text-slate-900 font-bold">{toPersianDigits(invoice.date)}</strong>
+                            <button
+                              type="button"
+                              onClick={() => setIsDateModalOpen(true)}
+                              className="inline-flex items-center gap-1 hover:bg-emerald-50 hover:text-emerald-800 text-slate-900 font-bold px-1.5 py-0.5 rounded-lg border border-transparent hover:border-emerald-300 transition-colors cursor-pointer group print:hover:bg-transparent print:border-none"
+                              title="کلیک برای تغییر تاریخ فاکتور"
+                            >
+                              <strong className="font-bold">{toPersianDigits(activeInvoice?.date || invoice.date)}</strong>
+                              <Pencil className="w-3 h-3 text-slate-400 group-hover:text-emerald-600 print:hidden opacity-60 group-hover:opacity-100" />
+                            </button>
                           </div>
                           <div className="flex items-center gap-1.5 pt-0.5">
                             <span>{invoice.isProforma ? 'شماره پیش‌فاکتور:' : 'شماره فاکتور:'}</span>
@@ -1977,6 +1988,24 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
           onUpdateInvoice={(updated) => {
             setActiveInvoice(updated);
           }}
+        />
+      )}
+
+      {/* Date Picker Modal */}
+      {invoice && (
+        <InvoiceDateModal
+          isOpen={isDateModalOpen}
+          currentDate={activeInvoice?.date || invoice.date}
+          invoiceNumber={activeInvoice?.invoiceNumber || invoice.invoiceNumber}
+          isProforma={activeInvoice?.isProforma ?? invoice.isProforma}
+          onSave={(newDate) => {
+            const updated = { ...(activeInvoice || invoice), date: newDate };
+            StorageService.updateInvoice(updated);
+            setActiveInvoice(updated);
+            setNotification(`تاریخ فاکتور به ${toPersianDigits(newDate)} تغییر یافت.`);
+            setTimeout(() => setNotification(null), 3500);
+          }}
+          onClose={() => setIsDateModalOpen(false)}
         />
       )}
     </div>

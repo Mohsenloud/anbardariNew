@@ -692,53 +692,51 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
       <div className="bg-gradient-to-r from-blue-900 to-indigo-950 rounded-2xl p-5 sm:p-6 text-white shadow-sm border border-blue-800/40 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
 
-        <div className="relative z-10 space-y-5">
-          {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-blue-500/20 border border-blue-400/30 text-blue-300">
-                <FileCode className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-black text-white">پشتیبان‌گیری و بازیابی اختصاصی فایل دیتابیس (PostgreSQL - mana_db)</h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-400/20 text-blue-200 border border-blue-400/30">
-                    فرمت استاندارد .sql
-                  </span>
-                </div>
-                <p className="text-xs text-blue-200/80 mt-0.5">
-                  استخراج اسکریپت ساختار و داده‌های جداول دیتابیس mana_db، اجرای مستقیم کوئری‌ها و ذخیره اسنپ‌شات در سرور
-                </p>
-              </div>
+        <div className="relative z-10 space-y-4">
+          {/* 1. تیتر در خط ابتدایی */}
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-blue-500/20 border border-blue-400/30 text-blue-300 shrink-0">
+              <FileCode className="w-6 h-6" />
             </div>
-
-            {/* Quick Export SQL & Send to Telegram Buttons */}
-            <div className="flex flex-wrap items-center gap-2 self-start md:self-auto shrink-0">
-              <button
-                type="button"
-                id="postgres-send-sql-telegram-btn"
-                onClick={() => handleSendBackupToTelegram()}
-                disabled={sendingTelegram}
-                className="px-4 py-2.5 bg-sky-500 hover:bg-sky-400 active:scale-95 text-slate-950 font-black text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                title="ارسال مستقیم فایل اسکریپت SQL دیتابیس به تلگرام ثبت‌شده در سیستم"
-              >
-                <Send className={`w-4 h-4 ${sendingTelegram ? 'animate-bounce' : ''}`} />
-                <span>{sendingTelegram ? 'در حال ارسال SQL به تلگرام...' : 'ارسال فایل SQL به تلگرام'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleDownloadSqlDump}
-                disabled={downloadingSql}
-                className="px-4 py-2.5 bg-blue-500 hover:bg-blue-400 active:scale-95 text-slate-950 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                <Download className={`w-4 h-4 ${downloadingSql ? 'animate-bounce' : ''}`} />
-                <span>{downloadingSql ? 'در حال ایجاد فایل...' : 'دانلود فایل دیتابیس (mana_db.sql)'}</span>
-              </button>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base font-black text-white">پشتیبان‌گیری و بازیابی اختصاصی فایل دیتابیس (PostgreSQL - mana_db)</h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-400/20 text-blue-200 border border-blue-400/30">
+                  فرمت استاندارد .sql
+                </span>
+              </div>
+              <p className="text-xs text-blue-200/80 mt-1">
+                استخراج اسکریپت ساختار و داده‌های جداول دیتابیس mana_db، اجرای مستقیم کوئری‌ها و ذخیره اسنپ‌شات در سرور
+              </p>
             </div>
           </div>
 
-          {/* Sub-cards Grid */}
+          {/* 2. دکمه‌ها زیر تیتر */}
+          <div className="flex flex-wrap items-center gap-2.5 pt-1">
+            <button
+              type="button"
+              id="postgres-send-sql-telegram-btn"
+              onClick={() => handleSendBackupToTelegram()}
+              disabled={sendingTelegram}
+              className="px-4 py-2.5 bg-sky-500 hover:bg-sky-400 active:scale-95 text-slate-950 font-black text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              title="ارسال مستقیم فایل‌های اسکریپت SQL و بکاپ JSON دیتابیس به تلگرام ثبت‌شده در سیستم"
+            >
+              <Send className={`w-4 h-4 ${sendingTelegram ? 'animate-bounce' : ''}`} />
+              <span>{sendingTelegram ? 'در حال ارسال SQL و JSON به تلگرام...' : 'ارسال فایل‌های پشتیبان (SQL + JSON) به تلگرام'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownloadSqlDump}
+              disabled={downloadingSql}
+              className="px-4 py-2.5 bg-blue-500 hover:bg-blue-400 active:scale-95 text-slate-950 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              <Download className={`w-4 h-4 ${downloadingSql ? 'animate-bounce' : ''}`} />
+              <span>{downloadingSql ? 'در حال ایجاد فایل...' : 'دانلود فایل دیتابیس (mana_db.sql)'}</span>
+            </button>
+          </div>
+
+          {/* 3. کادرها زیر تیتر و دکمه‌ها */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
             {/* Card 1: SQL Dump Export Info */}
             <div className="p-4 rounded-xl bg-slate-900/80 border border-blue-500/20 space-y-2">
@@ -829,55 +827,39 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
       <div className="bg-gradient-to-br from-emerald-900 to-slate-900 rounded-2xl p-5 sm:p-6 text-white shadow-sm border border-emerald-800/40 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -ml-20 -mt-20 pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
-          <div className="space-y-2 max-w-2xl">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-400">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-black text-white">سامانه هوشمند پشتیبان‌گیری خودکار و ایمنی دیتابیس</h3>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    محافظت پیوسته فعال
-                  </span>
-                </div>
-                <p className="text-xs text-slate-300 mt-0.5">
-                  پایگاه‌داده به صورت خودکار هر {toPersianDigits(autoBackupInterval)} ساعت یک‌بار و قبل از هرگونه تغییر عمده نسخه پشتیبان ثبت می‌کند.
-                </p>
-              </div>
+        <div className="relative z-10 flex flex-col gap-4">
+          {/* 1. تیتر در خط ابتدایی */}
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-400 shrink-0">
+              <ShieldCheck className="w-6 h-6" />
             </div>
-
-            {/* Hardening Badges */}
-            <div className="flex flex-wrap gap-2 pt-2">
-              <span className="inline-flex items-center gap-1.5 bg-slate-800/80 border border-slate-700/60 px-2.5 py-1 rounded-lg text-[11px] text-slate-300">
-                <Lock className="w-3.5 h-3.5 text-emerald-400" />
-                تراکنش‌های اتمیک (Atomic File Writes)
-              </span>
-              <span className="inline-flex items-center gap-1.5 bg-slate-800/80 border border-slate-700/60 px-2.5 py-1 rounded-lg text-[11px] text-slate-300">
-                <FileCheck className="w-3.5 h-3.5 text-blue-400" />
-                کنترل یکپارچگی SHA-256
-              </span>
-              <span className="inline-flex items-center gap-1.5 bg-slate-800/80 border border-slate-700/60 px-2.5 py-1 rounded-lg text-[11px] text-slate-300">
-                <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-                بازیابی خودکار در صورت آسیب به فایل دیتابیس
-              </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base font-black text-white">سامانه هوشمند پشتیبان‌گیری خودکار و ایمنی دیتابیس</h3>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  محافظت پیوسته فعال
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1">
+                پایگاه‌داده به صورت خودکار هر {toPersianDigits(autoBackupInterval)} ساعت یک‌بار و قبل از هرگونه تغییر عمده نسخه پشتیبان ثبت می‌کند.
+              </p>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-            {/* Direct Send SQL to Telegram Button */}
+          {/* 2. دکمه‌ها زیر تیتر */}
+          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-emerald-800/50">
+            {/* Direct Send SQL and JSON to Telegram Button */}
             <button
               type="button"
               id="backup-header-send-telegram-btn"
               onClick={() => handleSendBackupToTelegram()}
               disabled={sendingTelegram || actionLoading}
               className="px-4 py-2.5 bg-sky-500 hover:bg-sky-400 active:scale-95 text-slate-950 font-black text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              title="ارسال مستقیم فایل اسکریپت SQL دیتابیس (mana_db.sql) به تلگرام ثبت‌شده در سیستم"
+              title="ارسال مستقیم فایل اسکریپت SQL دیتابیس (mana_db.sql) و فایل داده‌های JSON به تلگرام"
             >
               <Send className={`w-4 h-4 ${sendingTelegram ? 'animate-bounce' : ''}`} />
-              <span>{sendingTelegram ? 'در حال ارسال فایل SQL...' : 'ارسال فایل SQL به تلگرام'}</span>
+              <span>{sendingTelegram ? 'در حال ارسال فایل‌های SQL و JSON...' : 'ارسال فایل‌های پشتیبان (SQL + JSON) به تلگرام'}</span>
             </button>
 
             <button
@@ -889,16 +871,33 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
               <Archive className="w-4 h-4" />
               <span>+ ایجاد پشتیبان فوری با برچسب</span>
             </button>
+
             <button
               type="button"
               onClick={fetchBackups}
               disabled={loading || actionLoading}
-              className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               title="بروزرسانی لیست"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              <span className="sm:hidden">بروزرسانی</span>
+              <span>بروزرسانی</span>
             </button>
+          </div>
+
+          {/* 3. کادرها و نشان‌های امنیتی زیر دکمه‌ها */}
+          <div className="flex flex-wrap gap-2 pt-1">
+            <span className="inline-flex items-center gap-1.5 bg-slate-800/80 border border-slate-700/60 px-2.5 py-1.5 rounded-lg text-[11px] text-slate-300">
+              <Lock className="w-3.5 h-3.5 text-emerald-400" />
+              تراکنش‌های اتمیک (Atomic File Writes)
+            </span>
+            <span className="inline-flex items-center gap-1.5 bg-slate-800/80 border border-slate-700/60 px-2.5 py-1.5 rounded-lg text-[11px] text-slate-300">
+              <FileCheck className="w-3.5 h-3.5 text-blue-400" />
+              کنترل یکپارچگی SHA-256
+            </span>
+            <span className="inline-flex items-center gap-1.5 bg-slate-800/80 border border-slate-700/60 px-2.5 py-1.5 rounded-lg text-[11px] text-slate-300">
+              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+              بازیابی خودکار در صورت آسیب به فایل دیتابیس
+            </span>
           </div>
         </div>
       </div>
@@ -965,7 +964,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              ارسال مستقیم نسخه اسکریپت کامل SQL دیتابیس (mana_db.sql) شامل ساختار و داده‌های کلیه جداول به چت‌آیدی یا کانال تلگرام ثبت‌شده در سیستم.
+              ارسال مستقیم نسخه‌های پشتیبان دیتابیس (شامل اسکریپت کامل SQL و فایل داده‌های JSON) به چت‌آیدی یا کانال تلگرام ثبت‌شده در سیستم.
             </p>
             {settings?.telegramChatId && (
               <div className="text-[10px] font-mono font-bold text-sky-800 bg-sky-100/60 px-2 py-1 rounded-md truncate" dir="ltr">
@@ -979,10 +978,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
             onClick={() => handleSendBackupToTelegram()}
             disabled={sendingTelegram || actionLoading}
             className="w-full py-2.5 px-4 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 text-center"
-            title="ارسال مستقیم فایل SQL پایگاه‌داده به تلگرام"
+            title="ارسال مستقیم فایل‌های SQL و JSON پایگاه‌داده به تلگرام"
           >
             <Send className={`w-4 h-4 ${sendingTelegram ? 'animate-bounce' : ''}`} />
-            <span>{sendingTelegram ? 'در حال ارسال فایل SQL به تلگرام...' : 'ارسال فایل SQL دیتابیس به تلگرام'}</span>
+            <span>{sendingTelegram ? 'در حال ارسال فایل‌های SQL و JSON به تلگرام...' : 'ارسال فایل‌های پشتیبان (SQL + JSON) به تلگرام'}</span>
           </button>
         </div>
       </div>
