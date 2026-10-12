@@ -1206,6 +1206,26 @@ export const StorageService = {
     }
   },
 
+  async sendDatabaseBackupToTelegram(filename?: string): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    try {
+      const res = await fetch('/api/telegram/send-backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(filename ? { filename } : {}),
+      });
+      return await res.json();
+    } catch (e: any) {
+      return {
+        success: false,
+        error: 'خطا در ارتباط با سرور: ' + (e?.message || ''),
+      };
+    }
+  },
+
   // -------------------------------------------------------------
   // POSTGRESQL & DATABASE STATUS / TEST APIS
   // -------------------------------------------------------------

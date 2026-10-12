@@ -1765,6 +1765,125 @@ app.post('/api/telegram/send-pdf', async (req, res) => {
   }
 });
 
+// 12.3.5 Send Database Backup JSON to Chat/Channel/Group via Telegram
+app.post('/api/telegram/send-backup', async (req, res) => {
+  try {
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const serverSettings = dbData?.settings || {};
+
+    const botToken = (
+      req.body?.botToken ||
+      serverSettings?.telegramBotToken ||
+      process.env.TELEGRAM_BOT_TOKEN ||
+      ''
+    ).trim();
+
+    const chatId = (
+      req.body?.chatId ||
+      serverSettings?.telegramChatId ||
+      process.env.TELEGRAM_CHAT_ID ||
+      ''
+    ).trim();
+
+    const specificFilename = req.body?.filename ? path.basename(req.body.filename) : null;
+
+    if (!botToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'توکن ربات تلگرام در تنظیمات سیستم ثبت نشده است. لطفاً ابتدا در بخش «تنظیمات > تلگرام»، توکن ربات را وارد و ذخیره فرمایید.',
+      });
+    }
+    if (!chatId) {
+      return res.status(400).json({
+        success: false,
+        error: 'شناسه چت یا کانال تلگرام (Chat ID) در سیستم ثبت نشده است. لطفاً ابتدا در «تنظیمات > تلگرام»، چت‌آیدی را ثبت فرمایید.',
+      });
+    }
+
+    let backupContent: string;
+    let safeFilename: string;
+
+    if (specificFilename) {
+      const backupFilePath = path.join(BACKUPS_DIR, specificFilename);
+      if (!fs.existsSync(backupFilePath)) {
+        return res.status(404).json({ success: false, error: 'فایل پشتیبان مشخص‌شده در سرور یافت نشد.' });
+      }
+      backupContent = fs.readFileSync(backupFilePath, 'utf-8');
+      safeFilename = specificFilename;
+    } else {
+      const now = new Date();
+      const jalaliStr = getJalaliDateStr(now).replace(/\//g, '-');
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
+      safeFilename = `factor-backup-${jalaliStr}_${timeStr}.json`;
+      backupContent = JSON.stringify(dbData, null, 2);
+    }
+
+    const fileBuffer = Buffer.from(backupContent, 'utf-8');
+    const fileBlob = new Blob([fileBuffer], { type: 'application/json' });
+
+    const now = new Date();
+    const jalaliDate = getJalaliDateStr(now);
+    const jalaliTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const productsCount = Array.isArray(dbData?.products) ? dbData.products.length : 0;
+    const invoicesCount = Array.isArray(dbData?.invoices) ? dbData.invoices.length : 0;
+    const customersCount = Array.isArray(dbData?.customers) ? dbData.customers.length : 0;
+    const sizeKb = Math.round(fileBuffer.length / 1024);
+
+    const caption = [
+      '📦 <b>نسخه پشتیبان پایگاه‌داده نرم‌افزار حسابداری و انبارداری</b>',
+      `📅 <b>تاریخ:</b> ${jalaliDate} ساعت ${jalaliTime}`,
+      `📊 <b>آمار:</b> ${productsCount} کالا | ${invoicesCount} فاکتور | ${customersCount} طرف‌حساب`,
+      `💾 <b>حجم فایل:</b> ${sizeKb} کیلوبایت`,
+      '🔒 <i>این فایل حاوی نسخه کامل کلیه اطلاعات دیتابیس است و می‌توان آن را در بخش پشتیبان‌گیری سیستم بازیابی نمود.</i>',
+    ].join('\n');
+
+    const formData = new FormData();
+    formData.append('chat_id', chatId);
+    formData.append('document', fileBlob, safeFilename);
+    formData.append('caption', caption);
+    formData.append('parse_mode', 'HTML');
+
+    let response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    let data = await response.json();
+
+    if (!response.ok && data?.description && data.description.includes("can't parse entities")) {
+      const fallbackFd = new FormData();
+      fallbackFd.append('chat_id', chatId);
+      fallbackFd.append('document', fileBlob, safeFilename);
+      fallbackFd.append('caption', caption.replace(/<[^>]+>/g, ''));
+      response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+        method: 'POST',
+        body: fallbackFd,
+      });
+      data = await response.json();
+    }
+
+    if (!response.ok || !data.ok) {
+      console.error('[Telegram API] send-backup failed:', data);
+      return res.status(400).json({
+        success: false,
+        error: data.description || 'ارسال فایل پشتیبان به تلگرام با خطا مواجه شد. لطفاً دسترسی ربات به این چت را بررسی فرمایید.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: `نسخه پشتیبان پایگاه‌داده («${safeFilename}») با موفقیت به تلگرام ثبت‌شده در سیستم ارسال گردید.`,
+      result: data.result,
+    });
+  } catch (err: any) {
+    console.error('[Telegram API] send-backup exception:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'خطای سرور در ارسال نسخه پشتیبان به تلگرام: ' + (err?.message || ''),
+    });
+  }
+});
+
 // -------------------------------------------------------------
 // 12.4 AI ENGINE & TELEGRAM VOICE INBOUND ASSISTANT ENDPOINTS
 // -------------------------------------------------------------

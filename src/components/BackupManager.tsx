@@ -28,6 +28,7 @@ import {
   ExternalLink,
   FileCode,
   Code2,
+  Send,
 } from 'lucide-react';
 
 interface BackupManagerProps {
@@ -42,6 +43,9 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
   const [backups, setBackups] = useState<ServerBackupInfo[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
+  const [sendingTelegram, setSendingTelegram] = useState<boolean>(false);
+  const [sendingTelegramFile, setSendingTelegramFile] = useState<string | null>(null);
+  const [settings] = useState(() => StorageService.getSettings());
   const [autoBackupInterval, setAutoBackupInterval] = useState<number>(4);
   const [newLabel, setNewLabel] = useState<string>('');
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
@@ -254,6 +258,31 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
       showNotification('error', 'خطا در ارتباط با سرور.');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // Handle send backup to Telegram
+  const handleSendBackupToTelegram = async (filename?: string) => {
+    if (filename) {
+      setSendingTelegramFile(filename);
+    } else {
+      setSendingTelegram(true);
+    }
+    try {
+      const res = await StorageService.sendDatabaseBackupToTelegram(filename);
+      if (res.success) {
+        showNotification('success', res.message || 'نسخه پشتیبان پایگاه‌داده با موفقیت به تلگرام ثبت‌شده در سیستم ارسال شد.');
+      } else {
+        showNotification('error', res.error || res.message || 'خطا در ارسال نسخه پشتیبان به تلگرام.');
+      }
+    } catch {
+      showNotification('error', 'خطا در برقراری ارتباط با سرور برنامه.');
+    } finally {
+      if (filename) {
+        setSendingTelegramFile(null);
+      } else {
+        setSendingTelegram(false);
+      }
     }
   };
 
@@ -812,6 +841,19 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+            {/* Direct Send to Telegram Button */}
+            <button
+              type="button"
+              id="backup-header-send-telegram-btn"
+              onClick={() => handleSendBackupToTelegram()}
+              disabled={sendingTelegram || actionLoading}
+              className="px-4 py-2.5 bg-sky-500 hover:bg-sky-400 active:scale-95 text-slate-950 font-black text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              title="ارسال مستقیم نسخه کامل دیتابیس به تلگرام ثبت‌شده در سیستم"
+            >
+              <Send className={`w-4 h-4 ${sendingTelegram ? 'animate-bounce' : ''}`} />
+              <span>{sendingTelegram ? 'در حال ارسال به تلگرام...' : 'ارسال نسخه به تلگرام'}</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setShowCreateModal(true)}
@@ -836,16 +878,18 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
       </div>
 
       {/* 2. Quick Actions Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Upload and import external backup */}
-        <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-xs space-y-3">
-          <div className="flex items-center gap-2 text-blue-700">
-            <Upload className="w-5 h-5" />
-            <h4 className="font-bold text-xs text-slate-900">بارگذاری و بازیابی از فایل خارجی</h4>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Card 1: Upload and import external backup */}
+        <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-xs space-y-3 flex flex-col justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-blue-700">
+              <Upload className="w-5 h-5" />
+              <h4 className="font-bold text-xs text-slate-900">بارگذاری و بازیابی از فایل خارجی</h4>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              فایل JSON پشتیبان قبلی خود را انتخاب کنید. سیستم صحت ساختار را بررسی کرده و می‌توانید آن را در سرور ذخیره یا فوراً بازیابی کنید.
+            </p>
           </div>
-          <p className="text-[11px] text-slate-500 leading-relaxed">
-            فایل JSON پشتیبان قبلی خود را انتخاب کنید. سیستم صحت ساختار را بررسی کرده و می‌توانید آن را در سرور ذخیره یا فوراً بازیابی کنید.
-          </p>
           <label className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer text-center">
             <Upload className="w-4 h-4" />
             <span>انتخاب و بارگذاری فایل پشتیبان</span>
@@ -859,15 +903,17 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
           </label>
         </div>
 
-        {/* Live snapshot download */}
-        <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-xs space-y-3">
-          <div className="flex items-center gap-2 text-emerald-700">
-            <Download className="w-5 h-5" />
-            <h4 className="font-bold text-xs text-slate-900">دریافت نسخه پشتیبان لحظه‌ای (Off-site)</h4>
+        {/* Card 2: Live snapshot download */}
+        <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-xs space-y-3 flex flex-col justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-emerald-700">
+              <Download className="w-5 h-5" />
+              <h4 className="font-bold text-xs text-slate-900">دریافت نسخه پشتیبان لحظه‌ای (دانلود)</h4>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              جهت حفظ حداکثر امنیت، می‌توانید آخرین وضعیت کل دیتابیس را به عنوان فایل استاندارد JSON دانلود و روی سیستم خود ذخیره کنید.
+            </p>
           </div>
-          <p className="text-[11px] text-slate-500 leading-relaxed">
-            جهت حفظ حداکثر امنیت، می‌توانید آخرین وضعیت کل دیتابیس را به عنوان فایل استاندارد JSON دانلود و روی فلش مموری یا هارد دیسک خود ذخیره کنید.
-          </p>
           <a
             href="/api/backup"
             download={`factor-backup-${new Date().toISOString().slice(0, 10)}.json`}
@@ -876,6 +922,42 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
             <Download className="w-4 h-4 text-slate-600" />
             <span>دانلود فوری دیتابیس فعال</span>
           </a>
+        </div>
+
+        {/* Card 3: Send Backup to Registered Telegram */}
+        <div className="p-4 rounded-xl border border-sky-200/90 bg-gradient-to-b from-sky-50/70 to-white shadow-xs space-y-3 flex flex-col justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sky-700">
+                <Send className="w-5 h-5" />
+                <h4 className="font-bold text-xs text-slate-900">ارسال نسخه پشتیبان به تلگرام</h4>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                settings?.telegramChatId ? 'bg-sky-100 text-sky-800 border border-sky-300' : 'bg-amber-100 text-amber-800 border border-amber-300'
+              }`}>
+                {settings?.telegramChatId ? 'تلگرام متصل' : 'نیاز به تنظیم'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              ارسال مستقیم یک نسخه کامل از پایگاه‌داده به چت‌آیدی یا کانال تلگرامی که در تنظیمات سیستم ثبت کرده‌اید.
+            </p>
+            {settings?.telegramChatId && (
+              <div className="text-[10px] font-mono font-bold text-sky-800 bg-sky-100/60 px-2 py-1 rounded-md truncate" dir="ltr">
+                مقصد: {settings.telegramChatId}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            id="backup-send-telegram-card-btn"
+            onClick={() => handleSendBackupToTelegram()}
+            disabled={sendingTelegram || actionLoading}
+            className="w-full py-2.5 px-4 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 text-center"
+            title="ارسال مستقیم نسخه کامل دیتابیس به تلگرام"
+          >
+            <Send className={`w-4 h-4 ${sendingTelegram ? 'animate-bounce' : ''}`} />
+            <span>{sendingTelegram ? 'در حال ارسال نسخه به تلگرام...' : 'ارسال نسخه دیتابیس به تلگرام'}</span>
+          </button>
         </div>
       </div>
 
@@ -971,6 +1053,17 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
                         >
                           <Download className="w-4 h-4" />
                         </a>
+
+                        {/* Send this backup to Telegram */}
+                        <button
+                          type="button"
+                          onClick={() => handleSendBackupToTelegram(bk.filename)}
+                          disabled={sendingTelegramFile === bk.filename || actionLoading}
+                          className="p-1.5 text-slate-600 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors cursor-pointer"
+                          title="ارسال این نسخه پشتیبان به تلگرام ثبت‌شده"
+                        >
+                          <Send className={`w-4 h-4 ${sendingTelegramFile === bk.filename ? 'animate-bounce text-sky-600' : ''}`} />
+                        </button>
 
                         {/* Restore button */}
                         <button

@@ -1509,3 +1509,31 @@ export async function processVoiceDirectly(audioBase64: string, mimeType = 'audi
   }
 }
 
+/**
+ * Send database backup JSON file directly to registered Telegram bot/chat
+ */
+export async function sendDatabaseBackupToTelegram(params?: {
+  filename?: string;
+  botToken?: string;
+  chatId?: string;
+}): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch('/api/telegram/send-backup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params || {}),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return {
+      success: false,
+      error: 'خطا در برقراری ارتباط با سرور: ' + (err?.message || ''),
+    };
+  }
+}
+
+
