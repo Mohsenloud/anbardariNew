@@ -271,9 +271,9 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
     try {
       const res = await StorageService.sendDatabaseBackupToTelegram(filename);
       if (res.success) {
-        showNotification('success', res.message || 'نسخه پشتیبان پایگاه‌داده با موفقیت به تلگرام ثبت‌شده در سیستم ارسال شد.');
+        showNotification('success', res.message || 'نسخه پشتیبان پایگاه‌داده (فایل SQL) با موفقیت به تلگرام ثبت‌شده در سیستم ارسال شد.');
       } else {
-        showNotification('error', res.error || res.message || 'خطا در ارسال نسخه پشتیبان به تلگرام.');
+        showNotification('error', res.error || res.message || 'خطا در ارسال فایل SQL به تلگرام.');
       }
     } catch {
       showNotification('error', 'خطا در برقراری ارتباط با سرور برنامه.');
@@ -712,16 +712,30 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
               </div>
             </div>
 
-            {/* Quick Export SQL Button */}
-            <button
-              type="button"
-              onClick={handleDownloadSqlDump}
-              disabled={downloadingSql}
-              className="px-4 py-2.5 bg-blue-500 hover:bg-blue-400 active:scale-95 text-slate-950 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 self-start md:self-auto shrink-0"
-            >
-              <Download className={`w-4 h-4 ${downloadingSql ? 'animate-bounce' : ''}`} />
-              <span>{downloadingSql ? 'در حال ایجاد فایل...' : 'دانلود فایل دیتابیس (mana_db.sql)'}</span>
-            </button>
+            {/* Quick Export SQL & Send to Telegram Buttons */}
+            <div className="flex flex-wrap items-center gap-2 self-start md:self-auto shrink-0">
+              <button
+                type="button"
+                id="postgres-send-sql-telegram-btn"
+                onClick={() => handleSendBackupToTelegram()}
+                disabled={sendingTelegram}
+                className="px-4 py-2.5 bg-sky-500 hover:bg-sky-400 active:scale-95 text-slate-950 font-black text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                title="ارسال مستقیم فایل اسکریپت SQL دیتابیس به تلگرام ثبت‌شده در سیستم"
+              >
+                <Send className={`w-4 h-4 ${sendingTelegram ? 'animate-bounce' : ''}`} />
+                <span>{sendingTelegram ? 'در حال ارسال SQL به تلگرام...' : 'ارسال فایل SQL به تلگرام'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadSqlDump}
+                disabled={downloadingSql}
+                className="px-4 py-2.5 bg-blue-500 hover:bg-blue-400 active:scale-95 text-slate-950 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <Download className={`w-4 h-4 ${downloadingSql ? 'animate-bounce' : ''}`} />
+                <span>{downloadingSql ? 'در حال ایجاد فایل...' : 'دانلود فایل دیتابیس (mana_db.sql)'}</span>
+              </button>
+            </div>
           </div>
 
           {/* Sub-cards Grid */}
@@ -735,15 +749,27 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
               <p className="text-[11px] text-slate-300 leading-relaxed">
                 تولید اسکریپت جامع DDL/DML شامل جداول system_state، کالاها، مشتریان، فاکتورها و انبارها سازگار با تمام نسخه‌های PostgreSQL و ابزارهای DBeaver و pgAdmin.
               </p>
-              <button
-                type="button"
-                onClick={handleDownloadSqlDump}
-                disabled={downloadingSql}
-                className="w-full py-2 bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-400/30 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-2"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>استخراج و دریافت فایل .sql</span>
-              </button>
+              <div className="flex items-center gap-1.5 mt-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadSqlDump}
+                  disabled={downloadingSql}
+                  className="flex-1 py-2 bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-400/30 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>دانلود .sql</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendBackupToTelegram()}
+                  disabled={sendingTelegram}
+                  className="py-2 px-3 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50 shadow-xs"
+                  title="ارسال مستقیم فایل SQL به تلگرام"
+                >
+                  <Send className={`w-3.5 h-3.5 ${sendingTelegram ? 'animate-bounce' : ''}`} />
+                  <span>ارسال به تلگرام</span>
+                </button>
+              </div>
             </div>
 
             {/* Card 2: SQL Import / Restore */}
@@ -841,17 +867,17 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-            {/* Direct Send to Telegram Button */}
+            {/* Direct Send SQL to Telegram Button */}
             <button
               type="button"
               id="backup-header-send-telegram-btn"
               onClick={() => handleSendBackupToTelegram()}
               disabled={sendingTelegram || actionLoading}
               className="px-4 py-2.5 bg-sky-500 hover:bg-sky-400 active:scale-95 text-slate-950 font-black text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              title="ارسال مستقیم نسخه کامل دیتابیس به تلگرام ثبت‌شده در سیستم"
+              title="ارسال مستقیم فایل اسکریپت SQL دیتابیس (mana_db.sql) به تلگرام ثبت‌شده در سیستم"
             >
               <Send className={`w-4 h-4 ${sendingTelegram ? 'animate-bounce' : ''}`} />
-              <span>{sendingTelegram ? 'در حال ارسال به تلگرام...' : 'ارسال نسخه به تلگرام'}</span>
+              <span>{sendingTelegram ? 'در حال ارسال فایل SQL...' : 'ارسال فایل SQL به تلگرام'}</span>
             </button>
 
             <button
@@ -924,13 +950,13 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
           </a>
         </div>
 
-        {/* Card 3: Send Backup to Registered Telegram */}
+        {/* Card 3: Send SQL Backup to Registered Telegram */}
         <div className="p-4 rounded-xl border border-sky-200/90 bg-gradient-to-b from-sky-50/70 to-white shadow-xs space-y-3 flex flex-col justify-between">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sky-700">
                 <Send className="w-5 h-5" />
-                <h4 className="font-bold text-xs text-slate-900">ارسال نسخه پشتیبان به تلگرام</h4>
+                <h4 className="font-bold text-xs text-slate-900">ارسال فایل SQL دیتابیس به تلگرام</h4>
               </div>
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                 settings?.telegramChatId ? 'bg-sky-100 text-sky-800 border border-sky-300' : 'bg-amber-100 text-amber-800 border border-amber-300'
@@ -939,7 +965,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              ارسال مستقیم یک نسخه کامل از پایگاه‌داده به چت‌آیدی یا کانال تلگرامی که در تنظیمات سیستم ثبت کرده‌اید.
+              ارسال مستقیم نسخه اسکریپت کامل SQL دیتابیس (mana_db.sql) شامل ساختار و داده‌های کلیه جداول به چت‌آیدی یا کانال تلگرام ثبت‌شده در سیستم.
             </p>
             {settings?.telegramChatId && (
               <div className="text-[10px] font-mono font-bold text-sky-800 bg-sky-100/60 px-2 py-1 rounded-md truncate" dir="ltr">
@@ -953,10 +979,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
             onClick={() => handleSendBackupToTelegram()}
             disabled={sendingTelegram || actionLoading}
             className="w-full py-2.5 px-4 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 text-center"
-            title="ارسال مستقیم نسخه کامل دیتابیس به تلگرام"
+            title="ارسال مستقیم فایل SQL پایگاه‌داده به تلگرام"
           >
             <Send className={`w-4 h-4 ${sendingTelegram ? 'animate-bounce' : ''}`} />
-            <span>{sendingTelegram ? 'در حال ارسال نسخه به تلگرام...' : 'ارسال نسخه دیتابیس به تلگرام'}</span>
+            <span>{sendingTelegram ? 'در حال ارسال فایل SQL به تلگرام...' : 'ارسال فایل SQL دیتابیس به تلگرام'}</span>
           </button>
         </div>
       </div>

@@ -161,6 +161,73 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  // Telegram SQL database backup states
+  const [isSendingTelegramBackup, setIsSendingTelegramBackup] = useState(false);
+  const [telegramBackupResult, setTelegramBackupResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isDownloadingSql, setIsDownloadingSql] = useState(false);
+
+  const handleSendSqlBackupToTelegram = async () => {
+    const botToken = (formData.telegramBotToken || settings.telegramBotToken || '').trim();
+    const chatId = (formData.telegramChatId || settings.telegramChatId || '').trim();
+
+    if (!botToken || !chatId) {
+      setTelegramBackupResult({
+        success: false,
+        message: 'توکن ربات یا شناسه چت تلگرام در سیستم ثبت نشده است. لطفاً ابتدا در زبانه «تنظیمات تلگرام و اعلان‌ها» توکن ربات و شناسه چت را وارد نمایید.',
+      });
+      return;
+    }
+
+    setIsSendingTelegramBackup(true);
+    setTelegramBackupResult(null);
+    try {
+      const res = await StorageService.sendDatabaseBackupToTelegram({
+        botToken,
+        chatId,
+      });
+      if (res.success) {
+        setTelegramBackupResult({
+          success: true,
+          message: res.message || 'نسخه پشتیبان پایگاه‌داده (فایل اسکریپت SQL) با موفقیت به تلگرام ثبت‌شده در سیستم ارسال شد.',
+        });
+      } else {
+        setTelegramBackupResult({
+          success: false,
+          message: res.error || res.message || 'خطا در ارسال فایل SQL به تلگرام.',
+        });
+      }
+    } catch (err: any) {
+      setTelegramBackupResult({
+        success: false,
+        message: 'خطا در برقراری ارتباط با سرور: ' + (err?.message || ''),
+      });
+    } finally {
+      setIsSendingTelegramBackup(false);
+    }
+  };
+
+  const handleDownloadSqlDump = async () => {
+    setIsDownloadingSql(true);
+    try {
+      const res = await fetch('/api/database/export-sql');
+      if (!res.ok) throw new Error('خطا در دریافت فایل SQL از سرور');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const today = new Date().toISOString().slice(0, 10);
+      a.download = `mana_db_${today}.sql`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert('خطا در دانلود اسکریپت SQL: ' + (err?.message || ''));
+    } finally {
+      setIsDownloadingSql(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1826,28 +1893,119 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </form>
 
-          {/* Section 3: Backup & Restore */}
+          {/* Section 3: Backup & Restore (پشتیبان‌گیری از اطلاعات و ارسال به تلگرام) */}
           <div className="space-y-4 pt-4 border-t border-slate-200">
-            <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2 pb-2 border-b border-slate-100">
-              <Database className="w-4 h-4 text-emerald-600" />
-              <span>پشتیبان‌گیری، بازیابی و بازنشانی داده‌ها</span>
-            </h4>
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <Database className="w-4 h-4 text-emerald-600" />
+                <span>پشتیبان‌گیری از اطلاعات، بازیابی و انتقال داده‌ها</span>
+              </h4>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200">
+                پایگاه‌داده PostgreSQL (فرمت .sql)
+              </span>
+            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* کارت ویژه و برجسته: ارسال نسخه دیتابیس به تلگرام ثبت‌شده در سیستم (فایل SQL) */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-sky-50/90 via-blue-50/60 to-indigo-50/40 border border-sky-200 shadow-xs space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5 text-sky-900">
+                  <div className="p-2 rounded-xl bg-sky-500 text-white shadow-xs">
+                    <Send className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="font-black text-xs text-slate-900">ارسال فایل SQL دیتابیس به تلگرام ثبت‌شده در سیستم</h5>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      تولید اسکریپت جامع ساختار و داده‌های پایگاه‌داده (فرمت استاندارد .sql) و ارسال فوری به چت یا کانال تلگرام
+                    </p>
+                  </div>
+                </div>
+
+                <div className="shrink-0">
+                  {(formData.telegramChatId || settings.telegramChatId) ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-sky-100 text-sky-800 border border-sky-300" dir="ltr">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Chat: {formData.telegramChatId || settings.telegramChatId}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                      نیاز به تنظیم شناسه چت در تب تلگرام
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                <button
+                  type="button"
+                  id="settings-send-sql-telegram-btn"
+                  onClick={handleSendSqlBackupToTelegram}
+                  disabled={isSendingTelegramBackup}
+                  className="flex-1 py-2.5 px-4 bg-sky-600 hover:bg-sky-500 active:scale-98 text-white rounded-xl text-xs font-black transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  title="ارسال مستقیم فایل اسکریپت SQL دیتابیس به تلگرام ثبت‌شده در سیستم"
+                >
+                  {isSendingTelegramBackup ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>در حال آماده‌سازی و ارسال فایل SQL به تلگرام...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4 text-sky-200" />
+                      <span>ارسال فایل SQL دیتابیس به تلگرام</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  id="settings-download-sql-dump-btn"
+                  onClick={handleDownloadSqlDump}
+                  disabled={isDownloadingSql}
+                  className="py-2.5 px-3.5 bg-white hover:bg-slate-50 border border-slate-300 active:scale-98 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  title="دانلود مستقیم اسکریپت کامل SQL دیتابیس بدون نیاز به JSON"
+                >
+                  <Download className={`w-3.5 h-3.5 text-blue-600 ${isDownloadingSql ? 'animate-bounce' : ''}`} />
+                  <span>{isDownloadingSql ? 'در حال دریافت...' : 'دانلود فایل دیتابیس (.sql)'}</span>
+                </button>
+              </div>
+
+              {/* Feedback Alert for Telegram */}
+              {telegramBackupResult && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex items-center gap-2 transition-all ${
+                    telegramBackupResult.success
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                      : 'bg-rose-50 border-rose-300 text-rose-900'
+                  }`}
+                >
+                  {telegramBackupResult.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  )}
+                  <span className="font-semibold leading-relaxed">{telegramBackupResult.message}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Other Operations (JSON Backup / Restore / Reset) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
               {/* Backup */}
               <button
                 type="button"
                 id="export-backup-btn"
                 onClick={handleExportBackup}
-                className="flex items-center justify-center gap-2 p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-semibold transition-colors cursor-pointer"
+                className="flex items-center justify-center gap-2 p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-semibold transition-colors cursor-pointer"
+                title="دانلود فایل ساختار JSON برای بایگانی محلی"
               >
-                <Download className="w-4 h-4 text-emerald-600" />
+                <Download className="w-3.5 h-3.5 text-emerald-600" />
                 <span>دانلود فایل پشتیبان (JSON)</span>
               </button>
 
               {/* Restore */}
-              <label className="flex items-center justify-center gap-2 p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-semibold transition-colors cursor-pointer">
-                <Upload className="w-4 h-4 text-blue-600" />
+              <label className="flex items-center justify-center gap-2 p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-semibold transition-colors cursor-pointer">
+                <Upload className="w-3.5 h-3.5 text-blue-600" />
                 <span>بازیابی از فایل پشتیبان</span>
                 <input
                   type="file"
@@ -1863,16 +2021,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 type="button"
                 id="reset-sample-data-btn"
                 onClick={handleResetDefaults}
-                className="flex items-center justify-center gap-2 p-3 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl text-rose-700 font-semibold transition-colors cursor-pointer"
+                className="flex items-center justify-center gap-2 p-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl text-rose-700 font-semibold transition-colors cursor-pointer"
               >
-                <RotateCcw className="w-4 h-4 text-rose-600" />
+                <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
                 <span>بازنشانی به داده‌های نمونه</span>
               </button>
             </div>
 
             {importStatus && (
               <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200 flex items-center gap-2">
-                <FileCheck className="w-4 h-4 text-emerald-600" />
+                <FileCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>{importStatus}</span>
               </div>
             )}

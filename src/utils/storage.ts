@@ -1206,16 +1206,26 @@ export const StorageService = {
     }
   },
 
-  async sendDatabaseBackupToTelegram(filename?: string): Promise<{
+  async sendDatabaseBackupToTelegram(optionsOrFilename?: string | {
+    filename?: string;
+    botToken?: string;
+    chatId?: string;
+  }): Promise<{
     success: boolean;
     message?: string;
     error?: string;
   }> {
     try {
+      let payload: any = {};
+      if (typeof optionsOrFilename === 'string') {
+        payload = { filename: optionsOrFilename };
+      } else if (optionsOrFilename && typeof optionsOrFilename === 'object') {
+        payload = optionsOrFilename;
+      }
       const res = await fetch('/api/telegram/send-backup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(filename ? { filename } : {}),
+        body: JSON.stringify(payload),
       });
       return await res.json();
     } catch (e: any) {

@@ -1800,41 +1800,53 @@ app.post('/api/telegram/send-backup', async (req, res) => {
       });
     }
 
-    let backupContent: string;
-    let safeFilename: string;
-
+    // 1. Try to get data from specific file if requested, or PostgreSQL if online, otherwise use converged data
+    let dbPayload: any = null;
     if (specificFilename) {
-      const backupFilePath = path.join(BACKUPS_DIR, specificFilename);
-      if (!fs.existsSync(backupFilePath)) {
-        return res.status(404).json({ success: false, error: 'فایل پشتیبان مشخص‌شده در سرور یافت نشد.' });
+      const specificPath = path.join(BACKUPS_DIR, specificFilename);
+      if (fs.existsSync(specificPath)) {
+        try {
+          const raw = fs.readFileSync(specificPath, 'utf-8');
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            dbPayload = parsed;
+          }
+        } catch (e) {
+          console.warn('[Telegram Backup] Failed reading archive file:', e);
+        }
       }
-      backupContent = fs.readFileSync(backupFilePath, 'utf-8');
-      safeFilename = specificFilename;
-    } else {
-      const now = new Date();
-      const jalaliStr = getJalaliDateStr(now).replace(/\//g, '-');
-      const timeStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
-      safeFilename = `factor-backup-${jalaliStr}_${timeStr}.json`;
-      backupContent = JSON.stringify(dbData, null, 2);
     }
 
-    const fileBuffer = Buffer.from(backupContent, 'utf-8');
-    const fileBlob = new Blob([fileBuffer], { type: 'application/json' });
+    if (!dbPayload) {
+      dbPayload = await loadStateFromPostgres();
+      if (!dbPayload) {
+        dbPayload = dbData || readDatabase();
+      }
+    }
 
+    // 2. Generate complete PostgreSQL .sql script (SQL file only, JSON is not sent)
+    const sqlScript = generatePostgresSqlDump(dbPayload);
     const now = new Date();
+    const jalaliStr = getJalaliDateStr(now).replace(/\//g, '-');
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
+    const safeFilename = `mana_db_backup_${jalaliStr}_${timeStr}.sql`;
+
+    const fileBuffer = Buffer.from(sqlScript, 'utf-8');
+    const fileBlob = new Blob([fileBuffer], { type: 'application/sql' });
+
     const jalaliDate = getJalaliDateStr(now);
     const jalaliTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const productsCount = Array.isArray(dbData?.products) ? dbData.products.length : 0;
-    const invoicesCount = Array.isArray(dbData?.invoices) ? dbData.invoices.length : 0;
-    const customersCount = Array.isArray(dbData?.customers) ? dbData.customers.length : 0;
+    const productsCount = Array.isArray(dbPayload?.products) ? dbPayload.products.length : 0;
+    const invoicesCount = Array.isArray(dbPayload?.invoices) ? dbPayload.invoices.length : 0;
+    const customersCount = Array.isArray(dbPayload?.customers) ? dbPayload.customers.length : 0;
     const sizeKb = Math.round(fileBuffer.length / 1024);
 
     const caption = [
-      '📦 <b>نسخه پشتیبان پایگاه‌داده نرم‌افزار حسابداری و انبارداری</b>',
+      '🗄 <b>نسخه اسکریپت SQL پایگاه‌داده (PostgreSQL - mana_db)</b>',
       `📅 <b>تاریخ:</b> ${jalaliDate} ساعت ${jalaliTime}`,
-      `📊 <b>آمار:</b> ${productsCount} کالا | ${invoicesCount} فاکتور | ${customersCount} طرف‌حساب`,
-      `💾 <b>حجم فایل:</b> ${sizeKb} کیلوبایت`,
-      '🔒 <i>این فایل حاوی نسخه کامل کلیه اطلاعات دیتابیس است و می‌توان آن را در بخش پشتیبان‌گیری سیستم بازیابی نمود.</i>',
+      `📊 <b>آمار اطلاعات:</b> ${productsCount} کالا | ${invoicesCount} فاکتور | ${customersCount} طرف‌حساب`,
+      `💾 <b>حجم فایل:</b> ${sizeKb} کیلوبایت (فرمت استاندارد .sql)`,
+      '⚡ <i>این فایل شامل اسکریپت کامل ساختار DDL و داده‌های DML دیتابیس PostgreSQL است و مستقیماً در دیتابیس یا ابزارهای مدیریت پایگاه‌داده (DBeaver / pgAdmin / psql) قابل اجرا و بازیابی می‌باشد.</i>',
     ].join('\n');
 
     const formData = new FormData();
@@ -1848,9 +1860,9 @@ app.post('/api/telegram/send-backup', async (req, res) => {
       body: formData,
     });
 
-    let data = await response.json();
+    let teleData: any = await response.json();
 
-    if (!response.ok && data?.description && data.description.includes("can't parse entities")) {
+    if (!response.ok && teleData?.description && teleData.description.includes("can't parse entities")) {
       const fallbackFd = new FormData();
       fallbackFd.append('chat_id', chatId);
       fallbackFd.append('document', fileBlob, safeFilename);
@@ -1859,21 +1871,21 @@ app.post('/api/telegram/send-backup', async (req, res) => {
         method: 'POST',
         body: fallbackFd,
       });
-      data = await response.json();
+      teleData = await response.json();
     }
 
-    if (!response.ok || !data.ok) {
-      console.error('[Telegram API] send-backup failed:', data);
+    if (!response.ok || !teleData.ok) {
+      console.error('[Telegram API] send-backup failed:', teleData);
       return res.status(400).json({
         success: false,
-        error: data.description || 'ارسال فایل پشتیبان به تلگرام با خطا مواجه شد. لطفاً دسترسی ربات به این چت را بررسی فرمایید.',
+        error: teleData.description || 'ارسال فایل پشتیبان به تلگرام با خطا مواجه شد. لطفاً دسترسی ربات به این چت را بررسی فرمایید.',
       });
     }
 
     return res.json({
       success: true,
       message: `نسخه پشتیبان پایگاه‌داده («${safeFilename}») با موفقیت به تلگرام ثبت‌شده در سیستم ارسال گردید.`,
-      result: data.result,
+      result: teleData.result,
     });
   } catch (err: any) {
     console.error('[Telegram API] send-backup exception:', err);
