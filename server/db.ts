@@ -131,7 +131,7 @@ async function initSchema(client: pg.PoolClient) {
 
     CREATE TABLE IF NOT EXISTS invoices (
       id VARCHAR(100) PRIMARY KEY,
-      invoice_number VARCHAR(100) NOT NULL UNIQUE,
+      invoice_number VARCHAR(100) NOT NULL,
       date VARCHAR(50) NOT NULL,
       customer_id VARCHAR(100),
       customer_name VARCHAR(250) NOT NULL,
@@ -155,28 +155,128 @@ async function initSchema(client: pg.PoolClient) {
       data JSONB NOT NULL,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS deleted_tombstones (
+      entity_type VARCHAR(100) NOT NULL,
+      entity_id VARCHAR(150) NOT NULL,
+      deleted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (entity_type, entity_id)
+    );
+
+    -- Ensure legacy unique constraint on invoice_number does not block multiple pre-invoices/drafts
+    DO $$ BEGIN
+      ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_invoice_number_key;
+    EXCEPTION
+      WHEN undefined_table THEN NULL;
+      WHEN undefined_object THEN NULL;
+    END $$;
   `);
 
   console.log('[PostgreSQL Schema] mana_db tables verified successfully.');
 }
 
+// Track last save error for actionable diagnostics
+let lastPostgresSaveError: string | null = null;
+export function getLastPostgresSaveError(): string | null {
+  return lastPostgresSaveError;
+}
+
 // Load full state from PostgreSQL
 export async function loadStateFromPostgres(): Promise<any | null> {
-  if (!isConnected) {
-    return null;
-  }
   const currentPool = getPostgresPool();
   if (!currentPool) return null;
 
+  let client: pg.PoolClient | null = null;
   try {
-    const res = await currentPool.query('SELECT data, revision, checksum FROM system_state WHERE id = $1', ['main_store_data']);
-    if (res.rows.length > 0) {
+    client = await currentPool.connect();
+    isConnected = true;
+
+    if (!dbInitialized) {
+      await initSchema(client);
+      dbInitialized = true;
+    }
+
+    const res = await client.query('SELECT data, revision, checksum FROM system_state WHERE id = $1', ['main_store_data']);
+    if (res.rows.length > 0 && res.rows[0].data) {
       return res.rows[0].data;
     }
+
+    // Fallback: If system_state table exists but row is missing, check if relational tables contain records
+    try {
+      const prodCountRes = await client.query('SELECT count(*) FROM products');
+      const prodCount = parseInt(prodCountRes.rows[0]?.count || '0', 10);
+      if (prodCount > 0) {
+        const [pRes, cRes, iRes, wRes] = await Promise.all([
+          client.query('SELECT * FROM products ORDER BY id'),
+          client.query('SELECT * FROM customers ORDER BY id'),
+          client.query('SELECT * FROM invoices ORDER BY id'),
+          client.query('SELECT * FROM warehouses ORDER BY id'),
+        ]);
+
+        return {
+          products: pRes.rows.map((p) => ({
+            id: p.id,
+            name: p.name,
+            barcode: p.barcode,
+            category: p.category,
+            unit: p.unit,
+            stock: Number(p.stock) || 0,
+            minStockAlert: Number(p.min_stock_alert) || 5,
+            buyPrice: Number(p.purchase_price) || 0,
+            sellPrice: Number(p.sell_price) || 0,
+            updatedAt: p.updated_at,
+          })),
+          customers: cRes.rows.map((c) => ({
+            id: c.id,
+            name: c.name,
+            phone: c.phone,
+            address: c.address,
+            nationalId: c.national_id,
+            economicCode: c.economic_code,
+            postalCode: c.postal_code,
+            balance: Number(c.balance) || 0,
+            totalInvoices: Number(c.total_invoices) || 0,
+            totalSpent: Number(c.total_spent) || 0,
+          })),
+          invoices: iRes.rows.map((inv) => ({
+            id: inv.id,
+            invoiceNumber: inv.invoice_number,
+            date: inv.date,
+            customerId: inv.customer_id,
+            customerName: inv.customer_name,
+            customerPhone: inv.customer_phone,
+            items: typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []),
+            totalAmount: Number(inv.total_amount) || 0,
+            subtotal: Number(inv.total_amount) || 0,
+            discount: Number(inv.discount) || 0,
+            tax: Number(inv.tax) || 0,
+            finalAmount: Number(inv.final_amount) || 0,
+            finalTotal: Number(inv.final_amount) || 0,
+            status: inv.status,
+          })),
+          settings: {
+            warehouses: wRes.rows.map((w) => ({
+              id: w.id,
+              name: w.name,
+              code: w.code,
+              phone: w.phone,
+              managerName: w.manager_name,
+              address: w.address,
+              isDefault: w.is_default,
+            })),
+          },
+          revision: 1,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+    } catch (_) {}
   } catch (err: any) {
-    // If connection dropped, mark as disconnected
     isConnected = false;
     console.warn('[PostgreSQL Load Notice]:', err.message);
+  } finally {
+    if (client) {
+      client.release();
+    }
   }
   return null;
 }
@@ -184,14 +284,23 @@ export async function loadStateFromPostgres(): Promise<any | null> {
 // Save full state into PostgreSQL with ACID transaction
 export async function saveStateToPostgres(data: any): Promise<boolean> {
   const currentPool = getPostgresPool();
-  if (!currentPool) return false;
+  if (!currentPool) {
+    lastPostgresSaveError = 'استخر کانکشن‌های PostgreSQL آماده نیست.';
+    return false;
+  }
 
   let client: pg.PoolClient | null = null;
   try {
     client = await currentPool.connect();
+    isConnected = true;
+
+    // Guarantee all tables exist safely before any queries or transactions
+    await initSchema(client);
+    dbInitialized = true;
+
     await client.query('BEGIN');
 
-    // 1. Update JSONB system_state
+    // 1. Update JSONB system_state (Core authoritative state)
     const rev = typeof data.revision === 'number' ? data.revision : 1;
     await client.query(
       `INSERT INTO system_state (id, data, revision, checksum, updated_at)
@@ -235,33 +344,114 @@ export async function saveStateToPostgres(data: any): Promise<boolean> {
       await client.query(`DELETE FROM customers WHERE id = ANY($1)`, [data.tombstones.customers]);
     }
 
-    // 4. Sync active records to relational tables
-    if (Array.isArray(data.warehouses) && data.warehouses.length > 0) {
-      for (const w of data.warehouses) {
-        await client.query(
-          `INSERT INTO warehouses (id, name, code, phone, manager_name, address, is_default, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-           ON CONFLICT (id) DO UPDATE
-           SET name = $2, code = $3, phone = $4, manager_name = $5, address = $6, is_default = $7, updated_at = NOW()`,
-          [w.id, w.name, w.code || '', w.phone || '', w.managerName || '', w.address || '', !!w.isDefault]
-        );
-      }
-    }
+    // 4. Sync active records to relational tables using savepoint to guarantee zero-crash on edge-case data
+    try {
+      await client.query('SAVEPOINT relational_sync');
 
-    if (Array.isArray(data.products) && data.products.length > 0) {
-      for (const p of data.products) {
-        await client.query(
-          `INSERT INTO products (id, name, barcode, category, unit, stock, min_stock_alert, purchase_price, sell_price, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-           ON CONFLICT (id) DO UPDATE
-           SET name = $2, barcode = $3, category = $4, unit = $5, stock = $6, min_stock_alert = $7, purchase_price = $8, sell_price = $9, updated_at = NOW()`,
-          [p.id, p.name, p.barcode || '', p.category || '', p.unit || 'عدد', p.stock || 0, p.minStockAlert || 5, p.purchasePrice || 0, p.sellPrice || 0]
-        );
+      // Warehouses
+      const warehouses = Array.isArray(data.settings?.warehouses)
+        ? data.settings.warehouses
+        : (Array.isArray(data.warehouses) ? data.warehouses : []);
+      if (warehouses.length > 0) {
+        for (const w of warehouses) {
+          if (!w || !w.id) continue;
+          await client.query(
+            `INSERT INTO warehouses (id, name, code, phone, manager_name, address, is_default, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+             ON CONFLICT (id) DO UPDATE
+             SET name = $2, code = $3, phone = $4, manager_name = $5, address = $6, is_default = $7, updated_at = NOW()`,
+            [w.id, w.name || '', w.code || '', w.phone || '', w.managerName || '', w.address || '', !!w.isDefault]
+          );
+        }
       }
+
+      // Products
+      if (Array.isArray(data.products) && data.products.length > 0) {
+        for (const p of data.products) {
+          if (!p || !p.id) continue;
+          await client.query(
+            `INSERT INTO products (id, name, barcode, category, unit, stock, min_stock_alert, purchase_price, sell_price, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+             ON CONFLICT (id) DO UPDATE
+             SET name = $2, barcode = $3, category = $4, unit = $5, stock = $6, min_stock_alert = $7, purchase_price = $8, sell_price = $9, updated_at = NOW()`,
+            [
+              p.id,
+              p.name || 'کالای بدون نام',
+              p.barcode || p.code || '',
+              p.category || '',
+              p.unit || 'عدد',
+              Number(p.stock) || 0,
+              Number(p.minStockAlert) || 5,
+              Number(p.buyPrice || p.purchasePrice) || 0,
+              Number(p.sellPrice) || 0,
+            ]
+          );
+        }
+      }
+
+      // Customers
+      if (Array.isArray(data.customers) && data.customers.length > 0) {
+        for (const c of data.customers) {
+          if (!c || !c.id) continue;
+          await client.query(
+            `INSERT INTO customers (id, name, phone, address, national_id, economic_code, postal_code, balance, total_invoices, total_spent)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             ON CONFLICT (id) DO UPDATE
+             SET name = $2, phone = $3, address = $4, national_id = $5, economic_code = $6, postal_code = $7, balance = $8, total_invoices = $9, total_spent = $10`,
+            [
+              c.id,
+              c.name || 'مشتری',
+              c.phone || '',
+              c.address || '',
+              c.nationalId || '',
+              c.economicCode || '',
+              c.postalCode || '',
+              Number(c.balance) || 0,
+              Number(c.totalInvoices) || 0,
+              Number(c.totalSpent) || 0,
+            ]
+          );
+        }
+      }
+
+      // Invoices
+      if (Array.isArray(data.invoices) && data.invoices.length > 0) {
+        for (const inv of data.invoices) {
+          if (!inv || !inv.id) continue;
+          await client.query(
+            `INSERT INTO invoices (id, invoice_number, date, customer_id, customer_name, customer_phone, items, total_amount, discount, tax, final_amount, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             ON CONFLICT (id) DO UPDATE
+             SET invoice_number = $2, date = $3, customer_id = $4, customer_name = $5, customer_phone = $6, items = $7, total_amount = $8, discount = $9, tax = $10, final_amount = $11, status = $12`,
+            [
+              inv.id,
+              inv.invoiceNumber || inv.id,
+              inv.date || '',
+              inv.customerId || '',
+              inv.customerName || '',
+              inv.customerPhone || '',
+              JSON.stringify(inv.items || []),
+              Number(inv.subtotal || inv.totalAmount || 0),
+              Number(inv.totalDiscount || inv.discount || 0),
+              Number(inv.taxAmount || inv.tax || 0),
+              Number(inv.finalTotal || inv.finalAmount || 0),
+              inv.paymentStatus || inv.status || 'completed',
+            ]
+          );
+        }
+      }
+
+      await client.query('RELEASE SAVEPOINT relational_sync');
+    } catch (relationalErr: any) {
+      console.warn('[PostgreSQL Relational Tables Sync Warning - system_state is safe]:', relationalErr.message);
+      try {
+        await client.query('ROLLBACK TO SAVEPOINT relational_sync');
+      } catch (_) {}
     }
 
     await client.query('COMMIT');
     isConnected = true;
+    lastPostgresSaveError = null;
     return true;
   } catch (err: any) {
     if (client) {
@@ -269,7 +459,8 @@ export async function saveStateToPostgres(data: any): Promise<boolean> {
         await client.query('ROLLBACK');
       } catch (_) {}
     }
-    console.warn('[PostgreSQL Save Notice]:', err.message);
+    lastPostgresSaveError = err.message || 'خطای نامشخص در ثبت اطلاعات در دیتابیس PostgreSQL';
+    console.error('[PostgreSQL Save Notice Error]:', err.message);
     return false;
   } finally {
     if (client) {
@@ -386,8 +577,8 @@ function escapeSqlString(val: any): string {
   if (val === null || val === undefined) return 'NULL';
   if (typeof val === 'number') return isNaN(val) ? '0' : String(val);
   if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
-  if (typeof val === 'object') return `'${JSON.stringify(val).replace(/'/g, "''")}'::jsonb`;
-  return `'${String(val).replace(/'/g, "''")}'`;
+  if (typeof val === 'object') return `'${JSON.stringify(val).replace(/\0/g, '').replace(/'/g, "''")}'::jsonb`;
+  return `'${String(val).replace(/\0/g, '').replace(/'/g, "''")}'`;
 }
 
 // Generate complete SQL script for PostgreSQL mana_db
@@ -462,7 +653,7 @@ CREATE TABLE IF NOT EXISTS customers (
 
 CREATE TABLE IF NOT EXISTS invoices (
   id VARCHAR(100) PRIMARY KEY,
-  invoice_number VARCHAR(100) NOT NULL UNIQUE,
+  invoice_number VARCHAR(100) NOT NULL,
   date VARCHAR(50) NOT NULL,
   customer_id VARCHAR(100),
   customer_name VARCHAR(250) NOT NULL,
@@ -485,7 +676,22 @@ CREATE TABLE IF NOT EXISTS db_backups (
   checksum VARCHAR(100),
   data JSONB NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);\n`);
+);
+
+CREATE TABLE IF NOT EXISTS deleted_tombstones (
+  entity_type VARCHAR(100) NOT NULL,
+  entity_id VARCHAR(150) NOT NULL,
+  deleted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (entity_type, entity_id)
+);
+
+-- Ensure invoice_number unique constraint is removed to allow drafts/revisions without conflict
+DO $$ BEGIN
+  ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_invoice_number_key;
+EXCEPTION
+  WHEN undefined_table THEN NULL;
+  WHEN undefined_object THEN NULL;
+END $$;\n`);
 
   // Insert system_state
   lines.push(`-- 2. System State (Primary Json Data)`);
@@ -501,7 +707,7 @@ ON CONFLICT (id) DO UPDATE SET
     lines.push(`-- 3. Warehouses (${warehouses.length} records)`);
     for (const w of warehouses) {
       lines.push(`INSERT INTO warehouses (id, name, code, phone, manager_name, address, is_default, updated_at)
-VALUES (${escapeSqlString(w.id)}, ${escapeSqlString(w.name)}, ${escapeSqlString(w.code)}, ${escapeSqlString(w.phone)}, ${escapeSqlString(w.managerName)}, ${escapeSqlString(w.address)}, ${w.isDefault ? 'TRUE' : 'FALSE'}, CURRENT_TIMESTAMP)
+VALUES (${escapeSqlString(w.id)}, ${escapeSqlString(w.name)}, ${escapeSqlString(w.code)}, ${escapeSqlString(w.phone)}, ${escapeSqlString(w.managerName || w.manager_name)}, ${escapeSqlString(w.address)}, ${w.isDefault || w.is_default ? 'TRUE' : 'FALSE'}, CURRENT_TIMESTAMP)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
   code = EXCLUDED.code,
@@ -519,7 +725,7 @@ ON CONFLICT (id) DO UPDATE SET
     lines.push(`-- 4. Products (${products.length} records)`);
     for (const p of products) {
       lines.push(`INSERT INTO products (id, name, barcode, category, unit, stock, min_stock_alert, purchase_price, sell_price, updated_at)
-VALUES (${escapeSqlString(p.id)}, ${escapeSqlString(p.name)}, ${escapeSqlString(p.barcode)}, ${escapeSqlString(p.category)}, ${escapeSqlString(p.unit || 'عدد')}, ${Number(p.stock) || 0}, ${Number(p.minStockAlert) || 5}, ${Number(p.buyPrice) || 0}, ${Number(p.sellPrice) || 0}, CURRENT_TIMESTAMP)
+VALUES (${escapeSqlString(p.id)}, ${escapeSqlString(p.name)}, ${escapeSqlString(p.barcode || p.code)}, ${escapeSqlString(p.category)}, ${escapeSqlString(p.unit || 'عدد')}, ${Number(p.stock) || 0}, ${Number(p.minStockAlert || p.min_stock_alert) || 5}, ${Number(p.buyPrice || p.purchase_price || p.purchasePrice) || 0}, ${Number(p.sellPrice || p.sell_price) || 0}, CURRENT_TIMESTAMP)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
   barcode = EXCLUDED.barcode,
@@ -539,7 +745,7 @@ ON CONFLICT (id) DO UPDATE SET
     lines.push(`-- 5. Customers (${customers.length} records)`);
     for (const c of customers) {
       lines.push(`INSERT INTO customers (id, name, phone, address, national_id, economic_code, postal_code, balance, total_invoices, total_spent)
-VALUES (${escapeSqlString(c.id)}, ${escapeSqlString(c.name)}, ${escapeSqlString(c.phone)}, ${escapeSqlString(c.address)}, ${escapeSqlString(c.nationalId)}, ${escapeSqlString(c.economicCode)}, ${escapeSqlString(c.postalCode)}, ${Number(c.balance) || 0}, ${Number(c.totalInvoices) || 0}, ${Number(c.totalSpent) || 0})
+VALUES (${escapeSqlString(c.id)}, ${escapeSqlString(c.name)}, ${escapeSqlString(c.phone)}, ${escapeSqlString(c.address)}, ${escapeSqlString(c.nationalId || c.national_id)}, ${escapeSqlString(c.economicCode || c.economic_code)}, ${escapeSqlString(c.postalCode || c.postal_code)}, ${Number(c.balance) || 0}, ${Number(c.totalInvoices || c.total_invoices) || 0}, ${Number(c.totalSpent || c.total_spent) || 0})
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
   phone = EXCLUDED.phone,
@@ -559,7 +765,7 @@ ON CONFLICT (id) DO UPDATE SET
     lines.push(`-- 6. Invoices (${invoices.length} records)`);
     for (const inv of invoices) {
       lines.push(`INSERT INTO invoices (id, invoice_number, date, customer_id, customer_name, customer_phone, items, total_amount, discount, tax, final_amount, status)
-VALUES (${escapeSqlString(inv.id)}, ${escapeSqlString(inv.invoiceNumber)}, ${escapeSqlString(inv.date)}, ${escapeSqlString(inv.customerId)}, ${escapeSqlString(inv.customerName)}, ${escapeSqlString(inv.customerPhone)}, ${escapeSqlString(inv.items || [])}, ${Number(inv.totalAmount) || 0}, ${Number(inv.discount) || 0}, ${Number(inv.tax) || 0}, ${Number(inv.finalAmount) || 0}, ${escapeSqlString(inv.status || 'completed')})
+VALUES (${escapeSqlString(inv.id)}, ${escapeSqlString(inv.invoiceNumber || inv.invoice_number || inv.id)}, ${escapeSqlString(inv.date)}, ${escapeSqlString(inv.customerId || inv.customer_id)}, ${escapeSqlString(inv.customerName || inv.customer_name)}, ${escapeSqlString(inv.customerPhone || inv.customer_phone)}, ${escapeSqlString(inv.items || [])}, ${Number(inv.subtotal || inv.totalAmount || inv.total_amount) || 0}, ${Number(inv.totalDiscount || inv.discount) || 0}, ${Number(inv.taxAmount || inv.tax) || 0}, ${Number(inv.finalTotal || inv.finalAmount || inv.final_amount) || 0}, ${escapeSqlString(inv.paymentStatus || inv.status || 'completed')})
 ON CONFLICT (id) DO UPDATE SET
   invoice_number = EXCLUDED.invoice_number,
   date = EXCLUDED.date,
@@ -577,7 +783,7 @@ ON CONFLICT (id) DO UPDATE SET
   }
 
   lines.push(`COMMIT;`);
-  lines.push(`-- Export Completed Successfully.`);
+  lines.push(`-- Safe PostgreSQL Export Completed Successfully.`);
   return lines.join('\n');
 }
 
@@ -633,3 +839,150 @@ export async function createPostgresDbBackupRecord(label: string, data: any): Pr
     return { success: false, message: `خطا در ثبت رکورد در db_backups: ${err.message}` };
   }
 }
+
+// Safely dump current PostgreSQL or converged state without blocking active live transactions
+// Uses REPEATABLE READ READ ONLY to take a point-in-time ACID snapshot without table lock escalation
+export async function exportLiveDatabaseDump(fallbackDataGetter?: () => Promise<any>): Promise<{ sql: string; filename: string; timestamp: string }> {
+  let liveData: any = null;
+  let liveWarehouses: any[] = [];
+  let liveProducts: any[] = [];
+  let liveCustomers: any[] = [];
+  let liveInvoices: any[] = [];
+  const currentPool = getPostgresPool();
+
+  if (currentPool) {
+    let client: pg.PoolClient | null = null;
+    try {
+      client = await currentPool.connect();
+      isConnected = true;
+
+      // Guarantee all schema tables exist safely
+      if (!dbInitialized) {
+        await initSchema(client);
+        dbInitialized = true;
+      }
+
+      // Use REPEATABLE READ READ ONLY: 100% read-only snapshot, zero write interference with live users
+      await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+
+      try {
+        const res = await client.query('SELECT data FROM system_state WHERE id = $1', ['main_store_data']);
+        if (res.rows.length > 0 && res.rows[0].data) {
+          liveData = res.rows[0].data;
+        }
+      } catch (_) {}
+
+      // Query live relational tables directly
+      try {
+        const [wRes, pRes, cRes, iRes] = await Promise.all([
+          client.query('SELECT * FROM warehouses ORDER BY id'),
+          client.query('SELECT * FROM products ORDER BY id'),
+          client.query('SELECT * FROM customers ORDER BY id'),
+          client.query('SELECT * FROM invoices ORDER BY id'),
+        ]);
+        liveWarehouses = wRes.rows;
+        liveProducts = pRes.rows;
+        liveCustomers = cRes.rows;
+        liveInvoices = iRes.rows;
+      } catch (_) {}
+
+      await client.query('COMMIT');
+    } catch (e: any) {
+      if (client) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (_) {}
+      }
+      console.warn('[PostgreSQL Live Dump Read Warning]:', e.message);
+    } finally {
+      if (client) {
+        client.release();
+      }
+    }
+  }
+
+  // If Postgres was offline or returned empty, fallback to reading server state (strictly READ-ONLY)
+  if (!liveData && fallbackDataGetter) {
+    try {
+      liveData = await fallbackDataGetter();
+    } catch {}
+  }
+
+  if (!liveData) {
+    liveData = await loadStateFromPostgres();
+  }
+
+  if (!liveData || typeof liveData !== 'object') {
+    liveData = {};
+  }
+
+  // If relational tables have records and liveData does not, augment liveData from relational tables
+  if (liveWarehouses.length > 0 && (!Array.isArray(liveData.settings?.warehouses) || liveData.settings.warehouses.length === 0)) {
+    if (!liveData.settings) liveData.settings = {};
+    liveData.settings.warehouses = liveWarehouses.map((w) => ({
+      id: w.id,
+      name: w.name,
+      code: w.code,
+      phone: w.phone,
+      managerName: w.manager_name,
+      address: w.address,
+      isDefault: w.is_default,
+    }));
+  }
+
+  if (liveProducts.length > 0 && (!Array.isArray(liveData.products) || liveData.products.length === 0)) {
+    liveData.products = liveProducts.map((p) => ({
+      id: p.id,
+      name: p.name,
+      barcode: p.barcode,
+      category: p.category,
+      unit: p.unit,
+      stock: Number(p.stock) || 0,
+      minStockAlert: Number(p.min_stock_alert) || 5,
+      buyPrice: Number(p.purchase_price) || 0,
+      sellPrice: Number(p.sell_price) || 0,
+      updatedAt: p.updated_at,
+    }));
+  }
+
+  if (liveCustomers.length > 0 && (!Array.isArray(liveData.customers) || liveData.customers.length === 0)) {
+    liveData.customers = liveCustomers.map((c) => ({
+      id: c.id,
+      name: c.name,
+      phone: c.phone,
+      address: c.address,
+      nationalId: c.national_id,
+      economicCode: c.economic_code,
+      postalCode: c.postal_code,
+      balance: Number(c.balance) || 0,
+      totalInvoices: Number(c.total_invoices) || 0,
+      totalSpent: Number(c.total_spent) || 0,
+    }));
+  }
+
+  if (liveInvoices.length > 0 && (!Array.isArray(liveData.invoices) || liveData.invoices.length === 0)) {
+    liveData.invoices = liveInvoices.map((inv) => ({
+      id: inv.id,
+      invoiceNumber: inv.invoice_number,
+      date: inv.date,
+      customerId: inv.customer_id,
+      customerName: inv.customer_name,
+      customerPhone: inv.customer_phone,
+      items: typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []),
+      totalAmount: Number(inv.total_amount) || 0,
+      subtotal: Number(inv.total_amount) || 0,
+      discount: Number(inv.discount) || 0,
+      tax: Number(inv.tax) || 0,
+      finalAmount: Number(inv.final_amount) || 0,
+      finalTotal: Number(inv.final_amount) || 0,
+      status: inv.status,
+    }));
+  }
+
+  const nowIso = new Date().toISOString();
+  const sql = generatePostgresSqlDump(liveData);
+  const filename = `mana_db_${nowIso.replace(/[:.]/g, '-')}.sql`;
+
+  return { sql, filename, timestamp: nowIso };
+}
+

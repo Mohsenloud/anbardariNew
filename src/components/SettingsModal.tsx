@@ -209,12 +209,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleDownloadSqlDump = async () => {
     setIsDownloadingSql(true);
     try {
-      const ok = await StorageService.downloadPostgresSqlDump();
-      if (!ok) {
-        alert('خطا در دریافت فایل SQL از سرور.');
+      const res = await StorageService.downloadPostgresSqlDump();
+      if (res && res.success) {
+        setTelegramBackupResult({
+          success: true,
+          message: res.message || 'فایل خروجی پشتیبان دیتابیس (mana_db.sql) با موفقیت دانلود شد.',
+        });
+      } else {
+        setTelegramBackupResult({
+          success: false,
+          message: (res && res.message) || 'خطا در دریافت فایل SQL از سرور.',
+        });
       }
     } catch (err: any) {
-      alert('خطا در دانلود اسکریپت SQL: ' + (err?.message || ''));
+      setTelegramBackupResult({
+        success: false,
+        message: 'خطا در دانلود اسکریپت SQL: ' + (err?.message || ''),
+      });
     } finally {
       setIsDownloadingSql(false);
     }

@@ -109,6 +109,9 @@ export interface InvoiceItem {
   // توضیحات اختصاصی ردیف کالا یا خدمت (جهت نمایش در چاپ و PDF)
   description?: string;
   notes?: string; // آلیاس description
+  // نشانگر نوع آیتم (کالا یا خدمات)
+  isService?: boolean;
+  itemType?: 'product' | 'service';
 }
 
 export type PaymentStatus = 'paid' | 'unpaid' | 'partial';

@@ -16,6 +16,8 @@ import {
   generatePostgresSqlDump,
   executeRawSql,
   createPostgresDbBackupRecord,
+  getLastPostgresSaveError,
+  exportLiveDatabaseDump,
 } from './server/db';
 
 const app = express();
@@ -509,14 +511,18 @@ function pruneOldBackups(maxKeep = 30) {
 
 function createBackup(
   trigger: 'auto' | 'manual' | 'startup' | 'pre-restore' = 'auto',
-  label: string = 'پشتیبان سیستم'
+  label: string = 'پشتیبان سیستم',
+  dataToSave?: any
 ): { success: boolean; filename?: string; error?: string } {
   try {
     if (!fs.existsSync(BACKUPS_DIR)) {
       fs.mkdirSync(BACKUPS_DIR, { recursive: true });
     }
 
-    const currentData = readDatabaseRaw();
+    const currentData =
+      dataToSave && typeof dataToSave === 'object' && Array.isArray(dataToSave.products)
+        ? dataToSave
+        : readDatabaseRaw();
     const timestamp = new Date();
     const pad = (n: number) => n.toString().padStart(2, '0');
     const timeStr = `${timestamp.getFullYear()}-${pad(timestamp.getMonth() + 1)}-${pad(timestamp.getDate())}_${pad(timestamp.getHours())}-${pad(timestamp.getMinutes())}-${pad(timestamp.getSeconds())}`;
@@ -546,6 +552,11 @@ function createBackup(
 
     lastAutoBackupTime = Date.now();
     pruneOldBackups(30);
+
+    // Also persist snapshot record in PostgreSQL db_backups table if connected
+    if (getPostgresStatus().connected) {
+      createPostgresDbBackupRecord(label, currentData).catch(() => {});
+    }
 
     console.log(`[Backup Engine] Successfully created ${trigger} backup: ${filename} (${label})`);
     return { success: true, filename };
@@ -808,7 +819,8 @@ app.post('/api/database/test', async (req, res) => {
 // 1.3 Force Synchronization from Local to PostgreSQL or vice versa
 app.post('/api/database/force-sync', async (req, res) => {
   try {
-    const localData = readDatabase();
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const dataToSync = dbData || await loadStateFromPostgres() || readDatabase();
     const pgStatus = getPostgresStatus();
     
     if (!pgStatus.connected) {
@@ -823,16 +835,19 @@ app.post('/api/database/force-sync', async (req, res) => {
       }
     }
 
-    const saved = await saveStateToPostgres(localData);
+    const saved = await saveStateToPostgres(dataToSync);
     if (saved) {
       return res.json({
         success: true,
         message: 'کلیه اطلاعات سیستم با موفقیت در جداول پایگاه‌داده PostgreSQL (mana_db) همگام‌سازی و ذخیره شد.',
       });
     } else {
+      const errDetail = getLastPostgresSaveError();
       return res.status(500).json({
         success: false,
-        message: 'خطا در ثبت اطلاعات در دیتابیس PostgreSQL.',
+        message: errDetail
+          ? `خطا در ثبت اطلاعات در دیتابیس PostgreSQL: ${errDetail}`
+          : 'خطا در ثبت اطلاعات در دیتابیس PostgreSQL. لطفاً از اتصال کانتینر اطمینان حاصل فرمایید.',
       });
     }
   } catch (err: any) {
@@ -840,34 +855,26 @@ app.post('/api/database/force-sync', async (req, res) => {
   }
 });
 
-// 1.4 Export Complete PostgreSQL .sql Script for mana_db
-app.all('/api/database/export-sql', async (req, res) => {
+// 1.4 Secure Non-Blocking Database Dump Endpoint (100% Read-Only, Isolated ACID Snapshot, Zero Table Wipe)
+const handleSecureDatabaseDump = async (req: express.Request, res: express.Response) => {
   try {
-    let data: any = req.body?.clientData || (req.body?.products ? req.body : null);
-    if (!data || !Array.isArray(data.products) || data.products.length === 0) {
-      const { data: converged } = await getLatestConvergedDatabase();
-      data = converged || await loadStateFromPostgres() || readDatabase();
-    } else {
-      // Auto-persist active client data
-      try {
-        await enqueueDbWrite(async () => {
-          writeDatabase(data, true, false);
-          if (getPostgresStatus().connected) {
-            await saveStateToPostgres(data);
-          }
-        });
-      } catch {}
-    }
-    const sqlScript = generatePostgresSqlDump(data);
-    const filename = `mana_db_${new Date().toISOString().replace(/[:.]/g, '-')}.sql`;
+    setNoCacheHeaders(res);
+    const dump = await exportLiveDatabaseDump(async () => {
+      const { data } = await getLatestConvergedDatabase();
+      return data || readDatabase();
+    });
 
     res.setHeader('Content-Type', 'application/sql; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(sqlScript);
+    res.setHeader('Content-Disposition', `attachment; filename="${dump.filename}"`);
+    res.send(dump.sql);
   } catch (err: any) {
-    res.status(500).json({ success: false, message: `خطا در استخراج فایل SQL: ${err.message}` });
+    console.error('[Database Dump Error]:', err);
+    res.status(500).json({ success: false, message: `خطا در تهیه خروجی پشتیبان دیتابیس: ${err.message}` });
   }
-});
+};
+
+app.get('/api/database/dump-sql', handleSecureDatabaseDump);
+app.all('/api/database/export-sql', handleSecureDatabaseDump);
 
 // 1.5 Import SQL Script or Raw Data directly into PostgreSQL mana_db
 app.post('/api/database/import-sql', express.text({ type: ['application/sql', 'text/plain'], limit: '50mb' }), async (req, res) => {
@@ -935,11 +942,11 @@ function enqueueDbWrite<T>(task: () => Promise<T>): Promise<T> {
   return next;
 }
 
-// Bi-directional state convergence: always resolve to the highest revision between PostgreSQL and local file
+// Bi-directional state convergence: resolve to authoritative data without mutating on read
 async function getLatestConvergedDatabase(): Promise<{ data: any; source: 'postgresql' | 'local-file' }> {
   const localData = readDatabase();
-  const localRev = typeof localData.revision === 'number' ? localData.revision : 1;
-  const localUpdated = localData.updatedAt ? new Date(localData.updatedAt).getTime() : 0;
+  const localRev = typeof localData?.revision === 'number' ? localData.revision : 1;
+  const localUpdated = localData?.updatedAt ? new Date(localData.updatedAt).getTime() : 0;
 
   let pgData: any = null;
   if (getPostgresStatus().connected) {
@@ -950,29 +957,26 @@ async function getLatestConvergedDatabase(): Promise<{ data: any; source: 'postg
     }
   }
 
-  if (pgData && typeof pgData === 'object' && Array.isArray(pgData.products)) {
+  // If Postgres has populated data, PostgreSQL is the authoritative source of truth
+  if (pgData && typeof pgData === 'object' && Array.isArray(pgData.products) && pgData.products.length > 0) {
     const pgRev = typeof pgData.revision === 'number' ? pgData.revision : 1;
     const pgUpdated = pgData.updatedAt ? new Date(pgData.updatedAt).getTime() : 0;
 
-    // Compare revisions and timestamps
-    if (localRev > pgRev || (localRev === pgRev && localUpdated > pgUpdated)) {
-      // Local snapshot is newer than PostgreSQL (e.g. Postgres experienced transient lag or downtime during previous save)
-      console.log(`[State Convergence] Local file (rev ${localRev}) is newer than PostgreSQL (rev ${pgRev}). Auto-healing PostgreSQL...`);
-      saveStateToPostgres(localData).catch((err) => console.warn('[Auto-Heal PG Warning]:', err.message));
+    // Only prefer local if local has both higher revision AND contains actual products
+    if (
+      (localRev > pgRev || (localRev === pgRev && localUpdated > pgUpdated)) &&
+      Array.isArray(localData?.products) &&
+      localData.products.length > 0
+    ) {
       return { data: localData, source: 'local-file' };
-    } else if (pgRev > localRev || (pgRev === localRev && pgUpdated > localUpdated)) {
-      // PostgreSQL is newer than local file
-      writeDatabase(pgData, false);
-      return { data: pgData, source: 'postgresql' };
-    } else {
-      // Both match
-      return { data: pgData, source: 'postgresql' };
     }
+
+    return { data: pgData, source: 'postgresql' };
   }
 
-  // If Postgres is connected but tables were just initialized empty, seed from localData
-  if (getPostgresStatus().connected && (!pgData || !Array.isArray(pgData.products) || pgData.products.length === 0)) {
-    saveStateToPostgres(localData).catch((e) => console.warn('[Initial PG Seed Warning]:', e.message));
+  // If PostgreSQL returned valid state even if products array is empty
+  if (pgData && typeof pgData === 'object' && (Array.isArray(pgData.invoices) || Array.isArray(pgData.customers))) {
+    return { data: pgData, source: 'postgresql' };
   }
 
   return { data: localData, source: 'local-file' };
@@ -1345,10 +1349,11 @@ app.get('/api/backups', (req, res) => {
 });
 
 // 6. Backups API: Create manual backup on-demand
-app.post('/api/backups/create', (req, res) => {
+app.post('/api/backups/create', async (req, res) => {
   try {
     const label = req.body?.label?.trim() || 'پشتیبان دستی کاربر';
-    const result = createBackup('manual', label);
+    const { data: currentData } = await getLatestConvergedDatabase();
+    const result = createBackup('manual', label, currentData);
     if (!result.success) {
       return res.status(500).json({ success: false, message: result.error });
     }
@@ -1365,7 +1370,7 @@ app.post('/api/backups/create', (req, res) => {
 });
 
 // 7. Backups API: Restore a specific backup
-app.post('/api/backups/restore', (req, res) => {
+app.post('/api/backups/restore', async (req, res) => {
   try {
     const rawFilename = req.body?.filename;
     if (!rawFilename || typeof rawFilename !== 'string') {
@@ -1396,6 +1401,15 @@ app.post('/api/backups/restore', (req, res) => {
     const ok = writeDatabase(targetData, false);
     if (!ok) {
       return res.status(500).json({ success: false, message: 'خطا در اعمال اطلاعات نسخه پشتیبان بر روی پایگاه‌داده.' });
+    }
+
+    // Sync to PostgreSQL if connected
+    if (getPostgresStatus().connected) {
+      try {
+        await saveStateToPostgres(targetData);
+      } catch (pgErr: any) {
+        console.warn('[PostgreSQL Restore Sync Notice]:', pgErr.message);
+      }
     }
 
     console.log(`[Backup Engine] Successfully restored database from backup: ${safeFilename}`);
@@ -1453,7 +1467,7 @@ app.delete('/api/backups/:filename', (req, res) => {
 });
 
 // 10. Backups API: Upload & Import external backup file
-app.post('/api/backups/upload', (req, res) => {
+app.post('/api/backups/upload', async (req, res) => {
   try {
     const { backupContent, restoreNow, label } = req.body;
     if (!backupContent || typeof backupContent !== 'string') {
@@ -1502,6 +1516,13 @@ app.post('/api/backups/upload', (req, res) => {
     if (restoreNow) {
       createBackup('pre-restore', 'پشتیبان خودکار قبل از اعمال فایل بارگذاری‌شده');
       writeDatabase(actualData, false);
+      if (getPostgresStatus().connected) {
+        try {
+          await saveStateToPostgres(actualData);
+        } catch (pgErr: any) {
+          console.warn('[PostgreSQL Upload-Restore Sync Notice]:', pgErr.message);
+        }
+      }
     }
 
     const backups = getBackupsList();
@@ -1810,32 +1831,10 @@ app.post('/api/telegram/send-backup', async (req, res) => {
       });
     }
 
-    // 1. Try to get data from incoming clientData (ensuring all user's active products are included),
-    // or from specific backup file, or converged database / PostgreSQL
+    // 1. Get authoritative data from specific backup file, or converged database / PostgreSQL
     let dbPayload: any = null;
 
-    const incomingClientData = req.body?.clientData || (req.body?.products ? req.body : null);
-    if (
-      incomingClientData &&
-      typeof incomingClientData === 'object' &&
-      Array.isArray(incomingClientData.products) &&
-      incomingClientData.products.length > 0
-    ) {
-      dbPayload = incomingClientData;
-      // Auto-persist active client data to server storage & PostgreSQL so server state stays 100% updated
-      try {
-        await enqueueDbWrite(async () => {
-          writeDatabase(incomingClientData, true, false);
-          if (getPostgresStatus().connected) {
-            await saveStateToPostgres(incomingClientData);
-          }
-        });
-      } catch (err) {
-        console.warn('[Telegram Backup] Failed auto-saving client state:', err);
-      }
-    }
-
-    if (!dbPayload && specificFilename) {
+    if (specificFilename) {
       const specificPath = path.join(BACKUPS_DIR, specificFilename);
       if (fs.existsSync(specificPath)) {
         try {
@@ -1850,13 +1849,25 @@ app.post('/api/telegram/send-backup', async (req, res) => {
       }
     }
 
+    let sqlScript = '';
+    if (!specificFilename) {
+      try {
+        const liveDump = await exportLiveDatabaseDump();
+        if (liveDump?.sql) {
+          sqlScript = liveDump.sql;
+        }
+      } catch (_) {}
+    }
+
     if (!dbPayload) {
       const { data: converged } = await getLatestConvergedDatabase();
       dbPayload = converged || await loadStateFromPostgres() || dbData || readDatabase();
     }
 
-    // 2. Generate complete PostgreSQL .sql script
-    const sqlScript = generatePostgresSqlDump(dbPayload);
+    if (!sqlScript) {
+      sqlScript = generatePostgresSqlDump(dbPayload);
+    }
+
     const now = new Date();
     const jalaliStr = getJalaliDateStr(now).replace(/\//g, '-');
     const timeStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;

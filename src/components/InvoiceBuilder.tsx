@@ -716,6 +716,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       total: safeQty * safePrice,
       description: serviceDescription.trim() || undefined,
       notes: serviceDescription.trim() || undefined,
+      isService: true,
+      itemType: 'service',
     };
     setItems((prev) => [newItem, ...prev]);
     setServiceName('');
@@ -5628,7 +5630,6 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
         isProforma={isProforma}
         onSave={(newDate) => {
           setInvoiceDate(newDate);
-          showToast(`تاریخ سند به ${toPersianDigits(newDate)} تغییر یافت.`);
         }}
         onClose={() => setIsDateModalOpen(false)}
       />

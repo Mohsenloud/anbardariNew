@@ -41,6 +41,7 @@ import {
   generateNextPurchaseInvoiceNumber,
   generateNextTransferNumber,
 } from './codeGenerator';
+import { isPureServiceInvoice } from './serviceHelper';
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cheque: 'چک (شماره، تاریخ و نام چک)',
@@ -91,6 +92,8 @@ export interface ExportModalPreferences {
   docTypeFilter: 'all' | 'regular' | 'proforma';
   deliveryFilter: 'all' | 'delivered' | 'pending';
   reportType?: 'exit_slips' | 'invoices';
+  itemTypeFilter?: 'all' | 'products' | 'services';
+  selectedItemFilter?: string;
 }
 
 export interface AppTombstones {
@@ -917,7 +920,7 @@ export const StorageService = {
   },
 
   // Fetch updated records from server and sync into local storage with Zero-Loss Protection & Cache Busting
-  async syncFromServer(): Promise<boolean> {
+  async syncFromServer(force: boolean = false): Promise<boolean> {
     try {
       const res = await fetch(`/api/db?_t=${Date.now()}`, {
         cache: 'no-store',
@@ -933,8 +936,9 @@ export const StorageService = {
         const serverRevision = typeof d.revision === 'number' ? d.revision : 0;
         const serverChecksum = d.checksum || '';
 
-        // If server data hasn't changed since last sync or local push, skip overwrite
+        // If server data hasn't changed since last sync or local push, skip overwrite (unless forced on restore)
         if (
+          !force &&
           this._lastServerRevision > 0 &&
           serverRevision > 0 &&
           serverRevision === this._lastServerRevision &&
@@ -943,8 +947,8 @@ export const StorageService = {
           return false;
         }
 
-        // Protect local settings if recently saved (e.g. within last 10 seconds)
-        const isRecentSave = Date.now() - this._lastLocalSettingsSaveTime < 10000;
+        // Protect local settings if recently saved (e.g. within last 10 seconds), unless forced
+        const isRecentSave = !force && Date.now() - this._lastLocalSettingsSaveTime < 10000;
 
         let hasAnyUpdate = false;
 
@@ -1170,7 +1174,7 @@ export const StorageService = {
       });
       const data = await res.json();
       if (data.success) {
-        await this.syncFromServer();
+        await this.syncFromServer(true);
       }
       return data;
     } catch (e: any) {
@@ -1198,7 +1202,7 @@ export const StorageService = {
       });
       const data = await res.json();
       if (data.success && restoreNow) {
-        await this.syncFromServer();
+        await this.syncFromServer(true);
       }
       return data;
     } catch (e: any) {
@@ -1284,36 +1288,59 @@ export const StorageService = {
     }
   },
 
-  async downloadPostgresSqlDump(): Promise<boolean> {
+  async downloadPostgresSqlDump(): Promise<{ success: boolean; message?: string }> {
     try {
-      try {
-        await this.pushToServer();
-      } catch {}
-      const clientSnapshot = this.exportAllDataAsObject();
-      const res = await fetch('/api/database/export-sql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientData: clientSnapshot }),
+      // Use the dedicated non-blocking dump endpoint with fallback to export-sql
+      let res = await fetch('/api/database/dump-sql', {
+        method: 'GET',
+        headers: { 'Cache-Control': 'no-cache' },
       });
-      if (!res.ok) throw new Error('خطا در دریافت فایل SQL از سرور');
+      if (!res.ok) {
+        res = await fetch('/api/database/export-sql', {
+          method: 'GET',
+          headers: { 'Cache-Control': 'no-cache' },
+        });
+      }
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.message || 'خطا در دریافت فایل خروجی پشتیبان SQL از سرور');
+      }
+
+      // Extract filename from header or fallback
+      let filename = `mana_db_${new Date().toISOString().slice(0, 10)}.sql`;
+      const disposition = res.headers.get('content-disposition');
+      if (disposition && disposition.includes('filename=')) {
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        if (match?.[1]) filename = match[1];
+      }
+
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `mana_db_dump_${new Date().toISOString().slice(0, 10)}.sql`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      return true;
-    } catch (e) {
-      console.error(e);
-      return false;
+      return { success: true, message: 'فایل پشتیبان کامل SQL دیتابیس با موفقیت دانلود شد.' };
+    } catch (e: any) {
+      console.error('[StorageService] downloadPostgresSqlDump error:', e);
+      return { success: false, message: e.message || 'خطا در دانلود فایل دیتابیس' };
     }
   },
 
   async importPostgresSqlFile(sqlContent: string): Promise<{ success: boolean; message: string }> {
     try {
+      if (!sqlContent || typeof sqlContent !== 'string' || sqlContent.trim().length === 0) {
+        return { success: false, message: 'فایل اسکریپت SQL خالی است.' };
+      }
+
+      // Safety guard against accidental drop database commands
+      if (/DROP\s+DATABASE/i.test(sqlContent)) {
+        return { success: false, message: 'عملیات نامعتبر: فایل حاوی دستور حذف کل دیتابیس (DROP DATABASE) است و به دلایل امنیتی مسدود گردید.' };
+      }
+
       const res = await fetch('/api/database/import-sql', {
         method: 'POST',
         headers: { 'Content-Type': 'application/sql' },
@@ -1321,7 +1348,8 @@ export const StorageService = {
       });
       const data = await res.json();
       if (data.success) {
-        await this.syncFromServer();
+        // Sync local client storage with authoritative server state (forced)
+        await this.syncFromServer(true);
       }
       return data;
     } catch (e: any) {
@@ -2645,6 +2673,8 @@ export const StorageService = {
     let docTypeFilter: 'all' | 'regular' | 'proforma' = 'all';
     let deliveryFilter: 'all' | 'delivered' | 'pending' = 'all';
     let reportType: 'exit_slips' | 'invoices' = 'exit_slips';
+    let itemTypeFilter: 'all' | 'products' | 'services' = 'all';
+    let selectedItemFilter: string = 'all';
 
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.EXPORT_MODAL_PREFERENCES);
@@ -2656,11 +2686,13 @@ export const StorageService = {
           if (parsed.docTypeFilter) docTypeFilter = parsed.docTypeFilter;
           if (parsed.deliveryFilter) deliveryFilter = parsed.deliveryFilter;
           if (parsed.reportType) reportType = parsed.reportType;
+          if (parsed.itemTypeFilter) itemTypeFilter = parsed.itemTypeFilter;
+          if (parsed.selectedItemFilter) selectedItemFilter = parsed.selectedItemFilter;
         }
       }
     } catch {}
 
-    return { pdfOrientation, activePreviewTab, docTypeFilter, deliveryFilter, reportType };
+    return { pdfOrientation, activePreviewTab, docTypeFilter, deliveryFilter, reportType, itemTypeFilter, selectedItemFilter };
   },
 
   saveExportModalPreferences(prefs: Partial<ExportModalPreferences>): void {
@@ -2893,15 +2925,22 @@ export const StorageService = {
 
   getNextExitSlipNumber(): string {
     const logs = this.getExitSlipLogs();
-    const invoices = this.getInvoices().filter((i) => !i.isProforma);
+    const products = this.getProducts();
+    const invoices = this.getInvoices().filter((i) => !i.isProforma && !isPureServiceInvoice(i, products));
     return generateNextExitSlipNumber(logs, invoices);
   },
 
   getOrAssignExitSlipNumber(invoiceId: string, invoiceNumber?: string): string {
     const invoices = this.getInvoices();
     const targetInv = invoices.find((i) => i.id === invoiceId);
-    // برای پیش‌فاکتورها به هیچ عنوان حواله خروج تخصیص نمی‌یابد
-    if (targetInv?.isProforma) {
+    const products = this.getProducts();
+
+    // برای پیش‌فاکتورها و همچنین ثبت خدمات (فاکتورهای صرفاً خدماتی فاقد کالای فیزیکی)، به هیچ عنوان حواله خروج تولید نمی‌شود
+    if (!targetInv || targetInv.isProforma || isPureServiceInvoice(targetInv, products)) {
+      const logs = this.getExitSlipLogs();
+      if (logs[invoiceId]) {
+        this.deleteExitSlipLog(invoiceId);
+      }
       return '';
     }
 
@@ -3654,36 +3693,52 @@ export const StorageService = {
   importAllData(jsonString: string): boolean {
     try {
       const parsed = JSON.parse(jsonString);
-      if (parsed.products && Array.isArray(parsed.products)) {
-        this.saveProducts(parsed.products);
+      const actualData = parsed.data || parsed;
+      if (actualData.products && Array.isArray(actualData.products)) {
+        this.saveProducts(actualData.products);
       }
-      if (parsed.customers && Array.isArray(parsed.customers)) {
-        this.saveCustomers(parsed.customers);
+      if (actualData.customers && Array.isArray(actualData.customers)) {
+        this.saveCustomers(actualData.customers);
       }
-      if (parsed.invoices && Array.isArray(parsed.invoices)) {
-        this.saveInvoices(parsed.invoices);
+      if (actualData.invoices && Array.isArray(actualData.invoices)) {
+        this.saveInvoices(actualData.invoices);
       }
-      if (parsed.purchaseInvoices && Array.isArray(parsed.purchaseInvoices)) {
-        this.savePurchaseInvoices(parsed.purchaseInvoices);
+      if (actualData.purchaseInvoices && Array.isArray(actualData.purchaseInvoices)) {
+        this.savePurchaseInvoices(actualData.purchaseInvoices);
       }
-      if (parsed.inboundReceipts && Array.isArray(parsed.inboundReceipts)) {
-        this.saveInboundReceipts(parsed.inboundReceipts);
+      if (actualData.inboundReceipts && Array.isArray(actualData.inboundReceipts)) {
+        this.saveInboundReceipts(actualData.inboundReceipts);
       }
-      if (parsed.movements && Array.isArray(parsed.movements)) {
-        this.saveMovements(parsed.movements);
+      if (actualData.movements && Array.isArray(actualData.movements)) {
+        this.saveMovements(actualData.movements);
       }
-      if (parsed.settings && typeof parsed.settings === 'object') {
-        this.saveSettings(parsed.settings);
+      if (actualData.settings && typeof actualData.settings === 'object') {
+        this.saveSettings(actualData.settings);
       }
-      if (parsed.users && Array.isArray(parsed.users)) {
-        this.saveUsers(parsed.users);
+      if (actualData.users && Array.isArray(actualData.users)) {
+        this.saveUsers(actualData.users);
       }
-      if (parsed.activityLogs && Array.isArray(parsed.activityLogs)) {
-        this.saveActivityLogs(parsed.activityLogs);
+      if (actualData.activityLogs && Array.isArray(actualData.activityLogs)) {
+        this.saveActivityLogs(actualData.activityLogs);
       }
-      if (parsed.directTransfers && Array.isArray(parsed.directTransfers)) {
-        this.saveDirectTransfers(parsed.directTransfers);
+      if (actualData.directTransfers && Array.isArray(actualData.directTransfers)) {
+        this.saveDirectTransfers(actualData.directTransfers);
       }
+      if (actualData.savedVehicles && Array.isArray(actualData.savedVehicles)) {
+        this.saveSavedVehicles(actualData.savedVehicles);
+      }
+      if (actualData.customerTransactions && Array.isArray(actualData.customerTransactions)) {
+        this.saveCustomerTransactions(actualData.customerTransactions);
+      }
+      if (actualData.categories && Array.isArray(actualData.categories)) {
+        localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(actualData.categories));
+      }
+      if (actualData.tombstones && typeof actualData.tombstones === 'object') {
+        localStorage.setItem(STORAGE_KEYS.TOMBSTONES, JSON.stringify(actualData.tombstones));
+      }
+
+      this.notifyChange();
+      this.pushToServer();
       return true;
     } catch (e) {
       console.error('Failed to import backup:', e);

@@ -15,6 +15,7 @@ import { ProductDetailsModal } from './ProductDetailsModal';
 import { ProductModal } from './ProductModal';
 import { WarehouseStatsModal } from './WarehouseStatsModal';
 import { autoSendExitSlipReportToTelegram } from '../utils/telegramService';
+import { hasPhysicalGoods } from '../utils/serviceHelper';
 import { ErrorBoundary } from './ErrorBoundary';
 import { NumericInput } from './NumericInput';
 import { 
@@ -588,8 +589,11 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   const outOfStockCount = products.filter((p) => p.stock === 0).length;
   const totalStockUnits = products.reduce((sum, p) => sum + p.stock, 0);
 
-  // Exit slip stats & filters (فقط فاکتورهای قطعی و رسمی دارای حواله خروج هستند، پیش‌فاکتورها حواله ندارند)
-  const regularInvoices = useMemo(() => invoices.filter((inv) => !inv.isProforma), [invoices]);
+  // Exit slip stats & filters (فقط فاکتورهای قطعی و دارای کالای فیزیکی دارای حواله خروج هستند، پیش‌فاکتورها و خدمات فاقد حواله خروج می‌باشند)
+  const regularInvoices = useMemo(
+    () => invoices.filter((inv) => !inv.isProforma && hasPhysicalGoods(inv, products)),
+    [invoices, products]
+  );
 
   const unprintedSlipsCount = regularInvoices.filter(
     (inv) => !exitSlipLogs[inv.id] || exitSlipLogs[inv.id].printCount === 0
@@ -614,6 +618,10 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   const handleOpenExitSlip = (inv: Invoice) => {
     if (inv.isProforma) {
       alert('امکان صدور حواله خروج برای پیش‌فاکتور وجود ندارد. حواله خروج انبار صرفاً برای فاکتورهای رسمی و قطعی صادر می‌گردد.');
+      return;
+    }
+    if (!hasPhysicalGoods(inv, products)) {
+      alert('این سند مربوط به ثبت خدمات بوده و فاقد کالای فیزیکی است؛ بنابراین نیازی به تولید حواله خروج انبار ندارد.');
       return;
     }
     // اطمینان از تخصیص شماره ترتیبی و منظم به حواله خروج انبار
@@ -2011,6 +2019,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     exportExitSlipsListToExcel(invoices, exitSlipLogs, settings, {
                       filter: exitSlipFilter,
                       searchQuery: exitSlipSearch,
+                      products,
                     });
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"

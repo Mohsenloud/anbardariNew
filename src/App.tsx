@@ -39,6 +39,7 @@ import { PublicWebInvoiceView } from './components/PublicWebInvoiceView';
 import { StandaloneLivePreviewView } from './components/StandaloneLivePreviewView';
 import { InvoiceShareLinkModal } from './components/InvoiceShareLinkModal';
 import { CheckCircle2, ShieldAlert } from 'lucide-react';
+import { isPureServiceInvoice, hasPhysicalGoods } from './utils/serviceHelper';
 
 export default function App() {
   // Detection for Public Customer Web Invoice view (/v/:token or ?v=:token or #/v/:token)
@@ -323,8 +324,9 @@ export default function App() {
       movements: settings.autoDeductStock && !newInvoice.isProforma && newMovements.length > 0 ? updatedMovements : undefined,
     });
 
-    // ایجاد حواله خروج انبار صرفاً و منحصراً برای فاکتورهای رسمی/قطعی (پیش‌فاکتور به هیچ عنوان حواله ایجاد نمی‌کند)
-    if (!newInvoice.isProforma) {
+    // ایجاد حواله خروج انبار صرفاً و منحصراً برای فاکتورهای رسمی/قطعی دارای کالای فیزیکی (پیش‌فاکتور و ثبت خدمات به هیچ عنوان حواله ایجاد نمی‌کند)
+    const hasGoods = hasPhysicalGoods(newInvoice, currentProducts);
+    if (!newInvoice.isProforma && hasGoods) {
       StorageService.getOrAssignExitSlipNumber(newInvoice.id, newInvoice.invoiceNumber);
     } else {
       StorageService.deleteExitSlipLog(newInvoice.id);
@@ -332,6 +334,8 @@ export default function App() {
 
     if (newInvoice.isProforma) {
       showToast(`پیش‌فاکتور شماره ${newInvoice.invoiceNumber} با موفقیت ثبت شد (بدون کسر از موجودی انبار).`);
+    } else if (!hasGoods) {
+      showToast(`فاکتور خدمات شماره ${newInvoice.invoiceNumber} با موفقیت ثبت شد (بدون نیاز به حواله خروج انبار).`);
     } else {
       showToast(`فاکتور شماره ${newInvoice.invoiceNumber} با موفقیت ثبت و از انبار کسر شد.`);
     }
@@ -359,7 +363,7 @@ export default function App() {
             onError: (err) => showToast('⚠️ خطا در ارسال فاکتور به تلگرام: ' + err),
           });
         }
-        if (liveSettings.telegramAutoSendExitSlip || liveSettings.telegramAutoSendExitSlipIssue) {
+        if (hasGoods && (liveSettings.telegramAutoSendExitSlip || liveSettings.telegramAutoSendExitSlipIssue)) {
           autoSendExitSlipReportToTelegram(newInvoice, null, false, liveSettings, currentUser, {
             onStart: () => showToast('در حال ارسال گزارش صدور حواله خروج به تلگرام...'),
             onSuccess: (msg) => showToast(msg || '✈️ گزارش صدور حواله خروج به تلگرام ارسال شد.'),
@@ -524,10 +528,11 @@ export default function App() {
       });
     }
 
-    // بررسی و اعمال وضعیت حواله خروج بر اساس قطعی یا پیش‌فاکتور بودن سند
-    if (updatedInvoice.isProforma) {
+    // بررسی و اعمال وضعیت حواله خروج بر اساس قطعی بودن سند و داشتن کالای فیزیکی (خدمات نیازی به حواله خروج ندارد)
+    const hasGoods = hasPhysicalGoods(updatedInvoice, products);
+    if (updatedInvoice.isProforma || !hasGoods) {
       StorageService.deleteExitSlipLog(updatedInvoice.id);
-    } else if (originalInvoice.isProforma && !updatedInvoice.isProforma) {
+    } else if (originalInvoice.isProforma && !updatedInvoice.isProforma && hasGoods) {
       StorageService.getOrAssignExitSlipNumber(updatedInvoice.id, updatedInvoice.invoiceNumber);
     }
 
@@ -683,8 +688,13 @@ export default function App() {
       details: `تبدیل پیش‌فاکتور ${proformaInvoice.invoiceNumber} به فاکتور قطعی ${finalNumber} و کسر از موجودی انبار`,
     });
 
-    // هنگام تبدیل پیش‌فاکتور به فاکتور رسمی، اکنون حواله خروج کالا صادر می‌گردد
-    StorageService.getOrAssignExitSlipNumber(proformaInvoice.id, finalNumber);
+    // هنگام تبدیل پیش‌فاکتور به فاکتور رسمی، فقط در صورت داشتن کالای فیزیکی حواله خروج کالا صادر می‌گردد (ثبت خدمات حواله خروج ندارد)
+    const hasGoods = hasPhysicalGoods(convertedInvoice, products);
+    if (hasGoods) {
+      StorageService.getOrAssignExitSlipNumber(proformaInvoice.id, finalNumber);
+    } else {
+      StorageService.deleteExitSlipLog(proformaInvoice.id);
+    }
 
     // ارسال خودکار گزارش یا فایل PDF فاکتور رسمی تایید شده به تلگرام پس از تبدیل
     const liveSettings = StorageService.getSettings() || settings;

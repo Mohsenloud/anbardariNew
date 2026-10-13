@@ -37,6 +37,7 @@ import {
 import { ExitSlipDeliveryModal } from './ExitSlipDeliveryModal';
 import { SimpleExitSlipLayout } from './SimpleExitSlipLayout';
 import { parseVehicleInfo } from './IranPlatePicker';
+import { hasPhysicalGoods, getInvoicePhysicalItems } from '../utils/serviceHelper';
 
 // Mini graphic Iranian license plate for clean display in delivery slip
 const MiniIranPlate: React.FC<{ plateInfo: string }> = ({ plateInfo }) => {
@@ -270,7 +271,33 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
     );
   }
 
-  const totalUnits = invoice.items.reduce((sum, item) => sum + item.quantity, 0);
+  // ثبت خدمات نیازی به حواله خروج ندارد و نیازی به تولید حواله خروج نیست
+  if (!hasPhysicalGoods(invoice)) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs font-['Vazirmatn']">
+        <div className="bg-white rounded-2xl p-6 max-w-md w-full text-center shadow-2xl border border-slate-200 animate-scaleUp">
+          <div className="w-14 h-14 rounded-2xl bg-sky-100 text-sky-600 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <h3 className="font-bold text-base text-slate-900 mb-2">ثبت خدمات نیازی به حواله خروج ندارد</h3>
+          <p className="text-xs text-slate-600 leading-relaxed mb-6">
+            سند شماره <b className="text-slate-800 font-mono">{toPersianDigits(invoice.invoiceNumber)}</b> مربوط به ثبت خدمات بوده و فاقد کالای فیزیکی در انبار است. در ثبت خدمات نیازی به تولید یا چاپ حواله خروج انبار نمی‌باشد.
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+          >
+            متوجه شدم و بازگشت
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // استخراج اقلام فیزیکی قابل خروج از انبار (خدمات از حواله خروج فیلتر و مستثنی می‌شوند)
+  const physicalItems = getInvoicePhysicalItems(invoice);
+  const totalUnits = physicalItems.reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0);
 
   const showNotification = (text: string) => {
     setStatusNotification(text);
@@ -353,7 +380,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
       invoice.customerAddress ? `نشانی تحویل: ${invoice.customerAddress}` : '',
       `---------------------------------`,
       `📋 *اقلام فیزیکی تحویلی:*`,
-      ...invoice.items.map(
+      ...physicalItems.map(
         (it, idx) =>
           `${toPersianDigits(idx + 1)}. ${it.productName} ➔ تعداد: *${toPersianDigits(it.quantity)} ${it.unit || 'واحد'}*`
       ),
@@ -1347,7 +1374,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {invoice.items.map((item, index) => (
+                    {physicalItems.map((item, index) => (
                       <tr
                         key={item.id || index}
                         className={`${
@@ -1358,7 +1385,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                           {toPersianDigits(index + 1)}
                         </td>
                         <td className="py-2 px-1.5 text-center font-['Vazirmatn'] text-slate-700 border-l border-slate-200 text-[11px] font-mono">
-                          {toPersianDigits(item.productCode || item.productId.replace('prod-', ''))}
+                          {toPersianDigits(item.productCode || (item.productId ? item.productId.replace('prod-', '') : '—'))}
                         </td>
                         <td 
                           className="py-2 px-2.5 font-bold text-slate-900 border-l border-slate-200 text-xs"
@@ -1399,7 +1426,7 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                         {toPersianDigits(totalUnits)}
                       </td>
                       <td colSpan={2} className="py-2 px-2.5 text-slate-600 text-[11px]">
-                        ({toPersianDigits(invoice.items.length)} ردیف کالایی)
+                        ({toPersianDigits(physicalItems.length)} ردیف کالایی)
                       </td>
                     </tr>
                   </tfoot>

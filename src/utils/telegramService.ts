@@ -9,6 +9,7 @@ import { SimpleInvoiceLayout } from '../components/SimpleInvoiceLayout';
 import { StandardInvoiceLayout } from '../components/StandardInvoiceLayout';
 import { SimpleExitSlipLayout } from '../components/SimpleExitSlipLayout';
 import { StandardExitSlipLayout } from '../components/StandardExitSlipLayout';
+import { isPureServiceInvoice } from './serviceHelper';
 
 export async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -1265,6 +1266,11 @@ export async function autoSendExitSlipReportToTelegram(
 ): Promise<boolean> {
   const settings = StorageService.getSettings() || passedSettings;
   if (!settings?.telegramBotEnabled) {
+    return false;
+  }
+
+  // ثبت خدمات نیازی به حواله خروج ندارد و گزارش حواله خروج برای آن صادر نمی‌شود
+  if (isPureServiceInvoice(invoice)) {
     return false;
   }
 

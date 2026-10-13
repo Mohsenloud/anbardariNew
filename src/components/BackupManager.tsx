@@ -152,18 +152,18 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
     }
   };
 
-  // Download complete PostgreSQL .sql script
+  // Download complete PostgreSQL .sql script (Safe Dump)
   const handleDownloadSqlDump = async () => {
     setDownloadingSql(true);
     try {
-      const ok = await StorageService.downloadPostgresSqlDump();
-      if (ok) {
-        showNotification('success', 'فایل اسکریپت SQL دیتابیس (mana_db.sql) با موفقیت دانلود شد.');
+      const res = await StorageService.downloadPostgresSqlDump();
+      if (res && res.success) {
+        showNotification('success', res.message || 'فایل خروجی پشتیبان SQL دیتابیس (mana_db.sql) با موفقیت دانلود شد.');
       } else {
-        showNotification('error', 'خطا در دانلود فایل SQL از سرور.');
+        showNotification('error', (res && res.message) || 'خطا در دانلود فایل SQL از سرور.');
       }
-    } catch {
-      showNotification('error', 'خطا در دانلود فایل.');
+    } catch (err: any) {
+      showNotification('error', err?.message || 'خطا در دانلود فایل پشتیبان دیتابیس.');
     } finally {
       setDownloadingSql(false);
     }

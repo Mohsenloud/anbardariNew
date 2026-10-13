@@ -27,11 +27,12 @@ import {
   ShieldCheck,
   Receipt
 } from 'lucide-react';
-import { Customer, Invoice, ExitSlipData, StoreSettings } from '../types';
+import { Customer, Invoice, ExitSlipData, StoreSettings, Product } from '../types';
 import { exportPersonInvoicesAndExitSlipsToExcel } from '../utils/excelHelper';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate, getCurrentJalaliTime } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
 import { exportElementToPdf, printElementInNewWindow } from '../utils/pdfHelper';
+import { isServiceItem, hasPhysicalGoods, isPureServiceInvoice } from '../utils/serviceHelper';
 import {
   tokenizeSearchQuery,
   checkInvoiceMatchesSearch,
@@ -46,6 +47,7 @@ interface CustomerExportModalProps {
   onClose: () => void;
   customers: Customer[];
   invoices: Invoice[];
+  products?: Product[];
   exitSlipLogs?: Record<string, ExitSlipData>;
   initialCustomerId?: string | null;
   initialReportType?: 'exit_slips' | 'invoices';
@@ -57,6 +59,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
   onClose,
   customers,
   invoices,
+  products: propProducts,
   exitSlipLogs: propExitSlipLogs,
   initialCustomerId,
   initialReportType,
@@ -67,11 +70,26 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
   const [itemSearch, setItemSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  
+
+  // Products catalog resolution
+  const products = useMemo(() => {
+    return propProducts && propProducts.length > 0 ? propProducts : StorageService.getProducts();
+  }, [propProducts]);
+
   // Document type for PDF/Print report: 'exit_slips' (NO PRICE COLUMN) or 'invoices' (WITH PRICE COLUMN)
   const [reportType, setReportType] = useState<'exit_slips' | 'invoices'>(() => {
     if (initialReportType) return initialReportType;
     return StorageService.getExportModalPreferences().reportType || 'exit_slips';
+  });
+
+  // Filter for item type: all (همه اقلام) | products (فقط کالا و محصول) | services (فقط خدمات)
+  const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'products' | 'services'>(() => {
+    return StorageService.getExportModalPreferences().itemTypeFilter || 'all';
+  });
+
+  // Filter for specific product or service item
+  const [selectedItemFilter, setSelectedItemFilter] = useState<string>(() => {
+    return StorageService.getExportModalPreferences().selectedItemFilter || 'all';
   });
 
   const [docTypeFilter, setDocTypeFilter] = useState<'all' | 'regular' | 'proforma'>(() => {
@@ -97,8 +115,10 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
       docTypeFilter,
       deliveryFilter,
       reportType,
+      itemTypeFilter,
+      selectedItemFilter,
     });
-  }, [pdfOrientation, activePreviewTab, docTypeFilter, deliveryFilter, reportType]);
+  }, [pdfOrientation, activePreviewTab, docTypeFilter, deliveryFilter, reportType, itemTypeFilter, selectedItemFilter]);
 
   // Sync initialCustomerId and initialReportType when modal opens
   React.useEffect(() => {
@@ -178,6 +198,48 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
     return tokenizeSearchQuery(itemSearch);
   }, [itemSearch]);
 
+  // Available distinct products and services in scope of target invoices
+  const availableItems = useMemo(() => {
+    const map = new Map<string, {
+      name: string;
+      code?: string;
+      isService: boolean;
+      count: number;
+    }>();
+
+    const baseInvoices = targetInvoices.length > 0 ? targetInvoices : invoices;
+    baseInvoices.forEach((inv) => {
+      inv.items?.forEach((it) => {
+        const name = (it.productName || it.name || '').trim();
+        if (!name) return;
+        const isSrv = isServiceItem(it, products);
+        const existing = map.get(name);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          map.set(name, {
+            name,
+            code: it.productCode || it.code,
+            isService: isSrv,
+            count: 1,
+          });
+        }
+      });
+    });
+
+    const list = Array.from(map.values());
+    list.sort((a, b) => a.name.localeCompare(b.name, 'fa'));
+    return list;
+  }, [targetInvoices, invoices, products]);
+
+  const physicalProductsList = useMemo(() => {
+    return availableItems.filter((i) => !i.isService);
+  }, [availableItems]);
+
+  const servicesList = useMemo(() => {
+    return availableItems.filter((i) => i.isService);
+  }, [availableItems]);
+
   // Invoices after applying user filters
   const filteredCustomerInvoices = useMemo(() => {
     let result = [...targetInvoices];
@@ -208,9 +270,24 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
       result = result.filter((i) => !Boolean(exitSlipLogs[i.id]?.isDelivered));
     }
 
+    // فیلتر بر اساس ماهیت آیتم: فقط کالا یا فقط خدمات
+    if (itemTypeFilter === 'products') {
+      result = result.filter((inv) => hasPhysicalGoods(inv, products));
+    } else if (itemTypeFilter === 'services') {
+      result = result.filter((inv) => inv.items.some((it) => isServiceItem(it, products)));
+    }
+
+    // فیلتر بر اساس نام یا کد کالا/خدمات خاص
+    if (selectedItemFilter && selectedItemFilter !== 'all') {
+      const sel = selectedItemFilter.trim();
+      result = result.filter((inv) =>
+        inv.items.some((it) => (it.productName && it.productName.trim() === sel) || it.productId === sel || it.productCode === sel)
+      );
+    }
+
     result.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.invoiceNumber || '').localeCompare(a.invoiceNumber || ''));
     return result;
-  }, [targetInvoices, searchTokens, dateFrom, dateTo, docTypeFilter, deliveryFilter, exitSlipLogs]);
+  }, [targetInvoices, searchTokens, dateFrom, dateTo, docTypeFilter, deliveryFilter, itemTypeFilter, selectedItemFilter, products, exitSlipLogs]);
 
   // Flattened detailed item rows (تاریخ، شماره فاکتور، شماره حواله، نوع و مقدار جنس)
   const detailedReportItems = useMemo(() => {
@@ -235,6 +312,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
       deliveredBy?: string;
       receiverName?: string;
       vehicleInfo?: string;
+      isService: boolean;
     }> = [];
 
     filteredCustomerInvoices.forEach((inv) => {
@@ -243,47 +321,69 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
       const isDelivered = Boolean(slip.isDelivered);
 
       if (inv.items.length === 0) {
-        if (searchTokens.length === 0 || checkInvoiceMetadataMatches(inv, slip, searchTokens)) {
-          list.push({
-            id: `${inv.id}-empty`,
-            invoiceId: inv.id,
-            date: inv.date || '',
-            invoiceNumber: inv.invoiceNumber,
-            slipNumber: slipNum,
-            customerName: inv.customerName || 'مشتری گذری',
-            customerPhone: inv.customerPhone || '',
-            productName: '(بدون قلم کالا)',
-            variantName: '',
-            quantity: 0,
-            unit: '—',
-            unitPrice: 0,
-            total: inv.finalTotal,
-            isProforma: !!inv.isProforma,
-            paymentStatus: inv.paymentStatus || 'unpaid',
-            isDelivered,
-            deliveredAt: slip.deliveredAt,
-            deliveredBy: slip.deliveredBy,
-            receiverName: slip.receiverName,
-            vehicleInfo: slip.vehicleInfo,
-          });
+        if (itemTypeFilter === 'all' && selectedItemFilter === 'all') {
+          if (searchTokens.length === 0 || checkInvoiceMetadataMatches(inv, slip, searchTokens)) {
+            list.push({
+              id: `${inv.id}-empty`,
+              invoiceId: inv.id,
+              date: inv.date || '',
+              invoiceNumber: inv.invoiceNumber,
+              slipNumber: slipNum,
+              customerName: inv.customerName || 'مشتری گذری',
+              customerPhone: inv.customerPhone || '',
+              productName: '(بدون قلم کالا)',
+              variantName: '',
+              quantity: 0,
+              unit: '—',
+              unitPrice: 0,
+              total: inv.finalTotal,
+              isProforma: !!inv.isProforma,
+              paymentStatus: inv.paymentStatus || 'unpaid',
+              isDelivered,
+              deliveredAt: slip.deliveredAt,
+              deliveredBy: slip.deliveredBy,
+              receiverName: slip.receiverName,
+              vehicleInfo: slip.vehicleInfo,
+              isService: false,
+            });
+          }
         }
       } else {
         inv.items.forEach((it, idx) => {
+          const isSrv = isServiceItem(it, products);
+
+          // اعمال فیلتر نوع ردیف (کالا یا خدمات)
+          if (itemTypeFilter === 'products' && isSrv) return;
+          if (itemTypeFilter === 'services' && !isSrv) return;
+
+          // اعمال فیلتر کالا یا خدمت خاص
+          if (selectedItemFilter && selectedItemFilter !== 'all') {
+            const sel = selectedItemFilter.trim();
+            if (it.productName?.trim() !== sel && it.productId !== sel && it.productCode !== sel) return;
+          }
+
+          // قانون کلیدی انبارداری: در حواله خروج انبار، ردیف‌های خدماتی قرار نمی‌گیرند
+          // ثبت خدمات نیازی به حواله خروج ندارد و نیازی به تولید حواله خروج نیست
+          if (reportType === 'exit_slips' && isSrv) {
+            return;
+          }
+
           if (searchTokens.length > 0 && !checkItemMatchesSearch(it, inv, slip, searchTokens)) {
             return;
           }
+
           list.push({
             id: `${inv.id}-${it.productId || idx}`,
             invoiceId: inv.id,
             date: inv.date || '',
             invoiceNumber: inv.invoiceNumber,
-            slipNumber: slipNum,
+            slipNumber: isSrv ? '—' : slipNum,
             customerName: inv.customerName || 'مشتری گذری',
             customerPhone: inv.customerPhone || '',
             productName: it.productName,
             variantName: it.variantName || '',
             quantity: Number(it.quantity) || 0,
-            unit: it.unit || 'عدد',
+            unit: it.unit || (isSrv ? 'موردی' : 'عدد'),
             unitPrice: it.unitPrice || 0,
             total: it.total || 0,
             isProforma: !!inv.isProforma,
@@ -293,13 +393,14 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
             deliveredBy: slip.deliveredBy,
             receiverName: slip.receiverName,
             vehicleInfo: slip.vehicleInfo,
+            isService: isSrv,
           });
         });
       }
     });
 
     return list;
-  }, [filteredCustomerInvoices, exitSlipLogs, searchTokens]);
+  }, [filteredCustomerInvoices, exitSlipLogs, searchTokens, itemTypeFilter, selectedItemFilter, reportType, products]);
 
   // Stats calculation
   const stats = useMemo(() => {
@@ -316,16 +417,24 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
     let pendingSlips = 0;
 
     filteredCustomerInvoices.forEach((inv) => {
-      const slip = exitSlipLogs[inv.id];
-      if (slip?.isDelivered) {
-        deliveredSlips++;
-      } else {
-        pendingSlips++;
+      // فقط فاکتورهای دارای کالای فیزیکی حواله دارند
+      if (!inv.isProforma && hasPhysicalGoods(inv, products)) {
+        const slip = exitSlipLogs[inv.id];
+        if (slip?.isDelivered) {
+          deliveredSlips++;
+        } else {
+          pendingSlips++;
+        }
       }
     });
 
     const totalItemsCount = detailedReportItems.length;
-    const totalPhysicalQty = detailedReportItems.reduce((s, it) => s + (Number(it.quantity) || 0), 0);
+    const totalPhysicalQty = detailedReportItems.reduce((s, it) => {
+      return (it as any).isService ? s : s + (Number(it.quantity) || 0);
+    }, 0);
+    const totalServicesQty = detailedReportItems.reduce((s, it) => {
+      return (it as any).isService ? s + (Number(it.quantity) || 0) : s;
+    }, 0);
 
     return {
       totalInvoices,
@@ -340,8 +449,9 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
       pendingSlips,
       totalItemsCount,
       totalPhysicalQty,
+      totalServicesQty,
     };
-  }, [filteredCustomerInvoices, exitSlipLogs, detailedReportItems]);
+  }, [filteredCustomerInvoices, exitSlipLogs, detailedReportItems, products]);
 
   // Handle Excel Export
   const handleExportExcel = () => {
@@ -357,6 +467,9 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
       docType: docTypeFilter,
       deliveryStatus: deliveryFilter,
       searchQuery: itemSearch,
+      itemType: itemTypeFilter,
+      selectedItem: selectedItemFilter,
+      products,
     });
 
     if (result.success) {
@@ -596,6 +709,130 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
             )}
           </div>
 
+          {/* ITEM TYPE & PRODUCT/SERVICE FILTER (کالا، خدمات یا همه) */}
+          <div className="bg-slate-50 rounded-2xl p-3.5 sm:p-4 border border-slate-200 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2 font-bold text-slate-800 text-sm">
+                <Package className="w-4 h-4 text-indigo-600" />
+                <span>فیلتر نوع محصول یا کالا یا خدمات:</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                {itemTypeFilter === 'services' && reportType === 'exit_slips' && (
+                  <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300">
+                    ⚠️ توجه: خدمات فاقد حواله خروج است
+                  </span>
+                )}
+                <span className="text-xs text-slate-500 font-mono">
+                  {toPersianDigits(detailedReportItems.length)} قلم منطبق ({toPersianDigits(stats.totalPhysicalQty)} واحد فیزیکی)
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {/* 1. Item Type Toggle (همه / کالا / خدمات) */}
+              <div>
+                <label className="text-[11px] text-slate-600 font-bold block mb-1">
+                  نوع قلم (ماهیت ردیف):
+                </label>
+                <div className="grid grid-cols-3 gap-1 bg-white p-1 rounded-xl border border-slate-300 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setItemTypeFilter('all');
+                      setSelectedItemFilter('all');
+                    }}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                      itemTypeFilter === 'all'
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    همه اقلام
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setItemTypeFilter('products');
+                      setSelectedItemFilter('all');
+                    }}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                      itemTypeFilter === 'products'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    فقط کالا
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setItemTypeFilter('services');
+                      setSelectedItemFilter('all');
+                    }}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                      itemTypeFilter === 'services'
+                        ? 'bg-purple-700 text-white shadow-xs'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    فقط خدمات
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. Specific Product/Service Dropdown */}
+              <div className="sm:col-span-2">
+                <label className="text-[11px] text-slate-600 font-bold block mb-1">
+                  انتخاب کالا یا خدمات مشخص:
+                </label>
+                <select
+                  id="product-service-filter-select"
+                  value={selectedItemFilter}
+                  onChange={(e) => setSelectedItemFilter(e.target.value)}
+                  className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+                >
+                  <option value="all">
+                    {itemTypeFilter === 'products'
+                      ? '📦 تمام کالاهای فیزیکی موجود در اسناد'
+                      : itemTypeFilter === 'services'
+                      ? '🛠️ تمام خدمات و سرویس‌های موجود در اسناد'
+                      : '🌐 تمام محصولات، کالاها و خدمات (بدون فیلتر قلم خاص)'}
+                  </option>
+                  
+                  {itemTypeFilter !== 'services' && physicalProductsList.length > 0 && (
+                    <optgroup label="📦 کالاها و محصولات فیزیکی (انبارداری و حواله خروج)">
+                      {physicalProductsList.map((item) => (
+                        <option key={`prod-${item.name}`} value={item.name}>
+                          {item.name} {item.code ? `[کد: ${item.code}]` : ''} ({toPersianDigits(item.count)} بار در اسناد)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+
+                  {itemTypeFilter !== 'products' && servicesList.length > 0 && (
+                    <optgroup label="🛠️ خدمات و سرویس‌ها (فاقد حواله خروج انبار)">
+                      {servicesList.map((item) => (
+                        <option key={`srv-${item.name}`} value={item.name}>
+                          {item.name} {item.code ? `[کد: ${item.code}]` : ''} ({toPersianDigits(item.count)} بار در اسناد)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+            </div>
+
+            {/* Informational notice when services filter is active and exit slips is selected */}
+            {reportType === 'exit_slips' && (itemTypeFilter === 'services' || (selectedItemFilter !== 'all' && servicesList.some(s => s.name === selectedItemFilter))) && (
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  <strong>قانون انبارداری:</strong> در ثبت خدمات نیازی به حواله خروج ندارد و حواله خروج برای اقلام خدماتی صادر نمی‌شود. جهت دریافت گزارش مالی و محاسباتی خدمات، نوع سند را روی <strong>«فاکتورهای فروش (با ستون قیمت)»</strong> قرار دهید.
+                </span>
+              </div>
+            )}
+          </div>
+
           {/* KEY TOGGLE: OFFICIAL PDF / PRINT DOCUMENT TYPE */}
           {/* CRITICAL: In Exit Slips (حواله خروج), NO price column exists. Only in Invoices (فاکتورها) price column exists! */}
           <div className="bg-gradient-to-r from-amber-50 via-slate-50 to-indigo-50 p-3 sm:p-3.5 rounded-2xl border-2 border-indigo-200/80 shadow-2xs space-y-2.5">
@@ -825,12 +1062,14 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
               </div>
             </div>
 
-            {(itemSearch || dateFrom || dateTo || docTypeFilter !== 'all' || deliveryFilter !== 'all') && (
-              <div className="flex items-center justify-between pt-1">
+            {(itemSearch || dateFrom || dateTo || docTypeFilter !== 'all' || deliveryFilter !== 'all' || itemTypeFilter !== 'all' || selectedItemFilter !== 'all') && (
+              <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
                 <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1.5">
                   <Filter className="w-3.5 h-3.5 shrink-0" />
                   <span>
-                    فیلتر و جستجوی فعال: نمایش {toPersianDigits(filteredCustomerInvoices.length)} سند ({toPersianDigits(detailedReportItems.length)} سطر کالا)
+                    فیلتر فعال: {toPersianDigits(filteredCustomerInvoices.length)} سند ({toPersianDigits(detailedReportItems.length)} سطر قلم)
+                    {itemTypeFilter !== 'all' && ` • ${itemTypeFilter === 'products' ? 'فقط کالاها' : 'فقط خدمات'}`}
+                    {selectedItemFilter !== 'all' && ` • «${selectedItemFilter}»`}
                   </span>
                 </span>
                 <button
@@ -841,6 +1080,8 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                     setDateTo('');
                     setDocTypeFilter('all');
                     setDeliveryFilter('all');
+                    setItemTypeFilter('all');
+                    setSelectedItemFilter('all');
                   }}
                   className="text-[11px] text-rose-600 hover:text-rose-800 font-bold underline cursor-pointer"
                 >
@@ -1377,9 +1618,17 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                         fontSize: '11px'
                       }}>
                         <div>
-                          طرف حساب: <strong style={{ color: '#0f172a' }}>{isAllCustomers ? 'کلیه طرف‌های حساب و متقاضیان (گزارش عمومی)' : currentCustomer?.name}</strong>
-                          {currentCustomer?.phone && <span> — تلفن: {toPersianDigits(currentCustomer.phone)}</span>}
-                          {currentCustomer?.nationalId && <span> — کد اقتصادی/ملی: {toPersianDigits(currentCustomer.nationalId)}</span>}
+                          <div>
+                            طرف حساب: <strong style={{ color: '#0f172a' }}>{isAllCustomers ? 'کلیه طرف‌های حساب و متقاضیان (گزارش عمومی)' : currentCustomer?.name}</strong>
+                            {currentCustomer?.phone && <span> — تلفن: {toPersianDigits(currentCustomer.phone)}</span>}
+                            {currentCustomer?.nationalId && <span> — کد اقتصادی/ملی: {toPersianDigits(currentCustomer.nationalId)}</span>}
+                          </div>
+                          {(itemTypeFilter !== 'all' || (selectedItemFilter && selectedItemFilter !== 'all')) && (
+                            <div style={{ marginTop: '3px', color: '#3730a3', fontSize: '10px', fontWeight: 'bold' }}>
+                              فیلتر اقلام: {itemTypeFilter === 'products' ? 'فقط کالاهای فیزیکی' : itemTypeFilter === 'services' ? 'فقط خدمات و سرویس‌ها' : 'کلیه اقلام'}
+                              {selectedItemFilter && selectedItemFilter !== 'all' ? ` — قلم انتخابی: «${selectedItemFilter}»` : ''}
+                            </div>
+                          )}
                         </div>
                         <div>
                           {reportType === 'exit_slips' ? (

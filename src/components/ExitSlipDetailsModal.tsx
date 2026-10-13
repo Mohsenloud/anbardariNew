@@ -1,6 +1,7 @@
 import React from 'react';
 import { Invoice, ExitSlipData, StoreSettings, AppUser } from '../types';
 import { toPersianDigits } from '../utils/jalali';
+import { isServiceItem } from '../utils/serviceHelper';
 import { 
   X, 
   Printer, 
@@ -50,7 +51,8 @@ export const ExitSlipDetailsModal: React.FC<ExitSlipDetailsModalProps> = ({
 
   const isDelivered = Boolean(slipLog.isDelivered);
   const isPrinted = slipLog.printCount > 0;
-  const safeItems = Array.isArray(invoice.items) ? invoice.items : [];
+  const rawItems = Array.isArray(invoice.items) ? invoice.items : [];
+  const safeItems = rawItems.filter((item) => !isServiceItem(item));
   const totalQuantity = safeItems.reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0);
   const slipNumber = slipLog.slipNumber || invoice.invoiceNumber;
 
