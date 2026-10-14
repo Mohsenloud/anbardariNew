@@ -311,11 +311,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  useEffect(() => {
-    if (settings) {
-      setFormData({ ...settings });
-    }
-  }, [settings]);
 
   const storageStats = StorageService.getStorageStats();
   const totalRevenue = invoices.reduce((sum, inv) => sum + inv.finalTotal, 0);

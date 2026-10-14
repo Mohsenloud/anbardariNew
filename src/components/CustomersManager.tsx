@@ -1724,17 +1724,19 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
       )}
 
       {/* CUSTOMER INVOICES & EXIT SLIPS EXCEL EXPORT MODAL */}
-      <CustomerExportModal
-        isOpen={isExportModalOpen}
-        onClose={() => {
-          setIsExportModalOpen(false);
-          setExportModalCustomer(null);
-        }}
-        initialCustomerId={exportModalCustomer?.id}
-        customers={customers}
-        invoices={invoices}
-        settings={settings}
-      />
+      {isExportModalOpen && (
+        <CustomerExportModal
+          isOpen={isExportModalOpen}
+          onClose={() => {
+            setIsExportModalOpen(false);
+            setExportModalCustomer(null);
+          }}
+          initialCustomerId={exportModalCustomer?.id}
+          customers={customers}
+          invoices={invoices}
+          settings={settings}
+        />
+      )}
 
       {/* CUSTOMER BULK PAYMENT / LUMP-SUM DEPOSIT MODAL */}
       {paymentModalCustomer && (

@@ -107,8 +107,9 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [downloadSuccessMessage, setDownloadSuccessMessage] = useState<string | null>(null);
 
-  // Persist export modal preferences whenever they change
+  // Persist export modal preferences whenever they change (only when modal is actively open)
   React.useEffect(() => {
+    if (!isOpen) return;
     StorageService.saveExportModalPreferences({
       pdfOrientation,
       activePreviewTab,
@@ -118,20 +119,22 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
       itemTypeFilter,
       selectedItemFilter,
     });
-  }, [pdfOrientation, activePreviewTab, docTypeFilter, deliveryFilter, reportType, itemTypeFilter, selectedItemFilter]);
+  }, [isOpen, pdfOrientation, activePreviewTab, docTypeFilter, deliveryFilter, reportType, itemTypeFilter, selectedItemFilter]);
 
   // Sync initialCustomerId and initialReportType when modal opens
   React.useEffect(() => {
+    if (!isOpen) return;
     if (initialCustomerId) {
-      setSelectedCustomerId(initialCustomerId);
+      setSelectedCustomerId((prev) => (prev !== initialCustomerId ? initialCustomerId : prev));
     } else {
-      setSelectedCustomerId('all');
+      setSelectedCustomerId((prev) => (prev !== 'all' ? 'all' : prev));
     }
   }, [initialCustomerId, isOpen]);
 
   React.useEffect(() => {
+    if (!isOpen) return;
     if (initialReportType) {
-      setReportType(initialReportType);
+      setReportType((prev) => (prev !== initialReportType ? initialReportType : prev));
     }
   }, [initialReportType, isOpen]);
 

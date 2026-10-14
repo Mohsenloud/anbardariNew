@@ -214,7 +214,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   // Sync initialFormType when modal opens
   React.useEffect(() => {
     if (isOpen && initialFormType && initialFormType !== 'none') {
-      setActiveTxnModalType(initialFormType);
+      setActiveTxnModalType((prev) => (prev !== initialFormType ? initialFormType : prev));
     }
   }, [isOpen, initialFormType]);
 

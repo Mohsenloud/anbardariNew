@@ -242,7 +242,9 @@ export default function App() {
     if (currentUser) {
       if (!isTabPermitted(activeTab, currentUser, settings)) {
         const safeLanding = getDefaultTabForUser(currentUser, settings);
-        setActiveTab(safeLanding);
+        if (safeLanding && safeLanding !== activeTab) {
+          setActiveTab(safeLanding);
+        }
       }
     }
   }, [currentUser, settings, activeTab]);
@@ -1767,7 +1769,7 @@ export default function App() {
               onConfirmInboundReceipt={handleConfirmInboundReceipt}
               selectedInboundReceiptId={selectedInboundReceiptId}
               initialSubTab={inventorySubTab}
-              onSubTabChange={(sub) => setInventorySubTab(sub)}
+              onSubTabChange={setInventorySubTab}
               onUpdateSettings={handleSaveSettings}
               onToast={showToast}
             />

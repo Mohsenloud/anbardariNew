@@ -1695,18 +1695,20 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
       />
 
       {/* CUSTOMER INVOICES & EXIT SLIPS EXCEL EXPORT MODAL */}
-      <CustomerExportModal
-        isOpen={isCustomerExportModalOpen}
-        onClose={() => {
-          setIsCustomerExportModalOpen(false);
-          setCustomerExportSelected(null);
-        }}
-        initialCustomerId={customerExportSelected?.id}
-        initialReportType="invoices"
-        customers={customersList}
-        invoices={invoices}
-        settings={settings}
-      />
+      {isCustomerExportModalOpen && (
+        <CustomerExportModal
+          isOpen={isCustomerExportModalOpen}
+          onClose={() => {
+            setIsCustomerExportModalOpen(false);
+            setCustomerExportSelected(null);
+          }}
+          initialCustomerId={customerExportSelected?.id}
+          initialReportType="invoices"
+          customers={customersList}
+          invoices={invoices}
+          settings={settings}
+        />
+      )}
 
       {/* MODAL: CHOOSE CUSTOMER FOR BULK SETTLEMENT */}
       {isBulkPickerOpen && (

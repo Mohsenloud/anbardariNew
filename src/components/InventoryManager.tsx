@@ -116,17 +116,19 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     return 'items';
   });
 
-  useEffect(() => {
-    if (initialSubTab) {
-      setActiveSubTab(initialSubTab);
-    }
-  }, [initialSubTab]);
+  const handleSelectSubTab = (sub: 'items' | 'inbound-receipts' | 'exit-slips' | 'direct-transfers' | 'movements') => {
+    setActiveSubTab(sub);
+    onSubTabChange?.(sub);
+  };
 
   useEffect(() => {
-    if (onSubTabChange) {
-      onSubTabChange(activeSubTab);
+    if (selectedInboundReceiptId) {
+      setActiveSubTab('inbound-receipts');
+      onSubTabChange?.('inbound-receipts');
+    } else if (initialSubTab && initialSubTab !== activeSubTab) {
+      setActiveSubTab(initialSubTab);
     }
-  }, [activeSubTab, onSubTabChange]);
+  }, [initialSubTab, selectedInboundReceiptId]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>(() => {
     try {
@@ -789,7 +791,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           <button
             type="button"
             id="mobile-tab-items"
-            onClick={() => setActiveSubTab('items')}
+            onClick={() => handleSelectSubTab('items')}
             className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
               activeSubTab === 'items'
                 ? 'bg-blue-600 text-white shadow-xs font-bold'
@@ -816,7 +818,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           <button
             type="button"
             id="mobile-tab-inbound"
-            onClick={() => setActiveSubTab('inbound-receipts')}
+            onClick={() => handleSelectSubTab('inbound-receipts')}
             className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
               activeSubTab === 'inbound-receipts'
                 ? 'bg-emerald-600 text-white shadow-xs font-bold'
@@ -841,7 +843,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           <button
             type="button"
             id="mobile-tab-exit-slips"
-            onClick={() => setActiveSubTab('exit-slips')}
+            onClick={() => handleSelectSubTab('exit-slips')}
             className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
               activeSubTab === 'exit-slips'
                 ? 'bg-indigo-600 text-white shadow-xs font-bold'
@@ -866,7 +868,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           <button
             type="button"
             id="mobile-tab-direct-transfers"
-            onClick={() => setActiveSubTab('direct-transfers')}
+            onClick={() => handleSelectSubTab('direct-transfers')}
             className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
               activeSubTab === 'direct-transfers'
                 ? 'bg-amber-600 text-white shadow-xs font-bold'
@@ -891,7 +893,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           <button
             type="button"
             id="mobile-tab-movements"
-            onClick={() => setActiveSubTab('movements')}
+            onClick={() => handleSelectSubTab('movements')}
             className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
               activeSubTab === 'movements'
                 ? 'bg-slate-800 text-white shadow-xs font-bold'
@@ -1035,7 +1037,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             {/* Tab 1: کالاها و موجودی */}
             <button
               id="subtab-items"
-              onClick={() => setActiveSubTab('items')}
+              onClick={() => handleSelectSubTab('items')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
                 activeSubTab === 'items'
                   ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 font-extrabold'
@@ -1063,7 +1065,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             {/* Tab 2: حواله‌های ورود کالا */}
             <button
               id="subtab-inbound-receipts"
-              onClick={() => setActiveSubTab('inbound-receipts')}
+              onClick={() => handleSelectSubTab('inbound-receipts')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
                 activeSubTab === 'inbound-receipts'
                   ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 font-extrabold'
@@ -1091,7 +1093,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             {/* Tab 3: برگه‌های خروج انبار */}
             <button
               id="subtab-exit-slips"
-              onClick={() => setActiveSubTab('exit-slips')}
+              onClick={() => handleSelectSubTab('exit-slips')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
                 activeSubTab === 'exit-slips'
                   ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 font-extrabold'
@@ -1119,7 +1121,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             {/* Tab 4: خروج و ورود مستقیم (بدون فاکتور - امانی/تعمیرات) */}
             <button
               id="subtab-direct-transfers"
-              onClick={() => setActiveSubTab('direct-transfers')}
+              onClick={() => handleSelectSubTab('direct-transfers')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
                 activeSubTab === 'direct-transfers'
                   ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 font-extrabold'
@@ -1147,7 +1149,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             {/* Tab 5: گردش و کاردکس */}
             <button
               id="subtab-movements"
-              onClick={() => setActiveSubTab('movements')}
+              onClick={() => handleSelectSubTab('movements')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
                 activeSubTab === 'movements'
                   ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 font-extrabold'
@@ -3047,18 +3049,21 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       )}
 
       {/* CUSTOMER INVOICES & EXIT SLIPS EXCEL EXPORT MODAL */}
-      <CustomerExportModal
-        isOpen={isCustomerExportModalOpen}
-        onClose={() => {
-          setIsCustomerExportModalOpen(false);
-          setCustomerExportSelected(null);
-        }}
-        initialCustomerId={customerExportSelected?.id}
-        initialReportType="exit_slips"
-        customers={customersList}
-        invoices={invoices || []}
-        settings={settings}
-      />
+      {isCustomerExportModalOpen && (
+        <CustomerExportModal
+          isOpen={isCustomerExportModalOpen}
+          onClose={() => {
+            setIsCustomerExportModalOpen(false);
+            setCustomerExportSelected(null);
+          }}
+          initialCustomerId={customerExportSelected?.id}
+          initialReportType="exit_slips"
+          customers={customersList}
+          invoices={invoices || []}
+          products={products}
+          settings={settings}
+        />
+      )}
 
       {/* CATEGORY MANAGER MODAL */}
       {isCategoryModalOpen && (
@@ -3120,9 +3125,9 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
         inboundReceipts={inboundReceipts}
         directTransfers={directTransfers}
         currency={settings.currency}
-        onNavigateSubTab={(subTab) => setActiveSubTab(subTab)}
+        onNavigateSubTab={(subTab) => handleSelectSubTab(subTab)}
         onFilterLowStock={() => {
-          setActiveSubTab('items');
+          handleSelectSubTab('items');
           setStockStatusFilter('low_stock');
         }}
       />
