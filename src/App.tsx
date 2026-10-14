@@ -632,6 +632,10 @@ export default function App() {
       }
 
       // Update invoice record: change isProforma to false, new number, convertedAt, convertedFromProforma
+      const loggedUser = StorageService.getLoggedInUser();
+      const currentUserName = currentUser?.fullName || currentUser?.username || loggedUser?.fullName || loggedUser?.username || 'مدیر سیستم';
+      const currentUserId = currentUser?.id || loggedUser?.id;
+
       convertedInvoice = {
         ...proformaInvoice,
         isProforma: false,
@@ -639,9 +643,14 @@ export default function App() {
         date: today,
         convertedAt: today,
         convertedFromProforma: proformaInvoice.invoiceNumber,
+        createdById: proformaInvoice.createdById || currentUserId,
+        createdByName: proformaInvoice.createdByName || currentUserName,
+        createdByRole: proformaInvoice.createdByRole || currentUser?.roleTitle,
+        convertedById: currentUserId,
+        convertedByName: currentUserName,
         notes: proformaInvoice.notes 
-          ? `${proformaInvoice.notes} (تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today})` 
-          : `تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today}`,
+          ? `${proformaInvoice.notes} (تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today} توسط ${currentUserName})` 
+          : `تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today} توسط ${currentUserName}`,
       };
 
       const updatedInvoices = invoices.map((inv) => inv.id === proformaInvoice.id ? convertedInvoice : inv);
@@ -658,6 +667,10 @@ export default function App() {
         setViewingInvoice(convertedInvoice);
       }
     } else {
+      const loggedUser = StorageService.getLoggedInUser();
+      const currentUserName = currentUser?.fullName || currentUser?.username || loggedUser?.fullName || loggedUser?.username || 'مدیر سیستم';
+      const currentUserId = currentUser?.id || loggedUser?.id;
+
       convertedInvoice = {
         ...proformaInvoice,
         isProforma: false,
@@ -665,9 +678,14 @@ export default function App() {
         date: today,
         convertedAt: today,
         convertedFromProforma: proformaInvoice.invoiceNumber,
+        createdById: proformaInvoice.createdById || currentUserId,
+        createdByName: proformaInvoice.createdByName || currentUserName,
+        createdByRole: proformaInvoice.createdByRole || currentUser?.roleTitle,
+        convertedById: currentUserId,
+        convertedByName: currentUserName,
         notes: proformaInvoice.notes 
-          ? `${proformaInvoice.notes} (تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today})` 
-          : `تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today}`,
+          ? `${proformaInvoice.notes} (تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today} توسط ${currentUserName})` 
+          : `تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today} توسط ${currentUserName}`,
       };
 
       const updatedInvoices = invoices.map((inv) => inv.id === proformaInvoice.id ? convertedInvoice : inv);

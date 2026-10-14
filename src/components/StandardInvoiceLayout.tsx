@@ -120,6 +120,12 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
                     {toPersianDigits(invoice.invoiceNumber)}
                   </strong>
                 </div>
+                {invoice.createdByName && (
+                  <div className="flex items-center gap-1.5 pt-0.5 text-slate-600">
+                    <span>کاربر ثبت‌کننده:</span>
+                    <strong className="text-slate-800 font-bold">{invoice.createdByName}</strong>
+                  </div>
+                )}
               </div>
             </div>
           </div>

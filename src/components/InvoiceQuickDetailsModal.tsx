@@ -24,7 +24,8 @@ import {
   Globe,
   Building2,
   ChevronUp,
-  SlidersHorizontal
+  SlidersHorizontal,
+  UserCheck
 } from 'lucide-react';
 
 interface InvoiceQuickDetailsModalProps {
@@ -150,6 +151,49 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
 
         {/* Modal Content */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs text-slate-700">
+          {/* مشخصات کاربر ثبت‌کننده و گردش سند */}
+          <div className="bg-gradient-to-r from-slate-50 to-indigo-50/60 p-3.5 rounded-2xl border border-indigo-100/90 flex flex-wrap items-center justify-between gap-3 text-xs shadow-2xs">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 shadow-2xs">
+                <UserCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-slate-400 text-[10.5px]">کاربر ثبت‌کننده سند:</span>
+                  <strong className="text-slate-900 font-black text-xs">
+                    {invoice.createdByName || 'مدیر سیستم'}
+                  </strong>
+                  {invoice.createdByRole && (
+                    <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-md">
+                      {invoice.createdByRole}
+                    </span>
+                  )}
+                </div>
+                <div className="text-[10.5px] text-slate-500 mt-0.5 flex items-center gap-2">
+                  <span>تاریخ و زمان صدور: {toPersianDigits(invoice.date)}</span>
+                  {invoice.createdAt && (
+                    <span className="font-mono text-slate-400">({new Date(invoice.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })})</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] text-slate-600 mr-auto">
+              {invoice.updatedByName && (
+                <div className="bg-white/90 border border-slate-200 px-2 py-1 rounded-lg">
+                  <span className="text-slate-400 text-[10px]">آخرین ویرایش: </span>
+                  <strong className="text-slate-800 font-bold">{invoice.updatedByName}</strong>
+                </div>
+              )}
+              {invoice.convertedByName && (
+                <div className="bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg text-emerald-900">
+                  <span className="text-emerald-600 text-[10px]">تبدیل‌کننده به فاکتور: </span>
+                  <strong className="font-bold">{invoice.convertedByName}</strong>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* مشخصات فروشنده رسمی در فاکتورهای رسمی دارایی */}
           {invoice.type === 'official' && (
             <div className="bg-gradient-to-r from-emerald-50 to-teal-50/70 p-3.5 rounded-2xl border border-emerald-300/80 shadow-2xs space-y-2">

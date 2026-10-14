@@ -543,6 +543,45 @@ export const exportElementToPdf = async (
           clonedDoc.defaultView.scrollTo(0, 0);
         }
 
+        // Copy all style & link tags from main document to clonedDoc to ensure Tailwind & CSS rules are 100% available
+        const mainDocStyles = document.head.querySelectorAll('style, link[rel="stylesheet"]');
+        mainDocStyles.forEach((node) => {
+          try {
+            clonedDoc.head.appendChild(node.cloneNode(true));
+          } catch {}
+        });
+
+        // Ensure Vazirmatn font & explicit PDF table border CSS rules are injected into cloned document
+        const pdfFixStyle = clonedDoc.createElement('style');
+        pdfFixStyle.id = 'pdf-cloned-fix-styles';
+        pdfFixStyle.innerHTML = `
+          @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap');
+          ${getPrintLayoutCssRules()}
+          
+          *, *::before, *::after {
+            box-sizing: border-box !important;
+          }
+          table {
+            border-collapse: collapse !important;
+            border-spacing: 0 !important;
+            width: 100% !important;
+          }
+          th, td {
+            border-color: #cbd5e1 !important;
+            border-style: solid !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+          }
+          p, span, div, td, th, h1, h2, h3, h4, h5, h6, strong, b, em {
+            opacity: 1 !important;
+            visibility: visible !important;
+            letter-spacing: normal !important;
+            font-feature-settings: "liga" 1, "calt" 1 !important;
+            text-rendering: optimizeLegibility !important;
+          }
+        `;
+        clonedDoc.head.appendChild(pdfFixStyle);
+
         // ایزوله‌سازی رندرهای پشت صحنه ربات تلگرام در محیط کلون شده
         if (element.id && element.id.startsWith('telegram-offscreen-')) {
           clonedElement.style.setProperty('opacity', '1', 'important');
@@ -557,14 +596,6 @@ export const exportElementToPdf = async (
               (child as HTMLElement).style.setProperty('display', 'none', 'important');
             }
           });
-        }
-
-        // Ensure Vazirmatn font is loaded in the cloned document frame
-        if (!clonedDoc.querySelector('link[href*="Vazirmatn"]')) {
-          const fontLink = clonedDoc.createElement('link');
-          fontLink.rel = 'stylesheet';
-          fontLink.href = 'https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap';
-          clonedDoc.head.appendChild(fontLink);
         }
 
         // Hide all buttons, action controls, and .no-print elements in the PDF canvas clone
@@ -885,6 +916,45 @@ export const generatePdfBlob = async (
           clonedDoc.defaultView.scrollTo(0, 0);
         }
 
+        // Copy all style & link tags from main document to clonedDoc to ensure Tailwind & CSS rules are 100% available
+        const mainDocStyles = document.head.querySelectorAll('style, link[rel="stylesheet"]');
+        mainDocStyles.forEach((node) => {
+          try {
+            clonedDoc.head.appendChild(node.cloneNode(true));
+          } catch {}
+        });
+
+        // Ensure Vazirmatn font & explicit PDF table border CSS rules are injected into cloned document
+        const pdfFixStyle = clonedDoc.createElement('style');
+        pdfFixStyle.id = 'pdf-cloned-fix-styles-2';
+        pdfFixStyle.innerHTML = `
+          @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap');
+          ${getPrintLayoutCssRules()}
+          
+          *, *::before, *::after {
+            box-sizing: border-box !important;
+          }
+          table {
+            border-collapse: collapse !important;
+            border-spacing: 0 !important;
+            width: 100% !important;
+          }
+          th, td {
+            border-color: #cbd5e1 !important;
+            border-style: solid !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+          }
+          p, span, div, td, th, h1, h2, h3, h4, h5, h6, strong, b, em {
+            opacity: 1 !important;
+            visibility: visible !important;
+            letter-spacing: normal !important;
+            font-feature-settings: "liga" 1, "calt" 1 !important;
+            text-rendering: optimizeLegibility !important;
+          }
+        `;
+        clonedDoc.head.appendChild(pdfFixStyle);
+
         // ایزوله‌سازی رندرهای پشت صحنه ربات تلگرام در محیط کلون شده
         if (element.id && element.id.startsWith('telegram-offscreen-')) {
           clonedElement.style.setProperty('opacity', '1', 'important');
@@ -899,14 +969,6 @@ export const generatePdfBlob = async (
               (child as HTMLElement).style.setProperty('display', 'none', 'important');
             }
           });
-        }
-
-        // Ensure Vazirmatn font is loaded in the cloned document frame
-        if (!clonedDoc.querySelector('link[href*="Vazirmatn"]')) {
-          const fontLink = clonedDoc.createElement('link');
-          fontLink.rel = 'stylesheet';
-          fontLink.href = 'https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap';
-          clonedDoc.head.appendChild(fontLink);
         }
 
         // Hide all buttons, action controls, and .no-print elements in the PDF canvas clone

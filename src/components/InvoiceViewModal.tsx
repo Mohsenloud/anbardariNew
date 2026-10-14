@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Invoice, StoreSettings } from '../types';
-import { formatPrice, toPersianDigits } from '../utils/jalali';
+import { formatPrice, toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
 import { exportElementToPdf, printElementDirectly, printElementInNewWindow, generatePdfBlob, getInvoicePdfFilename } from '../utils/pdfHelper';
 import { TelegramSendPdfModal } from './TelegramSendPdfModal';
 import { formatInvoiceTelegramCaption } from '../utils/telegramService';
@@ -1076,14 +1076,16 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                         <div className={`flex flex-col items-center sm:items-start gap-1 mt-1 text-slate-600 ${isA5 ? 'text-[10px]' : 'text-xs'}`}>
                           <div className="flex items-center gap-1.5">
                             <span>تاریخ:</span>
+                            <strong className="text-slate-900 font-bold">
+                              {toPersianDigits(activeInvoice?.date || invoice.date || getCurrentJalaliDate())}
+                            </strong>
                             <button
                               type="button"
                               onClick={() => setIsDateModalOpen(true)}
-                              className="inline-flex items-center gap-1 hover:bg-emerald-50 hover:text-emerald-800 text-slate-900 font-bold px-1.5 py-0.5 rounded-lg border border-transparent hover:border-emerald-300 transition-colors cursor-pointer group print:hover:bg-transparent print:border-none"
+                              className="no-print no-pdf p-0.5 hover:bg-emerald-50 hover:text-emerald-800 text-slate-400 rounded-md transition-colors cursor-pointer"
                               title="کلیک برای تغییر تاریخ فاکتور"
                             >
-                              <strong className="font-bold">{toPersianDigits(activeInvoice?.date || invoice.date)}</strong>
-                              <Pencil className="w-3 h-3 text-slate-400 group-hover:text-emerald-600 print:hidden opacity-60 group-hover:opacity-100" />
+                              <Pencil className="w-3 h-3 text-slate-400 hover:text-emerald-600" />
                             </button>
                           </div>
                           <div className="flex items-center gap-1.5 pt-0.5">
@@ -1092,6 +1094,12 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                               {toPersianDigits(invoice.invoiceNumber)}
                             </strong>
                           </div>
+                          {(activeInvoice?.createdByName || invoice.createdByName) && (
+                            <div className="flex items-center gap-1.5 pt-0.5 text-slate-600">
+                              <span>کاربر ثبت‌کننده:</span>
+                              <strong className="text-slate-800 font-bold">{activeInvoice?.createdByName || invoice.createdByName}</strong>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

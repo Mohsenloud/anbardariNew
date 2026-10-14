@@ -800,31 +800,31 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
 
   return (
     <div className="space-y-6 text-slate-800">
-      {/* Top Banner and Quick Actions - Optimized for Desktop & Mobile */}
-      <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 text-white p-4 sm:p-5 rounded-2xl shadow-lg border border-slate-700/80 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        {/* Info & Title Area */}
-        <div className="space-y-1.5 min-w-0">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <span className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-400/30 shrink-0">
-              <Zap className="w-5 h-5" />
+      {/* Top Banner and Quick Actions - Optimized Layout: Line 1 Title, Line 2 Description, Line 3 Buttons */}
+      <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 text-white p-4 sm:p-5 rounded-2xl shadow-lg border border-slate-700/80 flex flex-col gap-3">
+        {/* Line 1: Title & Badge */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <span className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-400/30 shrink-0">
+            <Zap className="w-5 h-5" />
+          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-base sm:text-lg font-black tracking-tight text-white">
+              تنظیمات چاپ و قالب‌بندی ابعاد فاکتور
+            </h3>
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-700/50">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+              <span>پیش‌نمایش بلادرنگ (۰ms)</span>
             </span>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-base sm:text-lg font-black tracking-tight text-white">
-                تنظیمات چاپ و قالب‌بندی ابعاد فاکتور
-              </h3>
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-700/50">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                <span>پیش‌نمایش بلادرنگ (۰ms)</span>
-              </span>
-            </div>
           </div>
-          <p className="text-xs text-slate-300 leading-relaxed max-w-2xl">
-            شخصی‌سازی دقیق فونت‌ها، ابعاد ستون‌ها، حاشیه‌ها، نشان تجاری و متن شروط با پیش‌نمایش زنده در پنجره مستقل و شناور.
-          </p>
         </div>
 
-        {/* Action Buttons: Responsive Grid on Mobile, Neat Groups on Desktop */}
-        <div className="flex flex-col sm:flex-row xl:flex-row items-stretch sm:items-center gap-2 flex-wrap shrink-0">
+        {/* Line 2: Descriptive Text */}
+        <p className="text-xs text-slate-300 leading-relaxed">
+          شخصی‌سازی دقیق فونت‌ها، ابعاد ستون‌ها، حاشیه‌ها، نشان تجاری و متن شروط با پیش‌نمایش زنده در پنجره مستقل و شناور.
+        </p>
+
+        {/* Line 3: Action Buttons */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-wrap pt-2 border-t border-slate-800/80">
           {/* Group 1: Live Preview Options */}
           <div className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 p-1 bg-slate-950/60 rounded-xl border border-slate-800">
             {/* Detached Floating Window */}

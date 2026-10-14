@@ -223,6 +223,13 @@ export interface Invoice {
   sellerPostalCode?: string;
   createdAt: string;
   updatedAt?: string; // تاریخ آخرین ویرایش فاکتور
+  createdById?: string; // شناسه کاربر ایجادکننده فاکتور یا پیش‌فاکتور
+  createdByName?: string; // نام و نام‌خانوادگی کاربر ایجادکننده فاکتور یا پیش‌فاکتور
+  createdByRole?: string; // نقش یا عنوان سمت کاربر ایجادکننده
+  updatedById?: string; // شناسه آخرین کاربری که فاکتور را ویرایش کرده است
+  updatedByName?: string; // نام آخرین کاربری که فاکتور را ویرایش کرده است
+  convertedById?: string; // شناسه کاربری که پیش‌فاکتور را به فاکتور تبدیل کرده است
+  convertedByName?: string; // نام کاربری که پیش‌فاکتور را به فاکتور تبدیل کرده است
 }
 
 export type StockMovementType = 'sale' | 'purchase' | 'adjustment' | 'return' | 'direct_out' | 'direct_in';

@@ -43,7 +43,8 @@ import {
   Filter, 
   Check,
   Eye,
-  Globe
+  Globe,
+  UserCheck
 } from 'lucide-react';
 
 interface InvoicesListProps {
@@ -99,6 +100,13 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
       return 'all';
     }
   });
+  const [creatorFilter, setCreatorFilter] = useState<string>(() => {
+    try {
+      return localStorage.getItem('sepehr_invoices_creator_filter') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
   const [sortBy, setSortBy] = useState<SortOption>(() => {
     try {
       return (localStorage.getItem('sepehr_invoices_sort_by') as any) || 'date-desc';
@@ -118,6 +126,12 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
       localStorage.setItem('sepehr_invoices_doctype_filter', docTypeFilter);
     } catch {}
   }, [docTypeFilter]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sepehr_invoices_creator_filter', creatorFilter);
+    } catch {}
+  }, [creatorFilter]);
 
   useEffect(() => {
     try {
@@ -164,6 +178,8 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   const statusDropdownRef = useRef<HTMLDivElement>(null);
   const [isDocTypeDropdownOpen, setIsDocTypeDropdownOpen] = useState(false);
   const docTypeDropdownRef = useRef<HTMLDivElement>(null);
+  const [isCreatorDropdownOpen, setIsCreatorDropdownOpen] = useState(false);
+  const creatorDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -176,6 +192,9 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
       }
       if (docTypeDropdownRef.current && !docTypeDropdownRef.current.contains(target)) {
         setIsDocTypeDropdownOpen(false);
+      }
+      if (creatorDropdownRef.current && !creatorDropdownRef.current.contains(target)) {
+        setIsCreatorDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -208,6 +227,16 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
     return { all: invoices.length, paid, partial, unpaid };
   }, [invoices]);
 
+  // Unique creators list for filtering
+  const availableCreators = useMemo(() => {
+    const creatorsSet = new Set<string>();
+    invoices.forEach((inv) => {
+      const name = inv.createdByName || 'مدیر سیستم';
+      if (name) creatorsSet.add(name);
+    });
+    return Array.from(creatorsSet).sort((a, b) => a.localeCompare(b, 'fa'));
+  }, [invoices]);
+
   // Filtered and Sorted invoices
   const filteredInvoices = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -220,6 +249,8 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
         (inv.customerPhone && inv.customerPhone.includes(q)) ||
         (inv.customerNationalId && inv.customerNationalId.includes(q)) ||
         (inv.chequeNumber && inv.chequeNumber.includes(q)) ||
+        (inv.createdByName && inv.createdByName.toLowerCase().includes(q)) ||
+        (inv.createdByRole && inv.createdByRole.toLowerCase().includes(q)) ||
         (inv.notes && inv.notes.toLowerCase().includes(q));
 
       const matchesDocType =
@@ -231,7 +262,11 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
 
       const matchesStatus = statusFilter === 'all' || inv.paymentStatus === statusFilter;
 
-      return matchesSearch && matchesDocType && matchesStatus;
+      const matchesCreator =
+        creatorFilter === 'all' ||
+        (inv.createdByName || 'مدیر سیستم') === creatorFilter;
+
+      return matchesSearch && matchesDocType && matchesStatus && matchesCreator;
     });
 
     // Sorting
@@ -256,7 +291,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           return 0;
       }
     });
-  }, [invoices, searchQuery, docTypeFilter, statusFilter, sortBy]);
+  }, [invoices, searchQuery, docTypeFilter, statusFilter, creatorFilter, sortBy]);
 
   // Filtered totals
   const filteredSummary = useMemo(() => {
@@ -828,7 +863,79 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
               )}
             </div>
 
-            {/* 3. Sorting Dropdown */}
+            {/* 3. Creator Filter Dropdown */}
+            {availableCreators.length > 0 && (
+              <div className="relative shrink-0" ref={creatorDropdownRef}>
+                <button
+                  type="button"
+                  id="invoices-creator-filter-btn"
+                  onClick={() => {
+                    setIsCreatorDropdownOpen((prev) => !prev);
+                    setIsDocTypeDropdownOpen(false);
+                    setIsStatusDropdownOpen(false);
+                  }}
+                  className={`flex items-center gap-1.5 min-h-[38px] px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-2xs cursor-pointer ${
+                    creatorFilter === 'all'
+                      ? 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      : 'bg-indigo-50 text-indigo-900 border-indigo-300'
+                  }`}
+                >
+                  <UserCheck className={`w-3.5 h-3.5 ${creatorFilter === 'all' ? 'text-slate-400' : 'text-indigo-600'}`} />
+                  <span className="truncate max-w-[110px]">
+                    {creatorFilter === 'all' ? 'کاربر: همه' : creatorFilter}
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isCreatorDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isCreatorDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 w-56 bg-white rounded-xl border border-slate-200/90 shadow-xl z-40 p-1 space-y-0.5 animate-in fade-in duration-100 max-h-60 overflow-y-auto">
+                    <button
+                      type="button"
+                      id="creator-filter-all"
+                      onClick={() => {
+                        setCreatorFilter('all');
+                        setIsCreatorDropdownOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-2 text-xs rounded-lg transition-colors cursor-pointer ${
+                        creatorFilter === 'all' ? 'bg-slate-900 text-white font-bold' : 'text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <UserCheck className="w-3.5 h-3.5" />
+                        <span>همه کاربران ثبت‌کننده</span>
+                      </div>
+                      <span className="text-[10px] opacity-80 font-mono">({toPersianDigits(invoices.length)})</span>
+                    </button>
+
+                    {availableCreators.map((creator) => {
+                      const count = invoices.filter((inv) => (inv.createdByName || 'مدیر سیستم') === creator).length;
+                      const isSelected = creatorFilter === creator;
+                      return (
+                        <button
+                          key={creator}
+                          type="button"
+                          onClick={() => {
+                            setCreatorFilter(creator);
+                            setIsCreatorDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-2 text-xs rounded-lg transition-colors cursor-pointer ${
+                            isSelected ? 'bg-indigo-600 text-white font-bold' : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-900'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate min-w-0">
+                            <UserCheck className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-white' : 'text-indigo-500'}`} />
+                            <span className="truncate">{creator}</span>
+                          </div>
+                          <span className="text-[10px] opacity-80 font-mono shrink-0 ml-1">({toPersianDigits(count)})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 4. Sorting Dropdown */}
             <div className="relative shrink-0 min-w-[125px]">
               <select
                 id="invoices-sort-select"
@@ -848,12 +955,13 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
             </div>
 
             {/* Reset Filter Button (Active when filters applied) */}
-            {(statusFilter !== 'all' || docTypeFilter !== 'all' || searchQuery) && (
+            {(statusFilter !== 'all' || docTypeFilter !== 'all' || creatorFilter !== 'all' || searchQuery) && (
               <button
                 type="button"
                 onClick={() => {
                   setStatusFilter('all');
                   setDocTypeFilter('all');
+                  setCreatorFilter('all');
                   setSearchQuery('');
                 }}
                 className="flex items-center gap-1 min-h-[38px] px-2.5 py-1.5 rounded-xl border border-rose-200 text-rose-700 bg-rose-50 hover:bg-rose-100 text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
@@ -965,6 +1073,12 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
 
                       {/* Customer & Document Metadata Paragraph */}
                       <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-500 font-medium">
+                        {/* Creator User Tag */}
+                        <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-900 border border-indigo-200/80 px-1.5 py-0.5 rounded-md font-bold text-[10px]">
+                          <UserCheck className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
+                          <span>ثبت: {inv.createdByName || 'مدیر سیستم'}</span>
+                        </span>
+
                         {inv.customerPhone && (
                           <span className="flex items-center gap-1 font-mono text-slate-600">
                             <Phone className="w-3 h-3 text-slate-400 shrink-0" />
@@ -1073,6 +1187,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                 <th className="py-3.5 px-3 font-bold text-center w-12">#</th>
                 <th className="py-3.5 px-3 font-bold">شماره فاکتور</th>
                 <th className="py-3.5 px-3 font-bold">خریدار / مشتری</th>
+                <th className="py-3.5 px-3 font-bold">کاربر ثبت‌کننده</th>
                 <th className="py-3.5 px-3 font-bold">تاریخ صدور</th>
                 <th className="py-3.5 px-3 font-bold text-left">مبلغ کل و وضعیت مالی</th>
                 <th className="py-3.5 px-3 font-bold text-center w-36">عملیات</th>
@@ -1081,7 +1196,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filteredInvoices.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-16 text-slate-400 bg-white">
+                  <td colSpan={7} className="text-center py-16 text-slate-400 bg-white">
                     <ReceiptText className="w-10 h-10 mx-auto mb-2 text-slate-300" />
                     <div className="text-sm font-bold text-slate-600">هیچ فاکتوری با مشخصات انتخابی یافت نشد</div>
                     <p className="text-xs text-slate-400 mt-1">
@@ -1130,6 +1245,25 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                             <span>{toPersianDigits(inv.customerPhone)}</span>
                           </div>
                         )}
+                      </td>
+
+                      {/* Created By User */}
+                      <td className="py-3.5 px-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-6 h-6 rounded-lg bg-indigo-50 border border-indigo-200/80 flex items-center justify-center text-indigo-700 text-[10px] font-black shrink-0">
+                            <UserCheck className="w-3.5 h-3.5" />
+                          </span>
+                          <div className="min-w-0">
+                            <div className="font-bold text-slate-800 text-xs truncate max-w-[120px]" title={inv.createdByName || 'مدیر سیستم'}>
+                              {inv.createdByName || 'مدیر سیستم'}
+                            </div>
+                            {inv.createdByRole && (
+                              <div className="text-[10px] text-slate-400 truncate max-w-[120px]">
+                                {inv.createdByRole}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </td>
 
                       {/* Issue Date */}
