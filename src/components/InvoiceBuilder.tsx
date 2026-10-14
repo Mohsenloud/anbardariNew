@@ -1404,7 +1404,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
           {/* Row 2: Date, Print Template & Action Buttons */}
           <div className="flex items-center justify-between px-3 py-1.5 bg-slate-50/70">
-            {/* Meta Info: Date and Template */}
+            {/* Meta Info: Date */}
             <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
               <button
                 type="button"
@@ -1416,10 +1416,6 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <span className="font-mono font-bold text-slate-800 group-hover:text-emerald-900">{toPersianDigits(invoiceDate)}</span>
                 <Pencil className="w-2.5 h-2.5 text-slate-400 group-hover:text-emerald-600" />
               </button>
-              <span>•</span>
-              <span className="text-slate-700 font-bold">
-                {invoiceType === 'standard' ? 'قالب استاندارد' : invoiceType === 'official' ? 'قالب رسمی' : invoiceType === 'simple' ? 'قالب ساده' : 'فیش پرینتر'}
-              </span>
             </div>
 
             {/* Quick Actions (Search, Settings, Checkout CTA) */}
@@ -2065,14 +2061,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
                   {isEditing ? 'ویرایش فاکتور فروش' : isProforma ? 'پیش‌فاکتور فروش' : 'صدور فاکتور فروش'}
                 </h1>
-                {isProforma && (
-                  <span className="text-[11px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-lg border border-indigo-200">
-                    پیش‌نویس (بدون کسر از موجودی)
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-medium flex-wrap">
-                <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-800 px-2 py-0.5 rounded-lg font-['Vazirmatn'] text-[11px] font-bold border border-slate-200/60">
+                <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-800 px-2.5 py-1 rounded-lg font-['Vazirmatn'] text-[11px] font-bold border border-slate-200/60">
                   <span className="text-slate-400 font-normal">شماره:</span>
                   <span>{toPersianDigits(invoiceNumber)}</span>
                 </span>
@@ -2087,20 +2076,11 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   <span className="font-mono text-emerald-700 font-extrabold">{toPersianDigits(invoiceDate)}</span>
                   <Pencil className="w-3 h-3 text-slate-400 group-hover:text-emerald-600 transition-colors" />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setIsSettingsModalOpen(true)}
-                  className="inline-flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-lg border border-emerald-200/80 text-[11px] font-bold cursor-pointer transition-colors"
-                  title="کلیک برای تغییر مشخصات و قالب چاپ"
-                >
-                  <span className="text-emerald-600/80 font-normal">قالب چاپ:</span>
-                  <span>{invoiceType === 'standard' ? 'استاندارد A4/A5' : invoiceType === 'official' ? 'رسمی دارایی' : invoiceType === 'simple' ? 'ساده و خوانا' : 'حرارتی ۸ سانتی'}</span>
-                </button>
-                <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-900 px-2.5 py-0.5 rounded-lg border border-indigo-200/80 text-[11px] font-bold">
-                  <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
-                  <span className="text-indigo-600/80 font-normal">کاربر ثبت‌کننده:</span>
-                  <span>{currentUser?.fullName || currentUser?.username || StorageService.getLoggedInUser()?.fullName || StorageService.getLoggedInUser()?.username || 'مدیر سیستم'}</span>
-                </span>
+                {isProforma && (
+                  <span className="text-[11px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-lg border border-indigo-200">
+                    پیش‌نویس (بدون کسر از موجودی)
+                  </span>
+                )}
               </div>
             </div>
           </div>

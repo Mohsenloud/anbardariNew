@@ -811,10 +811,6 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
             <h3 className="text-base sm:text-lg font-black tracking-tight text-white">
               تنظیمات چاپ و قالب‌بندی ابعاد فاکتور
             </h3>
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-700/50">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-              <span>پیش‌نمایش بلادرنگ (۰ms)</span>
-            </span>
           </div>
         </div>
 
