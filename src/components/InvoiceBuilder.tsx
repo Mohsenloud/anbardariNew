@@ -2302,11 +2302,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                         {customerPhone || 'نامشخص'}
                       </b>
                     </span>
-                    {customerAddress && (
-                      <span className="truncate max-w-xs text-slate-600">
-                        • آدرس: {customerAddress}
-                      </span>
-                    )}
+                    {/* آدرس طبق درخواست از این کارت حذف گردید */}
                   </div>
                 </div>
               </div>
