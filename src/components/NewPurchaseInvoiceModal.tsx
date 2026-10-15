@@ -891,7 +891,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                           />
                         </td>
                         <td className="p-2 text-center font-mono font-black text-emerald-900 text-sm">
-                          {toPersianDigits(formatPrice(item.total))}
+                          {toPersianDigits(formatPrice(item.total, ''))}
                         </td>
                         <td className="p-2 text-center">
                           <button
@@ -967,7 +967,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                     <div>
                       <span className="text-[10px] text-slate-500 block mb-0.5">جمع کل ردیف:</span>
                       <div className="p-1.5 text-center font-mono font-black text-emerald-900 bg-emerald-50 rounded-xl border border-emerald-200 text-xs">
-                        {toPersianDigits(formatPrice(item.total))}
+                        {toPersianDigits(formatPrice(item.total, ''))}
                       </div>
                     </div>
                   </div>

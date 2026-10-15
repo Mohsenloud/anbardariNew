@@ -259,7 +259,7 @@ export function buildPdfDocumentFromCanvas(
   const paperSize = options?.pageSize || 'a4';
   const orientation = options?.orientation || 'portrait';
   const isA5 = paperSize === 'a5';
-  const marginMm = isA5 ? 3.5 : 4.5;
+  const marginMm = options?.marginMm !== undefined ? options.marginMm : (isA5 ? 3.5 : 4.5);
 
   const pdf = new jsPDF({
     orientation,
@@ -592,15 +592,29 @@ function setupClonedDocumentForPdfCapture(
       box-sizing: border-box !important;
     }
     
-    /* Bulletproof Table & Border Styles */
-    table {
+    /* Strict border override for elements configured without borders (e.g. export PDF canvas) */
+    #invoices-slips-pdf-report-canvas,
+    #invoices-slips-pdf-report-canvas *,
+    .no-pdf-border,
+    .no-pdf-border * {
+      border: none !important;
+      border-width: 0 !important;
+      border-style: none !important;
+      border-color: transparent !important;
+      box-shadow: none !important;
+      outline: none !important;
+    }
+
+    /* Bulletproof Table & Border Styles (only for standard tables with borders) */
+    table:not(.no-pdf-border):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]) {
       border-collapse: collapse !important;
       border-spacing: 0 !important;
       width: 100% !important;
       border: 1px solid #94a3b8 !important;
       background-color: #ffffff !important;
     }
-    th, thead th {
+    th:not(.no-pdf-border):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]), 
+    thead th:not(.no-pdf-border):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]) {
       border: 1px solid #94a3b8 !important;
       border-color: #94a3b8 !important;
       border-style: solid !important;
@@ -612,7 +626,8 @@ function setupClonedDocumentForPdfCapture(
       opacity: 1 !important;
       visibility: visible !important;
     }
-    td, tbody td {
+    td:not(.no-pdf-border):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]), 
+    tbody td:not(.no-pdf-border):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]) {
       border: 1px solid #cbd5e1 !important;
       border-color: #cbd5e1 !important;
       border-style: solid !important;
@@ -818,6 +833,20 @@ function setupClonedDocumentForPdfCapture(
   });
 
   // 7. Explicitly force table borders and styles directly on every table, th, and td
+  const isBorderless =
+    clonedElement.id === 'invoices-slips-pdf-report-canvas' ||
+    clonedElement.classList.contains('no-pdf-border') ||
+    element.id === 'invoices-slips-pdf-report-canvas' ||
+    element.classList.contains('no-pdf-border');
+
+  if (isBorderless) {
+    clonedElement.style.setProperty('border', 'none', 'important');
+    clonedElement.style.setProperty('border-width', '0', 'important');
+    clonedElement.style.setProperty('border-color', 'transparent', 'important');
+    clonedElement.style.setProperty('box-shadow', 'none', 'important');
+    clonedElement.style.setProperty('outline', 'none', 'important');
+  }
+
   const tables = clonedElement.querySelectorAll('table');
   const defaultMinRowH = isA5 ? (isLandscape ? 24 : 28) : (isLandscape ? 32 : 36);
   tables.forEach((tbl) => {
@@ -826,19 +855,34 @@ function setupClonedDocumentForPdfCapture(
     tblEl.style.setProperty('min-width', '100%', 'important');
     tblEl.style.setProperty('table-layout', 'auto', 'important');
     tblEl.style.setProperty('border-collapse', 'collapse', 'important');
-    tblEl.style.setProperty('border', '1px solid #94a3b8', 'important');
+
+    if (isBorderless) {
+      tblEl.style.setProperty('border', 'none', 'important');
+      tblEl.style.setProperty('border-width', '0', 'important');
+      tblEl.style.setProperty('border-color', 'transparent', 'important');
+      tblEl.style.setProperty('box-shadow', 'none', 'important');
+      tblEl.style.setProperty('outline', 'none', 'important');
+    } else {
+      tblEl.style.setProperty('border', '1px solid #94a3b8', 'important');
+    }
 
     tblEl.querySelectorAll('thead th, th').forEach((th) => {
       const thEl = th as HTMLElement;
       thEl.style.setProperty('vertical-align', 'middle', 'important');
       thEl.style.setProperty('box-sizing', 'border-box', 'important');
-      thEl.style.setProperty('border', '1px solid #94a3b8', 'important');
-      thEl.style.setProperty('border-color', '#94a3b8', 'important');
-      thEl.style.setProperty('border-style', 'solid', 'important');
-      thEl.style.setProperty('border-width', '1px', 'important');
-      thEl.style.setProperty('background-color', '#f1f5f9', 'important');
-      thEl.style.setProperty('color', '#0f172a', 'important');
-      thEl.style.setProperty('font-weight', '700', 'important');
+      if (isBorderless) {
+        thEl.style.setProperty('border', 'none', 'important');
+        thEl.style.setProperty('border-width', '0', 'important');
+        thEl.style.setProperty('border-color', 'transparent', 'important');
+        thEl.style.setProperty('box-shadow', 'none', 'important');
+        thEl.style.setProperty('outline', 'none', 'important');
+      } else {
+        thEl.style.setProperty('border', '1px solid #94a3b8', 'important');
+        thEl.style.setProperty('border-color', '#94a3b8', 'important');
+        thEl.style.setProperty('border-style', 'solid', 'important');
+        thEl.style.setProperty('border-width', '1px', 'important');
+        thEl.style.setProperty('background-color', '#f1f5f9', 'important');
+      }
       thEl.style.setProperty('opacity', '1', 'important');
       thEl.style.setProperty('visibility', 'visible', 'important');
     });
@@ -849,6 +893,11 @@ function setupClonedDocumentForPdfCapture(
       trEl.style.setProperty('min-height', `${defaultMinRowH}px`, 'important');
       trEl.style.setProperty('page-break-inside', 'avoid', 'important');
       trEl.style.setProperty('break-inside', 'avoid', 'important');
+      if (isBorderless) {
+        trEl.style.setProperty('border', 'none', 'important');
+        trEl.style.setProperty('border-width', '0', 'important');
+        trEl.style.setProperty('border-color', 'transparent', 'important');
+      }
 
       trEl.querySelectorAll('td').forEach((td) => {
         const tdEl = td as HTMLElement;
@@ -856,10 +905,18 @@ function setupClonedDocumentForPdfCapture(
         tdEl.style.setProperty('min-height', `${defaultMinRowH}px`, 'important');
         tdEl.style.setProperty('vertical-align', 'middle', 'important');
         tdEl.style.setProperty('box-sizing', 'border-box', 'important');
-        tdEl.style.setProperty('border', '1px solid #cbd5e1', 'important');
-        tdEl.style.setProperty('border-color', '#cbd5e1', 'important');
-        tdEl.style.setProperty('border-style', 'solid', 'important');
-        tdEl.style.setProperty('border-width', '1px', 'important');
+        if (isBorderless) {
+          tdEl.style.setProperty('border', 'none', 'important');
+          tdEl.style.setProperty('border-width', '0', 'important');
+          tdEl.style.setProperty('border-color', 'transparent', 'important');
+          tdEl.style.setProperty('box-shadow', 'none', 'important');
+          tdEl.style.setProperty('outline', 'none', 'important');
+        } else {
+          tdEl.style.setProperty('border', '1px solid #cbd5e1', 'important');
+          tdEl.style.setProperty('border-color', '#cbd5e1', 'important');
+          tdEl.style.setProperty('border-style', 'solid', 'important');
+          tdEl.style.setProperty('border-width', '1px', 'important');
+        }
         tdEl.style.setProperty('line-height', '1.4', 'important');
         tdEl.style.setProperty('word-break', 'break-word', 'important');
         tdEl.style.setProperty('overflow-wrap', 'break-word', 'important');
@@ -874,8 +931,25 @@ function setupClonedDocumentForPdfCapture(
           cEl.style.setProperty('line-height', '1.4', 'important');
           cEl.style.setProperty('opacity', '1', 'important');
           cEl.style.setProperty('visibility', 'visible', 'important');
+          if (isBorderless) {
+            cEl.style.setProperty('border', 'none', 'important');
+            cEl.style.setProperty('border-width', '0', 'important');
+            cEl.style.setProperty('box-shadow', 'none', 'important');
+            cEl.style.setProperty('outline', 'none', 'important');
+          }
         });
       });
+    });
+
+    tblEl.querySelectorAll('tfoot td, tfoot tr').forEach((tf) => {
+      const tfEl = tf as HTMLElement;
+      if (isBorderless) {
+        tfEl.style.setProperty('border', 'none', 'important');
+        tfEl.style.setProperty('border-width', '0', 'important');
+        tfEl.style.setProperty('border-color', 'transparent', 'important');
+        tfEl.style.setProperty('box-shadow', 'none', 'important');
+        tfEl.style.setProperty('outline', 'none', 'important');
+      }
     });
   });
 

@@ -1672,26 +1672,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
           )}
         </div>
 
-        {/* Mobile Items Mini Status Ribbon */}
-        {items.length > 0 && (
-          <div className="px-3.5 py-2 bg-slate-50/90 border-b border-slate-200/80 flex items-center justify-between text-xs font-bold text-slate-700 shrink-0">
-            <div className="flex items-center gap-2">
-              <span className="bg-slate-200/80 text-slate-800 px-2 py-0.5 rounded-md font-mono font-black text-[11px]">
-                {toPersianDigits(items.length)} قلم
-              </span>
-              <span className="text-slate-400">•</span>
-              <span className="text-[11px] text-slate-600">
-                {toPersianDigits(items.reduce((s, it) => s + it.quantity, 0))} عدد
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-slate-400 font-normal">مبلغ کل:</span>
-              <span className="text-emerald-700 font-black text-xs font-mono" dir="ltr">
-                {formatPrice(finalTotal)}
-              </span>
-            </div>
-          </div>
-        )}
+
 
         {/* Error banner */}
         {errorMessage && (
@@ -1882,7 +1863,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                           className="font-bold text-slate-800 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 px-2 py-0.5 rounded-lg border border-slate-200/80 hover:border-emerald-300 flex items-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95"
                           title="کلیک جهت ویرایش قیمت، تخفیف یا توضیحات این ردیف"
                         >
-                          <span>{formatPrice(item.unitPrice)}</span>
+                          <span>{formatPrice(item.unitPrice, '')}</span>
                           <Pencil className="w-2.5 h-2.5 text-slate-400 hover:text-emerald-600" />
                         </button>
                         {item.unit && <span className="text-slate-400 font-normal">({item.unit})</span>}
@@ -1942,7 +1923,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                       <div className="flex flex-col items-end">
                         <span className="text-[10px] text-slate-400 font-bold">مجموع ردیف</span>
                         <span className="text-xs sm:text-sm font-black text-emerald-600 font-mono" dir="ltr">
-                          {formatPrice(item.total)}
+                          {formatPrice(item.total, '')}
                         </span>
                       </div>
                     </div>
@@ -2413,64 +2394,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 </div>
               </div>
 
-              {/* Bottom Row: Information Stats Ribbon & Clear Button */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100 gap-3 flex-wrap">
-                {/* Stats Ribbon */}
-                <div className="flex items-center gap-2 text-xs flex-wrap">
-                  <div className="flex items-center gap-1.5 bg-slate-100/90 text-slate-700 px-2.5 py-1 rounded-lg font-bold border border-slate-200/80">
-                    <span className="text-slate-400 font-normal">تعداد اقلام:</span>
-                    <strong className="text-slate-900 font-black font-mono">
-                      {toPersianDigits(items.length)}
-                    </strong>
-                    <span className="text-[10px] text-slate-500">قلم</span>
-                  </div>
 
-                  <div className="flex items-center gap-1.5 bg-slate-100/90 text-slate-700 px-2.5 py-1 rounded-lg font-bold border border-slate-200/80">
-                    <span className="text-slate-400 font-normal">مجموع تعداد:</span>
-                    <strong className="text-slate-900 font-black font-mono">
-                      {toPersianDigits(items.reduce((acc, it) => acc + it.quantity, 0))}
-                    </strong>
-                    <span className="text-[10px] text-slate-500">واحد</span>
-                  </div>
-
-                  {subtotal > 0 && (
-                    <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-lg font-bold border border-emerald-200/60">
-                      <span className="text-emerald-600 font-normal">مجموع مبلغ ناخالص:</span>
-                      <strong className="text-emerald-900 font-black font-mono">
-                        {formatPrice(subtotal)}
-                      </strong>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {/* Reorder Items Button */}
-                  {items.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setIsReorderModalOpen(true)}
-                      title="مدیریت و جابجایی ترتیب ردیف‌های کالاها (مثلاً ردیف ۱ به ۳ یا تعویض ردیف‌ها)"
-                      className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/90 hover:border-indigo-300 transition-all cursor-pointer text-xs font-black flex items-center gap-1.5 active:scale-95 shadow-2xs shrink-0"
-                    >
-                      <ArrowUpDown className="w-3.5 h-3.5" />
-                      <span>جابجایی و ترتیب ردیف‌ها</span>
-                    </button>
-                  )}
-
-                  {/* Clear Items Button */}
-                  {items.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleClearAllItems}
-                      title="پاکسازی تمامی اقلام فاکتور"
-                      className="px-3 py-1.5 rounded-xl hover:bg-rose-50 text-rose-600 border border-rose-200/80 hover:border-rose-300 transition-colors cursor-pointer text-xs font-black flex items-center gap-1.5 active:scale-95 shrink-0"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>پاکسازی کل فاکتور</span>
-                    </button>
-                  )}
-                </div>
-              </div>
             </div>
 
             {/* 3. Invoice Items POS Table */}
@@ -2512,12 +2436,12 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     <table className="w-full table-fixed text-right border-collapse text-xs">
                       <thead>
                         <tr className="bg-slate-100/95 text-slate-700 font-black border-b border-slate-200 select-none shadow-2xs">
-                          <th className="py-2.5 px-1 text-center w-[5%] text-[11px] font-black">ردیف</th>
-                          <th className="py-2.5 px-1 text-center w-[8%] text-[11px] font-black">کد کالا</th>
-                          <th className="py-2.5 px-3 text-right w-[44%] text-xs font-black">شرح کالا یا خدمت</th>
+                          <th className="py-2.5 px-1 text-center w-[6%] text-[11px] font-black">ردیف</th>
+                          <th className="py-2.5 px-1 text-center w-[9%] text-[11px] font-black">کد کالا</th>
+                          <th className="py-2.5 px-3 text-right w-[42%] text-xs font-black">شرح کالا یا خدمت</th>
                           <th className="py-2.5 px-2 text-right w-[14%] whitespace-nowrap text-[11px] font-black">قیمت واحد ({settings.currency || 'تومان'})</th>
-                          <th className="py-2.5 px-1 text-center w-[10%] whitespace-nowrap text-[11px] font-black">تعداد / مقدار</th>
-                          <th className="py-2.5 px-2 text-right w-[15%] whitespace-nowrap text-[11px] font-black">مبلغ کل ({settings.currency || 'تومان'})</th>
+                          <th className="py-2.5 px-1 text-center w-[11%] whitespace-nowrap text-[11px] font-black">تعداد / مقدار</th>
+                          <th className="py-2.5 px-2 text-right w-[14%] whitespace-nowrap text-[11px] font-black">مبلغ کل ({settings.currency || 'تومان'})</th>
                           <th className="py-2.5 p-0 text-center w-[4%]" title="حذف"></th>
                         </tr>
                       </thead>
@@ -2544,7 +2468,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                               } hover:bg-slate-100/75 transition-all group/row`}
                             >
                               {/* Index & Reorder Controls */}
-                              <td className="py-2.5 px-1 text-center w-[5%]">
+                              <td className="py-2.5 px-1 text-center w-[6%]">
                                 <div className="flex items-center justify-center gap-0.5">
                                   {items.length > 1 && (
                                     <span
@@ -2588,12 +2512,12 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                               </td>
 
                               {/* Product Code */}
-                              <td className="py-2.5 px-1 text-center text-slate-500 font-mono text-[11px] w-[8%] truncate" dir="ltr" title={item.productCode || '-'}>
+                              <td className="py-2.5 px-1 text-center text-slate-500 font-mono text-[11px] w-[9%] truncate" dir="ltr" title={item.productCode || '-'}>
                                 {item.productCode || '-'}
                               </td>
 
                               {/* Item name and variant */}
-                              <td className="py-2.5 px-3 w-[44%] overflow-hidden">
+                              <td className="py-2.5 px-3 w-[42%] overflow-hidden">
                                 <div className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5 flex-wrap">
                                   <span className="truncate max-w-[240px] xl:max-w-[340px]" title={item.productName}>
                                     {item.productName}
@@ -2653,13 +2577,13 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                                   className="group/price inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-800 hover:text-emerald-700 font-mono font-bold text-xs border border-slate-200/80 hover:border-emerald-300 transition-all cursor-pointer shadow-2xs active:scale-95 text-right"
                                   title="جهت تغییر قیمت این کالا در فاکتور کلیک کنید"
                                 >
-                                  <span className="truncate">{formatPrice(item.unitPrice)}</span>
+                                  <span className="truncate">{formatPrice(item.unitPrice, '')}</span>
                                   <Pencil className="w-2.5 h-2.5 text-slate-400 group-hover/price:text-emerald-600 opacity-70 group-hover/price:opacity-100 transition-opacity shrink-0" />
                                 </button>
                               </td>
 
                               {/* Quantity Editor - Simple Numeric Textbox Only (بدون استپر منفی و مثبت) */}
-                              <td className="py-2.5 px-1 text-center w-[10%]">
+                              <td className="py-2.5 px-1 text-center w-[11%]">
                                 <div className="inline-flex items-center justify-center gap-1">
                                   <input
                                     type="text"
@@ -2696,8 +2620,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                               </td>
 
                               {/* Total Row Price */}
-                              <td className="py-2.5 px-2 w-[15%] font-black text-emerald-700 text-xs whitespace-nowrap text-right">
-                                {formatPrice(item.total)}
+                              <td className="py-2.5 px-2 w-[14%] font-black text-emerald-700 text-xs whitespace-nowrap text-right font-mono" dir="ltr">
+                                {formatPrice(item.total, '')}
                               </td>
 
                               {/* Remove - Minimal width */}
