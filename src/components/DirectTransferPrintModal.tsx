@@ -376,7 +376,7 @@ export const DirectTransferPrintModal: React.FC<DirectTransferPrintModalProps> =
           {/* Printable Document Sheet */}
           <div 
             id="printable-direct-transfer-slip"
-            className={`w-full bg-white shadow-md border border-slate-300 rounded-xl p-5 sm:p-8 space-y-5 text-slate-900 font-['Vazirmatn'] text-xs sm:text-sm print:m-0 print:p-4 print:space-y-4 print:border-none print:shadow-none print:w-full print:rounded-none ${
+            className={`w-full print-white-bg bg-white shadow-md border border-slate-300 rounded-xl p-5 sm:p-8 space-y-5 text-slate-900 font-['Vazirmatn'] text-xs sm:text-sm print:m-0 print:p-4 print:space-y-4 print:border-none print:shadow-none print:w-full print:rounded-none ${
               pageSize === 'a5' 
                 ? orientation === 'landscape' ? 'max-w-[210mm]' : 'max-w-[148mm]'
                 : orientation === 'landscape' ? 'max-w-[297mm]' : 'max-w-[210mm]'

@@ -412,7 +412,7 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
         <div className="p-3 sm:p-8 overflow-y-auto bg-slate-200/90 flex-1 flex justify-center items-start">
           <div 
             id="printable-purchase-invoice"
-            className={`w-full bg-white rounded-2xl shadow-xl border border-slate-300 text-slate-800 print:m-0 print:p-0 print:border-none print:shadow-none print:w-full print:rounded-none transition-all ${containerDimensionClass} ${
+            className={`w-full print-white-bg bg-white rounded-2xl shadow-xl border border-slate-300 text-slate-800 print:m-0 print:p-0 print:border-none print:shadow-none print:w-full print:rounded-none transition-all ${containerDimensionClass} ${
               isA5 ? 'p-4 sm:p-5' : 'p-6 sm:p-8'
             }`}
           >

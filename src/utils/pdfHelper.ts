@@ -273,6 +273,15 @@ export function buildPdfDocumentFromCanvas(
   const usableWidth = pageWidth - marginMm * 2;
   const usableHeight = pageHeight - marginMm * 2;
 
+  // Helper to guarantee every single PDF page has an edge-to-edge pure white (#ffffff) background
+  const paintPageWhite = () => {
+    pdf.setFillColor(255, 255, 255);
+    pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+  };
+
+  // Always paint the initial page white immediately
+  paintPageWhite();
+
   const { compression: jpegCompression } = resolvePdfQuality(options);
 
   const pxPerMm = canvas.width / usableWidth;
@@ -280,8 +289,11 @@ export function buildPdfDocumentFromCanvas(
 
   // If content fits comfortably on a single page, render full single page coverage
   if (canvas.height <= fullPageHeightPx * 1.15) {
+    paintPageWhite();
+    const naturalHeightMm = (canvas.height * usableWidth) / canvas.width;
+    const renderHeightMm = Math.min(usableHeight, Math.max(naturalHeightMm, usableHeight));
     const imgData = canvas.toDataURL('image/jpeg', jpegCompression);
-    pdf.addImage(imgData, 'JPEG', marginMm, marginMm, usableWidth, usableHeight, undefined, 'FAST');
+    pdf.addImage(imgData, 'JPEG', marginMm, marginMm, usableWidth, renderHeightMm, undefined, 'FAST');
     return pdf;
   }
 
@@ -371,6 +383,7 @@ export function buildPdfDocumentFromCanvas(
       if (i > 0) {
         pdf.addPage();
       }
+      paintPageWhite();
       const page = pages[i];
       const pageNumText = `صفحه ${toPersianDigits(i + 1)} از ${toPersianDigits(totalPages)}`;
 
@@ -442,6 +455,7 @@ export function buildPdfDocumentFromCanvas(
       if (!isFirstPage) {
         pdf.addPage();
       }
+      paintPageWhite();
       const currentSliceHeightPx = Math.min(sliceHeightPx, canvas.height - yOffsetPx);
       const sliceCanvas = document.createElement('canvas');
       sliceCanvas.width = canvas.width;
@@ -465,6 +479,456 @@ export function buildPdfDocumentFromCanvas(
   }
 
   return pdf;
+}
+
+/**
+ * Safely extracts all active CSS rules currently loaded in document.styleSheets.
+ * This runs synchronously and avoids network fetching in the cloned iframe,
+ * completely immune to background tab suspension, offline state, or server timeouts.
+ */
+function extractActiveStyleSheetRules(): string {
+  let combinedCss = '';
+  try {
+    const sheets = Array.from(document.styleSheets);
+    for (const sheet of sheets) {
+      try {
+        if (sheet.cssRules && sheet.cssRules.length > 0) {
+          for (let i = 0; i < sheet.cssRules.length; i++) {
+            combinedCss += sheet.cssRules[i].cssText + '\n';
+          }
+        }
+      } catch {
+        // Cross-origin stylesheets without CORS headers will throw security error, safely ignore
+      }
+    }
+  } catch {
+    // Fallback if document.styleSheets is inaccessible
+  }
+  return combinedCss;
+}
+
+/**
+ * Robustly configures cloned document and DOM elements for html2canvas PDF rendering.
+ * Inlines all styles, guarantees table borders, forces Persian fonts, and removes scroll clipping.
+ */
+function setupClonedDocumentForPdfCapture(
+  clonedDoc: Document,
+  clonedElement: HTMLElement,
+  element: HTMLElement,
+  targetWidthPx: number,
+  targetMinHeightPx: number,
+  isA5: boolean,
+  isLandscape: boolean,
+  layoutMeta: LayoutMeta
+): void {
+  // 1. Reset scroll in cloned window
+  if (clonedDoc.defaultView) {
+    clonedDoc.defaultView.scrollTo(0, 0);
+  }
+
+  // Force pure white background on cloned document root and body
+  if (clonedDoc.documentElement) {
+    clonedDoc.documentElement.style.setProperty('background-color', '#ffffff', 'important');
+    clonedDoc.documentElement.style.setProperty('background', '#ffffff', 'important');
+  }
+  if (clonedDoc.body) {
+    clonedDoc.body.style.setProperty('background-color', '#ffffff', 'important');
+    clonedDoc.body.style.setProperty('background', '#ffffff', 'important');
+  }
+  clonedElement.style.setProperty('background-color', '#ffffff', 'important');
+  clonedElement.style.setProperty('background', '#ffffff', 'important');
+
+  // 2. Synchronously extract all live CSS rules from main document and inject them inline into clonedDoc
+  const extractedRules = extractActiveStyleSheetRules();
+  if (extractedRules) {
+    const inlineExtractedStyle = clonedDoc.createElement('style');
+    inlineExtractedStyle.id = 'pdf-inlined-main-rules';
+    inlineExtractedStyle.textContent = extractedRules;
+    clonedDoc.head.appendChild(inlineExtractedStyle);
+  }
+
+  // Also copy existing style and link tags from main document
+  const mainDocStyles = document.head.querySelectorAll('style, link[rel="stylesheet"]');
+  mainDocStyles.forEach((node) => {
+    try {
+      clonedDoc.head.appendChild(node.cloneNode(true));
+    } catch {}
+  });
+
+  // 3. Inject high-priority infallible PDF print fixes (without blocking @import)
+  const pdfFixStyle = clonedDoc.createElement('style');
+  pdfFixStyle.id = 'pdf-cloned-fix-styles-bulletproof';
+  pdfFixStyle.innerHTML = `
+    ${getPrintLayoutCssRules()}
+    
+    html, body {
+      background-color: #ffffff !important;
+      background: #ffffff !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    #printable-invoice,
+    #printable-purchase-invoice,
+    #printable-exit-slip,
+    #printable-inbound-receipt,
+    #printable-direct-transfer-slip,
+    #printable-customer-statement-pdf,
+    #invoices-slips-pdf-report-canvas,
+    #public-web-invoice-container,
+    .print-container,
+    .print-white-bg,
+    .standard-invoice-layout,
+    .simple-invoice-layout,
+    .standard-exit-slip-layout,
+    .simple-exit-slip-layout {
+      background-color: #ffffff !important;
+      background: #ffffff !important;
+      box-shadow: none !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box !important;
+    }
+    
+    /* Bulletproof Table & Border Styles */
+    table {
+      border-collapse: collapse !important;
+      border-spacing: 0 !important;
+      width: 100% !important;
+      border: 1px solid #94a3b8 !important;
+      background-color: #ffffff !important;
+    }
+    th, thead th {
+      border: 1px solid #94a3b8 !important;
+      border-color: #94a3b8 !important;
+      border-style: solid !important;
+      border-width: 1px !important;
+      background-color: #f1f5f9 !important;
+      color: #0f172a !important;
+      font-weight: 700 !important;
+      vertical-align: middle !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+    }
+    td, tbody td {
+      border: 1px solid #cbd5e1 !important;
+      border-color: #cbd5e1 !important;
+      border-style: solid !important;
+      border-width: 1px !important;
+      color: #1e293b !important;
+      vertical-align: middle !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+    }
+    .border-b {
+      border-bottom-width: 1px !important;
+      border-bottom-style: solid !important;
+    }
+    .border-t {
+      border-top-width: 1px !important;
+      border-top-style: solid !important;
+    }
+    .border-l {
+      border-left-width: 1px !important;
+      border-left-style: solid !important;
+    }
+    .border-r {
+      border-right-width: 1px !important;
+      border-right-style: solid !important;
+    }
+    .border {
+      border-width: 1px !important;
+      border-style: solid !important;
+    }
+    .border-slate-300, .border-gray-300 {
+      border-color: #cbd5e1 !important;
+    }
+    .border-slate-200, .border-gray-200 {
+      border-color: #e2e8f0 !important;
+    }
+    .bg-slate-100, .bg-gray-100 {
+      background-color: #f1f5f9 !important;
+    }
+    .bg-slate-50, .bg-gray-50 {
+      background-color: #f8fafc !important;
+    }
+
+    /* Text & Legibility */
+    p, span, div, td, th, h1, h2, h3, h4, h5, h6, strong, b, em {
+      opacity: 1 !important;
+      visibility: visible !important;
+      letter-spacing: normal !important;
+      font-feature-settings: "liga" 1, "calt" 1 !important;
+      text-rendering: optimizeLegibility !important;
+    }
+  `;
+  clonedDoc.head.appendChild(pdfFixStyle);
+
+  // 4. Telegram offscreen isolation if needed
+  if (element.id && element.id.startsWith('telegram-offscreen-')) {
+    clonedElement.style.setProperty('opacity', '1', 'important');
+    clonedElement.style.setProperty('visibility', 'visible', 'important');
+    clonedElement.style.setProperty('z-index', '999999', 'important');
+    clonedElement.style.setProperty('position', 'relative', 'important');
+    clonedElement.style.setProperty('left', 'auto', 'important');
+    clonedElement.style.setProperty('top', 'auto', 'important');
+
+    Array.from(clonedDoc.body.children).forEach((child) => {
+      if (child !== clonedElement && !child.contains(clonedElement)) {
+        (child as HTMLElement).style.setProperty('display', 'none', 'important');
+      }
+    });
+  }
+
+  // 5. Hide all buttons, action controls, and .no-print elements
+  const elementsToHide = clonedElement.querySelectorAll(
+    '.no-print, .no-pdf, button, [data-html2canvas-ignore="true"]'
+  );
+  elementsToHide.forEach((el) => {
+    (el as HTMLElement).style.setProperty('display', 'none', 'important');
+    (el as HTMLElement).style.setProperty('visibility', 'hidden', 'important');
+  });
+
+  // 6. Dimensions and single-page vs multi-page balancing
+  const naturalHeight = element.scrollHeight;
+  const isSinglePageMode = naturalHeight <= targetMinHeightPx * 1.15;
+
+  if (isSinglePageMode) {
+    clonedElement.style.setProperty('min-height', `${targetMinHeightPx}px`, 'important');
+    clonedElement.style.setProperty('height', `${targetMinHeightPx}px`, 'important');
+    clonedElement.style.setProperty('max-height', `${targetMinHeightPx}px`, 'important');
+    clonedElement.style.setProperty('display', 'flex', 'important');
+    clonedElement.style.setProperty('flex-direction', 'column', 'important');
+    clonedElement.style.setProperty('justify-content', 'space-between', 'important');
+  } else {
+    clonedElement.style.setProperty('height', 'auto', 'important');
+    clonedElement.style.setProperty('min-height', `${targetMinHeightPx}px`, 'important');
+    clonedElement.style.setProperty('display', 'flex', 'important');
+    clonedElement.style.setProperty('flex-direction', 'column', 'important');
+  }
+
+  clonedElement.style.setProperty('align-self', 'flex-start', 'important');
+  clonedElement.style.setProperty('position', 'relative', 'important');
+  clonedElement.style.setProperty('left', '0px', 'important');
+  clonedElement.style.setProperty('top', '0px', 'important');
+  clonedElement.style.setProperty('transform', 'none', 'important');
+  clonedElement.style.setProperty('visibility', 'visible', 'important');
+  clonedElement.style.setProperty('opacity', '1', 'important');
+  clonedElement.style.setProperty('z-index', '1', 'important');
+  clonedElement.style.setProperty('overflow', 'visible', 'important');
+  clonedElement.style.setProperty('width', `${targetWidthPx}px`, 'important');
+  clonedElement.style.setProperty('max-width', `${targetWidthPx}px`, 'important');
+  clonedElement.style.setProperty('min-width', `${targetWidthPx}px`, 'important');
+  clonedElement.style.setProperty('box-sizing', 'border-box', 'important');
+  clonedElement.style.setProperty('box-shadow', 'none', 'important');
+  clonedElement.style.setProperty('background-color', '#ffffff', 'important');
+  clonedElement.style.setProperty('background', '#ffffff', 'important');
+  clonedElement.style.setProperty('direction', 'rtl', 'important');
+
+  // Prevent Persian font glyph disconnects and broken cursive joins
+  clonedElement.style.setProperty('font-family', "'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", 'important');
+  clonedElement.style.setProperty('letter-spacing', 'normal', 'important');
+  clonedElement.style.setProperty('word-spacing', 'normal', 'important');
+  clonedElement.style.setProperty('font-feature-settings', "'liga' 1, 'calt' 1", 'important');
+  clonedElement.style.setProperty('text-rendering', 'optimizeLegibility', 'important');
+
+  const allTextElements = clonedElement.querySelectorAll('*');
+  allTextElements.forEach((node) => {
+    const el = node as HTMLElement;
+    el.style.setProperty('letter-spacing', 'normal', 'important');
+    el.style.setProperty('font-feature-settings', "'liga' 1, 'calt' 1", 'important');
+    if (!el.classList.contains('font-mono') && !el.classList.contains('font-plate')) {
+      el.style.setProperty('font-family', "'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", 'important');
+    }
+  });
+
+  const rootLayouts = clonedElement.querySelectorAll(
+    '.standard-exit-slip-layout, .simple-exit-slip-layout, .standard-invoice-layout, .simple-invoice-layout'
+  );
+  rootLayouts.forEach((rl) => {
+    const rlel = rl as HTMLElement;
+    rlel.style.setProperty('height', '100%', 'important');
+    rlel.style.setProperty('min-height', '100%', 'important');
+    rlel.style.setProperty('display', 'flex', 'important');
+    rlel.style.setProperty('flex-direction', 'column', 'important');
+    rlel.style.setProperty('justify-content', 'space-between', 'important');
+    rlel.style.setProperty('width', '100%', 'important');
+  });
+
+  if (isSinglePageMode) {
+    const tableBoxes = clonedElement.querySelectorAll(
+      '.exit-slip-table-box, .invoice-table-box, .simple-invoice-table-box'
+    );
+    tableBoxes.forEach((tb) => {
+      const tbel = tb as HTMLElement;
+      tbel.style.setProperty('flex', '1 1 auto', 'important');
+      tbel.style.setProperty('display', 'flex', 'important');
+      tbel.style.setProperty('flex-direction', 'column', 'important');
+      tbel.style.setProperty('justify-content', 'flex-start', 'important');
+    });
+  }
+
+  const headerRow = clonedElement.querySelector('.exit-slip-header-row');
+  if (headerRow) {
+    (headerRow as HTMLElement).style.setProperty('display', 'flex', 'important');
+    (headerRow as HTMLElement).style.setProperty('flex-direction', 'row', 'important');
+    (headerRow as HTMLElement).style.setProperty('align-items', 'flex-start', 'important');
+    (headerRow as HTMLElement).style.setProperty('justify-content', 'space-between', 'important');
+  }
+
+  const metaGrid = clonedElement.querySelector('.exit-slip-meta-grid');
+  if (metaGrid) {
+    (metaGrid as HTMLElement).style.setProperty('display', 'grid', 'important');
+    (metaGrid as HTMLElement).style.setProperty('grid-template-columns', 'repeat(3, minmax(0, auto))', 'important');
+    (metaGrid as HTMLElement).style.setProperty('gap', '4px 10px', 'important');
+  }
+
+  // Unconstrain ancestors
+  let cur: HTMLElement | null = clonedElement.parentElement;
+  while (cur && cur !== clonedDoc.body) {
+    cur.style.setProperty('overflow', 'visible', 'important');
+    cur.style.setProperty('max-height', 'none', 'important');
+    cur.style.setProperty('height', 'auto', 'important');
+    cur.style.setProperty('position', 'static', 'important');
+    cur.style.setProperty('transform', 'none', 'important');
+    cur = cur.parentElement;
+  }
+
+  if (clonedDoc.body) {
+    clonedDoc.body.style.setProperty('overflow', 'visible', 'important');
+    clonedDoc.body.style.setProperty('max-height', 'none', 'important');
+    clonedDoc.body.style.setProperty('height', 'auto', 'important');
+    clonedDoc.body.style.setProperty('position', 'static', 'important');
+    clonedDoc.body.style.setProperty('margin', '0', 'important');
+    clonedDoc.body.style.setProperty('padding', '0', 'important');
+  }
+  if (clonedDoc.documentElement) {
+    clonedDoc.documentElement.style.setProperty('overflow', 'visible', 'important');
+    clonedDoc.documentElement.style.setProperty('max-height', 'none', 'important');
+    clonedDoc.documentElement.style.setProperty('height', 'auto', 'important');
+  }
+
+  const scrollContainers = clonedElement.querySelectorAll('.overflow-x-auto, .overflow-y-auto, [class*="overflow"]');
+  scrollContainers.forEach((el) => {
+    (el as HTMLElement).style.setProperty('overflow', 'visible', 'important');
+    (el as HTMLElement).style.setProperty('max-height', 'none', 'important');
+    (el as HTMLElement).style.setProperty('height', 'auto', 'important');
+  });
+
+  // 7. Explicitly force table borders and styles directly on every table, th, and td
+  const tables = clonedElement.querySelectorAll('table');
+  const defaultMinRowH = isA5 ? (isLandscape ? 24 : 28) : (isLandscape ? 32 : 36);
+  tables.forEach((tbl) => {
+    const tblEl = tbl as HTMLElement;
+    tblEl.style.setProperty('width', '100%', 'important');
+    tblEl.style.setProperty('min-width', '100%', 'important');
+    tblEl.style.setProperty('table-layout', 'auto', 'important');
+    tblEl.style.setProperty('border-collapse', 'collapse', 'important');
+    tblEl.style.setProperty('border', '1px solid #94a3b8', 'important');
+
+    tblEl.querySelectorAll('thead th, th').forEach((th) => {
+      const thEl = th as HTMLElement;
+      thEl.style.setProperty('vertical-align', 'middle', 'important');
+      thEl.style.setProperty('box-sizing', 'border-box', 'important');
+      thEl.style.setProperty('border', '1px solid #94a3b8', 'important');
+      thEl.style.setProperty('border-color', '#94a3b8', 'important');
+      thEl.style.setProperty('border-style', 'solid', 'important');
+      thEl.style.setProperty('border-width', '1px', 'important');
+      thEl.style.setProperty('background-color', '#f1f5f9', 'important');
+      thEl.style.setProperty('color', '#0f172a', 'important');
+      thEl.style.setProperty('font-weight', '700', 'important');
+      thEl.style.setProperty('opacity', '1', 'important');
+      thEl.style.setProperty('visibility', 'visible', 'important');
+    });
+
+    tblEl.querySelectorAll('tbody tr').forEach((tr) => {
+      const trEl = tr as HTMLElement;
+      trEl.style.setProperty('height', 'auto', 'important');
+      trEl.style.setProperty('min-height', `${defaultMinRowH}px`, 'important');
+      trEl.style.setProperty('page-break-inside', 'avoid', 'important');
+      trEl.style.setProperty('break-inside', 'avoid', 'important');
+
+      trEl.querySelectorAll('td').forEach((td) => {
+        const tdEl = td as HTMLElement;
+        tdEl.style.setProperty('height', `${defaultMinRowH}px`, 'important');
+        tdEl.style.setProperty('min-height', `${defaultMinRowH}px`, 'important');
+        tdEl.style.setProperty('vertical-align', 'middle', 'important');
+        tdEl.style.setProperty('box-sizing', 'border-box', 'important');
+        tdEl.style.setProperty('border', '1px solid #cbd5e1', 'important');
+        tdEl.style.setProperty('border-color', '#cbd5e1', 'important');
+        tdEl.style.setProperty('border-style', 'solid', 'important');
+        tdEl.style.setProperty('border-width', '1px', 'important');
+        tdEl.style.setProperty('line-height', '1.4', 'important');
+        tdEl.style.setProperty('word-break', 'break-word', 'important');
+        tdEl.style.setProperty('overflow-wrap', 'break-word', 'important');
+        tdEl.style.setProperty('overflow', 'visible', 'important');
+        tdEl.style.setProperty('opacity', '1', 'important');
+        tdEl.style.setProperty('visibility', 'visible', 'important');
+
+        tdEl.querySelectorAll('*').forEach((child) => {
+          const cEl = child as HTMLElement;
+          cEl.style.setProperty('overflow', 'visible', 'important');
+          cEl.style.setProperty('max-height', 'none', 'important');
+          cEl.style.setProperty('line-height', '1.4', 'important');
+          cEl.style.setProperty('opacity', '1', 'important');
+          cEl.style.setProperty('visibility', 'visible', 'important');
+        });
+      });
+    });
+  });
+
+  const sigs = clonedElement.querySelector('.exit-slip-signatures, .export-report-signatures');
+  if (sigs) {
+    (sigs as HTMLElement).style.setProperty('display', 'grid', 'important');
+    (sigs as HTMLElement).style.setProperty('grid-template-columns', 'repeat(3, minmax(0, 1fr))', 'important');
+    (sigs as HTMLElement).style.setProperty('gap', '10px', 'important');
+  }
+
+  const infoDeck = clonedElement.querySelector('.exit-slip-info-deck');
+  if (infoDeck) {
+    (infoDeck as HTMLElement).style.setProperty('display', 'grid', 'important');
+    (infoDeck as HTMLElement).style.setProperty('grid-template-columns', 'repeat(2, minmax(0, 1fr))', 'important');
+    (infoDeck as HTMLElement).style.setProperty('gap', '10px', 'important');
+  }
+
+  const termsGrid = clonedElement.querySelector('.exit-slip-terms-grid');
+  if (termsGrid) {
+    (termsGrid as HTMLElement).style.setProperty('display', 'grid', 'important');
+    (termsGrid as HTMLElement).style.setProperty('grid-template-columns', 'repeat(2, minmax(0, 1fr))', 'important');
+  }
+
+  // 8. Measure layout metadata for multi-page header preservation
+  const rootRect = clonedElement.getBoundingClientRect();
+  layoutMeta.rootWidthPx = rootRect.width || clonedElement.offsetWidth || targetWidthPx;
+
+  const theadEl = clonedElement.querySelector('table thead') as HTMLElement | null;
+  const explicitHeaderEl = clonedElement.querySelector(
+    '[data-pdf-header="true"], .export-report-header, .invoice-header, .exit-slip-header, .exit-slip-header-row'
+  ) as HTMLElement | null;
+
+  if (theadEl) {
+    const theadRect = theadEl.getBoundingClientRect();
+    layoutMeta.headerBottomPx = Math.max(0, theadRect.bottom - rootRect.top);
+  } else if (explicitHeaderEl) {
+    const hRect = explicitHeaderEl.getBoundingClientRect();
+    layoutMeta.headerBottomPx = Math.max(0, hRect.bottom - rootRect.top);
+  }
+
+  const trList = Array.from(clonedElement.querySelectorAll('table tbody tr')) as HTMLElement[];
+  layoutMeta.rowBottomsPx = trList.map((tr) => {
+    const rRect = tr.getBoundingClientRect();
+    return Math.max(0, rRect.bottom - rootRect.top);
+  });
+
+  const footerEl = clonedElement.querySelector(
+    'table tfoot, .export-report-signatures, .exit-slip-signatures, .invoice-signatures, [data-pdf-footer="true"]'
+  ) as HTMLElement | null;
+  if (footerEl) {
+    const fRect = footerEl.getBoundingClientRect();
+    layoutMeta.footerTopPx = Math.max(0, fRect.top - rootRect.top);
+  }
 }
 
 /**
@@ -538,296 +1002,16 @@ export const exportElementToPdf = async (
       windowWidth: Math.max(1280, targetWidthPx + 200),
       windowHeight: Math.max(1200, Math.ceil(element.scrollHeight + 400)),
       onclone: (clonedDoc, clonedElement) => {
-        // Reset scroll in cloned window
-        if (clonedDoc.defaultView) {
-          clonedDoc.defaultView.scrollTo(0, 0);
-        }
-
-        // Copy all style & link tags from main document to clonedDoc to ensure Tailwind & CSS rules are 100% available
-        const mainDocStyles = document.head.querySelectorAll('style, link[rel="stylesheet"]');
-        mainDocStyles.forEach((node) => {
-          try {
-            clonedDoc.head.appendChild(node.cloneNode(true));
-          } catch {}
-        });
-
-        // Ensure Vazirmatn font & explicit PDF table border CSS rules are injected into cloned document
-        const pdfFixStyle = clonedDoc.createElement('style');
-        pdfFixStyle.id = 'pdf-cloned-fix-styles';
-        pdfFixStyle.innerHTML = `
-          @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap');
-          ${getPrintLayoutCssRules()}
-          
-          *, *::before, *::after {
-            box-sizing: border-box !important;
-          }
-          table {
-            border-collapse: collapse !important;
-            border-spacing: 0 !important;
-            width: 100% !important;
-          }
-          th, td {
-            border-color: #cbd5e1 !important;
-            border-style: solid !important;
-            opacity: 1 !important;
-            visibility: visible !important;
-          }
-          p, span, div, td, th, h1, h2, h3, h4, h5, h6, strong, b, em {
-            opacity: 1 !important;
-            visibility: visible !important;
-            letter-spacing: normal !important;
-            font-feature-settings: "liga" 1, "calt" 1 !important;
-            text-rendering: optimizeLegibility !important;
-          }
-        `;
-        clonedDoc.head.appendChild(pdfFixStyle);
-
-        // ایزوله‌سازی رندرهای پشت صحنه ربات تلگرام در محیط کلون شده
-        if (element.id && element.id.startsWith('telegram-offscreen-')) {
-          clonedElement.style.setProperty('opacity', '1', 'important');
-          clonedElement.style.setProperty('visibility', 'visible', 'important');
-          clonedElement.style.setProperty('z-index', '999999', 'important');
-          clonedElement.style.setProperty('position', 'relative', 'important');
-          clonedElement.style.setProperty('left', 'auto', 'important');
-          clonedElement.style.setProperty('top', 'auto', 'important');
-
-          Array.from(clonedDoc.body.children).forEach((child) => {
-            if (child !== clonedElement && !child.contains(clonedElement)) {
-              (child as HTMLElement).style.setProperty('display', 'none', 'important');
-            }
-          });
-        }
-
-        // Hide all buttons, action controls, and .no-print elements in the PDF canvas clone
-        const elementsToHide = clonedElement.querySelectorAll(
-          '.no-print, .no-pdf, button, [data-html2canvas-ignore="true"]'
+        setupClonedDocumentForPdfCapture(
+          clonedDoc,
+          clonedElement,
+          element,
+          targetWidthPx,
+          targetMinHeightPx,
+          isA5,
+          isLandscape,
+          layoutMeta
         );
-        elementsToHide.forEach((el) => {
-          (el as HTMLElement).style.setProperty('display', 'none', 'important');
-          (el as HTMLElement).style.setProperty('visibility', 'hidden', 'important');
-        });
-
-        // Determine if element fits on a single page or exceeds to multi-page
-        const naturalHeight = element.scrollHeight;
-        const isSinglePageMode = naturalHeight <= targetMinHeightPx * 1.15;
-
-        // Force cloned element itself to have proper full-page dimensions and balanced flex distribution
-        if (isSinglePageMode) {
-          clonedElement.style.setProperty('min-height', `${targetMinHeightPx}px`, 'important');
-          clonedElement.style.setProperty('height', `${targetMinHeightPx}px`, 'important');
-          clonedElement.style.setProperty('max-height', `${targetMinHeightPx}px`, 'important');
-          clonedElement.style.setProperty('display', 'flex', 'important');
-          clonedElement.style.setProperty('flex-direction', 'column', 'important');
-          clonedElement.style.setProperty('justify-content', 'space-between', 'important');
-        } else {
-          clonedElement.style.setProperty('height', 'auto', 'important');
-          clonedElement.style.setProperty('min-height', `${targetMinHeightPx}px`, 'important');
-          clonedElement.style.setProperty('display', 'flex', 'important');
-          clonedElement.style.setProperty('flex-direction', 'column', 'important');
-        }
-
-        clonedElement.style.setProperty('align-self', 'flex-start', 'important');
-        clonedElement.style.setProperty('overflow', 'visible', 'important');
-        clonedElement.style.setProperty('width', `${targetWidthPx}px`, 'important');
-        clonedElement.style.setProperty('max-width', `${targetWidthPx}px`, 'important');
-        clonedElement.style.setProperty('min-width', `${targetWidthPx}px`, 'important');
-        clonedElement.style.setProperty('box-sizing', 'border-box', 'important');
-        clonedElement.style.setProperty('margin', '0 auto', 'important');
-        clonedElement.style.setProperty('box-shadow', 'none', 'important');
-        clonedElement.style.setProperty('direction', 'rtl', 'important');
-
-        // Prevent Persian font glyph disconnects and broken cursive joins
-        clonedElement.style.setProperty('font-family', "'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", 'important');
-        clonedElement.style.setProperty('letter-spacing', 'normal', 'important');
-        clonedElement.style.setProperty('word-spacing', 'normal', 'important');
-        clonedElement.style.setProperty('font-feature-settings', "'liga' 1, 'calt' 1", 'important');
-        clonedElement.style.setProperty('text-rendering', 'optimizeLegibility', 'important');
-
-        // Reset letter-spacing on all descendants so cursive connections do not break
-        const allTextElements = clonedElement.querySelectorAll('*');
-        allTextElements.forEach((node) => {
-          const el = node as HTMLElement;
-          el.style.setProperty('letter-spacing', 'normal', 'important');
-          el.style.setProperty('font-feature-settings', "'liga' 1, 'calt' 1", 'important');
-          if (!el.classList.contains('font-mono') && !el.classList.contains('font-plate')) {
-            el.style.setProperty('font-family', "'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", 'important');
-          }
-        });
-
-        // Ensure layout roots have 100% height and space-between distribution
-        const rootLayouts = clonedElement.querySelectorAll(
-          '.standard-exit-slip-layout, .simple-exit-slip-layout, .standard-invoice-layout, .simple-invoice-layout'
-        );
-        rootLayouts.forEach((rl) => {
-          const rlel = rl as HTMLElement;
-          rlel.style.setProperty('height', '100%', 'important');
-          rlel.style.setProperty('min-height', '100%', 'important');
-          rlel.style.setProperty('display', 'flex', 'important');
-          rlel.style.setProperty('flex-direction', 'column', 'important');
-          rlel.style.setProperty('justify-content', 'space-between', 'important');
-          rlel.style.setProperty('width', '100%', 'important');
-        });
-
-        // Ensure middle table container expands smoothly in single-page mode
-        if (isSinglePageMode) {
-          const tableBoxes = clonedElement.querySelectorAll(
-            '.exit-slip-table-box, .invoice-table-box, .simple-invoice-table-box'
-          );
-          tableBoxes.forEach((tb) => {
-            const tbel = tb as HTMLElement;
-            tbel.style.setProperty('flex', '1 1 auto', 'important');
-            tbel.style.setProperty('display', 'flex', 'important');
-            tbel.style.setProperty('flex-direction', 'column', 'important');
-            tbel.style.setProperty('justify-content', 'flex-start', 'important');
-          });
-        }
-
-        // Ensure header row layout is stable across all modes
-        const headerRow = clonedElement.querySelector('.exit-slip-header-row');
-        if (headerRow) {
-          (headerRow as HTMLElement).style.setProperty('display', 'flex', 'important');
-          (headerRow as HTMLElement).style.setProperty('flex-direction', 'row', 'important');
-          (headerRow as HTMLElement).style.setProperty('align-items', 'flex-start', 'important');
-          (headerRow as HTMLElement).style.setProperty('justify-content', 'space-between', 'important');
-        }
-
-        const metaGrid = clonedElement.querySelector('.exit-slip-meta-grid');
-        if (metaGrid) {
-          (metaGrid as HTMLElement).style.setProperty('display', 'grid', 'important');
-          (metaGrid as HTMLElement).style.setProperty('grid-template-columns', 'repeat(3, minmax(0, auto))', 'important');
-          (metaGrid as HTMLElement).style.setProperty('gap', '4px 10px', 'important');
-        }
-
-        // Unconstrain all ancestors up to body/html to prevent modal scroll container clipping
-        let cur: HTMLElement | null = clonedElement.parentElement;
-        while (cur && cur !== clonedDoc.body) {
-          cur.style.setProperty('overflow', 'visible', 'important');
-          cur.style.setProperty('max-height', 'none', 'important');
-          cur.style.setProperty('height', 'auto', 'important');
-          cur.style.setProperty('position', 'static', 'important');
-          cur.style.setProperty('transform', 'none', 'important');
-          cur = cur.parentElement;
-        }
-
-        if (clonedDoc.body) {
-          clonedDoc.body.style.setProperty('overflow', 'visible', 'important');
-          clonedDoc.body.style.setProperty('max-height', 'none', 'important');
-          clonedDoc.body.style.setProperty('height', 'auto', 'important');
-          clonedDoc.body.style.setProperty('position', 'static', 'important');
-          clonedDoc.body.style.setProperty('margin', '0', 'important');
-          clonedDoc.body.style.setProperty('padding', '0', 'important');
-        }
-        if (clonedDoc.documentElement) {
-          clonedDoc.documentElement.style.setProperty('overflow', 'visible', 'important');
-          clonedDoc.documentElement.style.setProperty('max-height', 'none', 'important');
-          clonedDoc.documentElement.style.setProperty('height', 'auto', 'important');
-        }
-
-        // Un-clip any horizontal or vertical scroll/overflow wrappers inside
-        const scrollContainers = clonedElement.querySelectorAll('.overflow-x-auto, .overflow-y-auto, [class*="overflow"]');
-        scrollContainers.forEach((el) => {
-          (el as HTMLElement).style.setProperty('overflow', 'visible', 'important');
-          (el as HTMLElement).style.setProperty('max-height', 'none', 'important');
-          (el as HTMLElement).style.setProperty('height', 'auto', 'important');
-        });
-
-        // Ensure all tables occupy full width and have adaptive row heights with uniform minimum baseline
-        const tables = clonedElement.querySelectorAll('table');
-        const defaultMinRowH = isA5 ? (isLandscape ? 24 : 28) : (isLandscape ? 32 : 36);
-        tables.forEach((tbl) => {
-          const tblEl = tbl as HTMLElement;
-          tblEl.style.setProperty('width', '100%', 'important');
-          tblEl.style.setProperty('min-width', '100%', 'important');
-          tblEl.style.setProperty('table-layout', 'auto', 'important');
-          tblEl.style.setProperty('border-collapse', 'collapse', 'important');
-
-          tblEl.querySelectorAll('thead th').forEach((th) => {
-            const thEl = th as HTMLElement;
-            thEl.style.setProperty('vertical-align', 'middle', 'important');
-            thEl.style.setProperty('box-sizing', 'border-box', 'important');
-          });
-
-          tblEl.querySelectorAll('tbody tr').forEach((tr) => {
-            const trEl = tr as HTMLElement;
-            trEl.style.setProperty('height', 'auto', 'important');
-            trEl.style.setProperty('min-height', `${defaultMinRowH}px`, 'important');
-            trEl.style.setProperty('page-break-inside', 'avoid', 'important');
-            trEl.style.setProperty('break-inside', 'avoid', 'important');
-
-            trEl.querySelectorAll('td').forEach((td) => {
-              const tdEl = td as HTMLElement;
-              tdEl.style.setProperty('height', `${defaultMinRowH}px`, 'important');
-              tdEl.style.setProperty('min-height', `${defaultMinRowH}px`, 'important');
-              tdEl.style.setProperty('vertical-align', 'middle', 'important');
-              tdEl.style.setProperty('box-sizing', 'border-box', 'important');
-              tdEl.style.setProperty('line-height', '1.4', 'important');
-              tdEl.style.setProperty('word-break', 'break-word', 'important');
-              tdEl.style.setProperty('overflow-wrap', 'break-word', 'important');
-              tdEl.style.setProperty('overflow', 'visible', 'important');
-
-              tdEl.querySelectorAll('*').forEach((child) => {
-                const cEl = child as HTMLElement;
-                cEl.style.setProperty('overflow', 'visible', 'important');
-                cEl.style.setProperty('max-height', 'none', 'important');
-                cEl.style.setProperty('line-height', '1.4', 'important');
-              });
-            });
-          });
-        });
-
-        // Ensure 3-column signature boxes render side-by-side
-        const sigs = clonedElement.querySelector('.exit-slip-signatures, .export-report-signatures');
-        if (sigs) {
-          (sigs as HTMLElement).style.setProperty('display', 'grid', 'important');
-          (sigs as HTMLElement).style.setProperty('grid-template-columns', 'repeat(3, minmax(0, 1fr))', 'important');
-          (sigs as HTMLElement).style.setProperty('gap', '10px', 'important');
-        }
-
-        // Ensure 2-column info cards render side-by-side
-        const infoDeck = clonedElement.querySelector('.exit-slip-info-deck');
-        if (infoDeck) {
-          (infoDeck as HTMLElement).style.setProperty('display', 'grid', 'important');
-          (infoDeck as HTMLElement).style.setProperty('grid-template-columns', 'repeat(2, minmax(0, 1fr))', 'important');
-          (infoDeck as HTMLElement).style.setProperty('gap', '10px', 'important');
-        }
-
-        // Ensure terms render 2 columns
-        const termsGrid = clonedElement.querySelector('.exit-slip-terms-grid');
-        if (termsGrid) {
-          (termsGrid as HTMLElement).style.setProperty('display', 'grid', 'important');
-          (termsGrid as HTMLElement).style.setProperty('grid-template-columns', 'repeat(2, minmax(0, 1fr))', 'important');
-        }
-
-        // Measure layout metadata for multi-page header preservation
-        const rootRect = clonedElement.getBoundingClientRect();
-        layoutMeta.rootWidthPx = rootRect.width || clonedElement.offsetWidth || targetWidthPx;
-
-        const theadEl = clonedElement.querySelector('table thead') as HTMLElement | null;
-        const explicitHeaderEl = clonedElement.querySelector(
-          '[data-pdf-header="true"], .export-report-header, .invoice-header, .exit-slip-header, .exit-slip-header-row'
-        ) as HTMLElement | null;
-
-        if (theadEl) {
-          const theadRect = theadEl.getBoundingClientRect();
-          layoutMeta.headerBottomPx = Math.max(0, theadRect.bottom - rootRect.top);
-        } else if (explicitHeaderEl) {
-          const hRect = explicitHeaderEl.getBoundingClientRect();
-          layoutMeta.headerBottomPx = Math.max(0, hRect.bottom - rootRect.top);
-        }
-
-        const trList = Array.from(clonedElement.querySelectorAll('table tbody tr')) as HTMLElement[];
-        layoutMeta.rowBottomsPx = trList.map((tr) => {
-          const rRect = tr.getBoundingClientRect();
-          return Math.max(0, rRect.bottom - rootRect.top);
-        });
-
-        const footerEl = clonedElement.querySelector(
-          'table tfoot, .export-report-signatures, .exit-slip-signatures, .invoice-signatures, [data-pdf-footer="true"]'
-        ) as HTMLElement | null;
-        if (footerEl) {
-          const fRect = footerEl.getBoundingClientRect();
-          layoutMeta.footerTopPx = Math.max(0, fRect.top - rootRect.top);
-        }
       },
     });
 
@@ -912,300 +1096,16 @@ export const generatePdfBlob = async (
       windowWidth: Math.max(1280, targetWidthPx + 200),
       windowHeight: Math.max(1200, Math.ceil(element.scrollHeight + 400)),
       onclone: (clonedDoc, clonedElement) => {
-        if (clonedDoc.defaultView) {
-          clonedDoc.defaultView.scrollTo(0, 0);
-        }
-
-        // Copy all style & link tags from main document to clonedDoc to ensure Tailwind & CSS rules are 100% available
-        const mainDocStyles = document.head.querySelectorAll('style, link[rel="stylesheet"]');
-        mainDocStyles.forEach((node) => {
-          try {
-            clonedDoc.head.appendChild(node.cloneNode(true));
-          } catch {}
-        });
-
-        // Ensure Vazirmatn font & explicit PDF table border CSS rules are injected into cloned document
-        const pdfFixStyle = clonedDoc.createElement('style');
-        pdfFixStyle.id = 'pdf-cloned-fix-styles-2';
-        pdfFixStyle.innerHTML = `
-          @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap');
-          ${getPrintLayoutCssRules()}
-          
-          *, *::before, *::after {
-            box-sizing: border-box !important;
-          }
-          table {
-            border-collapse: collapse !important;
-            border-spacing: 0 !important;
-            width: 100% !important;
-          }
-          th, td {
-            border-color: #cbd5e1 !important;
-            border-style: solid !important;
-            opacity: 1 !important;
-            visibility: visible !important;
-          }
-          p, span, div, td, th, h1, h2, h3, h4, h5, h6, strong, b, em {
-            opacity: 1 !important;
-            visibility: visible !important;
-            letter-spacing: normal !important;
-            font-feature-settings: "liga" 1, "calt" 1 !important;
-            text-rendering: optimizeLegibility !important;
-          }
-        `;
-        clonedDoc.head.appendChild(pdfFixStyle);
-
-        // ایزوله‌سازی رندرهای پشت صحنه ربات تلگرام در محیط کلون شده
-        if (element.id && element.id.startsWith('telegram-offscreen-')) {
-          clonedElement.style.setProperty('opacity', '1', 'important');
-          clonedElement.style.setProperty('visibility', 'visible', 'important');
-          clonedElement.style.setProperty('z-index', '999999', 'important');
-          clonedElement.style.setProperty('position', 'relative', 'important');
-          clonedElement.style.setProperty('left', 'auto', 'important');
-          clonedElement.style.setProperty('top', 'auto', 'important');
-
-          Array.from(clonedDoc.body.children).forEach((child) => {
-            if (child !== clonedElement && !child.contains(clonedElement)) {
-              (child as HTMLElement).style.setProperty('display', 'none', 'important');
-            }
-          });
-        }
-
-        // Hide all buttons, action controls, and .no-print elements in the PDF canvas clone
-        const elementsToHide = clonedElement.querySelectorAll(
-          '.no-print, .no-pdf, button, [data-html2canvas-ignore="true"]'
+        setupClonedDocumentForPdfCapture(
+          clonedDoc,
+          clonedElement,
+          element,
+          targetWidthPx,
+          targetMinHeightPx,
+          isA5,
+          isLandscape,
+          layoutMeta
         );
-        elementsToHide.forEach((el) => {
-          (el as HTMLElement).style.setProperty('display', 'none', 'important');
-          (el as HTMLElement).style.setProperty('visibility', 'hidden', 'important');
-        });
-
-        // Determine if element fits on a single page or exceeds to multi-page
-        const naturalHeight = element.scrollHeight;
-        const isSinglePageMode = naturalHeight <= targetMinHeightPx * 1.15;
-
-        // Force cloned element itself to have proper full-page dimensions and balanced flex distribution
-        if (isSinglePageMode) {
-          clonedElement.style.setProperty('min-height', `${targetMinHeightPx}px`, 'important');
-          clonedElement.style.setProperty('height', `${targetMinHeightPx}px`, 'important');
-          clonedElement.style.setProperty('max-height', `${targetMinHeightPx}px`, 'important');
-          clonedElement.style.setProperty('display', 'flex', 'important');
-          clonedElement.style.setProperty('flex-direction', 'column', 'important');
-          clonedElement.style.setProperty('justify-content', 'space-between', 'important');
-        } else {
-          clonedElement.style.setProperty('height', 'auto', 'important');
-          clonedElement.style.setProperty('min-height', `${targetMinHeightPx}px`, 'important');
-          clonedElement.style.setProperty('display', 'flex', 'important');
-          clonedElement.style.setProperty('flex-direction', 'column', 'important');
-        }
-
-        clonedElement.style.setProperty('align-self', 'flex-start', 'important');
-        clonedElement.style.setProperty('position', 'relative', 'important');
-        clonedElement.style.setProperty('left', '0px', 'important');
-        clonedElement.style.setProperty('top', '0px', 'important');
-        clonedElement.style.setProperty('transform', 'none', 'important');
-        clonedElement.style.setProperty('visibility', 'visible', 'important');
-        clonedElement.style.setProperty('opacity', '1', 'important');
-        clonedElement.style.setProperty('z-index', '1', 'important');
-        clonedElement.style.setProperty('overflow', 'visible', 'important');
-        clonedElement.style.setProperty('width', `${targetWidthPx}px`, 'important');
-        clonedElement.style.setProperty('max-width', `${targetWidthPx}px`, 'important');
-        clonedElement.style.setProperty('min-width', `${targetWidthPx}px`, 'important');
-        clonedElement.style.setProperty('box-sizing', 'border-box', 'important');
-        clonedElement.style.setProperty('margin', '0 auto', 'important');
-        clonedElement.style.boxShadow = 'none';
-        clonedElement.style.setProperty('direction', 'rtl', 'important');
-
-        // Prevent Persian font glyph disconnects and broken cursive joins
-        clonedElement.style.setProperty('font-family', "'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", 'important');
-        clonedElement.style.setProperty('letter-spacing', 'normal', 'important');
-        clonedElement.style.setProperty('word-spacing', 'normal', 'important');
-        clonedElement.style.setProperty('font-feature-settings', "'liga' 1, 'calt' 1", 'important');
-        clonedElement.style.setProperty('text-rendering', 'optimizeLegibility', 'important');
-
-        // Reset letter-spacing on all descendants so cursive connections do not break
-        const allTextElements = clonedElement.querySelectorAll('*');
-        allTextElements.forEach((node) => {
-          const el = node as HTMLElement;
-          el.style.setProperty('letter-spacing', 'normal', 'important');
-          el.style.setProperty('font-feature-settings', "'liga' 1, 'calt' 1", 'important');
-          if (!el.classList.contains('font-mono') && !el.classList.contains('font-plate')) {
-            el.style.setProperty('font-family', "'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", 'important');
-          }
-        });
-
-        // Ensure layout roots have 100% height and space-between distribution
-        const rootLayouts = clonedElement.querySelectorAll(
-          '.standard-exit-slip-layout, .simple-exit-slip-layout, .standard-invoice-layout, .simple-invoice-layout'
-        );
-        rootLayouts.forEach((rl) => {
-          const rlel = rl as HTMLElement;
-          rlel.style.setProperty('height', '100%', 'important');
-          rlel.style.setProperty('min-height', '100%', 'important');
-          rlel.style.setProperty('display', 'flex', 'important');
-          rlel.style.setProperty('flex-direction', 'column', 'important');
-          rlel.style.setProperty('justify-content', 'space-between', 'important');
-          rlel.style.setProperty('width', '100%', 'important');
-        });
-
-        // Ensure middle table container expands smoothly in single-page mode
-        if (isSinglePageMode) {
-          const tableBoxes = clonedElement.querySelectorAll(
-            '.exit-slip-table-box, .invoice-table-box, .simple-invoice-table-box'
-          );
-          tableBoxes.forEach((tb) => {
-            const tbel = tb as HTMLElement;
-            tbel.style.setProperty('flex', '1 1 auto', 'important');
-            tbel.style.setProperty('display', 'flex', 'important');
-            tbel.style.setProperty('flex-direction', 'column', 'important');
-            tbel.style.setProperty('justify-content', 'flex-start', 'important');
-          });
-        }
-
-        // Ensure header row layout is stable across all modes
-        const headerRow = clonedElement.querySelector('.exit-slip-header-row');
-        if (headerRow) {
-          (headerRow as HTMLElement).style.setProperty('display', 'flex', 'important');
-          (headerRow as HTMLElement).style.setProperty('flex-direction', 'row', 'important');
-          (headerRow as HTMLElement).style.setProperty('align-items', 'flex-start', 'important');
-          (headerRow as HTMLElement).style.setProperty('justify-content', 'space-between', 'important');
-        }
-
-        const metaGrid = clonedElement.querySelector('.exit-slip-meta-grid');
-        if (metaGrid) {
-          (metaGrid as HTMLElement).style.setProperty('display', 'grid', 'important');
-          (metaGrid as HTMLElement).style.setProperty('grid-template-columns', 'repeat(3, minmax(0, auto))', 'important');
-          (metaGrid as HTMLElement).style.setProperty('gap', '4px 10px', 'important');
-        }
-
-        let cur: HTMLElement | null = clonedElement.parentElement;
-        while (cur && cur !== clonedDoc.body) {
-          cur.style.setProperty('overflow', 'visible', 'important');
-          cur.style.setProperty('max-height', 'none', 'important');
-          cur.style.setProperty('height', 'auto', 'important');
-          cur.style.setProperty('position', 'static', 'important');
-          cur.style.setProperty('transform', 'none', 'important');
-          cur = cur.parentElement;
-        }
-
-        if (clonedDoc.body) {
-          clonedDoc.body.style.setProperty('overflow', 'visible', 'important');
-          clonedDoc.body.style.setProperty('max-height', 'none', 'important');
-          clonedDoc.body.style.setProperty('height', 'auto', 'important');
-          clonedDoc.body.style.setProperty('position', 'static', 'important');
-          clonedDoc.body.style.setProperty('margin', '0', 'important');
-          clonedDoc.body.style.setProperty('padding', '0', 'important');
-        }
-        if (clonedDoc.documentElement) {
-          clonedDoc.documentElement.style.setProperty('overflow', 'visible', 'important');
-          clonedDoc.documentElement.style.setProperty('max-height', 'none', 'important');
-          clonedDoc.documentElement.style.setProperty('height', 'auto', 'important');
-        }
-
-        const scrollContainers = clonedElement.querySelectorAll('.overflow-x-auto, .overflow-y-auto, [class*="overflow"]');
-        scrollContainers.forEach((el) => {
-          (el as HTMLElement).style.setProperty('overflow', 'visible', 'important');
-          (el as HTMLElement).style.setProperty('max-height', 'none', 'important');
-          (el as HTMLElement).style.setProperty('height', 'auto', 'important');
-        });
-
-        // Ensure all tables occupy full width and have adaptive row heights with uniform minimum baseline
-        const tables = clonedElement.querySelectorAll('table');
-        const defaultMinRowH = isA5 ? (isLandscape ? 24 : 28) : (isLandscape ? 32 : 36);
-        tables.forEach((tbl) => {
-          const tblEl = tbl as HTMLElement;
-          tblEl.style.setProperty('width', '100%', 'important');
-          tblEl.style.setProperty('min-width', '100%', 'important');
-          tblEl.style.setProperty('table-layout', 'auto', 'important');
-          tblEl.style.setProperty('border-collapse', 'collapse', 'important');
-
-          tblEl.querySelectorAll('thead th').forEach((th) => {
-            const thEl = th as HTMLElement;
-            thEl.style.setProperty('vertical-align', 'middle', 'important');
-            thEl.style.setProperty('box-sizing', 'border-box', 'important');
-          });
-
-          tblEl.querySelectorAll('tbody tr').forEach((tr) => {
-            const trEl = tr as HTMLElement;
-            trEl.style.setProperty('height', 'auto', 'important');
-            trEl.style.setProperty('min-height', `${defaultMinRowH}px`, 'important');
-            trEl.style.setProperty('page-break-inside', 'avoid', 'important');
-            trEl.style.setProperty('break-inside', 'avoid', 'important');
-
-            trEl.querySelectorAll('td').forEach((td) => {
-              const tdEl = td as HTMLElement;
-              tdEl.style.setProperty('height', `${defaultMinRowH}px`, 'important');
-              tdEl.style.setProperty('min-height', `${defaultMinRowH}px`, 'important');
-              tdEl.style.setProperty('vertical-align', 'middle', 'important');
-              tdEl.style.setProperty('box-sizing', 'border-box', 'important');
-              tdEl.style.setProperty('line-height', '1.4', 'important');
-              tdEl.style.setProperty('word-break', 'break-word', 'important');
-              tdEl.style.setProperty('overflow-wrap', 'break-word', 'important');
-              tdEl.style.setProperty('overflow', 'visible', 'important');
-
-              tdEl.querySelectorAll('*').forEach((child) => {
-                const cEl = child as HTMLElement;
-                cEl.style.setProperty('overflow', 'visible', 'important');
-                cEl.style.setProperty('max-height', 'none', 'important');
-                cEl.style.setProperty('line-height', '1.4', 'important');
-              });
-            });
-          });
-        });
-
-        // Ensure 3-column signature boxes render side-by-side
-        const sigs = clonedElement.querySelector('.exit-slip-signatures, .export-report-signatures');
-        if (sigs) {
-          (sigs as HTMLElement).style.setProperty('display', 'grid', 'important');
-          (sigs as HTMLElement).style.setProperty('grid-template-columns', 'repeat(3, minmax(0, 1fr))', 'important');
-          (sigs as HTMLElement).style.setProperty('gap', '10px', 'important');
-        }
-
-        // Ensure 2-column info cards render side-by-side
-        const infoDeck = clonedElement.querySelector('.exit-slip-info-deck');
-        if (infoDeck) {
-          (infoDeck as HTMLElement).style.setProperty('display', 'grid', 'important');
-          (infoDeck as HTMLElement).style.setProperty('grid-template-columns', 'repeat(2, minmax(0, 1fr))', 'important');
-          (infoDeck as HTMLElement).style.setProperty('gap', '10px', 'important');
-        }
-
-        // Ensure terms render 2 columns
-        const termsGrid = clonedElement.querySelector('.exit-slip-terms-grid');
-        if (termsGrid) {
-          (termsGrid as HTMLElement).style.setProperty('display', 'grid', 'important');
-          (termsGrid as HTMLElement).style.setProperty('grid-template-columns', 'repeat(2, minmax(0, 1fr))', 'important');
-        }
-
-        // Measure layout metadata for multi-page header preservation
-        const rootRect = clonedElement.getBoundingClientRect();
-        layoutMeta.rootWidthPx = rootRect.width || clonedElement.offsetWidth || targetWidthPx;
-
-        const theadEl = clonedElement.querySelector('table thead') as HTMLElement | null;
-        const explicitHeaderEl = clonedElement.querySelector(
-          '[data-pdf-header="true"], .export-report-header, .invoice-header, .exit-slip-header, .exit-slip-header-row'
-        ) as HTMLElement | null;
-
-        if (theadEl) {
-          const theadRect = theadEl.getBoundingClientRect();
-          layoutMeta.headerBottomPx = Math.max(0, theadRect.bottom - rootRect.top);
-        } else if (explicitHeaderEl) {
-          const hRect = explicitHeaderEl.getBoundingClientRect();
-          layoutMeta.headerBottomPx = Math.max(0, hRect.bottom - rootRect.top);
-        }
-
-        const trList = Array.from(clonedElement.querySelectorAll('table tbody tr')) as HTMLElement[];
-        layoutMeta.rowBottomsPx = trList.map((tr) => {
-          const rRect = tr.getBoundingClientRect();
-          return Math.max(0, rRect.bottom - rootRect.top);
-        });
-
-        const footerEl = clonedElement.querySelector(
-          'table tfoot, .export-report-signatures, .exit-slip-signatures, .invoice-signatures, [data-pdf-footer="true"]'
-        ) as HTMLElement | null;
-        if (footerEl) {
-          const fRect = footerEl.getBoundingClientRect();
-          layoutMeta.footerTopPx = Math.max(0, fRect.top - rootRect.top);
-        }
       },
     });
 
@@ -1383,7 +1283,7 @@ export const printElementInNewWindow = (
           body {
             margin: 0;
             padding: ${paperSize === 'a5' ? '12px' : '24px'};
-            background: #f8fafc;
+            background: #ffffff;
             direction: rtl;
             color: #0f172a;
           }

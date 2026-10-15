@@ -11,11 +11,14 @@ body, button, input, select, textarea, table, th, td, span, div, p {
 
 @layer utilities {
   @media print {
-    body {
-      background: white !important;
-      color: black !important;
+    html, body {
+      background: #ffffff !important;
+      background-color: #ffffff !important;
+      color: #000000 !important;
       margin: 0 !important;
       padding: 0 !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
     .no-print {
       display: none !important;
@@ -30,11 +33,22 @@ body, button, input, select, textarea, table, th, td, span, div, p {
       margin: 0 !important;
       box-shadow: none !important;
       border: none !important;
+      background: #ffffff !important;
+      background-color: #ffffff !important;
     }
 
     /* Isolated print mode: hides all background UI and centers only the target sheet */
+    /* Force pure white background for invoice print & PDF export containers */
+    .print-white-bg {
+      background-color: #ffffff !important;
+      background: #ffffff !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
     body.printing-active-element {
-      background: white !important;
+      background: #ffffff !important;
+      background-color: #ffffff !important;
       overflow: visible !important;
     }
     body.printing-active-element * {
@@ -88,6 +102,33 @@ body, button, input, select, textarea, table, th, td, span, div, p {
       margin: 8mm;
     }
   }
+}
+
+/* Universal print-white-bg helper class for PDF export & invoice containers */
+.print-white-bg {
+  background-color: #ffffff !important;
+  background: #ffffff !important;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+#printable-invoice,
+#printable-exit-slip {
+  background-color: #ffffff !important;
+  border-width: 0px !important;
+}
+
+#printable-invoice > div:first-child,
+#printable-exit-slip > div:first-child {
+  background-color: #ffffff !important;
+  border-width: 0px !important;
+}
+
+.standard-invoice-layout,
+.simple-invoice-layout table th,
+.standard-exit-slip-layout,
+.simple-exit-slip-layout table th {
+  background-color: #ffffff !important;
 }
 
 @media screen {

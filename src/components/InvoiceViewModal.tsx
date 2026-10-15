@@ -738,6 +738,8 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
 
             #printable-invoice {
               box-sizing: border-box !important;
+              background-color: ${currentPrintLayout.pageBgColor || '#ffffff'} !important;
+              background: ${currentPrintLayout.pageBgColor || '#ffffff'} !important;
               margin: 0 auto;
               min-height: 100%;
               display: flex;
@@ -749,10 +751,16 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
               width: 100% !important;
               border-collapse: collapse !important;
               table-layout: auto !important;
+              border: 1px solid ${currentPrintLayout.tableBorderColor || '#cbd5e1'} !important;
             }
             #printable-invoice table th {
               vertical-align: middle !important;
               box-sizing: border-box !important;
+              border: 1px solid ${currentPrintLayout.tableBorderColor || '#cbd5e1'} !important;
+              background-color: ${currentPrintLayout.tableHeaderBg || '#f1f5f9'} !important;
+              background: ${currentPrintLayout.tableHeaderBg || '#f1f5f9'} !important;
+              color: ${currentPrintLayout.tableHeaderTextColor || '#0f172a'} !important;
+              font-weight: 700 !important;
               padding-top: ${liveRowPy}px !important;
               padding-bottom: ${liveRowPy}px !important;
               padding-left: ${liveCellPx}px !important;
@@ -766,6 +774,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
               break-inside: avoid !important;
             }
             #printable-invoice table tbody td {
+              border: 1px solid #cbd5e1 !important;
               padding-top: ${liveRowPy}px !important;
               padding-bottom: ${liveRowPy}px !important;
               padding-left: ${liveCellPx}px !important;
@@ -988,8 +997,12 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
           {/* Paper Container */}
           <div
             id="printable-invoice"
-            style={currentTemplate !== 'thermal' ? getPrintLayoutCssVariables(currentPrintLayout, pageSize, orientation) : undefined}
-            className={`print-container bg-white shadow-md print:shadow-none print:border-none border border-slate-200 transition-all flex flex-col justify-between ${
+            style={{
+              ...(currentTemplate !== 'thermal' ? getPrintLayoutCssVariables(currentPrintLayout, pageSize, orientation) : {}),
+              backgroundColor: currentPrintLayout.pageBgColor || '#ffffff',
+              background: currentPrintLayout.pageBgColor || '#ffffff'
+            }}
+            className={`print-container shadow-none print:shadow-none print:border-none border-0 transition-all flex flex-col justify-between ${
               currentTemplate === 'thermal'
                 ? 'w-full max-w-[340px] p-4 text-[12px]'
                 : `w-full transition-all ${isA5 ? 'paper-a5' : 'paper-a4'} ${
@@ -1007,7 +1020,10 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
               />
             ) : currentTemplate !== 'thermal' ? (
               /* TEMPLATE: STANDARD OR OFFICIAL */
-              <div className={`standard-invoice-layout h-full flex-1 flex flex-col justify-between w-full ${isA5 ? 'space-y-2.5' : 'space-y-4'}`}>
+              <div 
+                className={`standard-invoice-layout bg-white h-full flex-1 flex flex-col justify-between w-full border-0 ${isA5 ? 'space-y-2.5' : 'space-y-4'}`}
+                style={{ backgroundColor: '#ffffff', borderWidth: '0px' }}
+              >
                 {/* ZONE 1: TOP (Header, Seller & Buyer details) */}
                 <div className={`shrink-0 ${isA5 ? 'space-y-2' : 'space-y-3'}`}>
                   {/* Header: Seller Brand + Invoice Title & Meta */}

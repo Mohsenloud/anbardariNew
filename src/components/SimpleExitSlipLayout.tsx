@@ -101,7 +101,7 @@ export const SimpleExitSlipLayout: React.FC<SimpleExitSlipLayoutProps> = ({
 
   return (
     <div 
-      className={`simple-exit-slip-layout h-full flex-1 flex flex-col justify-between text-slate-900 font-sans leading-snug w-full ${
+      className={`simple-exit-slip-layout print-white-bg bg-white h-full flex-1 flex flex-col justify-between text-slate-900 font-sans leading-snug w-full ${
         isA5Landscape 
           ? 'space-y-1.5 text-[9.5px]' 
           : isA5Portrait 
@@ -311,16 +311,18 @@ export const SimpleExitSlipLayout: React.FC<SimpleExitSlipLayoutProps> = ({
           )}
         </div>
 
-        {/* ۵. سه کادر متوازن و متناسب امضاها با فضای مناسب مهر و امضا */}
+        {/* ۵. سه کادر متوازن امضاها */}
         <div className={`exit-slip-signatures pt-1 border-t-2 border-slate-800 grid grid-cols-3 gap-2.5 text-center ${
           isA5Landscape ? 'text-[9px]' : isA5Portrait ? 'text-[10px]' : 'text-xs'
         }`}>
           {/* ۱. انباردار */}
           <div className={`border border-slate-300 rounded-lg p-2 bg-slate-50/70 flex flex-col justify-between ${signatureHeight}`}>
             <div>
-              <div className="font-black text-slate-900">امضای متصدی انبار</div>
-              <div className="text-slate-600 mt-0.5">
-                {settings.originWarehouseManager || currentUser?.fullName || 'انباردار'}
+              <div className="font-bold text-slate-900">
+                <span style={{ fontSize: '10px' }}>انباردار: </span>
+                <span className="font-semibold text-slate-800" style={{ fontSize: '12px' }}>
+                  {settings.originWarehouseManager || currentUser?.fullName || 'متصدی انبار'}
+                </span>
               </div>
             </div>
             <div className="border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-400">
@@ -331,9 +333,11 @@ export const SimpleExitSlipLayout: React.FC<SimpleExitSlipLayoutProps> = ({
           {/* ۲. راننده و خودرو */}
           <div className={`border border-slate-300 rounded-lg p-2 bg-slate-50/70 flex flex-col justify-between ${signatureHeight}`}>
             <div>
-              <div className="font-black text-slate-900">امضای راننده و حامل بار</div>
-              <div className="text-slate-600 mt-0.5">
-                {slipLog.receiverName ? `راننده: ${slipLog.receiverName}` : 'حامل بار'}
+              <div className="font-bold text-slate-900">
+                <span style={{ fontSize: '10px' }}>خودرو / راننده: </span>
+                <span className="font-semibold text-slate-800" style={{ fontSize: '12px' }}>
+                  {slipLog.receiverName || 'متصدی خودرو'}
+                </span>
               </div>
             </div>
             <div className="border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-400">
@@ -344,30 +348,16 @@ export const SimpleExitSlipLayout: React.FC<SimpleExitSlipLayoutProps> = ({
           {/* ۳. مشتری یا تحویل‌گیرنده */}
           <div className={`border border-slate-300 rounded-lg p-2 bg-slate-50/70 flex flex-col justify-between ${signatureHeight}`}>
             <div>
-              <div className="font-black text-slate-900">امضای تحویل‌گیرنده / خریدار</div>
-              <div className="text-slate-600 mt-0.5">
-                {invoice.customerName || 'مشتری'}
+              <div className="font-bold text-slate-900">
+                <span style={{ fontSize: '10px' }}>تحویل‌گیرنده / خریدار: </span>
+                <span className="font-semibold text-slate-800" style={{ fontSize: '12px' }}>
+                  {invoice.customerName || 'کارفرما / مشتری محترم'}
+                </span>
               </div>
             </div>
             <div className="border-t border-dashed border-slate-300 pt-1 text-[9px] text-slate-400">
               تایید دریافت قطعی اجناس
             </div>
-          </div>
-        </div>
-
-        {/* ۶. پانویس متادیتا و شناسه سند */}
-        <div className={`text-slate-400 flex items-center justify-between pt-0.5 border-t border-slate-200 ${
-          isA5Landscape ? 'text-[8px]' : 'text-[9.5px]'
-        }`}>
-          <div>
-            <span>زمان صدور: {toPersianDigits(invoice.date)} - ساعت {toPersianDigits(issuedTime)}</span>
-            <span className="mx-1.5">•</span>
-            <span>قالب: {pageSize.toUpperCase()} ({orientation === 'portrait' ? 'عمودی' : 'افقی'})</span>
-            <span className="mx-1.5">•</span>
-            <span>نوبت چاپ: {toPersianDigits(slipLog.printCount + 1)}</span>
-          </div>
-          <div>
-            <span>صادرکننده: {currentUser?.fullName || 'انباردار'}</span>
           </div>
         </div>
       </div>

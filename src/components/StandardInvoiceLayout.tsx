@@ -51,7 +51,7 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
   return (
     <div
       style={getPrintLayoutCssVariables(settings.printLayout, pageSize, orientation)}
-      className={`standard-invoice-layout h-full flex-1 flex flex-col justify-between w-full text-slate-900 font-sans ${
+      className={`standard-invoice-layout print-white-bg bg-white h-full flex-1 flex flex-col justify-between w-full text-slate-900 font-sans ${
         isA5Landscape ? 'space-y-1.5 text-[10px]' : isA5 ? 'space-y-2 text-[11px]' : 'space-y-3.5 text-xs'
       }`}
       dir="rtl"

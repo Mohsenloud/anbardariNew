@@ -64,8 +64,12 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
 
   return (
     <div 
-      style={getPrintLayoutCssVariables(settings.printLayout, pageSize, orientation)}
-      className={`simple-invoice-layout h-full flex-1 flex flex-col justify-between text-slate-900 font-sans leading-snug w-full ${
+      style={{
+        ...getPrintLayoutCssVariables(settings.printLayout, pageSize, orientation),
+        backgroundColor: '#ffffff',
+        borderWidth: '0px'
+      }}
+      className={`simple-invoice-layout print-white-bg bg-white h-full flex-1 flex flex-col justify-between text-slate-900 font-sans leading-snug w-full border-0 ${
         isA5Landscape 
           ? 'space-y-1.5 text-[9.5px]' 
           : isA5Portrait 

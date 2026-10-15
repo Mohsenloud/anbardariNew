@@ -52,6 +52,11 @@ export function getPrintLayoutCssVariables(
     ['--print-table-header-h' as any]: `${headerHeight}px`,
     ['--print-theme-color' as any]: cfg.themeColor || '#0f172a',
     ['--print-border-color' as any]: cfg.tableBorderColor || '#cbd5e1',
+    ['--print-page-bg' as any]: cfg.pageBgColor || '#ffffff',
+    ['--print-header-bg' as any]: cfg.tableHeaderBg || '#f1f5f9',
+    ['--print-header-text' as any]: cfg.tableHeaderTextColor || '#0f172a',
+    ['--print-body-bg' as any]: cfg.tableBodyBg || '#ffffff',
+    ['--print-zebra-bg' as any]: cfg.tableZebraBg || '#f8fafc',
     ['--print-sig-height' as any]: `${sigH}px`,
     ['--print-page-margin' as any]: `${marginMm}mm`,
     ['--print-col-index' as any]: `${Math.round(cfg.colWidthIndex * scaleRatio)}px`,
@@ -72,6 +77,8 @@ export function getPrintLayoutCssRules(containerSelector = '#printable-invoice, 
     ${containerSelector} {
       font-size: var(--print-base-font-size, 12px) !important;
       line-height: 1.35 !important;
+      background-color: var(--print-page-bg, #ffffff) !important;
+      background: var(--print-page-bg, #ffffff) !important;
     }
     ${containerSelector} .invoice-header h1,
     ${containerSelector} .invoice-header h2,
@@ -93,6 +100,7 @@ export function getPrintLayoutCssRules(containerSelector = '#printable-invoice, 
       width: 100% !important;
       border-collapse: collapse !important;
       table-layout: auto !important;
+      border: 1px solid var(--print-border-color, #94a3b8) !important;
     }
     ${containerSelector} table th {
       font-size: var(--print-table-header-size, 11px) !important;
@@ -100,7 +108,11 @@ export function getPrintLayoutCssRules(containerSelector = '#printable-invoice, 
       padding-bottom: var(--print-table-row-py, 6px) !important;
       padding-left: var(--print-table-cell-px, 8px) !important;
       padding-right: var(--print-table-cell-px, 8px) !important;
-      border-color: var(--print-border-color, #cbd5e1) !important;
+      border: 1px solid var(--print-border-color, #94a3b8) !important;
+      background-color: var(--print-header-bg, #f1f5f9) !important;
+      background: var(--print-header-bg, #f1f5f9) !important;
+      color: var(--print-header-text, #0f172a) !important;
+      font-weight: 700 !important;
       vertical-align: middle !important;
       height: var(--print-table-header-h, 36px) !important;
       box-sizing: border-box !important;
@@ -109,6 +121,12 @@ export function getPrintLayoutCssRules(containerSelector = '#printable-invoice, 
       height: var(--print-table-row-min-h, 34px) !important;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
+      background-color: var(--print-body-bg, #ffffff) !important;
+      background: var(--print-body-bg, #ffffff) !important;
+    }
+    ${containerSelector} table tbody tr:nth-child(even) {
+      background-color: var(--print-zebra-bg, #f8fafc) !important;
+      background: var(--print-zebra-bg, #f8fafc) !important;
     }
     ${containerSelector} table tbody td {
       font-size: var(--print-table-body-size, 11px) !important;
@@ -116,7 +134,7 @@ export function getPrintLayoutCssRules(containerSelector = '#printable-invoice, 
       padding-bottom: var(--print-table-row-py, 6px) !important;
       padding-left: var(--print-table-cell-px, 8px) !important;
       padding-right: var(--print-table-cell-px, 8px) !important;
-      border-color: var(--print-border-color, #cbd5e1) !important;
+      border: 1px solid var(--print-border-color, #cbd5e1) !important;
       height: var(--print-table-row-min-h, 34px) !important;
       min-height: var(--print-table-row-min-h, 34px) !important;
       vertical-align: middle !important;

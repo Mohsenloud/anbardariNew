@@ -260,7 +260,7 @@ export const InboundReceiptPrintModal: React.FC<InboundReceiptPrintModalProps> =
         <div className="p-3 sm:p-8 overflow-y-auto bg-slate-200/90 flex-1 flex justify-center items-start">
           <div 
             id="printable-inbound-receipt"
-            className={`w-full bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-300 text-slate-800 text-xs sm:text-sm print:m-0 print:p-0 print:border-none print:shadow-none print:w-full print:rounded-none transition-all ${
+            className={`w-full print-white-bg bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-300 text-slate-800 text-xs sm:text-sm print:m-0 print:p-0 print:border-none print:shadow-none print:w-full print:rounded-none transition-all ${
               pageSize === 'a5'
                 ? orientation === 'landscape' ? 'max-w-[210mm] min-h-[148mm]' : 'max-w-[148mm] min-h-[210mm]'
                 : orientation === 'landscape' ? 'max-w-[297mm] min-h-[210mm]' : 'max-w-[210mm] min-h-[297mm]'

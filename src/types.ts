@@ -407,6 +407,9 @@ export interface PrintLayoutSettings {
   tableBorderWidth?: number; // ضخامت خطوط جدول (۰.۵، ۱، ۱.۵، ۲ پیکسل)
   tableHeaderBg?: string; // رنگ پس‌زمینه سرستون‌های جدول
   tableHeaderTextColor?: string; // رنگ متن سرستون‌های جدول
+  tableBodyBg?: string; // رنگ پس‌زمینه بدنه جدول
+  tableZebraBg?: string; // رنگ ردیف‌های یک‌درمیان/زبرای جدول
+  pageBgColor?: string; // رنگ پس‌زمینه برگه فاکتور
   tableZebraStriping?: boolean; // نمایش سطرهای یک‌درمیان رنگی جدول
 
   // عرض ستون‌های جدول (بر حسب پیکسل)
@@ -452,8 +455,11 @@ export const DEFAULT_PRINT_LAYOUT: PrintLayoutSettings = {
   tableBorderStyle: 'bordered',
   tableBorderColor: '#cbd5e1',
   tableBorderWidth: 1,
-  tableHeaderBg: '#f8fafc',
-  tableHeaderTextColor: '#1e293b',
+  tableHeaderBg: '#f1f5f9',
+  tableHeaderTextColor: '#0f172a',
+  tableBodyBg: '#ffffff',
+  tableZebraBg: '#f8fafc',
+  pageBgColor: '#ffffff',
   tableZebraStriping: true,
 
   colWidthIndex: 38,

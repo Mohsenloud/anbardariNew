@@ -8,6 +8,7 @@ import {
   MoveVertical, 
   Columns, 
   Type,
+  Palette,
   Sparkles,
   ChevronDown
 } from 'lucide-react';
@@ -35,7 +36,7 @@ export const InvoiceTableDimensionsPanel: React.FC<InvoiceTableDimensionsPanelPr
   pageSize = 'a4',
   orientation = 'portrait',
 }) => {
-  const [activeTab, setActiveTab] = useState<'height' | 'fontSize' | 'width'>('height');
+  const [activeTab, setActiveTab] = useState<'height' | 'fontSize' | 'width' | 'color'>('height');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   if (!isOpen) return null;
@@ -134,6 +135,65 @@ export const InvoiceTableDimensionsPanel: React.FC<InvoiceTableDimensionsPanelPr
     }
   };
 
+  // Color theme presets
+  const applyColorPreset = (preset: 'white' | 'slate' | 'mint' | 'blue' | 'amber' | 'dark-header') => {
+    if (preset === 'white') {
+      handleUpdate({
+        pageBgColor: '#ffffff',
+        tableHeaderBg: '#ffffff',
+        tableHeaderTextColor: '#0f172a',
+        tableBodyBg: '#ffffff',
+        tableZebraBg: '#ffffff',
+        tableBorderColor: '#cbd5e1',
+      });
+    } else if (preset === 'slate') {
+      handleUpdate({
+        pageBgColor: '#ffffff',
+        tableHeaderBg: '#f1f5f9',
+        tableHeaderTextColor: '#0f172a',
+        tableBodyBg: '#ffffff',
+        tableZebraBg: '#f8fafc',
+        tableBorderColor: '#cbd5e1',
+      });
+    } else if (preset === 'mint') {
+      handleUpdate({
+        pageBgColor: '#ffffff',
+        tableHeaderBg: '#dcfce7',
+        tableHeaderTextColor: '#064e3b',
+        tableBodyBg: '#ffffff',
+        tableZebraBg: '#f0fdf4',
+        tableBorderColor: '#86efac',
+      });
+    } else if (preset === 'blue') {
+      handleUpdate({
+        pageBgColor: '#ffffff',
+        tableHeaderBg: '#dbeafe',
+        tableHeaderTextColor: '#1e3a8a',
+        tableBodyBg: '#ffffff',
+        tableZebraBg: '#eff6ff',
+        tableBorderColor: '#93c5fd',
+      });
+    } else if (preset === 'amber') {
+      handleUpdate({
+        pageBgColor: '#ffffff',
+        tableHeaderBg: '#fef3c7',
+        tableHeaderTextColor: '#78350f',
+        tableBodyBg: '#ffffff',
+        tableZebraBg: '#fefce8',
+        tableBorderColor: '#fde047',
+      });
+    } else if (preset === 'dark-header') {
+      handleUpdate({
+        pageBgColor: '#ffffff',
+        tableHeaderBg: '#1e293b',
+        tableHeaderTextColor: '#ffffff',
+        tableBodyBg: '#ffffff',
+        tableZebraBg: '#f8fafc',
+        tableBorderColor: '#475569',
+      });
+    }
+  };
+
   const currentMinHeight = layout.tableRowMinHeight || 34;
   const currentPaddingY = layout.tableRowPaddingY ?? 6;
   const currentPaddingX = layout.tableCellPaddingX ?? 8;
@@ -152,7 +212,7 @@ export const InvoiceTableDimensionsPanel: React.FC<InvoiceTableDimensionsPanelPr
             </div>
             <div>
               <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
-                تنظیم اندازه، ارتفاع و فونت فاکتور
+                تنظیم اندازه، ابعاد، فونت و رنگ جدول فاکتور
                 <span className="text-[10px] text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/30 font-normal">
                   پیش‌نمایش زنده و آنی
                 </span>
@@ -173,7 +233,7 @@ export const InvoiceTableDimensionsPanel: React.FC<InvoiceTableDimensionsPanelPr
                 }`}
               >
                 <MoveVertical className="w-3.5 h-3.5" />
-                <span>ارتفاع ردیف‌ها و سلول‌ها</span>
+                <span>ارتفاع ردیف‌ها</span>
               </button>
               <button
                 type="button"
@@ -185,7 +245,7 @@ export const InvoiceTableDimensionsPanel: React.FC<InvoiceTableDimensionsPanelPr
                 }`}
               >
                 <Type className="w-3.5 h-3.5" />
-                <span>سایز فونت و قلم</span>
+                <span>سایز فونت</span>
               </button>
               <button
                 type="button"
@@ -198,6 +258,18 @@ export const InvoiceTableDimensionsPanel: React.FC<InvoiceTableDimensionsPanelPr
               >
                 <Columns className="w-3.5 h-3.5" />
                 <span>عرض ستون‌ها</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('color')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-all cursor-pointer text-xs font-bold ${
+                  activeTab === 'color'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Palette className="w-3.5 h-3.5" />
+                <span>تنظیم رنگ پس‌زمینه</span>
               </button>
             </div>
 
@@ -848,6 +920,291 @@ export const InvoiceTableDimensionsPanel: React.FC<InvoiceTableDimensionsPanelPr
                   onChange={(e) => handleUpdate({ colWidthTotal: Number(e.target.value) })}
                   className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
                 />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* TAB 4: BACKGROUND & TABLE COLOR CONTROLS                  */}
+        {/* ========================================================= */}
+        {activeTab === 'color' && (
+          <div className="space-y-4">
+            {/* Quick Color Presets */}
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+              <span className="text-[11px] text-slate-400 font-bold ml-1">پالت‌های رنگی آماده:</span>
+              <button
+                type="button"
+                onClick={() => applyColorPreset('white')}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-colors cursor-pointer"
+              >
+                <span className="w-3 h-3 rounded-full bg-white border border-slate-400" />
+                <span>⚪ سفید ساده و رسمی</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyColorPreset('slate')}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-colors cursor-pointer"
+              >
+                <span className="w-3 h-3 rounded-full bg-slate-200 border border-slate-400" />
+                <span>🎨 کلاسیک طوسی</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyColorPreset('mint')}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-colors cursor-pointer"
+              >
+                <span className="w-3 h-3 rounded-full bg-emerald-200 border border-emerald-400" />
+                <span>🌿 سبز ملایم</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyColorPreset('blue')}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-colors cursor-pointer"
+              >
+                <span className="w-3 h-3 rounded-full bg-blue-200 border border-blue-400" />
+                <span>🔷 آبی شرکتی</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyColorPreset('amber')}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-colors cursor-pointer"
+              >
+                <span className="w-3 h-3 rounded-full bg-amber-200 border border-amber-400" />
+                <span>💛 کرم و طلایی</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyColorPreset('dark-header')}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-colors cursor-pointer"
+              >
+                <span className="w-3 h-3 rounded-full bg-slate-900 border border-slate-600" />
+                <span>🖤 کنتراست تیره</span>
+              </button>
+            </div>
+
+            {/* Colors Settings Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 bg-slate-950/70 p-3.5 rounded-xl border border-slate-800">
+              {/* 1. Header Background Color */}
+              <div className="space-y-2 bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-bold text-slate-200">پس‌زمینه سرستون‌های جدول:</span>
+                  <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-300">
+                    <span 
+                      className="w-4 h-4 rounded border border-slate-600 shadow-2xs" 
+                      style={{ backgroundColor: layout.tableHeaderBg || '#f1f5f9' }} 
+                    />
+                    <span>{layout.tableHeaderBg || '#f1f5f9'}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={layout.tableHeaderBg || '#f1f5f9'}
+                    onChange={(e) => handleUpdate({ tableHeaderBg: e.target.value })}
+                    className="w-9 h-8 bg-slate-800 border border-slate-700 rounded cursor-pointer p-0.5"
+                  />
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {['#ffffff', '#f1f5f9', '#e2e8f0', '#dcfce7', '#dbeafe', '#fef3c7', '#1e293b'].map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => handleUpdate({ tableHeaderBg: c })}
+                        className="w-5 h-5 rounded border border-slate-600 cursor-pointer hover:scale-110 transition-transform"
+                        style={{ backgroundColor: c }}
+                        title={`انتخاب رنگ ${c}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  رنگ تیتر بالای جدول (ردیف، شرح کالا، قیمت و ...).
+                </p>
+              </div>
+
+              {/* 2. Header Text Color */}
+              <div className="space-y-2 bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-bold text-slate-200">رنگ متن سرستون‌های جدول:</span>
+                  <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-300">
+                    <span 
+                      className="w-4 h-4 rounded border border-slate-600 shadow-2xs" 
+                      style={{ backgroundColor: layout.tableHeaderTextColor || '#0f172a' }} 
+                    />
+                    <span>{layout.tableHeaderTextColor || '#0f172a'}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={layout.tableHeaderTextColor || '#0f172a'}
+                    onChange={(e) => handleUpdate({ tableHeaderTextColor: e.target.value })}
+                    className="w-9 h-8 bg-slate-800 border border-slate-700 rounded cursor-pointer p-0.5"
+                  />
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {['#0f172a', '#ffffff', '#064e3b', '#1e3a8a', '#78350f', '#475569'].map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => handleUpdate({ tableHeaderTextColor: c })}
+                        className="w-5 h-5 rounded border border-slate-600 cursor-pointer hover:scale-110 transition-transform"
+                        style={{ backgroundColor: c }}
+                        title={`انتخاب رنگ متن ${c}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  رنگ نوشته تیتر سرستون‌ها.
+                </p>
+              </div>
+
+              {/* 3. Table Body Background Color */}
+              <div className="space-y-2 bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-bold text-slate-200">پس‌زمینه بدنه و ردیف‌های جدول:</span>
+                  <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-300">
+                    <span 
+                      className="w-4 h-4 rounded border border-slate-600 shadow-2xs" 
+                      style={{ backgroundColor: layout.tableBodyBg || '#ffffff' }} 
+                    />
+                    <span>{layout.tableBodyBg || '#ffffff'}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={layout.tableBodyBg || '#ffffff'}
+                    onChange={(e) => handleUpdate({ tableBodyBg: e.target.value })}
+                    className="w-9 h-8 bg-slate-800 border border-slate-700 rounded cursor-pointer p-0.5"
+                  />
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {['#ffffff', '#f8fafc', '#f1f5f9', '#fefce8', '#f0fdf4', '#eff6ff'].map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => handleUpdate({ tableBodyBg: c })}
+                        className="w-5 h-5 rounded border border-slate-600 cursor-pointer hover:scale-110 transition-transform"
+                        style={{ backgroundColor: c }}
+                        title={`انتخاب رنگ ${c}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  رنگ زمینه اصلی ردیف‌های کالاها در جدول.
+                </p>
+              </div>
+
+              {/* 4. Zebra Row Background Color */}
+              <div className="space-y-2 bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-bold text-slate-200">پس‌زمینه ردیف‌های یک‌درمیان (زبرا):</span>
+                  <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-300">
+                    <span 
+                      className="w-4 h-4 rounded border border-slate-600 shadow-2xs" 
+                      style={{ backgroundColor: layout.tableZebraBg || '#f8fafc' }} 
+                    />
+                    <span>{layout.tableZebraBg || '#f8fafc'}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={layout.tableZebraBg || '#f8fafc'}
+                    onChange={(e) => handleUpdate({ tableZebraBg: e.target.value })}
+                    className="w-9 h-8 bg-slate-800 border border-slate-700 rounded cursor-pointer p-0.5"
+                  />
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {['#ffffff', '#f8fafc', '#f1f5f9', '#e2e8f0', '#f0fdf4', '#eff6ff', '#fef9c3'].map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => handleUpdate({ tableZebraBg: c })}
+                        className="w-5 h-5 rounded border border-slate-600 cursor-pointer hover:scale-110 transition-transform"
+                        style={{ backgroundColor: c }}
+                        title={`انتخاب رنگ ${c}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  رنگ سطر ۲، ۴، ۶ و ... جهت تفکیک بهتر اقلام.
+                </p>
+              </div>
+
+              {/* 5. Overall Paper Page Background Color */}
+              <div className="space-y-2 bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-bold text-slate-200">پس‌زمینه کل برگه فاکتور (کاغذ):</span>
+                  <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-300">
+                    <span 
+                      className="w-4 h-4 rounded border border-slate-600 shadow-2xs" 
+                      style={{ backgroundColor: layout.pageBgColor || '#ffffff' }} 
+                    />
+                    <span>{layout.pageBgColor || '#ffffff'}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={layout.pageBgColor || '#ffffff'}
+                    onChange={(e) => handleUpdate({ pageBgColor: e.target.value })}
+                    className="w-9 h-8 bg-slate-800 border border-slate-700 rounded cursor-pointer p-0.5"
+                  />
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {['#ffffff', '#fafaf9', '#f8fafc', '#f1f5f9', '#fefce8'].map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => handleUpdate({ pageBgColor: c })}
+                        className="w-5 h-5 rounded border border-slate-600 cursor-pointer hover:scale-110 transition-transform"
+                        style={{ backgroundColor: c }}
+                        title={`انتخاب رنگ ${c}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  رنگ پس‌زمینه کل برگه سند هنگام نمایش و خروجی.
+                </p>
+              </div>
+
+              {/* 6. Table Border Color */}
+              <div className="space-y-2 bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-bold text-slate-200">رنگ خطوط و کادرهای جدول:</span>
+                  <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-300">
+                    <span 
+                      className="w-4 h-4 rounded border border-slate-600 shadow-2xs" 
+                      style={{ backgroundColor: layout.tableBorderColor || '#cbd5e1' }} 
+                    />
+                    <span>{layout.tableBorderColor || '#cbd5e1'}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={layout.tableBorderColor || '#cbd5e1'}
+                    onChange={(e) => handleUpdate({ tableBorderColor: e.target.value })}
+                    className="w-9 h-8 bg-slate-800 border border-slate-700 rounded cursor-pointer p-0.5"
+                  />
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {['#cbd5e1', '#94a3b8', '#64748b', '#000000', '#93c5fd', '#86efac'].map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => handleUpdate({ tableBorderColor: c })}
+                        className="w-5 h-5 rounded border border-slate-600 cursor-pointer hover:scale-110 transition-transform"
+                        style={{ backgroundColor: c }}
+                        title={`انتخاب رنگ ${c}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  رنگ مرزها، کادر سلول‌ها و جداول.
+                </p>
               </div>
             </div>
           </div>

@@ -784,32 +784,32 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
         </div>
       )}
       {/* MOBILE-FIRST DEDICATED WAREHOUSE NAVIGATION BAR (STICKY BELOW MAIN HEADER) */}
-      <div className="sm:hidden sticky top-16 z-20 bg-slate-100 pb-2 pt-1.5 -mx-3 px-3 border-b border-slate-200/90 shadow-xs">
+      <div className="sm:hidden sticky top-16 z-20 bg-slate-100/95 backdrop-blur-xs pb-2 pt-1.5 -mx-3 px-3 border-b border-slate-200/90 shadow-2xs">
         {/* 5 Ergonomic Mobile Touch Tabs */}
-        <div className="grid grid-cols-5 gap-1 p-1 bg-white rounded-2xl border border-slate-200 shadow-xs">
+        <div className="grid grid-cols-5 gap-1 p-1 bg-white rounded-2xl border border-slate-200/90 shadow-xs">
           {/* Tab 1: کالاها و موجودی */}
           <button
             type="button"
             id="mobile-tab-items"
             onClick={() => handleSelectSubTab('items')}
-            className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+            className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all duration-200 active:scale-95 cursor-pointer relative ${
               activeSubTab === 'items'
-                ? 'bg-blue-600 text-white shadow-xs font-bold'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
+                ? 'bg-gradient-to-b from-blue-600 to-blue-700 text-white shadow-xs font-black ring-1 ring-blue-500/30'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold'
             }`}
           >
             <div className="relative">
-              <PackageCheck className="w-4 h-4" />
+              <Boxes className="w-4 h-4" />
               {lowStockCount > 0 && (
                 <span className={`absolute -top-1.5 -right-2 text-[8px] font-bold px-1 py-0.2 rounded-full ${
-                  activeSubTab === 'items' ? 'bg-amber-400 text-amber-950' : 'bg-amber-500 text-white'
+                  activeSubTab === 'items' ? 'bg-amber-400 text-amber-950 font-black' : 'bg-amber-500 text-white shadow-2xs'
                 }`}>
                   {toPersianDigits(lowStockCount)}
                 </span>
               )}
             </div>
-            <span className="text-[10px] mt-0.5 whitespace-nowrap">کالاها</span>
-            <span className={`text-[8px] ${activeSubTab === 'items' ? 'text-blue-100' : 'text-slate-400'}`}>
+            <span className="text-[10px] mt-0.5 whitespace-nowrap font-bold">کالاها</span>
+            <span className={`text-[8px] ${activeSubTab === 'items' ? 'text-blue-100 font-bold' : 'text-slate-400'}`}>
               ({toPersianDigits(products.length)})
             </span>
           </button>
@@ -819,10 +819,10 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             type="button"
             id="mobile-tab-inbound"
             onClick={() => handleSelectSubTab('inbound-receipts')}
-            className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+            className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all duration-200 active:scale-95 cursor-pointer relative ${
               activeSubTab === 'inbound-receipts'
-                ? 'bg-emerald-600 text-white shadow-xs font-bold'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
+                ? 'bg-gradient-to-b from-emerald-600 to-emerald-700 text-white shadow-xs font-black ring-1 ring-emerald-500/30'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold'
             }`}
           >
             <div className="relative">
@@ -833,8 +833,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                 </span>
               )}
             </div>
-            <span className="text-[10px] mt-0.5 whitespace-nowrap">حواله ورود</span>
-            <span className={`text-[8px] ${activeSubTab === 'inbound-receipts' ? 'text-emerald-100' : 'text-slate-400'}`}>
+            <span className="text-[10px] mt-0.5 whitespace-nowrap font-bold">حواله ورود</span>
+            <span className={`text-[8px] ${activeSubTab === 'inbound-receipts' ? 'text-emerald-100 font-bold' : 'text-slate-400'}`}>
               ({toPersianDigits(inboundReceipts.length)})
             </span>
           </button>
@@ -844,10 +844,10 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             type="button"
             id="mobile-tab-exit-slips"
             onClick={() => handleSelectSubTab('exit-slips')}
-            className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+            className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all duration-200 active:scale-95 cursor-pointer relative ${
               activeSubTab === 'exit-slips'
-                ? 'bg-indigo-600 text-white shadow-xs font-bold'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
+                ? 'bg-gradient-to-b from-indigo-600 to-indigo-700 text-white shadow-xs font-black ring-1 ring-indigo-500/30'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold'
             }`}
           >
             <div className="relative">
@@ -858,8 +858,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                 </span>
               )}
             </div>
-            <span className="text-[10px] mt-0.5 whitespace-nowrap">برگه خروج</span>
-            <span className={`text-[8px] ${activeSubTab === 'exit-slips' ? 'text-indigo-100' : 'text-slate-400'}`}>
+            <span className="text-[10px] mt-0.5 whitespace-nowrap font-bold">برگه خروج</span>
+            <span className={`text-[8px] ${activeSubTab === 'exit-slips' ? 'text-indigo-100 font-bold' : 'text-slate-400'}`}>
               ({toPersianDigits(invoices.length)})
             </span>
           </button>
@@ -869,22 +869,22 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             type="button"
             id="mobile-tab-direct-transfers"
             onClick={() => handleSelectSubTab('direct-transfers')}
-            className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+            className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all duration-200 active:scale-95 cursor-pointer relative ${
               activeSubTab === 'direct-transfers'
-                ? 'bg-amber-600 text-white shadow-xs font-bold'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
+                ? 'bg-gradient-to-b from-amber-600 to-amber-700 text-white shadow-xs font-black ring-1 ring-amber-500/30'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold'
             }`}
           >
             <div className="relative">
               <ArrowLeftRight className="w-4 h-4" />
               {activeDirectCount > 0 && (
-                <span className="absolute -top-1.5 -right-2 bg-amber-500 text-slate-950 text-[8px] font-black px-1 py-0.2 rounded-full shadow-xs animate-pulse">
+                <span className="absolute -top-1.5 -right-2 bg-amber-400 text-slate-950 text-[8px] font-black px-1 py-0.2 rounded-full shadow-xs animate-pulse">
                   {toPersianDigits(activeDirectCount)}
                 </span>
               )}
             </div>
-            <span className="text-[10px] mt-0.5 whitespace-nowrap">تعمیرات/امانی</span>
-            <span className={`text-[8px] ${activeSubTab === 'direct-transfers' ? 'text-amber-100' : 'text-slate-400'}`}>
+            <span className="text-[10px] mt-0.5 whitespace-nowrap font-bold">تعمیرات/امانی</span>
+            <span className={`text-[8px] ${activeSubTab === 'direct-transfers' ? 'text-amber-100 font-bold' : 'text-slate-400'}`}>
               ({toPersianDigits(directTransfers.length)})
             </span>
           </button>
@@ -894,15 +894,15 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             type="button"
             id="mobile-tab-movements"
             onClick={() => handleSelectSubTab('movements')}
-            className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer relative ${
+            className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-xl transition-all duration-200 active:scale-95 cursor-pointer relative ${
               activeSubTab === 'movements'
-                ? 'bg-slate-800 text-white shadow-xs font-bold'
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
+                ? 'bg-gradient-to-b from-slate-800 to-slate-900 text-white shadow-xs font-black ring-1 ring-slate-700/40'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-semibold'
             }`}
           >
             <History className="w-4 h-4" />
-            <span className="text-[10px] mt-0.5 whitespace-nowrap">کاردکس</span>
-            <span className={`text-[8px] ${activeSubTab === 'movements' ? 'text-slate-300' : 'text-slate-400'}`}>
+            <span className="text-[10px] mt-0.5 whitespace-nowrap font-bold">کاردکس</span>
+            <span className={`text-[8px] ${activeSubTab === 'movements' ? 'text-slate-300 font-bold' : 'text-slate-400'}`}>
               گردش
             </span>
           </button>
@@ -914,7 +914,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
         {/* Top Tier: Title & Single Compact Actions Dropdown Beside Title */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-            <span className="p-1.5 sm:p-2 rounded-xl bg-blue-50 text-blue-700 shrink-0 shadow-2xs">
+            <span className="p-1.5 sm:p-2 rounded-xl bg-blue-50 text-blue-700 shrink-0 shadow-2xs border border-blue-200/60">
               <PackageCheck className="w-4 h-4 sm:w-5 sm:h-5" />
             </span>
             <h2 className="text-sm sm:text-lg font-black text-slate-900 truncate">
@@ -1031,32 +1031,34 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
         </div>
 
         {/* Bottom Tier: Sub-Tab Navigation Bar (Desktop & Tablet) */}
-        <div className="hidden sm:flex border-t border-slate-100/90 pt-3.5 mt-3.5 items-center justify-between gap-3 overflow-x-auto no-scrollbar">
+        <div className="hidden sm:flex border-t border-slate-100/90 pt-3 mt-3 items-center justify-between gap-3 overflow-x-auto no-scrollbar">
           {/* Sub Tab Switcher */}
-          <div className="flex items-center bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/90 gap-1.5 shadow-2xs shrink-0">
+          <div className="flex items-center bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/80 gap-1.5 shadow-2xs shrink-0 w-full flex-wrap sm:flex-nowrap">
             {/* Tab 1: کالاها و موجودی */}
             <button
               id="subtab-items"
               onClick={() => handleSelectSubTab('items')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-98 ${
                 activeSubTab === 'items'
-                  ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 font-extrabold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-semibold'
+                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20 font-black ring-2 ring-blue-500/30 scale-[1.01]'
+                  : 'bg-white/70 hover:bg-white text-slate-700 font-bold hover:text-blue-700 border border-slate-200/60 shadow-2xs'
               }`}
             >
-              <Boxes className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'items' ? 'text-blue-600' : 'text-slate-400'}`} />
+              <Boxes className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'items' ? 'text-white' : 'text-blue-600'}`} />
               <span>کالاها و موجودی</span>
               <span
                 className={`text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors ${
                   activeSubTab === 'items'
-                    ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-500/20'
-                    : 'bg-slate-200/80 text-slate-600'
+                    ? 'bg-white/20 text-white font-extrabold'
+                    : 'bg-blue-50 text-blue-800 border border-blue-200/60'
                 }`}
               >
                 {toPersianDigits(products.length)}
               </span>
               {lowStockCount > 0 && (
-                <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-2xs">
+                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full shadow-2xs ${
+                  activeSubTab === 'items' ? 'bg-amber-400 text-amber-950' : 'bg-amber-500 text-white'
+                }`}>
                   {toPersianDigits(lowStockCount)} کسری
                 </span>
               )}
@@ -1066,19 +1068,19 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             <button
               id="subtab-inbound-receipts"
               onClick={() => handleSelectSubTab('inbound-receipts')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-98 ${
                 activeSubTab === 'inbound-receipts'
-                  ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 font-extrabold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-semibold'
+                  ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-500/20 font-black ring-2 ring-emerald-500/30 scale-[1.01]'
+                  : 'bg-white/70 hover:bg-white text-slate-700 font-bold hover:text-emerald-700 border border-slate-200/60 shadow-2xs'
               }`}
             >
-              <ArrowDownRight className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'inbound-receipts' ? 'text-emerald-600' : 'text-slate-400'}`} />
+              <ArrowDownRight className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'inbound-receipts' ? 'text-white' : 'text-emerald-600'}`} />
               <span>حواله‌های ورود کالا</span>
               <span
                 className={`text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors ${
                   activeSubTab === 'inbound-receipts'
-                    ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-500/20'
-                    : 'bg-slate-200/80 text-slate-600'
+                    ? 'bg-white/20 text-white font-extrabold'
+                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200/60'
                 }`}
               >
                 {toPersianDigits(inboundReceipts.length)}
@@ -1094,19 +1096,19 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             <button
               id="subtab-exit-slips"
               onClick={() => handleSelectSubTab('exit-slips')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-98 ${
                 activeSubTab === 'exit-slips'
-                  ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 font-extrabold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-semibold'
+                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/20 font-black ring-2 ring-indigo-500/30 scale-[1.01]'
+                  : 'bg-white/70 hover:bg-white text-slate-700 font-bold hover:text-indigo-700 border border-slate-200/60 shadow-2xs'
               }`}
             >
-              <Truck className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'exit-slips' ? 'text-indigo-600' : 'text-slate-400'}`} />
+              <Truck className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'exit-slips' ? 'text-white' : 'text-indigo-600'}`} />
               <span>برگه‌های خروج انبار</span>
               <span
                 className={`text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors ${
                   activeSubTab === 'exit-slips'
-                    ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-500/20'
-                    : 'bg-slate-200/80 text-slate-600'
+                    ? 'bg-white/20 text-white font-extrabold'
+                    : 'bg-indigo-50 text-indigo-800 border border-indigo-200/60'
                 }`}
               >
                 {toPersianDigits(invoices.length)}
@@ -1122,25 +1124,27 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             <button
               id="subtab-direct-transfers"
               onClick={() => handleSelectSubTab('direct-transfers')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-98 ${
                 activeSubTab === 'direct-transfers'
-                  ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 font-extrabold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-semibold'
+                  ? 'bg-amber-600 text-white shadow-sm shadow-amber-500/20 font-black ring-2 ring-amber-500/30 scale-[1.01]'
+                  : 'bg-white/70 hover:bg-white text-slate-700 font-bold hover:text-amber-700 border border-slate-200/60 shadow-2xs'
               }`}
             >
-              <ArrowLeftRight className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'direct-transfers' ? 'text-amber-600' : 'text-slate-400'}`} />
+              <ArrowLeftRight className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'direct-transfers' ? 'text-white' : 'text-amber-600'}`} />
               <span>خروج و ورود بدون فاکتور (امانی/تعمیرات)</span>
               <span
                 className={`text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors ${
                   activeSubTab === 'direct-transfers'
-                    ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-500/20'
-                    : 'bg-slate-200/80 text-slate-600'
+                    ? 'bg-white/20 text-white font-extrabold'
+                    : 'bg-amber-50 text-amber-800 border border-amber-200/60'
                 }`}
               >
                 {toPersianDigits(directTransfers.length)}
               </span>
               {activeDirectCount > 0 && (
-                <span className="bg-amber-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs animate-pulse">
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs animate-pulse ${
+                  activeSubTab === 'direct-transfers' ? 'bg-amber-300 text-amber-950' : 'bg-amber-500 text-white'
+                }`}>
                   {toPersianDigits(activeDirectCount)} بیرون انبار
                 </span>
               )}
@@ -1150,13 +1154,13 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             <button
               id="subtab-movements"
               onClick={() => handleSelectSubTab('movements')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-98 ${
                 activeSubTab === 'movements'
-                  ? 'bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5 font-extrabold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-semibold'
+                  ? 'bg-slate-800 text-white shadow-sm shadow-slate-800/20 font-black ring-2 ring-slate-700/30 scale-[1.01]'
+                  : 'bg-white/70 hover:bg-white text-slate-700 font-bold hover:text-slate-900 border border-slate-200/60 shadow-2xs'
               }`}
             >
-              <History className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'movements' ? 'text-purple-600' : 'text-slate-400'}`} />
+              <History className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'movements' ? 'text-white' : 'text-slate-600'}`} />
               <span>گردش و کاردکس</span>
             </button>
           </div>

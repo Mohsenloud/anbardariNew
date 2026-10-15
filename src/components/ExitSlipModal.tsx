@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Invoice, StoreSettings, AppUser, ExitSlipData } from '../types';
+import { Invoice, StoreSettings, AppUser, ExitSlipData, PrintLayoutSettings, DEFAULT_PRINT_LAYOUT } from '../types';
 import { toPersianDigits, getCurrentJalaliTime, toEnglishDigits } from '../utils/jalali';
 import { exportElementToPdf, printElementDirectly, printElementInNewWindow, generatePdfBlob } from '../utils/pdfHelper';
 import { StorageService } from '../utils/storage';
 import { TelegramSendPdfModal } from './TelegramSendPdfModal';
 import { formatExitSlipTelegramCaption } from '../utils/telegramService';
+import { getPrintLayoutCssVariables, getPrintLayoutCssRules } from '../utils/printLayoutHelper';
+import { InvoiceTableDimensionsPanel } from './InvoiceTableDimensionsPanel';
 import { 
   Printer, 
   X, 
@@ -32,7 +34,8 @@ import {
   Download,
   Truck,
   Warehouse,
-  Building2
+  Building2,
+  SlidersHorizontal
 } from 'lucide-react';
 import { ExitSlipDeliveryModal } from './ExitSlipDeliveryModal';
 import { SimpleExitSlipLayout } from './SimpleExitSlipLayout';
@@ -188,6 +191,25 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
     StorageService.saveExitSlipPrintPreferences({ orientation });
   }, [orientation]);
 
+  // Dimensions & layout settings panel state
+  const [isDimensionsPanelOpen, setIsDimensionsPanelOpen] = useState(false);
+  const [currentPrintLayout, setCurrentPrintLayout] = useState<PrintLayoutSettings>(() => {
+    return StorageService.getExitSlipPrintPreferences().printLayout || settings.printLayout || DEFAULT_PRINT_LAYOUT;
+  });
+
+  const handleSavePrintLayout = (layoutToSave: PrintLayoutSettings) => {
+    StorageService.saveExitSlipPrintPreferences({ printLayout: layoutToSave });
+    setCurrentPrintLayout(layoutToSave);
+    showNotification('تنظیمات ابعاد، فونت‌ها و رنگ‌های برگه خروج کالا به عنوان پیش‌فرض ذخیره شد.');
+  };
+
+  const handleResetPrintLayout = () => {
+    const reset = DEFAULT_PRINT_LAYOUT;
+    setCurrentPrintLayout(reset);
+    StorageService.saveExitSlipPrintPreferences({ printLayout: reset });
+    showNotification('تنظیمات چیدمان و ابعاد برگه خروج به حالت کارخانه‌ای بازگشت.');
+  };
+
   // Proportional layout helpers
   const isA5 = pageSize === 'a5';
   const isLandscape = orientation === 'landscape';
@@ -195,6 +217,14 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
   const isA5Portrait = isA5 && !isLandscape;
   const isA4Landscape = !isA5 && isLandscape;
   const isA4Portrait = !isA5 && !isLandscape;
+
+  const scaleRatio = isA5 ? (isLandscape ? 0.88 : 0.85) : (isLandscape ? 0.96 : 1.0);
+  const liveRowMinH = Math.max(18, Math.round((currentPrintLayout.tableRowMinHeight || 34) * scaleRatio));
+  const liveRowPy = Math.max(0, Math.round((currentPrintLayout.tableRowPaddingY ?? 6) * scaleRatio));
+  const liveCellPx = Math.max(2, Math.round((currentPrintLayout.tableCellPaddingX ?? 8) * scaleRatio));
+  const liveHeaderH = Math.max(24, Math.round(liveRowMinH * 1.08));
+  const liveTableBodyFontSize = Math.max(8, Math.round((currentPrintLayout.tableBodySize || 11) * scaleRatio));
+  const liveTableHeaderFontSize = Math.max(8, Math.round((currentPrintLayout.tableHeaderSize || 11) * scaleRatio));
 
   // Derive issuance time from invoice or fallback to current time
   const issuedTime = React.useMemo(() => {
@@ -742,10 +772,38 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                   <Share2 className="w-3.5 h-3.5 text-sky-400" />
                   <span className="hidden xs:inline">ارسال</span>
                 </button>
+
+                {/* Dimensions & Color Customizer Button */}
+                <button
+                  type="button"
+                  id="exit-slip-header-dimensions-btn"
+                  onClick={() => setIsDimensionsPanelOpen((prev) => !prev)}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                    isDimensionsPanelOpen
+                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
+                      : 'bg-slate-700 hover:bg-slate-600 text-slate-200 border-slate-600 hover:text-white'
+                  }`}
+                  title="تنظیمات پیشرفته ابعاد جدول، ارتفاع، فونت‌ها و رنگ پس‌زمینه برگه خروج"
+                >
+                  <SlidersHorizontal className={`w-3.5 h-3.5 ${isDimensionsPanelOpen ? 'text-white' : 'text-emerald-400'}`} />
+                  <span className="hidden xs:inline">{isDimensionsPanelOpen ? 'بستن ابعاد' : 'ابعاد و رنگ'}</span>
+                </button>
               </div>
 
             </div>
           </div>
+
+          {/* Interactive Table Dimensions and Color Customizer Panel */}
+          <InvoiceTableDimensionsPanel
+            isOpen={isDimensionsPanelOpen}
+            onClose={() => setIsDimensionsPanelOpen(false)}
+            layout={currentPrintLayout}
+            onChangeLayout={(newLayout) => setCurrentPrintLayout(newLayout)}
+            onSaveAsDefault={() => handleSavePrintLayout(currentPrintLayout)}
+            onResetToDefault={handleResetPrintLayout}
+            pageSize={pageSize}
+            orientation={orientation}
+          />
         </div>
 
         {/* STATUS NOTIFICATION BANNER */}
@@ -812,6 +870,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
 
         {/* Dynamic print stylesheet for selected paper size and orientation */}
         <style>{`
+          ${getPrintLayoutCssRules('#printable-exit-slip, .standard-exit-slip-layout, .simple-exit-slip-layout')}
+
           @media print {
             @page {
               size: ${pageSize.toUpperCase()} ${orientation} !important;
@@ -830,6 +890,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
               max-width: none !important;
               min-height: calc(100vh - ${isA5 ? '8mm' : '12mm'}) !important;
               height: calc(100vh - ${isA5 ? '8mm' : '12mm'}) !important;
+              background-color: ${currentPrintLayout.pageBgColor || '#ffffff'} !important;
+              background: ${currentPrintLayout.pageBgColor || '#ffffff'} !important;
               display: flex !important;
               flex-direction: column !important;
               justify-content: space-between !important;
@@ -852,6 +914,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             box-sizing: border-box !important;
             margin: 0 auto !important;
             overflow: visible !important;
+            background-color: ${currentPrintLayout.pageBgColor || '#ffffff'} !important;
+            background: ${currentPrintLayout.pageBgColor || '#ffffff'} !important;
           }
 
           /* === A4 PORTRAIT (210mm x 297mm - Ratio 1 : 1.414) === */
@@ -887,11 +951,6 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
           #printable-exit-slip.paper-a4.paper-portrait .exit-slip-table-box {
             margin-bottom: 12px !important;
             flex: 1 1 auto !important;
-          }
-          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-table-box table th,
-          #printable-exit-slip.paper-a4.paper-portrait .exit-slip-table-box table td {
-            padding: 7px 10px !important;
-            font-size: 12px !important;
           }
           #printable-exit-slip.paper-a4.paper-portrait .exit-slip-terms {
             padding: 10px 14px !important;
@@ -941,11 +1000,6 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             margin-bottom: 10px !important;
             flex: 1 1 auto !important;
           }
-          #printable-exit-slip.paper-a4.paper-landscape .exit-slip-table-box table th,
-          #printable-exit-slip.paper-a4.paper-landscape .exit-slip-table-box table td {
-            padding: 6px 8px !important;
-            font-size: 11.5px !important;
-          }
           #printable-exit-slip.paper-a4.paper-landscape .signature-box {
             min-height: 72px !important;
             height: auto !important;
@@ -990,11 +1044,6 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
           #printable-exit-slip.paper-a5.paper-portrait .exit-slip-table-box {
             margin-bottom: 8px !important;
             flex: 1 1 auto !important;
-          }
-          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-table-box table th,
-          #printable-exit-slip.paper-a5.paper-portrait .exit-slip-table-box table td {
-            padding: 4px 6px !important;
-            font-size: 10.5px !important;
           }
           #printable-exit-slip.paper-a5.paper-portrait .exit-slip-terms {
             padding: 6px 10px !important;
@@ -1053,11 +1102,6 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
             padding: 3px 8px !important;
             font-size: 9.5px !important;
           }
-          #printable-exit-slip.paper-a5.paper-landscape .exit-slip-table-box table th,
-          #printable-exit-slip.paper-a5.paper-landscape .exit-slip-table-box table td {
-            padding: 2.5px 5px !important;
-            font-size: 9.5px !important;
-          }
           #printable-exit-slip.paper-a5.paper-landscape .exit-slip-terms {
             padding: 4px 8px !important;
             margin-bottom: 6px !important;
@@ -1095,10 +1139,120 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
         `}</style>
 
         {/* PRINTABLE SLIP CONTENT VIEW (Scrollable on screen, Full page on Print) */}
-        <div className="flex-1 overflow-y-auto p-2.5 sm:p-5 md:p-8 bg-slate-100/70 print:p-0 print:bg-white flex justify-center items-start">
+        <div className="flex-1 overflow-y-auto p-2.5 sm:p-5 md:p-8 bg-slate-100/70 print:p-0 print:bg-white flex flex-col items-center">
+          {/* Quick interactive toolbar right above paper in preview */}
+          <div className="no-print max-w-[840px] w-full mb-2.5 flex flex-wrap items-center justify-between gap-2 text-xs px-1">
+            <span className="text-slate-500 text-[11px] font-medium flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>پیش‌نمایش برگه خروج ({pageSize.toUpperCase()} {orientation === 'portrait' ? 'عمودی' : 'افقی'})</span>
+            </span>
+
+            <div className="flex items-center gap-2">
+              {/* Quick Font Size Controls */}
+              <div className="inline-flex items-center gap-1 bg-white border border-slate-300 rounded-lg px-2 py-0.5 shadow-3xs text-[11px]">
+                <span className="text-slate-500 font-medium">فونت:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextBody = Math.max(8, (currentPrintLayout.tableBodySize || 11) - 1);
+                    const nextHdr = Math.max(8, (currentPrintLayout.tableHeaderSize || 11) - 1);
+                    const nextBase = Math.max(8, (currentPrintLayout.baseFontSize || 12) - 1);
+                    setCurrentPrintLayout((prev) => ({ ...prev, tableBodySize: nextBody, tableHeaderSize: nextHdr, baseFontSize: nextBase }));
+                  }}
+                  className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                  title="کاهش سایز فونت"
+                >
+                  -
+                </button>
+                <span className="font-mono font-bold text-slate-800 px-1">
+                  {toPersianDigits(currentPrintLayout.tableBodySize || 11)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextBody = Math.min(18, (currentPrintLayout.tableBodySize || 11) + 1);
+                    const nextHdr = Math.min(18, (currentPrintLayout.tableHeaderSize || 11) + 1);
+                    const nextBase = Math.min(18, (currentPrintLayout.baseFontSize || 12) + 1);
+                    setCurrentPrintLayout((prev) => ({ ...prev, tableBodySize: nextBody, tableHeaderSize: nextHdr, baseFontSize: nextBase }));
+                  }}
+                  className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                  title="افزایش سایز فونت"
+                >
+                  +
+                </button>
+              </div>
+
+              {/* Quick Row Height Controls */}
+              <div className="inline-flex items-center gap-1 bg-white border border-slate-300 rounded-lg px-2 py-0.5 shadow-3xs text-[11px]">
+                <span className="text-slate-500 font-medium">ارتفاع ردیف:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextH = Math.max(18, (currentPrintLayout.tableRowMinHeight || 34) - 2);
+                    const nextPy = Math.max(0, Math.min(22, Math.round((nextH - 18) * 0.35)));
+                    setCurrentPrintLayout((prev) => ({ ...prev, tableRowMinHeight: nextH, tableRowPaddingY: nextPy }));
+                  }}
+                  className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                  title="کاهش ارتفاع ردیف‌ها"
+                >
+                  -
+                </button>
+                <span className="font-mono font-bold text-slate-800 px-1">
+                  {toPersianDigits(currentPrintLayout.tableRowMinHeight || 34)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextH = Math.min(85, (currentPrintLayout.tableRowMinHeight || 34) + 2);
+                    const nextPy = Math.max(0, Math.min(22, Math.round((nextH - 18) * 0.35)));
+                    setCurrentPrintLayout((prev) => ({ ...prev, tableRowMinHeight: nextH, tableRowPaddingY: nextPy }));
+                  }}
+                  className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                  title="افزایش ارتفاع ردیف‌ها"
+                >
+                  +
+                </button>
+              </div>
+
+              {/* Full Dimensions & Typography Panel Toggle */}
+              <button
+                type="button"
+                onClick={() => setIsDimensionsPanelOpen((prev) => !prev)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border font-bold text-xs transition-all cursor-pointer shadow-2xs ${
+                  isDimensionsPanelOpen
+                    ? 'bg-emerald-600 border-emerald-500 text-white shadow-xs'
+                    : 'bg-white hover:bg-emerald-50 border-slate-300 hover:border-emerald-400 text-slate-700 hover:text-emerald-700'
+                }`}
+                title="باز کردن پنل تنظیم کامل ابعاد و رنگ‌ها"
+              >
+                <SlidersHorizontal className={`w-3.5 h-3.5 ${isDimensionsPanelOpen ? 'text-white' : 'text-emerald-600'}`} />
+                <span>{isDimensionsPanelOpen ? 'بستن تنظیمات ابعاد' : 'تنظیمات ابعاد و رنگ'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Interactive Table Dimensions Panel */}
+          <div className="no-print max-w-[840px] w-full mb-3">
+            <InvoiceTableDimensionsPanel
+              isOpen={isDimensionsPanelOpen}
+              onClose={() => setIsDimensionsPanelOpen(false)}
+              layout={currentPrintLayout}
+              onChangeLayout={(newLayout) => setCurrentPrintLayout(newLayout)}
+              onSaveAsDefault={() => handleSavePrintLayout(currentPrintLayout)}
+              onResetToDefault={handleResetPrintLayout}
+              pageSize={pageSize}
+              orientation={orientation}
+            />
+          </div>
+
           <div 
             id="printable-exit-slip"
-            className={`print-container bg-white border border-slate-300 rounded-2xl text-slate-900 shadow-sm print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none w-full transition-all flex flex-col justify-between ${
+            style={{
+              ...(getPrintLayoutCssVariables(currentPrintLayout, pageSize, orientation)),
+              backgroundColor: currentPrintLayout.pageBgColor || '#ffffff',
+              background: currentPrintLayout.pageBgColor || '#ffffff'
+            }}
+            className={`print-container print-white-bg border border-slate-300 rounded-2xl text-slate-900 shadow-sm print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:rounded-none w-full transition-all flex flex-col justify-between ${
               isA5 ? 'paper-a5' : 'paper-a4'
             } ${isLandscape ? 'paper-landscape' : 'paper-portrait'}`}
           >
@@ -1359,57 +1513,224 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
               </div>
 
               <div className="overflow-x-visible sm:overflow-x-auto">
-                <table className="w-full text-right border-collapse text-xs">
+                <table className="w-full text-right border-collapse text-xs border border-slate-300">
                   <thead>
-                    <tr className="bg-slate-50 text-slate-700 border-b border-slate-300 font-bold text-[11px] sm:text-xs">
-                      <th className="py-2 px-1.5 text-center w-9 border-l border-slate-200">ردیف</th>
-                      <th className="py-2 px-1.5 text-center w-20 border-l border-slate-200">کد کالا</th>
-                      <th className="py-2 px-2.5 border-l border-slate-200" style={{ height: '42px' }}>شرح کالا و مشخصات فنی</th>
-                      <th className="py-2 px-1.5 text-center w-14 border-l border-slate-200">واحد</th>
-                      <th className="py-2 px-1.5 text-center w-20 border-l border-slate-200 bg-slate-100 font-black">
+                    <tr 
+                      className="bg-slate-100 text-slate-900 font-bold"
+                      style={{ height: `${liveHeaderH}px` }}
+                    >
+                      <th 
+                        className="border-l border-slate-300 text-center align-middle" 
+                        style={{ 
+                          width: `${currentPrintLayout.colWidthIndex ? Math.round(currentPrintLayout.colWidthIndex * scaleRatio) : 38}px`,
+                          minWidth: `${currentPrintLayout.colWidthIndex ? Math.round(currentPrintLayout.colWidthIndex * scaleRatio) : 38}px`,
+                          height: `${liveHeaderH}px`,
+                          paddingTop: `${liveRowPy}px`,
+                          paddingBottom: `${liveRowPy}px`,
+                          paddingLeft: `${liveCellPx}px`,
+                          paddingRight: `${liveCellPx}px`,
+                          fontSize: `${liveTableHeaderFontSize - 1.5}px`
+                        }}
+                      >
+                        ردیف
+                      </th>
+                      <th 
+                        className="border-l border-slate-300 text-center align-middle" 
+                        style={{ 
+                          width: `${currentPrintLayout.colWidthCode ? Math.round(currentPrintLayout.colWidthCode * scaleRatio) : 75}px`,
+                          minWidth: `${currentPrintLayout.colWidthCode ? Math.round(currentPrintLayout.colWidthCode * scaleRatio) : 75}px`,
+                          height: `${liveHeaderH}px`,
+                          paddingTop: `${liveRowPy}px`,
+                          paddingBottom: `${liveRowPy}px`,
+                          paddingLeft: `${liveCellPx}px`,
+                          paddingRight: `${liveCellPx}px`,
+                          fontSize: `${liveTableHeaderFontSize}px`
+                        }}
+                      >
+                        کد کالا
+                      </th>
+                      <th 
+                        className="border-l border-slate-300 align-middle" 
+                        style={{ 
+                          height: `${liveHeaderH}px`,
+                          paddingTop: `${liveRowPy}px`,
+                          paddingBottom: `${liveRowPy}px`,
+                          paddingLeft: `${liveCellPx}px`,
+                          paddingRight: `${liveCellPx}px`,
+                          fontSize: `${liveTableHeaderFontSize}px`
+                        }}
+                      >
+                        شرح کالا و مشخصات فنی
+                      </th>
+                      <th 
+                        className="border-l border-slate-300 text-center align-middle" 
+                        style={{ 
+                          width: `${currentPrintLayout.colWidthUnit ? Math.round(currentPrintLayout.colWidthUnit * scaleRatio) : 55}px`,
+                          minWidth: `${currentPrintLayout.colWidthUnit ? Math.round(currentPrintLayout.colWidthUnit * scaleRatio) : 55}px`,
+                          height: `${liveHeaderH}px`,
+                          paddingTop: `${liveRowPy}px`,
+                          paddingBottom: `${liveRowPy}px`,
+                          paddingLeft: `${liveCellPx}px`,
+                          paddingRight: `${liveCellPx}px`,
+                          fontSize: `${liveTableHeaderFontSize}px`
+                        }}
+                      >
+                        واحد
+                      </th>
+                      <th 
+                        className="border-l border-slate-300 text-center align-middle bg-slate-200/80 font-black" 
+                        style={{ 
+                          width: `${currentPrintLayout.colWidthQty ? Math.round(currentPrintLayout.colWidthQty * scaleRatio) : 75}px`,
+                          minWidth: `${currentPrintLayout.colWidthQty ? Math.round(currentPrintLayout.colWidthQty * scaleRatio) : 75}px`,
+                          height: `${liveHeaderH}px`,
+                          paddingTop: `${liveRowPy}px`,
+                          paddingBottom: `${liveRowPy}px`,
+                          paddingLeft: `${liveCellPx}px`,
+                          paddingRight: `${liveCellPx}px`,
+                          fontSize: `${liveTableHeaderFontSize}px`
+                        }}
+                      >
                         تعداد حواله
                       </th>
-                      <th className="py-2 px-1.5 text-center w-20 border-l border-slate-200">تعداد تحویلی</th>
-                      <th className="py-2 px-1.5 text-center w-14">کنترل سلامت</th>
+                      <th 
+                        className="border-l border-slate-300 text-center align-middle font-bold" 
+                        style={{ 
+                          width: `${currentPrintLayout.colWidthQty ? Math.round(currentPrintLayout.colWidthQty * scaleRatio) : 75}px`,
+                          minWidth: `${currentPrintLayout.colWidthQty ? Math.round(currentPrintLayout.colWidthQty * scaleRatio) : 75}px`,
+                          height: `${liveHeaderH}px`,
+                          paddingTop: `${liveRowPy}px`,
+                          paddingBottom: `${liveRowPy}px`,
+                          paddingLeft: `${liveCellPx}px`,
+                          paddingRight: `${liveCellPx}px`,
+                          fontSize: `${liveTableHeaderFontSize}px`
+                        }}
+                      >
+                        تعداد تحویلی
+                      </th>
+                      <th 
+                        className="text-center align-middle" 
+                        style={{ 
+                          width: '65px',
+                          minWidth: '65px',
+                          height: `${liveHeaderH}px`,
+                          paddingTop: `${liveRowPy}px`,
+                          paddingBottom: `${liveRowPy}px`,
+                          paddingLeft: `${liveCellPx}px`,
+                          paddingRight: `${liveCellPx}px`,
+                          fontSize: `${liveTableHeaderFontSize - 0.5}px`
+                        }}
+                      >
+                        کنترل سلامت
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
                     {physicalItems.map((item, index) => (
                       <tr
                         key={item.id || index}
-                        className={`${
+                        className={`border-b border-slate-200 ${
                           index % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'
                         } hover:bg-slate-100/60 transition-colors`}
+                        style={{ height: `${liveRowMinH}px` }}
                       >
-                        <td className="py-2 px-1.5 text-center font-['Vazirmatn'] border-l border-slate-200 text-slate-500 font-bold text-[11px]">
+                        <td 
+                          className="border-l border-slate-200 text-center align-middle font-['Vazirmatn'] text-slate-500 font-bold" 
+                          style={{ 
+                            height: `${liveRowMinH}px`,
+                            paddingTop: `${liveRowPy}px`,
+                            paddingBottom: `${liveRowPy}px`,
+                            paddingLeft: `${liveCellPx}px`,
+                            paddingRight: `${liveCellPx}px`,
+                            fontSize: `${liveTableBodyFontSize}px`
+                          }}
+                        >
                           {toPersianDigits(index + 1)}
                         </td>
-                        <td className="py-2 px-1.5 text-center font-['Vazirmatn'] text-slate-700 border-l border-slate-200 text-[11px] font-mono">
+                        <td 
+                          className="border-l border-slate-200 text-center align-middle font-['Vazirmatn'] text-slate-700 font-mono" 
+                          style={{ 
+                            height: `${liveRowMinH}px`,
+                            paddingTop: `${liveRowPy}px`,
+                            paddingBottom: `${liveRowPy}px`,
+                            paddingLeft: `${liveCellPx}px`,
+                            paddingRight: `${liveCellPx}px`,
+                            fontSize: `${liveTableBodyFontSize}px`
+                          }}
+                        >
                           {toPersianDigits(item.productCode || (item.productId ? item.productId.replace('prod-', '') : '—'))}
                         </td>
                         <td 
-                          className="py-2 px-2.5 font-bold text-slate-900 border-l border-slate-200 text-xs"
-                          style={index === 0 ? { height: '36px' } : undefined}
+                          className="border-l border-slate-200 font-bold text-slate-900 align-middle"
+                          style={{
+                            height: `${liveRowMinH}px`,
+                            paddingTop: `${liveRowPy}px`,
+                            paddingBottom: `${liveRowPy}px`,
+                            paddingLeft: `${liveCellPx}px`,
+                            paddingRight: `${liveCellPx}px`,
+                            fontSize: `${liveTableBodyFontSize}px`
+                          }}
                         >
                           <span>{item.productName}</span>
                           {item.variantName && (
-                            <span className="text-slate-500 font-normal mr-1.5 text-[10.5px]">
+                            <span 
+                              className="text-slate-500 font-normal mr-1.5" 
+                              style={{ fontSize: `${Math.max(7.5, liveTableBodyFontSize - 1)}px` }}
+                            >
                               ({item.variantName})
                             </span>
                           )}
                         </td>
-                        <td className="py-2 px-1.5 text-center text-slate-600 border-l border-slate-200 text-[11px]">
+                        <td 
+                          className="border-l border-slate-200 text-center align-middle text-slate-600" 
+                          style={{ 
+                            height: `${liveRowMinH}px`,
+                            paddingTop: `${liveRowPy}px`,
+                            paddingBottom: `${liveRowPy}px`,
+                            paddingLeft: `${liveCellPx}px`,
+                            paddingRight: `${liveCellPx}px`,
+                            fontSize: `${liveTableBodyFontSize}px`
+                          }}
+                        >
                           {item.unit || 'عدد'}
                         </td>
-                        <td className="py-2 px-1.5 text-center font-['Vazirmatn'] font-black text-slate-900 text-xs sm:text-sm bg-slate-50/60 border-l border-slate-200">
+                        <td 
+                          className="border-l border-slate-200 text-center align-middle font-['Vazirmatn'] font-black text-slate-900 bg-slate-50/60" 
+                          style={{ 
+                            height: `${liveRowMinH}px`,
+                            paddingTop: `${liveRowPy}px`,
+                            paddingBottom: `${liveRowPy}px`,
+                            paddingLeft: `${liveCellPx}px`,
+                            paddingRight: `${liveCellPx}px`,
+                            fontSize: `${liveTableBodyFontSize}px`
+                          }}
+                        >
                           {toPersianDigits(item.quantity)}
                         </td>
-                        <td className="py-2 px-1.5 text-center border-l border-slate-200">
-                          <span className="font-['Vazirmatn'] font-bold text-slate-800 text-xs sm:text-sm">
+                        <td 
+                          className="border-l border-slate-200 text-center align-middle"
+                          style={{ 
+                            height: `${liveRowMinH}px`,
+                            paddingTop: `${liveRowPy}px`,
+                            paddingBottom: `${liveRowPy}px`,
+                            paddingLeft: `${liveCellPx}px`,
+                            paddingRight: `${liveCellPx}px`,
+                            fontSize: `${liveTableBodyFontSize + 0.5}px`
+                          }}
+                        >
+                          <span className="font-['Vazirmatn'] font-bold text-slate-800">
                             {toPersianDigits(item.quantity)}
                           </span>
                         </td>
-                        <td className="py-2 px-1.5 text-center">
+                        <td 
+                          className="text-center align-middle"
+                          style={{ 
+                            height: `${liveRowMinH}px`,
+                            paddingTop: `${liveRowPy}px`,
+                            paddingBottom: `${liveRowPy}px`,
+                            paddingLeft: `${liveCellPx}px`,
+                            paddingRight: `${liveCellPx}px`
+                          }}
+                        >
                           <div className="w-4 h-4 border border-slate-400 rounded-xs mx-auto flex items-center justify-center text-[10px] text-emerald-600 font-bold">
                             ✓
                           </div>
@@ -1419,13 +1740,31 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                   </tbody>
                   <tfoot>
                     <tr className="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900 text-xs">
-                      <td colSpan={4} className="py-2 px-2.5 text-left border-l border-slate-300" style={{ height: '30px' }}>
+                      <td 
+                        colSpan={4} 
+                        className="py-2 px-2.5 text-left border-l border-slate-300 align-middle" 
+                        style={{ 
+                          height: `${Math.round(liveRowMinH * 0.9)}px`,
+                          fontSize: `${liveTableBodyFontSize + 0.5}px`
+                        }}
+                      >
                         مجموع کل اقلام فیزیکی تحویل شده:
                       </td>
-                      <td className="py-2 px-1.5 text-center font-['Vazirmatn'] font-black text-xs sm:text-sm text-emerald-800 bg-emerald-50 border-l border-slate-300">
+                      <td 
+                        className="py-2 px-1.5 text-center font-['Vazirmatn'] font-black text-emerald-800 bg-emerald-50 border-l border-slate-300 align-middle" 
+                        style={{ 
+                          fontSize: `${liveTableBodyFontSize + 2}px` 
+                        }}
+                      >
                         {toPersianDigits(totalUnits)}
                       </td>
-                      <td colSpan={2} className="py-2 px-2.5 text-slate-600 text-[11px]">
+                      <td 
+                        colSpan={2} 
+                        className="py-2 px-2.5 text-slate-600 align-middle" 
+                        style={{ 
+                          fontSize: `${liveTableBodyFontSize}px` 
+                        }}
+                      >
                         ({toPersianDigits(physicalItems.length)} ردیف کالایی)
                       </td>
                     </tr>
@@ -1456,33 +1795,33 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
               )}
             </div>
 
-            {/* Official Signatures & Approvals Grid (1: انباردار | 2: خودرو یا ماشین | 3: تحویل گیرنده یا کارفرما) */}
+            {/* Signatures Grid */}
             <div className="exit-slip-signatures grid grid-cols-3 gap-2 sm:gap-3.5 pt-2 border-t border-slate-300 text-center text-xs">
               
-              {/* امضای اول: انباردار */}
+              {/* انباردار */}
               <div className="signature-box bg-slate-50/80 border border-slate-300 rounded-xl p-2.5 flex flex-col justify-between min-h-[96px]">
                 <div>
-                  <div className="inline-block bg-slate-900 text-white text-[10.5px] font-bold px-2 py-0.5 rounded-md mb-1">
-                    امضای اول: انباردار
+                  <div className="font-bold text-slate-900">
+                    <span style={{ fontSize: '10px' }}>انباردار: </span>
+                    <span className="font-semibold text-slate-800" style={{ fontSize: '12px' }}>
+                      {settings.originWarehouseManager || currentUser?.fullName || 'متصدی انبار'}
+                    </span>
                   </div>
-                  <span className="signature-box-title font-bold text-slate-900 block text-xs">
-                    {settings.originWarehouseManager || currentUser?.fullName || 'متصدی و مسئول انبار'}
-                  </span>
                 </div>
                 <div className="signature-box-line border-t border-dashed border-slate-400 pt-1 text-[9.5px] text-slate-500 font-medium">
                   امضا، مهر و تایید خروج فیزیکی کالا
                 </div>
               </div>
 
-              {/* امضای دوم: خودرو یا ماشین (راننده / حامل بار) */}
+              {/* خودرو / راننده */}
               <div className="signature-box bg-slate-50/80 border border-slate-300 rounded-xl p-2.5 flex flex-col justify-between min-h-[96px]">
                 <div>
-                  <div className="inline-block bg-blue-900 text-white text-[10.5px] font-bold px-2 py-0.5 rounded-md mb-1">
-                    امضای دوم: خودرو یا ماشین
+                  <div className="font-bold text-slate-900">
+                    <span style={{ fontSize: '10px' }}>خودرو / راننده: </span>
+                    <span className="font-semibold text-slate-800" style={{ fontSize: '12px' }}>
+                      {slipLog.receiverName || 'متصدی خودرو'}
+                    </span>
                   </div>
-                  <span className="signature-box-title font-bold text-slate-900 block text-xs">
-                    {slipLog.receiverName ? `راننده: ${slipLog.receiverName}` : 'راننده و متصدی خودرو'}
-                  </span>
                   {slipLog.vehicleInfo && (
                     <span className="signature-box-subtitle text-[10px] text-slate-700 block mt-0.5 font-medium">
                       {slipLog.vehicleInfo}
@@ -1494,15 +1833,15 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                 </div>
               </div>
 
-              {/* امضای سوم: تحویل‌گیرنده یا کارفرما */}
+              {/* تحویل‌گیرنده / خریدار */}
               <div className="signature-box bg-slate-50/80 border border-slate-300 rounded-xl p-2.5 flex flex-col justify-between min-h-[96px]">
                 <div>
-                  <div className="inline-block bg-emerald-900 text-white text-[10.5px] font-bold px-2 py-0.5 rounded-md mb-1">
-                    امضای سوم: تحویل‌گیرنده یا کارفرما
+                  <div className="font-bold text-slate-900">
+                    <span style={{ fontSize: '10px' }}>تحویل‌گیرنده / خریدار: </span>
+                    <span className="font-semibold text-slate-800" style={{ fontSize: '12px' }}>
+                      {invoice.customerName || 'کارفرما / مشتری محترم'}
+                    </span>
                   </div>
-                  <span className="signature-box-title font-bold text-slate-900 block text-xs">
-                    {invoice.customerName || 'کارفرما / مشتری محترم'}
-                  </span>
                   {invoice.customerPhone && (
                     <span className="signature-box-subtitle text-[10px] text-slate-700 block mt-0.5 font-['Vazirmatn']">
                       تلفن: {toPersianDigits(invoice.customerPhone)}
@@ -1514,29 +1853,6 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                 </div>
               </div>
 
-            </div>
-
-            {/* Document Tracking Bar */}
-            <div className="exit-slip-tracking flex items-center justify-between text-[10px] text-slate-400 pt-3 mt-3 border-t border-slate-200 font-['Vazirmatn']">
-              <div>
-                <span>شناسه سند: </span>
-                <span className="font-mono text-slate-600 font-bold">{slipNumber}</span>
-                {slipLog?.slipNumber && invoice.invoiceNumber && slipLog.slipNumber !== invoice.invoiceNumber && (
-                  <span className="text-slate-500 mr-1"> (فاکتور {toPersianDigits(invoice.invoiceNumber)})</span>
-                )}
-                <span className="mx-1.5">•</span>
-                <span>نوبت چاپ: {toPersianDigits(slipLog.printCount + 1)}</span>
-                <span className="mx-1.5">•</span>
-                <span>زمان صدور: {toPersianDigits(invoice.date)} - ساعت {toPersianDigits(issuedTime)}</span>
-                <span className="mx-1.5">•</span>
-                <span>قالب: {pageSize.toUpperCase()} ({orientation === 'portrait' ? 'عمودی' : 'افقی'})</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {slipLog.lastPrintedAt && (
-                  <span>آخرین چاپ: {toPersianDigits(slipLog.lastPrintedAt)}</span>
-                )}
-                <span>صادرکننده: {currentUser?.fullName || 'انباردار'}</span>
-              </div>
             </div>
             </div>
           )}

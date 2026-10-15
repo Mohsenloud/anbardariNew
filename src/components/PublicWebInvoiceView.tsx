@@ -607,7 +607,7 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
             {/* Printable Digital Invoice Container */}
             <div
               id="public-web-invoice-container"
-              className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-8 space-y-6 print:p-0 print:border-none print:shadow-none"
+              className="print-white-bg bg-white rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-8 space-y-6 print:p-0 print:border-none print:shadow-none"
             >
               {/* 1. Official Header */}
               <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between pb-6 border-b border-slate-200 gap-4 text-center sm:text-right">

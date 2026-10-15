@@ -26,7 +26,8 @@ import {
   PublicCustomerRemittance,
   PublicCustomerDeposit,
   PublicCustomerLedger,
-  DEFAULT_PRINT_LAYOUT
+  DEFAULT_PRINT_LAYOUT,
+  PrintLayoutSettings
 } from '../types';
 import { getCurrentJalaliDate, getCurrentJalaliTime } from './jalali';
 import {
@@ -84,6 +85,7 @@ export interface ExitSlipPrintPreferences {
   template: 'standard' | 'simple';
   pageSize: 'a4' | 'a5';
   orientation: 'portrait' | 'landscape';
+  printLayout?: PrintLayoutSettings;
 }
 
 export interface ExportModalPreferences {
@@ -2631,6 +2633,7 @@ export const StorageService = {
     let template: 'standard' | 'simple' = settings.defaultExitSlipTemplate || 'standard';
     let pageSize: 'a4' | 'a5' = 'a4';
     let orientation: 'portrait' | 'landscape' = 'portrait';
+    let printLayout: PrintLayoutSettings = settings.printLayout || DEFAULT_PRINT_LAYOUT;
 
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.EXIT_SLIP_PRINT_PREFERENCES);
@@ -2640,6 +2643,7 @@ export const StorageService = {
           if (parsed.template) template = parsed.template;
           if (parsed.pageSize) pageSize = parsed.pageSize;
           if (parsed.orientation) orientation = parsed.orientation;
+          if (parsed.printLayout) printLayout = { ...DEFAULT_PRINT_LAYOUT, ...parsed.printLayout };
         }
       } else {
         const legTpl = localStorage.getItem('exit_slip_template');
@@ -2648,10 +2652,16 @@ export const StorageService = {
         if (legSize === 'a4' || legSize === 'a5') pageSize = legSize;
         const legOrient = localStorage.getItem('exit_slip_orientation');
         if (legOrient === 'portrait' || legOrient === 'landscape') orientation = legOrient;
+        const legLayout = localStorage.getItem('exit_slip_print_layout');
+        if (legLayout) {
+          try {
+            printLayout = { ...DEFAULT_PRINT_LAYOUT, ...JSON.parse(legLayout) };
+          } catch {}
+        }
       }
     } catch {}
 
-    return { template, pageSize, orientation };
+    return { template, pageSize, orientation, printLayout };
   },
 
   saveExitSlipPrintPreferences(prefs: Partial<ExitSlipPrintPreferences>): void {
@@ -2662,6 +2672,7 @@ export const StorageService = {
       if (prefs.template) localStorage.setItem('exit_slip_template', prefs.template);
       if (prefs.pageSize) localStorage.setItem('exit_slip_paper_size', prefs.pageSize);
       if (prefs.orientation) localStorage.setItem('exit_slip_orientation', prefs.orientation);
+      if (prefs.printLayout) localStorage.setItem('exit_slip_print_layout', JSON.stringify(prefs.printLayout));
     } catch (e) {
       console.warn('Failed to save exit slip print preferences:', e);
     }
