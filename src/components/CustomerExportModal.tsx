@@ -550,29 +550,30 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
         dir="rtl"
       >
         {/* Modal Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-800 bg-slate-900 text-white flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
-              <FileSpreadsheet className="w-5 h-5 stroke-[2.2]" />
+        <div className="px-3.5 py-2.5 sm:px-5 sm:py-4 border-b border-slate-800 bg-slate-900 text-white flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
+              <FileSpreadsheet className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
             </div>
-            <div>
-              <h2 className="text-sm sm:text-base font-black text-white flex items-center gap-2 flex-wrap">
-                <span>اکسپورت اکسل و PDF فاکتورها و حواله‌های خروج</span>
-                <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
-                  {toPersianDigits(filteredCustomerInvoices.length)} سند ({toPersianDigits(detailedReportItems.length)} سطر)
+            <div className="min-w-0">
+              <h2 className="text-xs sm:text-base font-black text-white flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <span className="truncate">اکسپورت اکسل و PDF فاکتورها و حواله‌ها</span>
+                <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30 shrink-0 font-mono">
+                  <span className="sm:hidden">{toPersianDigits(filteredCustomerInvoices.length)} سند</span>
+                  <span className="hidden sm:inline">{toPersianDigits(filteredCustomerInvoices.length)} سند ({toPersianDigits(detailedReportItems.length)} سطر)</span>
                 </span>
               </h2>
-              <p className="text-xs text-slate-300 mt-0.5">
+              <p className="hidden sm:block text-xs text-slate-300 mt-0.5 truncate">
                 تنظیم خروجی‌های رسمی، اکسل گزارش‌گیری و فایل PDF حواله‌های انبار یا فاکتورها
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0 mr-1 sm:mr-0"
             title="بستن"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
 
@@ -1196,69 +1197,76 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 border-t border-slate-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-          <div className="text-xs text-slate-600 flex items-center gap-2">
+        <div className="p-3 sm:p-4 border-t border-slate-200 bg-slate-50/80 sm:bg-white flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
+          <div className="text-xs text-slate-600 flex items-center justify-between sm:justify-start gap-2 px-1 sm:px-0">
             <span>
               {isAllCustomers ? (
-                <>مجموع کل: <strong className="text-slate-900">{toPersianDigits(filteredCustomerInvoices.length)} سند</strong> ({toPersianDigits(detailedReportItems.length)} قلم کالا)</>
+                <>مجموع: <strong className="text-slate-900">{toPersianDigits(filteredCustomerInvoices.length)} سند</strong> ({toPersianDigits(detailedReportItems.length)} قلم کالا)</>
               ) : currentCustomer ? (
                 <>طرف حساب: <strong className="text-slate-900">{currentCustomer.name}</strong> ({toPersianDigits(filteredCustomerInvoices.length)} سند)</>
               ) : null}
             </span>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap justify-end">
-            <button
-              id="cancel-customer-export-btn"
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl transition-colors cursor-pointer"
-            >
-              بستن
-            </button>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+            {/* Primary Export Buttons: 2 Equal Columns on Mobile */}
+            <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center order-1 sm:order-2">
+              {/* PDF Preview & Export Button */}
+              <button
+                id="download-customer-pdf-btn"
+                type="button"
+                onClick={() => setIsPdfPreviewOpen(true)}
+                disabled={detailedReportItems.length === 0}
+                className={`w-full sm:w-auto px-3.5 sm:px-4 py-2.5 sm:py-2 text-xs font-black text-white rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:bg-slate-300 disabled:cursor-not-allowed ${
+                  reportType === 'exit_slips'
+                    ? 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800'
+                    : 'bg-indigo-700 hover:bg-indigo-800 active:bg-indigo-900'
+                }`}
+                title="پیش‌نمایش کامل برگه و صدور فایل PDF"
+              >
+                <Eye className="w-4 h-4 shrink-0" />
+                <span className="truncate">پیش‌نمایش و PDF</span>
+              </button>
 
-            {/* Print Button */}
-            <button
-              id="print-customer-report-btn"
-              type="button"
-              onClick={handlePrint}
-              disabled={detailedReportItems.length === 0}
-              className="px-3.5 py-2 text-xs font-bold text-slate-800 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-2xs"
-              title="پیش‌نمایش و چاپ مستقیم بر روی کاغذ A4"
-            >
-              <Printer className="w-4 h-4 text-slate-600" />
-              <span>چاپ مستقیم</span>
-            </button>
+              {/* Excel Export Button */}
+              <button
+                id="download-customer-excel-btn"
+                type="button"
+                onClick={handleExportExcel}
+                disabled={filteredCustomerInvoices.length === 0}
+                className="w-full sm:w-auto px-3.5 sm:px-4 py-2.5 sm:py-2 text-xs font-black text-white bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 disabled:bg-slate-300 disabled:cursor-not-allowed rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                title="دانلود فایل اکسل کامل"
+              >
+                <Download className="w-4 h-4 shrink-0" />
+                <span className="truncate">اکسپورت اکسل</span>
+              </button>
+            </div>
 
-            {/* PDF Export Button (Triggers PDF Preview Modal) */}
-            <button
-              id="download-customer-pdf-btn"
-              type="button"
-              onClick={() => setIsPdfPreviewOpen(true)}
-              disabled={detailedReportItems.length === 0}
-              className={`px-4 py-2 text-xs font-black text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:bg-slate-300 disabled:cursor-not-allowed ${
-                reportType === 'exit_slips'
-                  ? 'bg-amber-600 hover:bg-amber-700'
-                  : 'bg-indigo-700 hover:bg-indigo-800'
-              }`}
-              title="پیش‌نمایش کامل برگه و صدور فایل PDF"
-            >
-              <Eye className="w-4 h-4" />
-              <span>پیش‌نمایش و اکسپورت PDF</span>
-            </button>
+            {/* Secondary Utility Buttons: 2 Equal Columns on Mobile */}
+            <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center order-2 sm:order-1">
+              {/* Print Button */}
+              <button
+                id="print-customer-report-btn"
+                type="button"
+                onClick={handlePrint}
+                disabled={detailedReportItems.length === 0}
+                className="w-full sm:w-auto px-3 sm:px-3.5 py-2.5 sm:py-2 text-xs font-bold text-slate-800 bg-white hover:bg-slate-100 active:bg-slate-200 border border-slate-300 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-2xs"
+                title="پیش‌نمایش و چاپ مستقیم بر روی کاغذ A4"
+              >
+                <Printer className="w-4 h-4 text-slate-600 shrink-0" />
+                <span className="truncate">چاپ مستقیم</span>
+              </button>
 
-            {/* Excel Export Button */}
-            <button
-              id="download-customer-excel-btn"
-              type="button"
-              onClick={handleExportExcel}
-              disabled={filteredCustomerInvoices.length === 0}
-              className="px-4 py-2 text-xs font-black text-white bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-              title="دانلود فایل اکسل کامل"
-            >
-              <Download className="w-4 h-4" />
-              <span>اکسپورت اکسل (XLSX)</span>
-            </button>
+              {/* Cancel / Close Button */}
+              <button
+                id="cancel-customer-export-btn"
+                type="button"
+                onClick={onClose}
+                className="w-full sm:w-auto px-4 py-2.5 sm:py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 border border-slate-300 rounded-xl transition-colors cursor-pointer text-center"
+              >
+                بستن
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1605,33 +1613,32 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
         >
           <div className="bg-slate-900 rounded-2xl shadow-2xl border border-slate-800 w-full max-w-5xl overflow-hidden flex flex-col max-h-[94vh]">
             {/* Preview Header */}
-            <div className="p-4 border-b border-slate-800 bg-slate-900 text-white flex items-center justify-between flex-wrap gap-3 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shrink-0">
-                  <Eye className="w-5 h-5 stroke-[2.2]" />
+            <div className="px-3.5 py-2.5 sm:p-4 border-b border-slate-800 bg-slate-900 text-white flex items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shrink-0">
+                  <Eye className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
                 </div>
-                <div>
-                  <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
-                    <span>پیش‌نمایش سند PDF ({reportType === 'exit_slips' ? 'حواله‌های خروج انبار' : 'فاکتورهای فروش'})</span>
-                    <span className="text-[10px] font-bold bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30 font-mono">
+                <div className="min-w-0">
+                  <h3 className="text-xs sm:text-base font-black text-white flex items-center gap-1.5 sm:gap-2">
+                    <span className="truncate">پیش‌نمایش PDF ({reportType === 'exit_slips' ? 'حواله خروج' : 'فاکتور فروش'})</span>
+                    <span className="text-[10px] font-bold bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30 font-mono shrink-0">
                       {toPersianDigits(detailedReportItems.length)} سطر
                     </span>
                   </h3>
-                  <p className="text-xs text-slate-300 mt-0.5">
+                  <p className="hidden sm:block text-xs text-slate-300 mt-0.5 truncate">
                     نمای واقعی و دقیق سند PDF قبل از دانلود نهایی فایل
                   </p>
                 </div>
               </div>
 
               {/* Header Right Actions */}
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                 {/* Orientation Selector */}
-                <div className="flex items-center gap-1.5 text-xs bg-slate-800 p-1 rounded-xl border border-slate-700">
-                  <span className="text-[11px] text-slate-400 font-bold px-1">جهت برگه:</span>
+                <div className="flex items-center gap-1 text-xs bg-slate-800 p-0.5 sm:p-1 rounded-lg sm:rounded-xl border border-slate-700">
                   <button
                     type="button"
                     onClick={() => setPdfOrientation('landscape')}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                    className={`px-2 py-1 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg text-[10px] sm:text-[11px] font-extrabold transition-all cursor-pointer ${
                       pdfOrientation === 'landscape' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
                     }`}
                   >
@@ -1640,7 +1647,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setPdfOrientation('portrait')}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer ${
+                    className={`px-2 py-1 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg text-[10px] sm:text-[11px] font-extrabold transition-all cursor-pointer ${
                       pdfOrientation === 'portrait' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
                     }`}
                   >
@@ -1651,10 +1658,10 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsPdfPreviewOpen(false)}
-                  className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="p-1.5 sm:p-2 text-slate-400 hover:text-white rounded-lg sm:rounded-xl hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
                   title="بستن پیش‌نمایش"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
               </div>
             </div>
@@ -1801,51 +1808,55 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
             </div>
 
             {/* Preview Modal Footer */}
-            <div className="p-4 border-t border-slate-800 bg-slate-900 text-white flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-              <div className="text-xs text-slate-400 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>برگه آماده دریافت است. جهت صدور فایل نهایی PDF دکمه دانلود را بفشارید.</span>
+            <div className="p-3 sm:p-4 border-t border-slate-800 bg-slate-900 text-white flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
+              <div className="text-xs text-slate-400 flex items-center gap-2 px-1 sm:px-0">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="text-[11px] sm:text-xs">برگه آماده دریافت است. جهت صدور فایل نهایی دکمه دانلود را بفشارید.</span>
               </div>
 
-              <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-                <button
-                  type="button"
-                  onClick={() => setIsPdfPreviewOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition-colors cursor-pointer"
-                >
-                  بازگشت و تغییر فیلترها
-                </button>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto justify-end">
+                {/* Secondary buttons: 2 equal columns on mobile */}
+                <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center order-2 sm:order-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsPdfPreviewOpen(false)}
+                    className="w-full sm:w-auto px-3.5 sm:px-4 py-2.5 sm:py-2 text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-700 rounded-xl transition-colors cursor-pointer text-center"
+                  >
+                    بازگشت
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={handlePrint}
-                  disabled={detailedReportItems.length === 0}
-                  className="px-3.5 py-2 text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                >
-                  <Printer className="w-4 h-4 text-slate-400" />
-                  <span>چاپ مستقیم</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={handlePrint}
+                    disabled={detailedReportItems.length === 0}
+                    className="w-full sm:w-auto px-3 sm:px-3.5 py-2.5 sm:py-2 text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-700 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 text-center"
+                  >
+                    <Printer className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span className="truncate">چاپ مستقیم</span>
+                  </button>
+                </div>
 
+                {/* Primary Download Button: Full width on mobile, prominent */}
                 <button
                   type="button"
                   onClick={() => {
                     handleExportPdf();
                   }}
                   disabled={detailedReportItems.length === 0 || isGeneratingPdf}
-                  className={`px-5 py-2 text-xs font-black text-white rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
+                  className={`w-full sm:w-auto px-5 py-2.5 sm:py-2 text-xs font-black text-white rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 order-1 sm:order-2 ${
                     reportType === 'exit_slips'
-                      ? 'bg-amber-600 hover:bg-amber-700'
-                      : 'bg-indigo-600 hover:bg-indigo-700'
+                      ? 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800'
+                      : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800'
                   }`}
                 >
                   {isGeneratingPdf ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-4 h-4 animate-spin shrink-0" />
                       <span>در حال ساخت PDF...</span>
                     </>
                   ) : (
                     <>
-                      <FileDown className="w-4 h-4" />
+                      <FileDown className="w-4 h-4 shrink-0" />
                       <span>دانلود فایل PDF نهایی</span>
                     </>
                   )}
