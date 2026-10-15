@@ -2438,10 +2438,10 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                         <tr className="bg-slate-100/95 text-slate-700 font-black border-b border-slate-200 select-none shadow-2xs">
                           <th className="py-2.5 px-1 text-center w-[6%] text-[11px] font-black">ردیف</th>
                           <th className="py-2.5 px-1 text-center w-[9%] text-[11px] font-black">کد کالا</th>
-                          <th className="py-2.5 px-3 text-right w-[42%] text-xs font-black">شرح کالا یا خدمت</th>
+                          <th className="py-2.5 px-3 text-right w-[40.6%] text-xs font-black">شرح کالا یا خدمت</th>
                           <th className="py-2.5 px-2 text-right w-[14%] whitespace-nowrap text-[11px] font-black">قیمت واحد ({settings.currency || 'تومان'})</th>
-                          <th className="py-2.5 px-1 text-center w-[11%] whitespace-nowrap text-[11px] font-black">تعداد / مقدار</th>
-                          <th className="py-2.5 px-2 text-right w-[14%] whitespace-nowrap text-[11px] font-black">مبلغ کل ({settings.currency || 'تومان'})</th>
+                          <th className="py-2.5 px-1 text-center whitespace-nowrap text-[11px] font-black" style={{ width: '118px', textAlign: 'center' }}>تعداد / مقدار</th>
+                          <th className="py-2.5 px-2 text-right w-[15.4%] whitespace-nowrap text-[11px] font-black">مبلغ کل ({settings.currency || 'تومان'})</th>
                           <th className="py-2.5 p-0 text-center w-[4%]" title="حذف"></th>
                         </tr>
                       </thead>
@@ -2517,7 +2517,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                               </td>
 
                               {/* Item name and variant */}
-                              <td className="py-2.5 px-3 w-[42%] overflow-hidden">
+                              <td className="py-2.5 px-3 w-[40.6%] overflow-hidden">
                                 <div className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5 flex-wrap">
                                   <span className="truncate max-w-[240px] xl:max-w-[340px]" title={item.productName}>
                                     {item.productName}
@@ -2583,8 +2583,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                               </td>
 
                               {/* Quantity Editor - Simple Numeric Textbox Only (بدون استپر منفی و مثبت) */}
-                              <td className="py-2.5 px-1 text-center w-[11%]">
-                                <div className="inline-flex items-center justify-center gap-1">
+                              <td className="py-2.5 px-1" style={{ width: '118px', textAlign: 'right' }}>
+                                <div className="inline-flex items-center justify-start gap-1">
                                   <input
                                     type="text"
                                     inputMode="numeric"
@@ -2620,7 +2620,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                               </td>
 
                               {/* Total Row Price */}
-                              <td className="py-2.5 px-2 w-[14%] font-black text-emerald-700 text-xs whitespace-nowrap text-right font-mono" dir="ltr">
+                              <td className="py-2.5 px-2 w-[15.4%] font-black text-emerald-700 text-xs whitespace-nowrap text-right font-mono" style={{ textAlign: 'right' }}>
                                 {formatPrice(item.total, '')}
                               </td>
 
