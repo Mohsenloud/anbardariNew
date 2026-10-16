@@ -48,7 +48,8 @@ import {
   Building2,
   ExternalLink,
   Menu,
-  UserCheck
+  UserCheck,
+  Settings
 } from 'lucide-react';
 import { StorageService, ROLE_LABELS } from '../utils/storage';
 import { broadcastLivePreview } from '../utils/livePreviewSync';
@@ -310,6 +311,13 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState<boolean>(false);
   const [isDateModalOpen, setIsDateModalOpen] = useState<boolean>(false);
+  const [saveTypePromptModal, setSaveTypePromptModal] = useState<{
+    isOpen: boolean;
+    shouldPrint: boolean;
+  }>({
+    isOpen: false,
+    shouldPrint: false,
+  });
 
   // Mobile & Desktop Quick Item Edit Modal (Price, Discount & Row Description)
   const [mobileEditingItem, setMobileEditingItem] = useState<InvoiceItem | null>(null);
@@ -855,7 +863,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     setIsCheckoutModalOpen(true);
   };
 
-  // Final Submit
+  // Final Submit trigger: opens modal to ask whether to save as Invoice or Proforma
   const handleFinalSubmit = (shouldPrint: boolean) => {
     setErrorMessage('');
 
@@ -864,35 +872,60 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       return;
     }
 
-    // Stock check
-    const stockIssues: string[] = [];
-    items.forEach((item) => {
-      if (item.productId) {
-        const prod = products.find((p) => p.id === item.productId);
-        if (prod && item.quantity > prod.stock) {
-          stockIssues.push(`موجودی کالا "${prod.name}" (${prod.stock} ${prod.unit}) کمتر از تعداد فاکتور (${item.quantity}) است.`);
-        }
-      }
+    setSaveTypePromptModal({
+      isOpen: true,
+      shouldPrint,
     });
+  };
 
-    if (stockIssues.length > 0 && settings.autoDeductStock && !isProforma) {
-      if (settings.allowNegativeStock === false) {
-        setErrorMessage(
-          `خطای کنترل موجودی انبار: اجازه ثبت کالای ناموجود در پنل غیرفعال است.\n${stockIssues.join('\n')}`
+  // Confirmed execution of final save with user's selected type (Invoice vs Proforma)
+  const handleConfirmSaveWithType = (asProforma: boolean, shouldPrint: boolean) => {
+    setSaveTypePromptModal({ isOpen: false, shouldPrint: false });
+
+    // Stock check if saving as official Invoice (deducting stock)
+    if (!asProforma && settings.autoDeductStock) {
+      const stockIssues: string[] = [];
+      items.forEach((item) => {
+        if (item.productId) {
+          const prod = products.find((p) => p.id === item.productId);
+          if (prod && item.quantity > prod.stock) {
+            stockIssues.push(`موجودی کالا "${prod.name}" (${prod.stock} ${prod.unit}) کمتر از تعداد فاکتور (${item.quantity}) است.`);
+          }
+        }
+      });
+
+      if (stockIssues.length > 0) {
+        if (settings.allowNegativeStock === false) {
+          setErrorMessage(
+            `خطای کنترل موجودی انبار: اجازه ثبت کالای ناموجود در پنل غیرفعال است.\n${stockIssues.join('\n')}`
+          );
+          return;
+        }
+        const confirmContinue = window.confirm(
+          `هشدار کسری موجودی:\n${stockIssues.join('\n')}\n\nآیا با وجود کسری موجودی، فاکتور ثبت گردد؟`
         );
-        return;
+        if (!confirmContinue) return;
       }
-      const confirmContinue = window.confirm(
-        `هشدار کسری موجودی:\n${stockIssues.join('\n')}\n\nآیا با وجود کسری موجودی، فاکتور ثبت گردد؟`
-      );
-      if (!confirmContinue) return;
+    }
+
+    // Determine appropriate invoice number (update prefix if switching between proforma and invoice)
+    let finalInvNumber = invoiceNumber.trim();
+    if (!isEditing) {
+      if (asProforma && (!finalInvNumber || !finalInvNumber.startsWith('PF-'))) {
+        finalInvNumber = StorageService.getNextInvoiceNumber(true);
+      } else if (!asProforma && (!finalInvNumber || finalInvNumber.startsWith('PF-'))) {
+        finalInvNumber = StorageService.getNextInvoiceNumber(false);
+      }
+    }
+    if (!finalInvNumber) {
+      finalInvNumber = StorageService.getNextInvoiceNumber(asProforma);
     }
 
     const newInvoice: Invoice = {
       id: editingInvoice ? editingInvoice.id : `inv-${Date.now()}`,
-      invoiceNumber: invoiceNumber.trim() || StorageService.getNextInvoiceNumber(isProforma),
+      invoiceNumber: finalInvNumber,
       type: invoiceType,
-      isProforma,
+      isProforma: asProforma,
       customerId: selectedCustomerId || 'guest',
       customerName: customerName.trim() || 'متفرقه',
       customerPhone: customerPhone.trim(),
@@ -1288,7 +1321,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
         isProductCatalogOpen ||
         isServiceModalOpen ||
         isSettingsModalOpen ||
-        isCheckoutModalOpen
+        isCheckoutModalOpen ||
+        saveTypePromptModal.isOpen
       ) {
         return;
       }
@@ -1319,6 +1353,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     isServiceModalOpen,
     isSettingsModalOpen,
     isCheckoutModalOpen,
+    saveTypePromptModal.isOpen,
   ]);
 
   return (
@@ -1373,33 +1408,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               </div>
             </div>
 
-            {/* Invoice vs Proforma Quick Toggle */}
-            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/80 text-[10px] sm:text-[11px] font-bold shrink-0">
-              <button
-                type="button"
-                id="btn-mobile-type-invoice"
-                onClick={() => handleToggleProforma(false)}
-                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                  !isProforma
-                    ? 'bg-white text-emerald-700 shadow-xs font-black'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                فاکتور
-              </button>
-              <button
-                type="button"
-                id="btn-mobile-type-proforma"
-                onClick={() => handleToggleProforma(true)}
-                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                  isProforma
-                    ? 'bg-indigo-600 text-white shadow-xs font-black'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                پیش‌فاکتور
-              </button>
-            </div>
+
           </div>
 
           {/* Row 2: Date, Print Template & Action Buttons */}
@@ -1434,16 +1443,16 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <span className="hidden xs:inline">جستجو</span>
               </button>
 
-              {/* Document Settings Button */}
+              {/* Document Settings Button: فقط لوگو چرخ‌دنده بدون نوشته */}
               <button
                 type="button"
                 id="btn-invoice-settings-options"
                 onClick={() => setIsSettingsModalOpen(true)}
-                title="مشخصات و تنظیمات سند"
-                className="h-7 px-2 rounded-lg bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-800 border border-amber-200/80 flex items-center gap-1 text-[11px] font-bold transition-all cursor-pointer"
+                title="مشخصات سند و قالب"
+                aria-label="مشخصات سند و قالب"
+                className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 border border-slate-200/80 flex items-center justify-center transition-all cursor-pointer shrink-0"
               >
-                <GraduationCap className="w-3.5 h-3.5 text-amber-700" />
-                <span>تنظیمات</span>
+                <Settings className="w-3.5 h-3.5 text-slate-700" />
               </button>
 
               {/* Continue to checkout top button */}
@@ -1559,17 +1568,12 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 <span className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-emerald-700 transition-colors truncate">
                   {customerName || 'مشتری متفرقه / گذری'}
                 </span>
-                {selectedCustomerId && (
-                  <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded-md">
-                    ثبت شده
+                {customerPhone && (
+                  <span className="text-[11px] text-slate-700 font-mono font-bold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/80" dir="ltr">
+                    {customerPhone}
                   </span>
                 )}
               </div>
-              {customerPhone && (
-                <div className="text-[10px] text-slate-500 font-mono" dir="ltr">
-                  {customerPhone}
-                </div>
-              )}
             </div>
           </div>
 
@@ -2062,53 +2066,22 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     پیش‌نویس (بدون کسر از موجودی)
                   </span>
                 )}
+                {/* دکمه مشخصات سند و قالب: فقط به صورت یک لوگوی چرخ‌دنده بدون نوشته در سمت مقابل */}
+                <button
+                  type="button"
+                  id="btn-desktop-doc-settings"
+                  onClick={() => setIsSettingsModalOpen(true)}
+                  className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200/90 active:scale-95 border border-slate-200/90 text-slate-700 hover:text-slate-900 flex items-center justify-center transition-all cursor-pointer shadow-2xs shrink-0"
+                  title="مشخصات سند و قالب فاکتور"
+                  aria-label="مشخصات سند و قالب"
+                >
+                  <Settings className="w-4.5 h-4.5 text-slate-700" />
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Action Toolbar */}
-          <div className="flex items-center flex-wrap gap-2.5 justify-start xl:justify-end">
-            {/* Invoice vs Proforma Toggle */}
-            <div className="flex items-center p-0.5 bg-slate-100 rounded-xl border border-slate-200/90 text-xs font-bold shrink-0">
-              <button
-                type="button"
-                id="btn-desktop-type-invoice"
-                onClick={() => handleToggleProforma(false)}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                  !isProforma
-                    ? 'bg-white text-emerald-700 shadow-xs font-black'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>فاکتور فروش</span>
-              </button>
-              <button
-                type="button"
-                id="btn-desktop-type-proforma"
-                onClick={() => handleToggleProforma(true)}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                  isProforma
-                    ? 'bg-indigo-600 text-white shadow-xs font-black'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>پیش‌فاکتور</span>
-              </button>
-            </div>
 
-            {/* Document Settings */}
-            <button
-              type="button"
-              onClick={() => setIsSettingsModalOpen(true)}
-              className="h-9 px-3.5 rounded-xl bg-amber-50 hover:bg-amber-100/90 border border-amber-200/90 text-amber-900 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-95"
-              title="مشخصات سند و قالب فاکتور"
-            >
-              <GraduationCap className="w-4 h-4 text-amber-700" />
-              <span>مشخصات سند و قالب</span>
-            </button>
-          </div>
         </div>
 
         {/* Tax Notification Toast Banner */}
@@ -2245,25 +2218,11 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     <span className="text-sm font-black text-slate-900 truncate">
                       {customerName || 'مشتری متفرقه / گذری (نقدی)'}
                     </span>
-                    {selectedCustomerId ? (
-                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-black px-2 py-0.5 rounded-md border border-emerald-200/80 flex items-center gap-1">
-                        <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
-                        <span>ثبت شده در سیستم</span>
-                      </span>
-                    ) : (
-                      <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-md border border-slate-200">
-                        مشتری عمومی / فروش نقدی
+                    {customerPhone && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-mono font-bold border border-slate-200/80 shadow-2xs" dir="ltr">
+                        {customerPhone}
                       </span>
                     )}
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 flex-wrap">
-                    <span className="flex items-center gap-1">
-                      <span>شماره تماس:</span>
-                      <b className="font-mono font-semibold text-slate-700" dir="ltr">
-                        {customerPhone || 'نامشخص'}
-                      </b>
-                    </span>
-                    {/* آدرس طبق درخواست از این کارت حذف گردید */}
                   </div>
                 </div>
               </div>
@@ -2286,10 +2245,11 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     setIsNewCustomerFormOpen(true);
                     setIsCustomerModalOpen(true);
                   }}
-                  className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                  className="w-9 h-9 rounded-xl bg-slate-900 hover:bg-slate-800 text-white transition-all flex items-center justify-center cursor-pointer shadow-xs active:scale-95 shrink-0"
+                  title="تعریف مشتری جدید"
+                  aria-label="تعریف مشتری جدید"
                 >
-                  <UserPlus className="w-4 h-4 text-emerald-400" />
-                  <span>+ مشتری جدید</span>
+                  <UserPlus className="w-4 h-4 text-emerald-400 stroke-[2.2]" />
                 </button>
               </div>
             </div>
@@ -5703,6 +5663,126 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
         }}
         onClose={() => setIsDateModalOpen(false)}
       />
+
+      {/* MODAL: CHOOSE INVOICE VS PROFORMA ON FINAL SUBMISSION */}
+      {saveTypePromptModal.isOpen && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150 font-['Vazirmatn']"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              setSaveTypePromptModal({ isOpen: false, shouldPrint: false });
+            }
+          }}
+        >
+          <div className="bg-white rounded-3xl w-full max-w-md p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100 shadow-2xs">
+                  <FileText className="w-5 h-5 stroke-[2.2]" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base font-black text-slate-900 leading-tight">
+                    انتخاب نوع ثبت سند
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
+                    مایلید این سند به چه صورت در سیستم ثبت گردد؟
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSaveTypePromptModal({ isOpen: false, shouldPrint: false })}
+                className="w-8 h-8 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center shrink-0 cursor-pointer transition-colors"
+                title="بستن (ESC)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Options */}
+            <div className="space-y-3 pt-1">
+              {/* Option 1: فاکتور فروش (قطعی) */}
+              <button
+                type="button"
+                onClick={() => handleConfirmSaveWithType(false, saveTypePromptModal.shouldPrint)}
+                className={`w-full text-right p-4 rounded-2xl border-2 transition-all flex items-center justify-between gap-3 group cursor-pointer shadow-xs active:scale-[0.99] ${
+                  !isProforma
+                    ? 'border-emerald-500 bg-emerald-50/80 hover:bg-emerald-100/90'
+                    : 'border-slate-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/40'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0 group-hover:scale-105 transition-transform">
+                    <Check className="w-6 h-6 stroke-[2.5]" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-black text-slate-900 text-sm sm:text-base">
+                        ثبت به عنوان فاکتور فروش
+                      </span>
+                      {!isProforma && (
+                        <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full font-bold">
+                          پیش‌فرض
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                      ثبت فاکتور رسمی قطعی، ثبت در مانده و گردش حسابداری طرف‌حساب و کسر موجودی انبار
+                    </p>
+                  </div>
+                </div>
+                <ChevronLeft className="w-5 h-5 text-emerald-700 shrink-0 group-hover:-translate-x-1 transition-transform" />
+              </button>
+
+              {/* Option 2: پیش‌فاکتور (پیش‌نویس) */}
+              <button
+                type="button"
+                onClick={() => handleConfirmSaveWithType(true, saveTypePromptModal.shouldPrint)}
+                className={`w-full text-right p-4 rounded-2xl border-2 transition-all flex items-center justify-between gap-3 group cursor-pointer shadow-xs active:scale-[0.99] ${
+                  isProforma
+                    ? 'border-indigo-500 bg-indigo-50/80 hover:bg-indigo-100/90'
+                    : 'border-slate-200 bg-white hover:border-indigo-400 hover:bg-indigo-50/40'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0 group-hover:scale-105 transition-transform">
+                    <FileText className="w-6 h-6 stroke-[2.2]" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-black text-slate-900 text-sm sm:text-base">
+                        ثبت به عنوان پیش‌فاکتور
+                      </span>
+                      {isProforma && (
+                        <span className="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded-full font-bold">
+                          پیش‌فرض
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                      پیش‌نویس استعلام قیمت؛ بدون اعمال در حسابداری و بدون کسر از موجودی انبار
+                    </p>
+                  </div>
+                </div>
+                <ChevronLeft className="w-5 h-5 text-indigo-700 shrink-0 group-hover:-translate-x-1 transition-transform" />
+              </button>
+            </div>
+
+            {/* Cancel Button */}
+            <div className="pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setSaveTypePromptModal({ isOpen: false, shouldPrint: false })}
+                className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-100 text-xs font-bold transition-colors cursor-pointer"
+              >
+                انصراف و بازگشت
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

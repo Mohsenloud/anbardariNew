@@ -5,13 +5,10 @@ import {
   ChevronLeft, 
   Check, 
   X, 
-  Clock, 
-  RotateCcw,
-  Sparkles
+  Clock 
 } from 'lucide-react';
 import { 
   getCurrentJalaliDate, 
-  addDaysToJalali, 
   toPersianDigits, 
   toEnglishDigits, 
   JALALI_MONTH_NAMES, 
@@ -108,15 +105,6 @@ export const InvoiceDateModal: React.FC<InvoiceDateModalProps> = ({
     setInputVal(formatted);
   };
 
-  const handleQuickPreset = (presetDate: string) => {
-    setSelectedDate(presetDate);
-    setInputVal(presetDate);
-    const parts = toEnglishDigits(presetDate).split('/').map(Number);
-    if (parts[0] && parts[1]) {
-      setViewYear(parts[0]);
-      setViewMonth(parts[1]);
-    }
-  };
 
   const handlePrevMonth = () => {
     if (viewMonth === 1) {
@@ -212,82 +200,7 @@ export const InvoiceDateModal: React.FC<InvoiceDateModalProps> = ({
 
         {/* Content Body */}
         <div className="p-4 sm:p-5 space-y-4">
-          {/* Quick Preset Buttons */}
-          <div>
-            <div className="text-[11px] font-bold text-slate-500 mb-1.5 flex items-center justify-between">
-              <span className="flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>دسترسی سریع به تاریخ‌های متداول:</span>
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <button
-                type="button"
-                onClick={() => handleQuickPreset(todayStr)}
-                className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
-                  selectedDate === todayStr
-                    ? 'bg-emerald-600 text-white shadow-xs font-black'
-                    : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/60'
-                }`}
-              >
-                امروز
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickPreset(addDaysToJalali(-1))}
-                className={`px-2.5 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
-                  selectedDate === addDaysToJalali(-1)
-                    ? 'bg-emerald-600 text-white shadow-xs font-black'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-                }`}
-              >
-                دیروز
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickPreset(addDaysToJalali(-2))}
-                className={`px-2.5 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
-                  selectedDate === addDaysToJalali(-2)
-                    ? 'bg-emerald-600 text-white shadow-xs font-black'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-                }`}
-              >
-                ۲ روز قبل
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickPreset(addDaysToJalali(-3))}
-                className={`px-2.5 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
-                  selectedDate === addDaysToJalali(-3)
-                    ? 'bg-emerald-600 text-white shadow-xs font-black'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-                }`}
-              >
-                ۳ روز قبل
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickPreset(addDaysToJalali(-7))}
-                className={`px-2.5 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
-                  selectedDate === addDaysToJalali(-7)
-                    ? 'bg-emerald-600 text-white shadow-xs font-black'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-                }`}
-              >
-                یک هفته قبل
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const m1 = formatDateStr(viewYear, viewMonth, 1);
-                  handleQuickPreset(m1);
-                }}
-                className="px-2.5 py-1.5 rounded-xl font-bold text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 transition-all cursor-pointer"
-              >
-                اول این ماه
-              </button>
-            </div>
-          </div>
+
 
           {/* Interactive Jalali Calendar Card */}
           <div className="bg-slate-50/80 rounded-2xl p-3 border border-slate-200">
