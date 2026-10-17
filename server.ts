@@ -1706,6 +1706,277 @@ app.post('/api/telegram/send-message', async (req, res) => {
   }
 });
 
+// 12.2.2 Helper functions and endpoints for Proforma 7-day Follow-up Reminders
+function toPersianDigitsServer(n: any): string {
+  if (n === null || n === undefined) return '';
+  const fa = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+  return String(n).replace(/\d/g, (w) => fa[Number(w)]);
+}
+
+function formatPriceServer(price: number | string): string {
+  const num = Number(price) || 0;
+  return num.toLocaleString('en-US');
+}
+
+function toEnglishDigitsServer(str: string): string {
+  if (!str) return '';
+  const fa = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+  const ar = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  let res = String(str);
+  for (let i = 0; i < 10; i++) {
+    res = res.replace(new RegExp(fa[i], 'g'), String(i)).replace(new RegExp(ar[i], 'g'), String(i));
+  }
+  return res;
+}
+
+function jalaliToGregorianServer(jy: number, jm: number, jd: number): [number, number, number] {
+  let gy: number, gm: number, gd: number, days: number;
+  jy += 1595;
+  days = -355668 + (365 * jy) + (Math.floor(jy / 33) * 8) + Math.floor(((jy % 33) + 3) / 4) + jd + ((jm < 7) ? (jm - 1) * 31 : ((jm - 7) * 30) + 186);
+  gy = 400 * Math.floor(days / 146097);
+  days %= 146097;
+  if (days > 36524) {
+    gy += 100 * Math.floor(--days / 36524);
+    days %= 36524;
+    if (days >= 365) days++;
+  }
+  gy += 4 * Math.floor(days / 1461);
+  days %= 1461;
+  if (days > 365) {
+    gy += Math.floor((days - 1) / 365);
+    days = (days - 1) % 365;
+  }
+  gd = days + 1;
+  const sal_a = [0, 31, ((gy % 4 === 0 && gy % 100 !== 0) || (gy % 400 === 0)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  for (gm = 0; gm < 13 && gd > sal_a[gm]; gm++) gd -= sal_a[gm];
+  return [gy, gm, gd];
+}
+
+function calculateInvoiceDaysAgeServer(inv: any): number {
+  const now = new Date();
+  if (inv.date) {
+    try {
+      const clean = toEnglishDigitsServer(inv.date).replace(/[^\d/]/g, '').trim();
+      const parts = clean.split('/').map(Number);
+      if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+        let jy = parts[0];
+        if (jy < 100) jy += 1400; // پشتیبانی از سال‌های دورقمی شمسی مانند ۰۳ یا ۰۴
+        const [gy, gm, gd] = jalaliToGregorianServer(jy, parts[1], parts[2]);
+        const d = new Date(gy, gm - 1, gd);
+        const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const invMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        const diffDays = Math.round((todayMidnight - invMidnight) / (1000 * 60 * 60 * 24));
+        if (diffDays >= 0) return diffDays;
+      }
+    } catch {}
+  }
+  if (inv.createdAt) {
+    const c = new Date(inv.createdAt);
+    if (!isNaN(c.getTime())) {
+      const diffMs = now.getTime() - c.getTime();
+      return Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+    }
+  }
+  return 0;
+}
+
+async function checkAndSendServerProformaReminders(overrides?: {
+  botToken?: string;
+  chatId?: string;
+}): Promise<{
+  checkedCount: number;
+  dueCount: number;
+  sentCount: number;
+  sentInvoiceNumbers: string[];
+  errors: string[];
+}> {
+  try {
+    const dbData = readDatabase();
+    const serverSettings = dbData?.settings || {};
+    const invoices = Array.isArray(dbData?.invoices) ? dbData.invoices : [];
+
+    const isEnabled = serverSettings?.telegramBotEnabled && serverSettings?.telegramAutoSendProformaReminder !== false;
+    const botToken = (overrides?.botToken || serverSettings?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    const defaultChatId = (overrides?.chatId || serverSettings?.telegramChatId || process.env.TELEGRAM_CHAT_ID || '').trim();
+
+    if (!isEnabled || !botToken || !defaultChatId) {
+      return {
+        checkedCount: 0,
+        dueCount: 0,
+        sentCount: 0,
+        sentInvoiceNumbers: [],
+        errors: [!isEnabled ? 'قابلیت ارسال خودکار هشدار تلگرام غیرفعال است' : 'تنظیمات ربات تلگرام ناقص است'],
+      };
+    }
+
+    const activeProformas = invoices.filter(
+      (inv: any) =>
+        (inv.isProforma === true || inv.isProforma === 'true') &&
+        !inv.convertedAt &&
+        !inv.isDeleted &&
+        inv.deleted !== true
+    );
+    const sentInvoiceNumbers: string[] = [];
+    const errors: string[] = [];
+    let dueCount = 0;
+    let modified = false;
+
+    for (const inv of activeProformas) {
+      const days = calculateInvoiceDaysAgeServer(inv);
+      if (days >= 7) {
+        dueCount++;
+        // اگر هنوز هشداری برای این پیش‌فاکتور ارسال نشده باشد
+        if (!inv.proformaReminderSentAt) {
+          // پیام هشدار پیگیری مستقیماً به کانال یا حساب تلگرام مدیریت/فروشگاه ارسال می‌شود
+          const targetChatId = defaultChatId;
+
+          const store = serverSettings.storeName || 'سامانه حسابداری و بازرگانی';
+          const currency = serverSettings.currency || 'تومان';
+
+          const itemsSummary: string[] = [];
+          if (Array.isArray(inv.items) && inv.items.length > 0) {
+            itemsSummary.push(`📦 <b>اقلام پیش‌فاکتور (${toPersianDigitsServer(inv.items.length)} قلم):</b>`);
+            inv.items.slice(0, 10).forEach((item: any, idx: number) => {
+              const num = toPersianDigitsServer(idx + 1);
+              const name = item.productName || item.name || 'کالای بدون عنوان';
+              const qty = toPersianDigitsServer(item.quantity);
+              const unit = item.unit ? ` ${item.unit}` : '';
+              itemsSummary.push(`  ▫️ ${num}. ${name}: ${qty}${unit}`);
+            });
+            if (inv.items.length > 10) {
+              itemsSummary.push(`  ▫️ <i>... و ${toPersianDigitsServer(inv.items.length - 10)} قلم دیگر</i>`);
+            }
+          }
+
+          const messageLines = [
+            `⚠️ <b>هشدار پیگیری پیش‌فاکتور (گذشت ${toPersianDigitsServer(days)} روز)</b>`,
+            `━━━━━━━━━━━━━━━━━━━━`,
+            `📋 <b>پیش‌فاکتور شماره:</b> <code>#${toPersianDigitsServer(inv.invoiceNumber)}</code>`,
+            `👤 <b>مشتری / طرف حساب:</b> <b>${inv.customerName}</b>`,
+            inv.customerPhone ? `📞 <b>شماره تماس:</b> <code>${toPersianDigitsServer(inv.customerPhone)}</code>` : '',
+            `📅 <b>تاریخ صدور:</b> ${toPersianDigitsServer(inv.date)} (<b>${toPersianDigitsServer(days)} روز گذشته</b>)`,
+            `💰 <b>مبلغ کل:</b> <b>${toPersianDigitsServer(formatPriceServer(inv.finalTotal))} ${currency}</b>`,
+            ...(itemsSummary.length > 0 ? itemsSummary : [`📦 تعداد اقلام: ${toPersianDigitsServer(inv.items?.length || 0)} قلم`]),
+            `━━━━━━━━━━━━━━━━━━━━`,
+            `🔔 <b>اقدام لازم:</b>`,
+            `بیش از ۷ روز از صدور این پیش‌فاکتور سپری شده است. لطفاً جهت پیگیری سفارش با خریدار تماس حاصل نموده تا در صورت تایید نهایی، به <b>فاکتور فروش</b> تبدیل شود.`,
+            store ? `🏪 <i>${store}</i>` : '',
+          ].filter(Boolean);
+
+          const messageText = messageLines.join('\n');
+
+          try {
+            const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: targetChatId,
+                text: messageText,
+                parse_mode: 'HTML',
+              }),
+              signal: AbortSignal.timeout(15000),
+            });
+            const data = await response.json();
+            if (response.ok && data.ok) {
+              inv.proformaReminderSentAt = new Date().toISOString();
+              sentInvoiceNumbers.push(inv.invoiceNumber);
+              modified = true;
+              console.log(`[Proforma Reminder] Sent 7-day follow-up alert for proforma #${inv.invoiceNumber} (${days} days) to Telegram (${targetChatId}).`);
+            } else {
+              errors.push(`پیش‌فاکتور #${inv.invoiceNumber}: ${data.description || 'خطا در ارسال'}`);
+            }
+          } catch (err: any) {
+            errors.push(`پیش‌فاکتور #${inv.invoiceNumber}: ${err?.message || 'خطا در ارتباط با تلگرام'}`);
+          }
+        }
+      }
+    }
+
+    if (modified) {
+      writeDatabase(dbData, true, true);
+    }
+
+    return {
+      checkedCount: activeProformas.length,
+      dueCount,
+      sentCount: sentInvoiceNumbers.length,
+      sentInvoiceNumbers,
+      errors,
+    };
+  } catch (err: any) {
+    console.error('[Proforma Reminder] Error running check:', err);
+    return {
+      checkedCount: 0,
+      dueCount: 0,
+      sentCount: 0,
+      sentInvoiceNumbers: [],
+      errors: [err?.message || 'خطای سرور'],
+    };
+  }
+}
+
+// Check proforma reminders endpoint
+app.post('/api/telegram/check-proforma-reminders', async (req, res) => {
+  try {
+    const customBotToken = req.body?.botToken;
+    const customChatId = req.body?.chatId;
+    const result = await checkAndSendServerProformaReminders({
+      botToken: customBotToken,
+      chatId: customChatId,
+    });
+    return res.json({
+      success: true,
+      result,
+      message: result.sentCount > 0
+        ? `پیام هشدار برای ${toPersianDigitsServer(result.sentCount)} پیش‌فاکتور با موفقیت به تلگرام ارسال شد.`
+        : result.dueCount > 0
+        ? `تمام پیش‌فاکتورهای نیازمند پیگیری قبلاً هشدار تلگرام دریافت کرده‌اند.`
+        : `هیچ پیش‌فاکتوری با بیش از ۷ روز تاخیر یافت نشد.`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'خطای سرور' });
+  }
+});
+
+// Proforma reminders status endpoint
+app.get('/api/telegram/proforma-reminders-status', (req, res) => {
+  try {
+    const dbData = readDatabase();
+    const invoices = Array.isArray(dbData?.invoices) ? dbData.invoices : [];
+    const activeProformas = invoices.filter((inv: any) => inv.isProforma && !inv.convertedAt);
+
+    const dueList = activeProformas
+      .map((inv: any) => ({
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        customerName: inv.customerName,
+        customerPhone: inv.customerPhone,
+        date: inv.date,
+        finalTotal: inv.finalTotal,
+        daysPassed: calculateInvoiceDaysAgeServer(inv),
+        reminderSentAt: inv.proformaReminderSentAt,
+      }))
+      .filter((item: any) => item.daysPassed >= 7);
+
+    return res.json({
+      success: true,
+      totalActiveProformas: activeProformas.length,
+      dueCount: dueList.length,
+      dueList,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'خطای سرور' });
+  }
+});
+
+// Run background proforma reminder check periodically (every 30 mins) & 10 seconds after startup
+setTimeout(() => {
+  checkAndSendServerProformaReminders().catch((e) => console.warn('[Proforma Reminder] Initial check error:', e));
+}, 10000);
+setInterval(() => {
+  checkAndSendServerProformaReminders().catch((e) => console.warn('[Proforma Reminder] Interval check error:', e));
+}, 30 * 60 * 1000);
+
 // 12.3 Send PDF Document to Chat/Channel/Group (sendDocument)
 app.post('/api/telegram/send-pdf', async (req, res) => {
   try {

@@ -71,10 +71,10 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
     }
   };
 
-  // Export PDF Handler
   const handleExportPdf = async () => {
     try {
       setIsExportingPdf(true);
+      await new Promise((resolve) => setTimeout(resolve, 25));
       const filename = `فاکتور_خرید_${invoice.invoiceNumber}_${pageSize}_${orientation}`;
       const result = await exportElementToPdf('printable-purchase-invoice', filename, {
         pageSize,

@@ -306,6 +306,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
     if (isExportingPdf) return;
     try {
       setIsExportingPdf(true);
+      await new Promise((resolve) => setTimeout(resolve, 25));
       const safeCustomerName = customer.name.replace(/[/\\:*?"<>|]/g, '_');
       const safeDate = getCurrentJalaliDate().replace(/\//g, '-');
       const filename = `صورتحساب_مالی_${safeCustomerName}_${safeDate}.pdf`;

@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Invoice, StoreSettings, AppUser, Product, Customer } from '../types';
-import { formatPrice, toPersianDigits, formatNumber } from '../utils/jalali';
+import { formatPrice, toPersianDigits, formatNumber, getInvoiceDaysAge } from '../utils/jalali';
 import { exportInvoicesToCsv } from '../utils/csvExport';
 import { exportInvoicesListToExcel } from '../utils/excelHelper';
 import { StorageService } from '../utils/storage';
+import { sendProformaFollowUpReminder } from '../utils/telegramService';
 import { CustomerExportModal } from './CustomerExportModal';
 import { InvoiceQuickDetailsModal } from './InvoiceQuickDetailsModal';
 import { CustomerBulkPaymentModal } from './CustomerBulkPaymentModal';
@@ -44,7 +45,9 @@ import {
   Check,
   Eye,
   Globe,
-  UserCheck
+  UserCheck,
+  Send,
+  RefreshCw
 } from 'lucide-react';
 
 interface InvoicesListProps {
@@ -154,6 +157,43 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
       setSelectedShareLinkInvoice(inv);
     }
   };
+
+  // Telegram 7-day Proforma Reminder states
+  const [sendingReminderId, setSendingReminderId] = useState<string | null>(null);
+  const [reminderToast, setReminderToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const handleSendTelegramReminder = async (e: React.MouseEvent, inv: Invoice) => {
+    e.stopPropagation();
+    if (sendingReminderId) return;
+    setSendingReminderId(inv.id);
+    setReminderToast(null);
+    try {
+      const res = await sendProformaFollowUpReminder(inv, undefined, settings);
+      if (res.success) {
+        setReminderToast({
+          type: 'success',
+          message: `پیام هشدار پیگیری پیش‌فاکتور #${toPersianDigits(inv.invoiceNumber)} با موفقیت به تلگرام ارسال شد.`,
+        });
+        const nowIso = new Date().toISOString();
+        const updated = invoices.map((item) =>
+          item.id === inv.id ? { ...item, proformaReminderSentAt: nowIso } : item
+        );
+        StorageService.saveInvoices(updated);
+      } else {
+        setReminderToast({
+          type: 'error',
+          message: res.error || 'خطا در ارسال پیام هشدار به تلگرام',
+        });
+      }
+    } catch (err: any) {
+      setReminderToast({
+        type: 'error',
+        message: err?.message || 'خطا در ارتباط با سرور',
+      });
+    } finally {
+      setSendingReminderId(null);
+    }
+  };
   
   // Quick payment update modal state
   const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
@@ -213,6 +253,9 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   // Counts for document types
   const regularInvoicesCount = useMemo(() => invoices.filter((i) => !i.isProforma).length, [invoices]);
   const proformaInvoicesCount = useMemo(() => invoices.filter((i) => i.isProforma).length, [invoices]);
+  const overdueProformasCount = useMemo(() => {
+    return invoices.filter((i) => i.isProforma && !i.convertedAt && getInvoiceDaysAge(i.date, i.createdAt) >= 7).length;
+  }, [invoices]);
 
   // Counts for payment statuses
   const statusCounts = useMemo(() => {
@@ -571,6 +614,54 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Telegram Reminder Toast Notification */}
+      {reminderToast && (
+        <div className={`p-3 rounded-2xl flex items-center justify-between text-xs font-bold shadow-md animate-in fade-in slide-in-from-top-2 duration-200 ${
+          reminderToast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
+        }`}>
+          <div className="flex items-center gap-2">
+            {reminderToast.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-white shrink-0" /> : <AlertCircle className="w-4 h-4 text-white shrink-0" />}
+            <span>{reminderToast.message}</span>
+          </div>
+          <button type="button" onClick={() => setReminderToast(null)} className="p-1 hover:bg-white/20 rounded-lg cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Proforma Overdue 7-day Alert Card */}
+      {overdueProformasCount > 0 && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-amber-50 to-orange-50 border border-amber-300/80 rounded-2xl p-3 sm:p-4 flex items-center justify-between flex-wrap gap-2.5 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs sm:text-sm font-black text-amber-950">
+                  {toPersianDigits(overdueProformasCount)} پیش‌فاکتور نیازمند پیگیری (بیش از ۷ روز گذشته)
+                </span>
+                <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+                  جهت تبدیل به فاکتور
+                </span>
+              </div>
+              <p className="text-[11px] text-amber-800 mt-0.5 font-medium">
+                بیش از ۷ روز از صدور این پیش‌فاکتورها سپری شده است. جهت تبدیل به فاکتور فروش، با خریداران پیگیری نمایید.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDocTypeFilter('proforma')}
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs transition-all cursor-pointer shadow-3xs"
+            >
+              مشاهده پیش‌فاکتورها ({toPersianDigits(overdueProformasCount)})
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 2. Collapsible Slim Financial Stats Strip */}
       {showStats && (
@@ -1022,9 +1113,48 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                         {toPersianDigits(inv.invoiceNumber)}
                       </span>
                       {inv.isProforma && (
-                        <span className="text-[10px] sm:text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-md font-bold">
-                          پیش‌فاکتور
-                        </span>
+                        <>
+                          <span className="text-[10px] sm:text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-md font-bold">
+                            پیش‌فاکتور
+                          </span>
+                          {!inv.convertedAt && (() => {
+                            const daysAge = getInvoiceDaysAge(inv.date, inv.createdAt);
+                            if (daysAge < 7) return null;
+                            return (
+                              <div className="flex items-center gap-1">
+                                <span
+                                  className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-md font-black flex items-center gap-1 shadow-3xs"
+                                  title={`بیش از ۷ روز (${daysAge} روز) از صدور پیش‌فاکتور گذشته است - نیازمند پیگیری با مشتری جهت تبدیل به فاکتور`}
+                                >
+                                  <span>⚠️ پیگیری ({toPersianDigits(daysAge)} روز)</span>
+                                </span>
+                                {inv.proformaReminderSentAt ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleSendTelegramReminder(e, inv)}
+                                    disabled={sendingReminderId === inv.id}
+                                    className="text-[9px] bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 px-1.5 py-0.5 rounded font-bold cursor-pointer transition-all flex items-center gap-1 disabled:opacity-50"
+                                    title="هشدار تلگرام قبلاً ارسال شده است (کلیک جهت ارسال مجدد)"
+                                  >
+                                    <span>📱 ارسال شده</span>
+                                    <span className="text-[8px] text-sky-500 font-normal">(مجدد)</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleSendTelegramReminder(e, inv)}
+                                    disabled={sendingReminderId === inv.id}
+                                    className="text-[10px] bg-amber-600 hover:bg-amber-700 active:scale-95 text-white px-2 py-0.5 rounded font-bold flex items-center gap-1 cursor-pointer transition-all shadow-3xs disabled:opacity-50"
+                                    title="ارسال دستی پیام هشدار پیگیری به تلگرام"
+                                  >
+                                    <Send className="w-2.5 h-2.5" />
+                                    <span>{sendingReminderId === inv.id ? '...' : 'ارسال هشدار'}</span>
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </>
                       )}
                       <span className="text-[11px] sm:text-xs text-slate-500 font-mono flex items-center gap-1 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
                         <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
@@ -1227,9 +1357,48 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                             {toPersianDigits(inv.invoiceNumber)}
                           </span>
                           {inv.isProforma && (
-                            <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-200 px-1.5 py-0.5 rounded font-bold">
-                              پیش‌فاکتور
-                            </span>
+                            <>
+                              <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-200 px-1.5 py-0.5 rounded font-bold">
+                                پیش‌فاکتور
+                              </span>
+                              {!inv.convertedAt && (() => {
+                                const daysAge = getInvoiceDaysAge(inv.date, inv.createdAt);
+                                if (daysAge < 7) return null;
+                                return (
+                                  <div className="flex items-center gap-1">
+                                    <span
+                                      className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-md font-black flex items-center gap-1 shadow-3xs"
+                                      title={`بیش از ۷ روز (${daysAge} روز) گذشته - نیازمند پیگیری با مشتری جهت تبدیل به فاکتور فروش`}
+                                    >
+                                      <span>⚠️ پیگیری ({toPersianDigits(daysAge)} روز)</span>
+                                    </span>
+                                    {inv.proformaReminderSentAt ? (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => handleSendTelegramReminder(e, inv)}
+                                        disabled={sendingReminderId === inv.id}
+                                        className="text-[9px] bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 px-1.5 py-0.5 rounded font-bold cursor-pointer transition-all flex items-center gap-1 disabled:opacity-50"
+                                        title="هشدار تلگرام قبلاً ارسال شده است (کلیک جهت ارسال مجدد)"
+                                      >
+                                        <span>📱 ارسال شده</span>
+                                        <span className="text-[8px] text-sky-500 font-normal">(مجدد)</span>
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => handleSendTelegramReminder(e, inv)}
+                                        disabled={sendingReminderId === inv.id}
+                                        className="text-[10px] bg-amber-600 hover:bg-amber-700 active:scale-95 text-white px-2 py-0.5 rounded font-bold flex items-center gap-1 cursor-pointer transition-all shadow-3xs disabled:opacity-50"
+                                        title="ارسال دستی پیام هشدار پیگیری به تلگرام"
+                                      >
+                                        <Send className="w-2.5 h-2.5" />
+                                        <span>{sendingReminderId === inv.id ? '...' : 'ارسال هشدار'}</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </>
                           )}
                         </div>
                       </td>

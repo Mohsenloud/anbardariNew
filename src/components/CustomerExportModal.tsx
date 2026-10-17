@@ -488,6 +488,7 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
   const handleExportPdf = async () => {
     if (detailedReportItems.length === 0) return;
     setIsGeneratingPdf(true);
+    await new Promise((resolve) => setTimeout(resolve, 25));
 
     try {
       const customerLabel = isAllCustomers ? 'کلیه_اسناد' : (currentCustomer?.name.replace(/[/\\:*?"<>|]/g, '_') || 'شخص');

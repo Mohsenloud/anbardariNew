@@ -228,8 +228,18 @@ export default function App() {
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('online', onOnline);
 
+    // Periodic check for 7-day proforma follow-up reminders on Telegram (at startup & every 30 mins)
+    const proformaTimer = setTimeout(() => {
+      fetch('/api/telegram/check-proforma-reminders', { method: 'POST' }).catch(() => {});
+    }, 6000);
+    const proformaInterval = setInterval(() => {
+      fetch('/api/telegram/check-proforma-reminders', { method: 'POST' }).catch(() => {});
+    }, 30 * 60 * 1000);
+
     return () => {
       unsubStorage();
+      clearTimeout(proformaTimer);
+      clearInterval(proformaInterval);
       clearInterval(syncInterval);
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibilityChange);

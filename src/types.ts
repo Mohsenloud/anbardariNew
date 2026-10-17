@@ -211,6 +211,7 @@ export interface Invoice {
   isProforma?: boolean; // آیا پیش‌فاکتور است؟
   convertedAt?: string; // تاریخ تبدیل به فاکتور اصلی فروش
   convertedFromProforma?: string; // شماره پیش‌فاکتور اولیه قبل از تبدیل به فاکتور رسمی
+  proformaReminderSentAt?: string; // تاریخ و زمان ارسال آخرین پیام هشدار پیگیری ۷ روزه به تلگرام
   telegramChatId?: string; // شناسه یا چت‌آیدی اختصاصی تلگرام مقصد برای ارسال مستقیم PDF این فاکتور
   shareLink?: InvoiceShareLink; // تنظیمات و شناسه لینک اشتراک آنلاین نسخه تحت وب فاکتور برای مشتری
   // مشخصات فروشنده رسمی در زمان صدور فاکتور (جهت استعلام و سابقه فاکتورهای رسمی دارایی)
@@ -350,6 +351,7 @@ export interface StoreSettings {
   telegramAutoSendSupplierPayment?: boolean; // ارسال خودکار پرداخت وجه به تامین‌کننده
   telegramAutoSendOnlyConfirmed?: boolean; // ارسال خودکار فاکتور فقط پس از تایید نهایی (عدم ارسال پیش‌فاکتور بدون تایید)
   telegramAutoSendOnProformaConvert?: boolean; // ارسال خودکار به محض تایید و تبدیل پیش‌فاکتور به فاکتور قطعی
+  telegramAutoSendProformaReminder?: boolean; // ارسال خودکار پیام هشدار پیگیری پیش‌فاکتور بعد از گذشت ۷ روز جهت تبدیل به فاکتور
   telegramAutoSendExitSlip?: boolean; // ارسال خودکار حواله خروج
   telegramAutoSendExitSlipIssue?: boolean; // ارسال خودکار به محض صدور حواله خروج
   telegramAutoSendExitSlipConfirm?: boolean; // ارسال خودکار پس از تایید تحویل و خروج بار

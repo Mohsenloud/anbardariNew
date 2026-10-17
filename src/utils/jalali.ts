@@ -336,3 +336,51 @@ export function numberToPersianWords(num: number | null | undefined): string {
   const result = parts.join(' و ');
   return isNegative ? `منفی ${result}` : result;
 }
+
+/**
+ * تبدیل تاریخ شمسی به شیء Date میلادی
+ */
+export function jalaliDateToDate(jalaliDateStr: string): Date | null {
+  try {
+    const clean = toEnglishDigits(jalaliDateStr || '').replace(/[^\d/]/g, '').trim();
+    const parts = clean.split('/').map(Number);
+    if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+      let jy = parts[0];
+      if (jy < 100) jy += 1400; // پشتیبانی از سال‌های دورقمی مانند ۰۳ یا ۰۴
+      const [gy, gm, gd] = jalaliToGregorian(jy, parts[1], parts[2]);
+      return new Date(gy, gm - 1, gd);
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * محاسبه تعداد روزهای سپری شده از زمان صدور فاکتور یا پیش‌فاکتور
+ */
+export function getInvoiceDaysAge(dateStr?: string, createdAt?: string): number {
+  const now = new Date();
+  
+  // 1. بررسی بر اساس تاریخ شمسی صدور سند (دقیق‌تر طبق تقویم روز)
+  if (dateStr) {
+    const jDate = jalaliDateToDate(dateStr);
+    if (jDate) {
+      // مقایسه بر اساس ابتدای روز (Midnight) برای دقت تقویمی
+      const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const invoiceMidnight = new Date(jDate.getFullYear(), jDate.getMonth(), jDate.getDate()).getTime();
+      const diffDays = Math.round((todayMidnight - invoiceMidnight) / (1000 * 60 * 60 * 24));
+      if (diffDays >= 0) return diffDays;
+    }
+  }
+
+  // 2. در صورت عدم وجود تاریخ شمسی، بر اساس createdAt
+  if (createdAt) {
+    const created = new Date(createdAt);
+    if (!isNaN(created.getTime())) {
+      const diffMs = now.getTime() - created.getTime();
+      const days = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+      if (days >= 0) return days;
+    }
+  }
+
+  return 0;
+}

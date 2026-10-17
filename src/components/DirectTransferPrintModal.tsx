@@ -119,6 +119,7 @@ export const DirectTransferPrintModal: React.FC<DirectTransferPrintModalProps> =
   const handleExportPdf = async () => {
     try {
       setIsExportingPdf(true);
+      await new Promise((resolve) => setTimeout(resolve, 25));
       const safeNum = transfer.transferNumber.replace(/[^a-zA-Z0-9_-]/g, '_');
       const filename = `حواله_خروج_دستگاه_امانی_${safeNum}_${pageSize}_${orientation}`;
       const result = await exportElementToPdf('printable-direct-transfer-slip', filename, {

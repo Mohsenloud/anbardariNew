@@ -242,6 +242,8 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   const handleExportPdf = async () => {
     try {
       setIsExportingPdf(true);
+      // Yield to browser paint cycle so loading spinner and feedback appear instantly (0ms delay)
+      await new Promise((resolve) => setTimeout(resolve, 25));
       const filename = getInvoicePdfFilename(invoice);
       await exportElementToPdf('printable-invoice', filename, { pageSize, orientation, documentType: 'invoice' });
     } finally {
@@ -432,11 +434,16 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                 className="flex items-center gap-1 bg-rose-700 hover:bg-rose-600 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
               >
                 {isExportingPdf ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>در حال ساخت...</span>
+                  </>
                 ) : (
-                  <FileDown className="w-3.5 h-3.5" />
+                  <>
+                    <FileDown className="w-3.5 h-3.5" />
+                    <span>PDF</span>
+                  </>
                 )}
-                <span>PDF</span>
               </button>
 
               {/* Print Button (High priority) */}
@@ -1856,8 +1863,17 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                     disabled={isExportingPdf}
                     className="flex items-center justify-center gap-2 bg-white hover:bg-slate-100 active:scale-98 disabled:opacity-60 text-slate-700 border border-slate-300 py-2.5 px-3 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
                   >
-                    <Download className="w-4 h-4 text-slate-500" />
-                    <span>دانلود مستقیم فایل PDF</span>
+                    {isExportingPdf ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-rose-600" />
+                        <span className="text-rose-700 font-bold">در حال ساخت و دانلود PDF...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 text-slate-500" />
+                        <span>دانلود مستقیم فایل PDF</span>
+                      </>
+                    )}
                   </button>
 
                   {/* Telegram Direct PDF Dispatch Button */}

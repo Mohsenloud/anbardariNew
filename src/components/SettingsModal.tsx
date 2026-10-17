@@ -40,7 +40,8 @@ import {
   Globe,
   Mic,
   Cpu,
-  Trash2
+  Trash2,
+  RefreshCw
 } from 'lucide-react';
 import { PdfQualityPreset } from '../types';
 import { PDF_QUALITY_PRESETS } from '../utils/pdfHelper';
@@ -203,6 +204,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       });
     } finally {
       setIsSendingTelegramBackup(false);
+    }
+  };
+
+  // Proforma 7-day reminder manual check states
+  const [isCheckingProformaReminders, setIsCheckingProformaReminders] = useState(false);
+  const [proformaReminderCheckMsg, setProformaReminderCheckMsg] = useState<{ success: boolean; text: string } | null>(null);
+
+  const handleCheckProformaReminders = async () => {
+    setIsCheckingProformaReminders(true);
+    setProformaReminderCheckMsg(null);
+    try {
+      const res = await fetch('/api/telegram/check-proforma-reminders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          botToken: formData.telegramBotToken,
+          chatId: formData.telegramChatId,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setProformaReminderCheckMsg({ success: true, text: data.message });
+      } else {
+        setProformaReminderCheckMsg({ success: false, text: data.error || 'خطا در بررسی پیش‌فاکتورها' });
+      }
+    } catch (err: any) {
+      setProformaReminderCheckMsg({ success: false, text: err?.message || 'خطا در برقراری ارتباط با سرور' });
+    } finally {
+      setIsCheckingProformaReminders(false);
     }
   };
 
@@ -1289,6 +1319,63 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         />
                       </label>
 
+                      {/* 3.1 Proforma 7-day Followup Reminder & Instant Check Button */}
+                      <div className="p-3.5 rounded-2xl border-2 border-amber-300 bg-amber-50/90 shadow-xs space-y-3 sm:col-span-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <label className="flex items-start gap-2.5 cursor-pointer flex-1">
+                            <input
+                              type="checkbox"
+                              checked={formData.telegramAutoSendProformaReminder !== false}
+                              onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendProformaReminder: e.target.checked }))}
+                              className="w-4 h-4 mt-0.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer shrink-0"
+                            />
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-black text-amber-950 text-xs">⚠️ هشدار خودکار پیگیری پیش‌فاکتور (گذشت ۷ روز)</span>
+                                <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-md font-black">خودکار</span>
+                              </div>
+                              <span className="text-[11px] text-amber-900/90 leading-relaxed block mt-1">
+                                پس از گذشت ۷ روز از ثبت پیش‌فاکتور، پیام هشدار خودکار در تلگرام ارسال می‌شود تا پیش‌فاکتور با مشتری پیگیری شده و به فاکتور فروش تبدیل شود.
+                              </span>
+                            </div>
+                          </label>
+                        </div>
+
+                        {/* دکمه تست دستی و ارسال هشدار */}
+                        <div className="pt-2.5 border-t border-amber-200/80 flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-950">
+                            <span>🔔 تست و بررسی دستی:</span>
+                            <span className="text-[10px] text-amber-800 font-normal">بررسی آنی پیش‌فاکتورهای نیازمند پیگیری</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleCheckProformaReminders}
+                            disabled={isCheckingProformaReminders || !formData.telegramBotToken?.trim() || !formData.telegramChatId?.trim()}
+                            className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-black text-xs flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                            title="بررسی فوری و ارسال هشدارهای ۷ روزه به تلگرام"
+                          >
+                            {isCheckingProformaReminders ? (
+                              <>
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                <span>در حال بررسی و ارسال هشدار...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Send className="w-3.5 h-3.5" />
+                                <span>بررسی فوری و ارسال هشدارهای ۷ روزه اکنون</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        {proformaReminderCheckMsg && (
+                          <div className={`text-xs font-bold p-2.5 rounded-xl ${proformaReminderCheckMsg.success ? 'bg-emerald-100 text-emerald-950 border border-emerald-300' : 'bg-rose-100 text-rose-950 border border-rose-300'}`}>
+                            {proformaReminderCheckMsg.text}
+                          </div>
+                        )}
+                      </div>
+
                       {/* 4. Purchase Invoice */}
                       <label className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 flex items-start justify-between gap-2 cursor-pointer">
                         <div>
@@ -1419,6 +1506,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         />
                       </label>
                     </div>
+
+
 
                     {/* Telegram PDF Paper Size & Orientation Controls */}
                     <div className="pt-3 border-t border-sky-200/80 space-y-3">

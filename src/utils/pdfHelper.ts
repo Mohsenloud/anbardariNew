@@ -481,19 +481,39 @@ export function buildPdfDocumentFromCanvas(
   return pdf;
 }
 
+let cachedExtractedRules: string | null = null;
+let lastStyleSheetsCount = 0;
+
 /**
  * Safely extracts all active CSS rules currently loaded in document.styleSheets.
- * This runs synchronously and avoids network fetching in the cloned iframe,
- * completely immune to background tab suspension, offline state, or server timeouts.
+ * Caches the extracted rules so subsequent PDF exports are instantaneous (0ms overhead).
+ * Avoids slow CSSOM iteration when <style> textContent is already available.
  */
 function extractActiveStyleSheetRules(): string {
+  if (cachedExtractedRules && document.styleSheets.length === lastStyleSheetsCount) {
+    return cachedExtractedRules;
+  }
+
   let combinedCss = '';
   try {
+    // 1. Instant path: Extract textContent directly from all local <style> tags (0ms vs thousands of getter calls)
+    const styleTags = document.head.querySelectorAll('style');
+    styleTags.forEach((tag) => {
+      if (tag.textContent && !tag.id.startsWith('pdf-')) {
+        combinedCss += tag.textContent + '\n';
+      }
+    });
+
+    // 2. Only inspect external stylesheets if needed
     const sheets = Array.from(document.styleSheets);
     for (const sheet of sheets) {
       try {
+        if (sheet.ownerNode && (sheet.ownerNode as HTMLElement).tagName === 'STYLE') {
+          continue; // Already processed above via textContent
+        }
         if (sheet.cssRules && sheet.cssRules.length > 0) {
-          for (let i = 0; i < sheet.cssRules.length; i++) {
+          const rulesCount = sheet.cssRules.length;
+          for (let i = 0; i < rulesCount; i++) {
             combinedCss += sheet.cssRules[i].cssText + '\n';
           }
         }
@@ -504,6 +524,9 @@ function extractActiveStyleSheetRules(): string {
   } catch {
     // Fallback if document.styleSheets is inaccessible
   }
+
+  cachedExtractedRules = combinedCss;
+  lastStyleSheetsCount = document.styleSheets.length;
   return combinedCss;
 }
 
@@ -538,7 +561,7 @@ function setupClonedDocumentForPdfCapture(
   clonedElement.style.setProperty('background-color', '#ffffff', 'important');
   clonedElement.style.setProperty('background', '#ffffff', 'important');
 
-  // 2. Synchronously extract all live CSS rules from main document and inject them inline into clonedDoc
+  // 2. Synchronously inject live CSS rules into clonedDoc
   const extractedRules = extractActiveStyleSheetRules();
   if (extractedRules) {
     const inlineExtractedStyle = clonedDoc.createElement('style');
@@ -547,10 +570,18 @@ function setupClonedDocumentForPdfCapture(
     clonedDoc.head.appendChild(inlineExtractedStyle);
   }
 
-  // Also copy existing style and link tags from main document
+  // Also copy local style and link tags from main document, but filter out external remote links (e.g. fonts.googleapis.com)
+  // which trigger multi-second network latency in the cloned iframe before html2canvas can start.
   const mainDocStyles = document.head.querySelectorAll('style, link[rel="stylesheet"]');
   mainDocStyles.forEach((node) => {
     try {
+      if (node.tagName.toLowerCase() === 'link') {
+        const href = (node as HTMLLinkElement).href;
+        if (href && (href.startsWith('http://') || href.startsWith('https://')) && !href.startsWith(window.location.origin)) {
+          // Skip external remote stylesheet links to avoid iframe network hangs
+          return;
+        }
+      }
       clonedDoc.head.appendChild(node.cloneNode(true));
     } catch {}
   });
@@ -681,7 +712,8 @@ function setupClonedDocumentForPdfCapture(
   `;
   clonedDoc.head.appendChild(pdfFixStyle);
 
-  // 4. Telegram offscreen isolation if needed
+  // 4. DOM Isolation: Hide all background UI and non-essential elements in clonedDoc.body
+  // This drastically speeds up html2canvas by skipping thousands of irrelevant DOM nodes in the rest of the application
   if (element.id && element.id.startsWith('telegram-offscreen-')) {
     clonedElement.style.setProperty('opacity', '1', 'important');
     clonedElement.style.setProperty('visibility', 'visible', 'important');
@@ -689,13 +721,13 @@ function setupClonedDocumentForPdfCapture(
     clonedElement.style.setProperty('position', 'relative', 'important');
     clonedElement.style.setProperty('left', 'auto', 'important');
     clonedElement.style.setProperty('top', 'auto', 'important');
-
-    Array.from(clonedDoc.body.children).forEach((child) => {
-      if (child !== clonedElement && !child.contains(clonedElement)) {
-        (child as HTMLElement).style.setProperty('display', 'none', 'important');
-      }
-    });
   }
+
+  Array.from(clonedDoc.body.children).forEach((child) => {
+    if (child !== clonedElement && !child.contains(clonedElement)) {
+      (child as HTMLElement).style.setProperty('display', 'none', 'important');
+    }
+  });
 
   // 5. Hide all buttons, action controls, and .no-print elements
   const elementsToHide = clonedElement.querySelectorAll(
@@ -1058,10 +1090,13 @@ export const exportElementToPdf = async (
   };
 
   try {
-    // 0. Ensure all web fonts (especially Persian Vazirmatn) are completely loaded before capturing
+    // 0. Ensure all web fonts are loaded, but never stall more than 80ms if remote CDN is slow/offline
     if (document.fonts) {
       try {
-        await document.fonts.ready;
+        await Promise.race([
+          document.fonts.ready,
+          new Promise((resolve) => setTimeout(resolve, 80))
+        ]);
       } catch {
         // Ignore font loading errors if browser API fails
       }
@@ -1072,6 +1107,7 @@ export const exportElementToPdf = async (
       scale: renderScale,
       useCORS: true,
       logging: false,
+      imageTimeout: 1500,
       backgroundColor: '#ffffff',
       windowWidth: Math.max(1280, targetWidthPx + 200),
       windowHeight: Math.max(1200, Math.ceil(element.scrollHeight + 400)),
@@ -1153,10 +1189,13 @@ export const generatePdfBlob = async (
   };
 
   try {
-    // Ensure all web fonts (especially Persian Vazirmatn) are completely loaded before capturing
+    // Ensure all web fonts are loaded, but never stall more than 80ms if remote CDN is slow/offline
     if (document.fonts) {
       try {
-        await document.fonts.ready;
+        await Promise.race([
+          document.fonts.ready,
+          new Promise((resolve) => setTimeout(resolve, 80))
+        ]);
       } catch {
         // Ignore font loading errors if browser API fails
       }
@@ -1166,6 +1205,7 @@ export const generatePdfBlob = async (
       scale: renderScale,
       useCORS: true,
       logging: false,
+      imageTimeout: 1500,
       backgroundColor: '#ffffff',
       windowWidth: Math.max(1280, targetWidthPx + 200),
       windowHeight: Math.max(1200, Math.ceil(element.scrollHeight + 400)),

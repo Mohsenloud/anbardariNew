@@ -60,10 +60,10 @@ export const InboundReceiptPrintModal: React.FC<InboundReceiptPrintModalProps> =
     }
   };
 
-  // PDF Export Handler
   const handleExportPdf = async () => {
     try {
       setIsExportingPdf(true);
+      await new Promise((resolve) => setTimeout(resolve, 25));
       const filename = `حواله_ورود_انبار_${receipt.receiptNumber}_فاکتور_${receipt.purchaseInvoiceNumber}_${pageSize}_${orientation}`;
       const result = await exportElementToPdf('printable-inbound-receipt', filename, {
         pageSize,

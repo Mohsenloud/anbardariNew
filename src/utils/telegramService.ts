@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { Invoice, ExitSlipData, StoreSettings, AppUser, InboundReceipt, PurchaseInvoice, Customer, CustomerTransaction } from '../types';
-import { toPersianDigits, formatPrice, getCurrentJalaliTime, getCurrentJalaliDate } from './jalali';
+import { toPersianDigits, formatPrice, getCurrentJalaliTime, getCurrentJalaliDate, getInvoiceDaysAge } from './jalali';
 import { generatePdfBlob, getInvoicePdfFilename } from './pdfHelper';
 import { StorageService } from './storage';
 import { SimpleInvoiceLayout } from '../components/SimpleInvoiceLayout';
@@ -370,6 +370,46 @@ export function formatProformaTextReport(invoice: Invoice, settings?: StoreSetti
     invoice.notes ? `▫️ توضیحات: <i>«${invoice.notes}»</i>` : '',
     store ? `🏪 <i>${store}</i>` : '',
   ].filter(Boolean);
+  return lines.join('\n');
+}
+
+/**
+ * گزارش هشدار و یادآوری پیگیری پیش‌فاکتور پس از گذشت ۷ روز جهت پیگیری و تبدیل به فاکتور فروش
+ */
+export function formatProformaFollowUpWarningReport(invoice: Invoice, daysPassed: number, settings?: StoreSettings): string {
+  const store = settings?.storeName || 'سامانه حسابداری و بازرگانی';
+  const currency = settings?.currency || 'تومان';
+
+  const itemsSummary: string[] = [];
+  if (invoice.items && invoice.items.length > 0) {
+    itemsSummary.push(`📦 <b>اقلام پیش‌فاکتور (${toPersianDigits(invoice.items.length)} قلم):</b>`);
+    invoice.items.slice(0, 10).forEach((item, index) => {
+      const num = toPersianDigits(index + 1);
+      const name = item.productName || item.name || 'کالای بدون عنوان';
+      const qty = toPersianDigits(item.quantity);
+      const unit = item.unit ? ` ${item.unit}` : '';
+      itemsSummary.push(`  ▫️ ${num}. ${name}: ${qty}${unit}`);
+    });
+    if (invoice.items.length > 10) {
+      itemsSummary.push(`  ▫️ <i>... و ${toPersianDigits(invoice.items.length - 10)} قلم دیگر</i>`);
+    }
+  }
+
+  const lines = [
+    `⚠️ <b>هشدار پیگیری پیش‌فاکتور (گذشت ${toPersianDigits(daysPassed)} روز)</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `📋 <b>پیش‌فاکتور شماره:</b> <code>#${toPersianDigits(invoice.invoiceNumber)}</code>`,
+    `👤 <b>مشتری / طرف حساب:</b> <b>${invoice.customerName}</b>`,
+    invoice.customerPhone ? `📞 <b>شماره تماس:</b> <code>${toPersianDigits(invoice.customerPhone)}</code>` : '',
+    `📅 <b>تاریخ صدور:</b> ${toPersianDigits(invoice.date)} (<b>${toPersianDigits(daysPassed)} روز گذشته</b>)`,
+    `💰 <b>مبلغ کل:</b> <b>${toPersianDigits(formatPrice(invoice.finalTotal))} ${currency}</b>`,
+    ...(itemsSummary.length > 0 ? itemsSummary : [`📦 تعداد اقلام: ${toPersianDigits(invoice.items?.length || 0)} قلم`]),
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `🔔 <b>اقدام لازم:</b>`,
+    `بیش از ۷ روز از صدور این پیش‌فاکتور سپری شده است. لطفاً جهت پیگیری سفارش با مشتری تماس حاصل فرمایید تا در صورت تایید، آن را به <b>فاکتور فروش</b> تبدیل فرمایید.`,
+    store ? `🏪 <i>${store}</i>` : '',
+  ].filter(Boolean);
+
   return lines.join('\n');
 }
 
@@ -1036,6 +1076,158 @@ export async function autoSendInvoiceReportToTelegram(
   }
 }
 export const autoSendInvoicePdfToTelegram = autoSendInvoiceReportToTelegram;
+
+/**
+ * ارسال پیام هشدار پیگیری پیش‌فاکتور به تلگرام جهت تبدیل به فاکتور فروش
+ */
+export async function sendProformaFollowUpReminder(
+  invoice: Invoice,
+  daysPassed?: number,
+  passedSettings?: StoreSettings,
+  callbacks?: {
+    onStart?: () => void;
+    onSuccess?: (msg: string) => void;
+    onError?: (err: string) => void;
+  }
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const settings = StorageService.getSettings() || passedSettings;
+  if (!settings?.telegramBotEnabled) {
+    const err = 'ربات تلگرام در تنظیمات سیستم فعال نیست.';
+    callbacks?.onError?.(err);
+    return { success: false, error: err };
+  }
+
+  const botToken = settings.telegramBotToken?.trim();
+  const primaryChatId = (settings.telegramChatId || '').trim();
+  const customerChatId = (invoice.telegramChatId || '').trim();
+  const targetChatId = primaryChatId;
+
+  if (!botToken || !targetChatId) {
+    const err = 'توکن ربات یا شناسه چت تلگرام در تنظیمات ثبت نشده است.';
+    callbacks?.onError?.(err);
+    return { success: false, error: err };
+  }
+
+  callbacks?.onStart?.();
+
+  const days = typeof daysPassed === 'number' ? daysPassed : getInvoiceDaysAge(invoice.date, invoice.createdAt);
+  const text = formatProformaFollowUpWarningReport(invoice, days, settings);
+
+  try {
+    const res = await sendTelegramTextMessage({
+      botToken,
+      chatId: targetChatId,
+      text,
+      parseMode: 'HTML',
+    });
+
+    if (res.success) {
+      // در صورت وجود چت تلگرام اختصاصی مشتری و فعال بودن ارسال مستقیم، ارسال رونوشت به مشتری
+      if (customerChatId && customerChatId !== primaryChatId && settings.telegramAutoSendCustomerDirect !== false) {
+        sendTelegramTextMessage({
+          botToken,
+          chatId: customerChatId,
+          text,
+          parseMode: 'HTML',
+        }).catch((e) => console.warn('[Telegram] Customer reminder copy error:', e));
+      }
+
+      const msg = `پیام هشدار پیگیری پیش‌فاکتور #${invoice.invoiceNumber} با موفقیت به تلگرام ارسال شد.`;
+      callbacks?.onSuccess?.(msg);
+      StorageService.logActivity({
+        category: 'system',
+        actionType: 'telegram_proforma_reminder_sent',
+        actionTitle: `ارسال هشدار پیگیری پیش‌فاکتور به تلگرام`,
+        details: `پیام هشدار پیگیری پیش‌فاکتور #${invoice.invoiceNumber} (${days} روز گذشته) به تلگرام (${targetChatId}) ارسال شد.`,
+      });
+      return { success: true, message: msg };
+    } else {
+      const err = res.error || 'خطا در ارسال پیام هشدار به تلگرام';
+      callbacks?.onError?.(err);
+      return { success: false, error: err };
+    }
+  } catch (err: any) {
+    const errorMsg = err?.message || 'خطا در برقراری ارتباط با تلگرام';
+    callbacks?.onError?.(errorMsg);
+    return { success: false, error: errorMsg };
+  }
+}
+
+/**
+ * بررسی تمام پیش‌فاکتورهای صادر شده و ارسال پیام هشدار برای مواردی که بیش از ۷ روز از صدور آنها گذشته است
+ */
+export async function checkAndSendProformaFollowUpReminders(
+  invoices: Invoice[],
+  passedSettings?: StoreSettings,
+  onInvoicesUpdated?: (updatedInvoices: Invoice[]) => void
+): Promise<{
+  checkedCount: number;
+  dueCount: number;
+  sentCount: number;
+  sentInvoiceNumbers: string[];
+  dueInvoices: Invoice[];
+  errors: string[];
+}> {
+  const settings = StorageService.getSettings() || passedSettings;
+  if (!settings?.telegramBotEnabled) {
+    return { checkedCount: 0, dueCount: 0, sentCount: 0, sentInvoiceNumbers: [], dueInvoices: [], errors: ['ربات تلگرام در تنظیمات سیستم فعال نیست.'] };
+  }
+
+  if (settings.telegramAutoSendProformaReminder === false) {
+    return { checkedCount: 0, dueCount: 0, sentCount: 0, sentInvoiceNumbers: [], dueInvoices: [], errors: ['ارسال خودکار هشدار ۷ روزه پیش‌فاکتور در تنظیمات غیرفعال است.'] };
+  }
+
+  const botToken = settings.telegramBotToken?.trim();
+  const chatId = settings.telegramChatId?.trim();
+  if (!botToken || !chatId) {
+    return { checkedCount: 0, dueCount: 0, sentCount: 0, sentInvoiceNumbers: [], dueInvoices: [], errors: ['توکن یا چت‌آیدی تلگرام تنظیم نشده است.'] };
+  }
+
+  const activeProformas = invoices.filter((i) => i.isProforma && !i.convertedAt);
+  const dueInvoices: Invoice[] = [];
+  const sentInvoiceNumbers: string[] = [];
+  const errors: string[] = [];
+  let updatedInvoices = [...invoices];
+  let changed = false;
+
+  for (const inv of activeProformas) {
+    const days = getInvoiceDaysAge(inv.date, inv.createdAt);
+    if (days >= 7) {
+      dueInvoices.push(inv);
+
+      // اگر قبلاً برای این پیش‌فاکتور هشدار ارسال نشده باشد
+      if (!inv.proformaReminderSentAt) {
+        const res = await sendProformaFollowUpReminder(inv, days, settings);
+        if (res.success) {
+          sentInvoiceNumbers.push(inv.invoiceNumber);
+          const nowIso = new Date().toISOString();
+          updatedInvoices = updatedInvoices.map((item) =>
+            item.id === inv.id ? { ...item, proformaReminderSentAt: nowIso } : item
+          );
+          changed = true;
+        } else {
+          errors.push(`پیش‌فاکتور #${inv.invoiceNumber}: ${res.error || 'خطا در ارسال'}`);
+        }
+      }
+    }
+  }
+
+  if (changed) {
+    StorageService.saveInvoices(updatedInvoices);
+    if (onInvoicesUpdated) {
+      onInvoicesUpdated(updatedInvoices);
+    }
+  }
+
+  return {
+    checkedCount: activeProformas.length,
+    dueCount: dueInvoices.length,
+    sentCount: sentInvoiceNumbers.length,
+    sentInvoiceNumbers,
+    dueInvoices,
+    errors,
+  };
+}
 
 /**
  * Automatically send Purchase Invoice Report to Telegram Bot (Text Only or with PDF)

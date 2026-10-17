@@ -370,10 +370,11 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
     }
   };
 
-  // 2. PDF EXPORT HANDLER
   const handleExportPdf = async () => {
     try {
       setIsExportingPdf(true);
+      // Yield to browser paint cycle so loading spinner and feedback appear instantly (0ms delay)
+      await new Promise((resolve) => setTimeout(resolve, 25));
       onRecordPrint(slipLog);
       
       const tplPrefix = template === 'simple' ? 'ساده_' : '';
@@ -444,9 +445,9 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
     }
   };
 
-  // Direct native PDF sharing (uses Android/iOS/Desktop share sheet with actual PDF file)
   const handleSharePdfDirectly = async () => {
     setIsExportingPdf(true);
+    await new Promise((resolve) => setTimeout(resolve, 25));
     try {
       const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}_${pageSize}_${orientation}.pdf`;
       const { success, blob, file, error } = await generatePdfBlob('printable-exit-slip', filename, { pageSize, orientation, documentType: 'exit_slip' });
@@ -588,11 +589,16 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                 title="دانلود فایل PDF حواله خروج"
               >
                 {isExportingPdf ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>در حال ساخت...</span>
+                  </>
                 ) : (
-                  <FileDown className="w-3.5 h-3.5" />
+                  <>
+                    <FileDown className="w-3.5 h-3.5" />
+                    <span>PDF</span>
+                  </>
                 )}
-                <span>PDF</span>
               </button>
 
               {/* Main Print Button */}
@@ -2029,8 +2035,17 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
                     disabled={isExportingPdf}
                     className="flex items-center justify-center gap-2 bg-white hover:bg-slate-100 active:scale-98 disabled:opacity-60 text-slate-700 border border-slate-300 py-2.5 px-3 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
                   >
-                    <Download className="w-4 h-4 text-slate-500" />
-                    <span>دانلود مستقیم فایل PDF</span>
+                    {isExportingPdf ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-rose-600" />
+                        <span className="text-rose-700 font-bold">در حال ساخت و دانلود PDF...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 text-slate-500" />
+                        <span>دانلود مستقیم فایل PDF</span>
+                      </>
+                    )}
                   </button>
 
                   {/* Telegram Direct PDF Dispatch Button */}
