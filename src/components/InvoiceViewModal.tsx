@@ -1133,11 +1133,6 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                       این سند صرفاً «پیش‌فاکتور» است و فاقد اثر مالیاتی یا کسر قطعی از انبار می‌باشد. (برای نهایی شدن باید به فاکتور اصلی تبدیل شود)
                     </div>
                   )}
-                  {invoice.convertedFromProforma && (
-                    <div className={`bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-lg text-center font-medium ${isA5 ? 'p-1.5 text-[10px]' : 'p-2 text-xs'}`}>
-                      این فاکتور رسمی بر اساس پیش‌فاکتور شماره <strong>{toPersianDigits(invoice.convertedFromProforma)}</strong> صادر و نهایی شده است.
-                    </div>
-                  )}
 
                   {/* Seller & Buyer Info Blocks */}
                   {currentTemplate === 'official' ? (

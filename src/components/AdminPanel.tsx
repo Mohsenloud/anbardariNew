@@ -68,7 +68,8 @@ import {
   Mic,
   Cpu,
   Radio,
-  KeyRound
+  KeyRound,
+  RefreshCw,
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -142,6 +143,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [botTestResult, setBotTestResult] = useState<{ success: boolean; message: string; botInfo?: any } | null>(null);
   const [isTestingMsg, setIsTestingMsg] = useState(false);
   const [msgTestResult, setMsgTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Proforma 7-day reminder manual check states
+  const [isCheckingProformaReminders, setIsCheckingProformaReminders] = useState(false);
+  const [proformaReminderCheckMsg, setProformaReminderCheckMsg] = useState<{ success: boolean; text: string } | null>(null);
 
   // AI & Voice Assistant states
   const [showAiApiKey, setShowAiApiKey] = useState(false);
@@ -308,6 +313,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       });
     } finally {
       setIsTestingMsg(false);
+    }
+  };
+
+  const handleCheckProformaReminders = async () => {
+    setIsCheckingProformaReminders(true);
+    setProformaReminderCheckMsg(null);
+    try {
+      const res = await fetch('/api/telegram/check-proforma-reminders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          botToken: formData.telegramBotToken,
+          chatId: formData.telegramChatId,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setProformaReminderCheckMsg({ success: true, text: data.message });
+        if (data.result?.sentCount > 0 && onReloadData) {
+          onReloadData();
+        }
+      } else {
+        setProformaReminderCheckMsg({ success: false, text: data.error || 'خطا در بررسی پیش‌فاکتورها' });
+      }
+    } catch (err: any) {
+      setProformaReminderCheckMsg({ success: false, text: err?.message || 'خطا در برقراری ارتباط با سرور' });
+    } finally {
+      setIsCheckingProformaReminders(false);
     }
   };
 
@@ -2910,6 +2943,64 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       className="w-4 h-4 mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer shrink-0"
                     />
                   </label>
+
+                  {/* 3.1 Proforma 7-day Followup Reminder & Instant Check Button */}
+                  <div className="p-4 rounded-2xl border-2 border-amber-300 bg-amber-50/90 shadow-xs space-y-3 sm:col-span-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <label className="flex items-start gap-2.5 cursor-pointer flex-1">
+                        <input
+                          type="checkbox"
+                          name="telegramAutoSendProformaReminder"
+                          checked={formData.telegramAutoSendProformaReminder !== false}
+                          onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendProformaReminder: e.target.checked }))}
+                          className="w-4 h-4 mt-0.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer shrink-0"
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-black text-amber-950 text-xs sm:text-sm">⚠️ هشدار خودکار پیگیری پیش‌فاکتور (گذشت ۷ روز)</span>
+                            <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-md font-black">اتوماسیون دوره‌ای</span>
+                          </div>
+                          <span className="text-[11px] text-amber-900/90 leading-relaxed block mt-1">
+                            پس از گذشت ۷ روز از ثبت پیش‌فاکتور، پیام هشدار خودکار در تلگرام ارسال می‌شود تا وضعیت سفارش با مشتری پیگیری شده و به فاکتور فروش تبدیل گردد.
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+
+                    {/* دکمه تست دستی و ارسال هشدار */}
+                    <div className="pt-2.5 border-t border-amber-200/80 flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-950">
+                        <span>🔔 دکمه تست دستی و ارسال هشدار:</span>
+                        <span className="text-[10px] text-amber-800 font-normal">بررسی آنی و ارسال پیام‌های پیگیری پیش‌فاکتورهای بیش از ۷ روز</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleCheckProformaReminders}
+                        disabled={isCheckingProformaReminders || !formData.telegramBotToken?.trim() || !formData.telegramChatId?.trim()}
+                        className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-black text-xs flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                        title="بررسی فوری و ارسال هشدارهای ۷ روزه به تلگرام"
+                      >
+                        {isCheckingProformaReminders ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>در حال بررسی و ارسال هشدار...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-3.5 h-3.5" />
+                            <span>بررسی فوری و ارسال هشدارهای ۷ روزه پیش‌فاکتور</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {proformaReminderCheckMsg && (
+                      <div className={`text-xs font-bold p-2.5 rounded-xl ${proformaReminderCheckMsg.success ? 'bg-emerald-100 text-emerald-950 border border-emerald-300' : 'bg-rose-100 text-rose-950 border border-rose-300'}`}>
+                        {proformaReminderCheckMsg.text}
+                      </div>
+                    )}
+                  </div>
 
                   {/* 4. Purchase Invoice */}
                   <label className="p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50/80 flex items-start justify-between gap-3 cursor-pointer transition-all shadow-xs">

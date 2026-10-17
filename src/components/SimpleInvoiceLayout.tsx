@@ -176,13 +176,6 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
             این سند صرفاً پیش‌فاکتور غیرقطعی بوده و جنبه استعلام قیمت دارد.
           </div>
         )}
-        {invoice.convertedFromProforma && (
-          <div className={`bg-emerald-50 border border-emerald-300 text-emerald-900 rounded font-medium text-center ${
-            isA5Landscape ? 'px-2 py-0.5 text-[8.5px]' : isA5Portrait ? 'px-2.5 py-1 text-[9.5px]' : 'px-3 py-1.5 text-xs'
-          }`}>
-            این فاکتور رسمی بر اساس پیش‌فاکتور شماره <strong>{toPersianDigits(invoice.convertedFromProforma)}</strong> قطعی شده است.
-          </div>
-        )}
 
         {/* مشخصات خریدار و فروشنده در ۲ ستون تراز و مشخص */}
         <div className={`invoice-parties grid grid-cols-2 ${

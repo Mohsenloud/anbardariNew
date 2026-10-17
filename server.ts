@@ -1795,7 +1795,8 @@ async function checkAndSendServerProformaReminders(overrides?: {
     const serverSettings = dbData?.settings || {};
     const invoices = Array.isArray(dbData?.invoices) ? dbData.invoices : [];
 
-    const isEnabled = serverSettings?.telegramBotEnabled && serverSettings?.telegramAutoSendProformaReminder !== false;
+    const isManualTest = Boolean(overrides?.botToken && overrides?.chatId);
+    const isEnabled = isManualTest || (Boolean(serverSettings?.telegramBotEnabled) && serverSettings?.telegramAutoSendProformaReminder !== false);
     const botToken = (overrides?.botToken || serverSettings?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
     const defaultChatId = (overrides?.chatId || serverSettings?.telegramChatId || process.env.TELEGRAM_CHAT_ID || '').trim();
 
@@ -1805,7 +1806,7 @@ async function checkAndSendServerProformaReminders(overrides?: {
         dueCount: 0,
         sentCount: 0,
         sentInvoiceNumbers: [],
-        errors: [!isEnabled ? 'قابلیت ارسال خودکار هشدار تلگرام غیرفعال است' : 'تنظیمات ربات تلگرام ناقص است'],
+        errors: [!isEnabled ? 'قابلیت ارسال خودکار هشدار تلگرام غیرفعال است' : 'تنظیمات ربات تلگرام ناقص است (توکن یا شناسه چت وارد نشده است)'],
       };
     }
 

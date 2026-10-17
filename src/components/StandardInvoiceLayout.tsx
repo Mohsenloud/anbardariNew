@@ -138,13 +138,6 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
             این سند «پیش‌فاکتور» است و فاقد اثر قطعی خروج از انبار می‌باشد (برای نهایی شدن به فاکتور رسمی تبدیل خواهد شد).
           </div>
         )}
-        {invoice.convertedFromProforma && (
-          <div className={`bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-lg text-center font-medium ${
-            isA5 ? 'p-1 text-[9.5px]' : 'p-1.5 text-xs'
-          }`}>
-            این فاکتور رسمی بر اساس پیش‌فاکتور شماره <strong>{toPersianDigits(invoice.convertedFromProforma)}</strong> صادر گردیده است.
-          </div>
-        )}
 
         {/* Customer & Transaction info bar */}
         {invoice.type === 'official' ? (
