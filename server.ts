@@ -1826,8 +1826,8 @@ async function checkAndSendServerProformaReminders(overrides?: {
       const days = calculateInvoiceDaysAgeServer(inv);
       if (days >= 7) {
         dueCount++;
-        // اگر هنوز هشداری برای این پیش‌فاکتور ارسال نشده باشد
-        if (!inv.proformaReminderSentAt) {
+        // اگر هنوز هشداری برای این پیش‌فاکتور ارسال نشده باشد (یا در حالت تست دستی توسط کاربر باشد)
+        if (!inv.proformaReminderSentAt || isManualTest) {
           // پیام هشدار پیگیری مستقیماً به کانال یا حساب تلگرام مدیریت/فروشگاه ارسال می‌شود
           const targetChatId = defaultChatId;
 
@@ -1925,14 +1925,21 @@ app.post('/api/telegram/check-proforma-reminders', async (req, res) => {
       botToken: customBotToken,
       chatId: customChatId,
     });
+    if (result.errors.length > 0 && result.sentCount === 0) {
+      return res.json({
+        success: false,
+        result,
+        error: result.errors.join(' | '),
+      });
+    }
     return res.json({
       success: true,
       result,
       message: result.sentCount > 0
-        ? `پیام هشدار برای ${toPersianDigitsServer(result.sentCount)} پیش‌فاکتور با موفقیت به تلگرام ارسال شد.`
+        ? `پیام هشدار برای ${toPersianDigitsServer(result.sentCount)} پیش‌فاکتور نیازمند پیگیری با موفقیت به تلگرام ارسال شد.`
         : result.dueCount > 0
         ? `تمام پیش‌فاکتورهای نیازمند پیگیری قبلاً هشدار تلگرام دریافت کرده‌اند.`
-        : `هیچ پیش‌فاکتوری با بیش از ۷ روز تاخیر یافت نشد.`,
+        : `بررسی انجام شد (${toPersianDigitsServer(result.checkedCount)} پیش‌فاکتور فعال): هیچ پیش‌فاکتوری با بیش از ۷ روز تاخیر یافت نشد.`,
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err?.message || 'خطای سرور' });

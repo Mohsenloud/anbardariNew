@@ -630,36 +630,22 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
         </div>
       )}
 
-      {/* Proforma Overdue 7-day Alert Card */}
+      {/* Proforma Overdue 7-day Compact Alert Strip */}
       {overdueProformasCount > 0 && (
-        <div className="bg-gradient-to-r from-amber-500/10 via-amber-50 to-orange-50 border border-amber-300/80 rounded-2xl p-3 sm:p-4 flex items-center justify-between flex-wrap gap-2.5 shadow-2xs">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <Clock className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs sm:text-sm font-black text-amber-950">
-                  {toPersianDigits(overdueProformasCount)} پیش‌فاکتور نیازمند پیگیری (بیش از ۷ روز گذشته)
-                </span>
-                <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-bold">
-                  جهت تبدیل به فاکتور
-                </span>
-              </div>
-              <p className="text-[11px] text-amber-800 mt-0.5 font-medium">
-                بیش از ۷ روز از صدور این پیش‌فاکتورها سپری شده است. جهت تبدیل به فاکتور فروش، با خریداران پیگیری نمایید.
-              </p>
-            </div>
+        <div className="bg-amber-50/90 border border-amber-200/90 rounded-xl px-3.5 py-2.5 flex items-center justify-between flex-wrap gap-2 shadow-2xs">
+          <div className="flex items-center gap-2 text-xs">
+            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+            <span className="font-black text-amber-950">
+              {toPersianDigits(overdueProformasCount)} پیش‌فاکتور بیش از ۷ روز در انتظار پیگیری و تبدیل به فاکتور
+            </span>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setDocTypeFilter('proforma')}
-              className="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs transition-all cursor-pointer shadow-3xs"
-            >
-              مشاهده پیش‌فاکتورها ({toPersianDigits(overdueProformasCount)})
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setDocTypeFilter('proforma')}
+            className="px-2.5 py-1 rounded-lg bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[11px] transition-all cursor-pointer shadow-3xs"
+          >
+            فیلتر پیش‌فاکتورها ({toPersianDigits(overdueProformasCount)})
+          </button>
         </div>
       )}
 
@@ -1070,15 +1056,12 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           </div>
         </div>
 
-        {/* 4. Mobile View: Responsive Card Deck (Hidden on Desktop) */}
-        <div className="block sm:hidden p-3 space-y-3 bg-slate-100/50">
+        {/* 4. Mobile View: Compact Divide-Y Cards (Hidden on Desktop) */}
+        <div className="block sm:hidden divide-y divide-slate-100">
           {filteredInvoices.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 bg-white rounded-2xl border border-slate-200 p-6 space-y-3">
+            <div className="text-center py-12 text-slate-400 bg-white p-6 space-y-2.5">
               <ReceiptText className="w-10 h-10 mx-auto text-slate-300" />
               <div className="text-sm font-bold text-slate-600">هیچ فاکتوری با این مشخصات یافت نشد</div>
-              <p className="text-xs text-slate-400">
-                می‌توانید فیلترهای بالا را تغییر دهید یا فاکتور جدید ثبت نمایید.
-              </p>
               {(searchQuery || statusFilter !== 'all' || docTypeFilter !== 'all') && (
                 <button
                   type="button"
@@ -1087,7 +1070,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                     setStatusFilter('all');
                     setDocTypeFilter('all');
                   }}
-                  className="min-h-[44px] px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer"
+                  className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer"
                 >
                   پاک کردن همه فیلترها
                 </button>
@@ -1104,66 +1087,54 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                   key={inv.id}
                   id={`mobile-invoice-card-${inv.id}`}
                   onClick={() => setQuickDetailsInvoice(inv)}
-                  className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-2xs hover:border-emerald-300 hover:shadow-xs transition-all cursor-pointer active:bg-slate-50 space-y-2.5"
+                  className="bg-white p-3.5 hover:bg-slate-50 transition-colors cursor-pointer active:bg-slate-100 space-y-2"
                 >
-                  {/* Row 1: Header - Number, Date, Type Badge & Payment Status */}
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                      <span className="font-mono font-black text-slate-900 text-xs sm:text-sm bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 shadow-3xs">
+                  {/* Row 1: Number, Date, Type Badge & Payment Status */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono font-black text-slate-900 text-xs bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
                         {toPersianDigits(inv.invoiceNumber)}
                       </span>
                       {inv.isProforma && (
                         <>
-                          <span className="text-[10px] sm:text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-md font-bold">
+                          <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded font-bold">
                             پیش‌فاکتور
                           </span>
                           {!inv.convertedAt && (() => {
                             const daysAge = getInvoiceDaysAge(inv.date, inv.createdAt);
                             if (daysAge < 7) return null;
                             return (
-                              <div className="flex items-center gap-1">
-                                <span
-                                  className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-md font-black flex items-center gap-1 shadow-3xs"
-                                  title={`بیش از ۷ روز (${daysAge} روز) از صدور پیش‌فاکتور گذشته است - نیازمند پیگیری با مشتری جهت تبدیل به فاکتور`}
-                                >
-                                  <span>⚠️ پیگیری ({toPersianDigits(daysAge)} روز)</span>
+                              <button
+                                type="button"
+                                onClick={(e) => handleSendTelegramReminder(e, inv)}
+                                disabled={sendingReminderId === inv.id}
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-bold flex items-center gap-1 cursor-pointer transition-all disabled:opacity-50 ${
+                                  inv.proformaReminderSentAt
+                                    ? 'bg-sky-50 text-sky-700 border border-sky-200'
+                                    : 'bg-amber-500 text-white'
+                                }`}
+                                title="ارسال پیام هشدار پیگیری ۷ روزه به تلگرام"
+                              >
+                                <Send className="w-2.5 h-2.5" />
+                                <span>
+                                  {sendingReminderId === inv.id
+                                    ? '...'
+                                    : inv.proformaReminderSentAt
+                                    ? `${toPersianDigits(daysAge)} روز (ارسال مجدد)`
+                                    : `پیگیری (${toPersianDigits(daysAge)} روز)`}
                                 </span>
-                                {inv.proformaReminderSentAt ? (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => handleSendTelegramReminder(e, inv)}
-                                    disabled={sendingReminderId === inv.id}
-                                    className="text-[9px] bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 px-1.5 py-0.5 rounded font-bold cursor-pointer transition-all flex items-center gap-1 disabled:opacity-50"
-                                    title="هشدار تلگرام قبلاً ارسال شده است (کلیک جهت ارسال مجدد)"
-                                  >
-                                    <span>📱 ارسال شده</span>
-                                    <span className="text-[8px] text-sky-500 font-normal">(مجدد)</span>
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => handleSendTelegramReminder(e, inv)}
-                                    disabled={sendingReminderId === inv.id}
-                                    className="text-[10px] bg-amber-600 hover:bg-amber-700 active:scale-95 text-white px-2 py-0.5 rounded font-bold flex items-center gap-1 cursor-pointer transition-all shadow-3xs disabled:opacity-50"
-                                    title="ارسال دستی پیام هشدار پیگیری به تلگرام"
-                                  >
-                                    <Send className="w-2.5 h-2.5" />
-                                    <span>{sendingReminderId === inv.id ? '...' : 'ارسال هشدار'}</span>
-                                  </button>
-                                )}
-                              </div>
+                              </button>
                             );
                           })()}
                         </>
                       )}
-                      <span className="text-[11px] sm:text-xs text-slate-500 font-mono flex items-center gap-1 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
-                        <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
-                        <span>{toPersianDigits(inv.date)}</span>
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        {toPersianDigits(inv.date)}
                       </span>
                     </div>
 
                     <span
-                      className={`px-2.5 py-1 rounded-full font-bold text-[10px] sm:text-xs flex items-center gap-1 border shrink-0 shadow-3xs ${
+                      className={`px-2 py-0.5 rounded-full font-bold text-[10px] flex items-center gap-1 border shrink-0 ${
                         isPaid
                           ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                           : isPartial
@@ -1171,135 +1142,55 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                           : 'bg-rose-50 text-rose-800 border-rose-200'
                       }`}
                     >
-                      {isPaid ? (
-                        <>
-                          <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
-                          <span>تسویه کامل</span>
-                        </>
-                      ) : isPartial ? (
-                        <>
-                          <Clock className="w-3 h-3 text-amber-600 shrink-0" />
-                          <span>بیعانه / اقساطی</span>
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="w-3 h-3 text-rose-600 shrink-0" />
-                          <span>نسیه / باز</span>
-                        </>
-                      )}
+                      {isPaid ? 'تسویه کامل' : isPartial ? 'بیعانه' : 'نسیه'}
                     </span>
                   </div>
 
-                  {/* Row 2: Customer Identity, Metadata & Financial Amount */}
-                  <div className="flex items-start justify-between gap-3 pt-2 border-t border-slate-100">
-                    <div className="min-w-0 flex-1 space-y-1">
-                      {/* Customer Title */}
-                      <div className="flex items-center gap-1.5">
-                        <User className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                        <h3 className="font-black text-slate-900 text-xs sm:text-sm leading-snug break-words" title={inv.customerName}>
-                          {inv.customerName}
-                        </h3>
+                  {/* Row 2: Customer Name, Amount & Compact Actions */}
+                  <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-slate-900 text-xs truncate" title={inv.customerName}>
+                        {inv.customerName}
                       </div>
-
-                      {/* Customer & Document Metadata Paragraph */}
-                      <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-500 font-medium">
-                        {/* Creator User Tag */}
-                        <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-900 border border-indigo-200/80 px-1.5 py-0.5 rounded-md font-bold text-[10px]">
-                          <UserCheck className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
-                          <span>ثبت: {inv.createdByName || 'مدیر سیستم'}</span>
+                      <div className="flex items-center gap-2 mt-0.5 text-[11px]">
+                        <span className="font-black font-mono text-slate-800">
+                          {formatPrice(inv.finalTotal, settings.currency)}
                         </span>
-
-                        {inv.customerPhone && (
-                          <span className="flex items-center gap-1 font-mono text-slate-600">
-                            <Phone className="w-3 h-3 text-slate-400 shrink-0" />
-                            <span>{toPersianDigits(inv.customerPhone)}</span>
-                          </span>
-                        )}
-                        {inv.items && inv.items.length > 0 && (
-                          <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md font-bold text-[10px]">
-                            {toPersianDigits(inv.items.length)} ردیف کالا
-                          </span>
-                        )}
-                        {inv.paymentMethod && (
-                          <span className="text-slate-400 text-[10px]">
-                            • {inv.paymentMethod === 'cheque'
-                              ? 'چک'
-                              : inv.paymentMethod === 'cash'
-                              ? 'نقدی'
-                              : inv.paymentMethod === 'pos'
-                              ? 'کارتخوان'
-                              : inv.paymentMethod === 'transfer'
-                              ? 'حواله'
-                              : 'دفتری'}
+                        {!isPaid && (
+                          <span className="text-[10px] text-rose-600 font-bold font-mono">
+                            (مانده: {formatPrice(remainingDebt, settings.currency)})
                           </span>
                         )}
                       </div>
                     </div>
 
-                    {/* Financial Amount & Remaining Balance */}
-                    <div className="text-left shrink-0 pl-0.5">
-                      <span className="text-[10px] text-slate-400 block font-medium">مبلغ سند:</span>
-                      <span className="font-black font-mono text-slate-900 text-xs sm:text-sm block">
-                        {formatPrice(inv.finalTotal, settings.currency)}
-                      </span>
-                      {!isPaid && (
-                        <span className="text-[10px] text-rose-600 font-bold block mt-0.5 font-mono">
-                          مانده: {formatPrice(remainingDebt, settings.currency)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Row 3: Action Buttons (Touch-friendly & Responsive) */}
-                  <div 
-                    className="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-100" 
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                      {/* Primary Quick Details Button */}
-                      <button
-                        type="button"
-                        onClick={() => setQuickDetailsInvoice(inv)}
-                        className="flex-1 min-h-[36px] sm:min-h-[38px] px-2.5 sm:px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] sm:text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-3xs"
-                        title="مشاهده اطلاعات کامل، اقلام و عملیات فاکتور"
-                      >
-                        <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
-                        <span>مشاهده جزئیات</span>
-                      </button>
-
-                      {/* Quick Payment Status Button (when unpaid or partial) */}
+                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                       {!isPaid && (
                         <button
                           type="button"
                           onClick={() => handleOpenPaymentModal(inv)}
-                          className="min-h-[36px] sm:min-h-[38px] px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 text-amber-800 border border-amber-200 rounded-xl text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer shadow-3xs shrink-0"
-                          title="ثبت دریافتی و تسویه این سند"
+                          className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                          title="ثبت دریافتی و تسویه"
                         >
-                          <Coins className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600 shrink-0" />
+                          <Coins className="w-3 h-3 text-amber-600" />
                           <span>تسویه</span>
                         </button>
                       )}
-                    </div>
-
-                    <div className="flex items-center gap-1 shrink-0">
-                      {/* Direct Print Button */}
+                      <button
+                        type="button"
+                        onClick={() => setQuickDetailsInvoice(inv)}
+                        className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>جزئیات</span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => onViewInvoice(inv)}
-                        className="min-h-[36px] min-w-[36px] sm:min-h-[38px] sm:min-w-[38px] p-2 bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl transition-all cursor-pointer flex items-center justify-center shadow-3xs"
-                        title="مشاهده پیش‌نمایش و چاپ مستقیم فاکتور"
+                        className="p-1.5 text-slate-500 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                        title="چاپ فاکتور"
                       >
-                        <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-600" />
-                      </button>
-
-                      {/* Customer Online Web Link Button */}
-                      <button
-                        type="button"
-                        onClick={() => handleOpenShareModal(inv)}
-                        className="min-h-[36px] min-w-[36px] sm:min-h-[38px] sm:min-w-[38px] p-2 bg-sky-50 hover:bg-sky-100 active:bg-sky-200 text-sky-700 border border-sky-200 rounded-xl transition-all cursor-pointer flex items-center justify-center shadow-3xs"
-                        title="ارسال نسخه تحت وب فاکتور برای مشتری"
-                      >
-                        <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-600" />
+                        <Printer className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -1314,24 +1205,21 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           <table className="w-full text-right border-collapse text-xs">
             <thead>
               <tr className="bg-slate-100/80 text-slate-700 border-b border-slate-200 select-none">
-                <th className="py-3.5 px-3 font-bold text-center w-12">#</th>
-                <th className="py-3.5 px-3 font-bold">شماره فاکتور</th>
-                <th className="py-3.5 px-3 font-bold">خریدار / مشتری</th>
-                <th className="py-3.5 px-3 font-bold">کاربر ثبت‌کننده</th>
-                <th className="py-3.5 px-3 font-bold">تاریخ صدور</th>
-                <th className="py-3.5 px-3 font-bold text-left">مبلغ کل و وضعیت مالی</th>
-                <th className="py-3.5 px-3 font-bold text-center w-36">عملیات</th>
+                <th className="py-3 px-3 font-bold text-center w-10">#</th>
+                <th className="py-3 px-3 font-bold">شماره سند</th>
+                <th className="py-3 px-3 font-bold">خریدار / مشتری</th>
+                <th className="py-3 px-3 font-bold">ثبت‌کننده</th>
+                <th className="py-3 px-3 font-bold">تاریخ</th>
+                <th className="py-3 px-3 font-bold text-left">مبلغ کل و وضعیت</th>
+                <th className="py-3 px-3 font-bold text-center w-36">عملیات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredInvoices.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-16 text-slate-400 bg-white">
-                    <ReceiptText className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                  <td colSpan={7} className="text-center py-14 text-slate-400 bg-white">
+                    <ReceiptText className="w-9 h-9 mx-auto mb-2 text-slate-300" />
                     <div className="text-sm font-bold text-slate-600">هیچ فاکتوری با مشخصات انتخابی یافت نشد</div>
-                    <p className="text-xs text-slate-400 mt-1">
-                      می‌توانید عبارت جستجو را تغییر داده یا فیلترهای بالا را بازنشانی فرمایید.
-                    </p>
                   </td>
                 </tr>
               ) : (
@@ -1346,56 +1234,45 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                       className={`${index % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'} hover:bg-emerald-50/40 transition-colors cursor-pointer group`}
                     >
                       {/* Row index */}
-                      <td className="py-3.5 px-3 text-center text-slate-400 font-mono font-bold text-[11px]">
+                      <td className="py-3 px-3 text-center text-slate-400 font-mono font-bold text-[11px]">
                         {toPersianDigits(index + 1)}
                       </td>
 
                       {/* Invoice Number */}
-                      <td className="py-3.5 px-3">
+                      <td className="py-3 px-3 whitespace-nowrap">
                         <div className="font-mono font-black text-slate-900 text-xs flex items-center gap-1.5">
-                          <span className="bg-slate-100 group-hover:bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                          <span className="bg-slate-100 group-hover:bg-white px-2.5 py-0.5 rounded-lg border border-slate-200">
                             {toPersianDigits(inv.invoiceNumber)}
                           </span>
                           {inv.isProforma && (
                             <>
-                              <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-200 px-1.5 py-0.5 rounded font-bold">
+                              <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded font-bold font-sans">
                                 پیش‌فاکتور
                               </span>
                               {!inv.convertedAt && (() => {
                                 const daysAge = getInvoiceDaysAge(inv.date, inv.createdAt);
                                 if (daysAge < 7) return null;
                                 return (
-                                  <div className="flex items-center gap-1">
-                                    <span
-                                      className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-md font-black flex items-center gap-1 shadow-3xs"
-                                      title={`بیش از ۷ روز (${daysAge} روز) گذشته - نیازمند پیگیری با مشتری جهت تبدیل به فاکتور فروش`}
-                                    >
-                                      <span>⚠️ پیگیری ({toPersianDigits(daysAge)} روز)</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleSendTelegramReminder(e, inv)}
+                                    disabled={sendingReminderId === inv.id}
+                                    className={`text-[10px] px-1.5 py-0.5 rounded font-bold font-sans flex items-center gap-1 cursor-pointer transition-all disabled:opacity-50 ${
+                                      inv.proformaReminderSentAt
+                                        ? 'bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200'
+                                        : 'bg-amber-500 hover:bg-amber-600 text-white shadow-2xs'
+                                    }`}
+                                    title={`بیش از ۷ روز (${daysAge} روز) گذشته - کلیک جهت ارسال هشدار تلگرام`}
+                                  >
+                                    <Send className="w-2.5 h-2.5" />
+                                    <span>
+                                      {sendingReminderId === inv.id
+                                        ? '...'
+                                        : inv.proformaReminderSentAt
+                                        ? `${toPersianDigits(daysAge)} روز (ارسال شده)`
+                                        : `پیگیری (${toPersianDigits(daysAge)} روز)`}
                                     </span>
-                                    {inv.proformaReminderSentAt ? (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => handleSendTelegramReminder(e, inv)}
-                                        disabled={sendingReminderId === inv.id}
-                                        className="text-[9px] bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 px-1.5 py-0.5 rounded font-bold cursor-pointer transition-all flex items-center gap-1 disabled:opacity-50"
-                                        title="هشدار تلگرام قبلاً ارسال شده است (کلیک جهت ارسال مجدد)"
-                                      >
-                                        <span>📱 ارسال شده</span>
-                                        <span className="text-[8px] text-sky-500 font-normal">(مجدد)</span>
-                                      </button>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => handleSendTelegramReminder(e, inv)}
-                                        disabled={sendingReminderId === inv.id}
-                                        className="text-[10px] bg-amber-600 hover:bg-amber-700 active:scale-95 text-white px-2 py-0.5 rounded font-bold flex items-center gap-1 cursor-pointer transition-all shadow-3xs disabled:opacity-50"
-                                        title="ارسال دستی پیام هشدار پیگیری به تلگرام"
-                                      >
-                                        <Send className="w-2.5 h-2.5" />
-                                        <span>{sendingReminderId === inv.id ? '...' : 'ارسال هشدار'}</span>
-                                      </button>
-                                    )}
-                                  </div>
+                                  </button>
                                 );
                               })()}
                             </>
@@ -1404,50 +1281,37 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                       </td>
 
                       {/* Customer Name */}
-                      <td className="py-3.5 px-3">
-                        <div className="font-bold text-slate-900 truncate max-w-xs text-xs sm:text-sm" title={inv.customerName}>
-                          {inv.customerName}
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900 truncate max-w-xs text-xs" title={inv.customerName}>
+                            {inv.customerName}
+                          </span>
+                          {inv.customerPhone && (
+                            <span className="text-[10px] text-slate-400 font-mono hidden lg:inline">
+                              ({toPersianDigits(inv.customerPhone)})
+                            </span>
+                          )}
                         </div>
-                        {inv.customerPhone && (
-                          <div className="text-[10.5px] text-slate-400 font-mono flex items-center gap-1 mt-0.5">
-                            <Phone className="w-2.5 h-2.5 text-slate-300" />
-                            <span>{toPersianDigits(inv.customerPhone)}</span>
-                          </div>
-                        )}
                       </td>
 
                       {/* Created By User */}
-                      <td className="py-3.5 px-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-6 h-6 rounded-lg bg-indigo-50 border border-indigo-200/80 flex items-center justify-center text-indigo-700 text-[10px] font-black shrink-0">
-                            <UserCheck className="w-3.5 h-3.5" />
-                          </span>
-                          <div className="min-w-0">
-                            <div className="font-bold text-slate-800 text-xs truncate max-w-[120px]" title={inv.createdByName || 'مدیر سیستم'}>
-                              {inv.createdByName || 'مدیر سیستم'}
-                            </div>
-                            {inv.createdByRole && (
-                              <div className="text-[10px] text-slate-400 truncate max-w-[120px]">
-                                {inv.createdByRole}
-                              </div>
-                            )}
-                          </div>
-                        </div>
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                          <UserCheck className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="truncate max-w-[100px]">{inv.createdByName || 'مدیر سیستم'}</span>
+                        </span>
                       </td>
 
                       {/* Issue Date */}
-                      <td className="py-3.5 px-3 text-slate-600 font-mono text-xs whitespace-nowrap">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{toPersianDigits(inv.date)}</span>
-                        </div>
+                      <td className="py-3 px-3 text-slate-600 font-mono text-xs whitespace-nowrap">
+                        {toPersianDigits(inv.date)}
                       </td>
 
                       {/* Amount & Status */}
-                      <td className="py-3.5 px-3 text-left whitespace-nowrap font-['Vazirmatn']">
+                      <td className="py-3 px-3 text-left whitespace-nowrap font-['Vazirmatn']">
                         <div className="flex items-center justify-end gap-2">
                           <div className="text-left">
-                            <span className="font-black text-slate-900 text-xs sm:text-sm font-mono block">
+                            <span className="font-black text-slate-900 text-xs font-mono block">
                               {formatPrice(inv.finalTotal, settings.currency)}
                             </span>
                             {!isPaid && (
@@ -1459,10 +1323,10 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                           <span
                             className={`px-2 py-0.5 rounded-full font-bold text-[10px] border shrink-0 ${
                               isPaid
-                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                                 : isPartial
-                                ? 'bg-amber-100 text-amber-800 border-amber-300'
-                                : 'bg-rose-100 text-rose-800 border-rose-300'
+                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                : 'bg-rose-50 text-rose-800 border-rose-200'
                             }`}
                           >
                             {isPaid ? 'تسویه' : isPartial ? 'بیعانه' : 'نسیه'}
@@ -1471,16 +1335,16 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             onClick={() => setQuickDetailsInvoice(inv)}
-                            className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
                             title="مشاهده اطلاعات کامل، اقلام و عملیات فاکتور"
                           >
                             <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>مشاهده جزئیات</span>
+                            <span>جزئیات</span>
                           </button>
 
                           <button
@@ -1488,7 +1352,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                             type="button"
                             onClick={() => onViewInvoice(inv)}
                             title="مشاهده و چاپ مستقیم"
-                            className="p-2 text-slate-600 hover:text-emerald-700 hover:bg-slate-100 active:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                            className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                           >
                             <Printer className="w-4 h-4" />
                           </button>
@@ -1498,7 +1362,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                             type="button"
                             onClick={() => handleOpenShareModal(inv)}
                             title="ارسال و اشتراک لینک نسخه تحت وب برای مشتری"
-                            className="p-2 text-sky-600 hover:text-sky-800 hover:bg-sky-50 active:bg-sky-100 rounded-xl transition-colors cursor-pointer"
+                            className="p-1.5 text-sky-600 hover:text-sky-800 hover:bg-sky-50 rounded-lg transition-colors cursor-pointer"
                           >
                             <Globe className="w-4 h-4" />
                           </button>

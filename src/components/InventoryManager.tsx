@@ -1938,122 +1938,106 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
       {/* SUBTAB 3: EXIT SLIPS (برگه‌های خروج از انبار) */}
       {activeSubTab === 'exit-slips' && (
-        <div className="space-y-4">
-          {/* Filter and Search Bar */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row gap-3 items-center justify-between">
-            <div className="relative w-full sm:w-80">
-              <input
-                id="exit-slip-search-input"
-                type="text"
-                placeholder="جستجو در فاکتور، مشتری، کالا، راننده، ماشین یا تلفن..."
-                value={exitSlipSearch}
-                onChange={(e) => setExitSlipSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-right"
-              />
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-            </div>
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+          {/* Unified Filter, Search & Export Toolbar */}
+          <div className="p-3 sm:p-3.5 border-b border-slate-200/80 bg-slate-50/60 flex flex-col lg:flex-row gap-2.5 items-stretch lg:items-center justify-between">
+            {/* Search & Status Pills */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1">
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  id="exit-slip-search-input"
+                  type="text"
+                  placeholder="جستجو در حواله، مشتری، کالا، راننده..."
+                  value={exitSlipSearch}
+                  onChange={(e) => setExitSlipSearch(e.target.value)}
+                  className="w-full pr-9 pl-7 py-1.5 bg-white border border-slate-200/90 rounded-xl text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-2xs"
+                />
+                {exitSlipSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setExitSlipSearch('')}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-              <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-medium">
+              <div className="flex bg-slate-200/60 p-1 rounded-xl text-xs font-bold overflow-x-auto no-scrollbar gap-1">
                 <button
                   id="filter-all-slips"
                   onClick={() => setExitSlipFilter('all')}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                    exitSlipFilter === 'all' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                    exitSlipFilter === 'all' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  همه حواله‌ها ({toPersianDigits(invoices.length)})
+                  همه ({toPersianDigits(invoices.length)})
                 </button>
                 <button
                   id="filter-pending-delivery-slips"
                   onClick={() => setExitSlipFilter('pending_delivery')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                    exitSlipFilter === 'pending_delivery' ? 'bg-white text-amber-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                    exitSlipFilter === 'pending_delivery' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <Clock className="w-3.5 h-3.5 text-amber-600" />
-                  <span>در انتظار تحویل ({toPersianDigits(pendingDeliverySlipsCount)})</span>
+                  <span>منتظر تحویل ({toPersianDigits(pendingDeliverySlipsCount)})</span>
                 </button>
                 <button
                   id="filter-delivered-slips"
                   onClick={() => setExitSlipFilter('delivered')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                    exitSlipFilter === 'delivered' ? 'bg-white text-emerald-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                    exitSlipFilter === 'delivered' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <Truck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>بار تحویل شد ({toPersianDigits(deliveredSlipsCount)})</span>
+                  <span>تحویل شده ({toPersianDigits(deliveredSlipsCount)})</span>
                 </button>
                 <button
                   id="filter-unprinted-slips"
                   onClick={() => setExitSlipFilter('unprinted')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                    exitSlipFilter === 'unprinted' ? 'bg-white text-blue-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                    exitSlipFilter === 'unprinted' ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <AlertCircle className="w-3.5 h-3.5 text-blue-600" />
                   <span>منتظر چاپ ({toPersianDigits(unprintedSlipsCount)})</span>
                 </button>
-                <button
-                  id="filter-printed-slips"
-                  onClick={() => setExitSlipFilter('printed')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                    exitSlipFilter === 'printed' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>چاپ شده ({toPersianDigits(printedSlipsCount)})</span>
-                </button>
               </div>
+            </div>
+
+            {/* Compact Export Buttons */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                id="direct-export-slips-excel-btn"
+                onClick={() => {
+                  exportExitSlipsListToExcel(invoices, exitSlipLogs, settings, {
+                    filter: exitSlipFilter,
+                    searchQuery: exitSlipSearch,
+                    products,
+                  });
+                }}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                title="دانلود مستقیم فایل اکسل حواله‌های خروج انبار"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-600" />
+                <span>اکسل حواله‌ها</span>
+              </button>
+
+              <button
+                type="button"
+                id="export-customer-slips-from-inventory-btn"
+                onClick={() => {
+                  setCustomerExportSelected(null);
+                  setIsCustomerExportModalOpen(true);
+                }}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                title="اکسپورت اکسل و PDF فاکتورها و حواله‌های خروج"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
+                <span>گزارش فاکتورها و حواله‌ها</span>
+              </button>
             </div>
           </div>
-
-          {/* Slips Content Container */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-200/80 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 className="font-bold text-slate-800 text-sm">لیست برگه‌های خروج کالای انبار (کنترل فیزیکی و تحویل بار)</h3>
-                <p className="text-xs text-slate-500">
-                  ثبت تاییدیه تحویل بار توسط انباردار، ثبت مشخصات ماشین و شماره تماس راننده، به همراه چاپ فیزیکی و سوابق
-                </p>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  type="button"
-                  id="direct-export-slips-excel-btn"
-                  onClick={() => {
-                    exportExitSlipsListToExcel(invoices, exitSlipLogs, settings, {
-                      filter: exitSlipFilter,
-                      searchQuery: exitSlipSearch,
-                      products,
-                    });
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-                  title="دانلود مستقیم فایل اکسل (XLSX) حواله‌های خروج انبار"
-                >
-                  <Download className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>دانلود اکسل حواله‌ها (XLSX)</span>
-                </button>
-
-                <button
-                  type="button"
-                  id="export-customer-slips-from-inventory-btn"
-                  onClick={() => {
-                    setCustomerExportSelected(null);
-                    setIsCustomerExportModalOpen(true);
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-                  title="اکسپورت اکسل و PDF فاکتورها و حواله‌های خروج با ستون‌های تاریخ، شماره فاکتور و حواله، نوع و مقدار جنس"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>اکسپورت اکسل و PDF فاکتورها و حواله‌ها</span>
-                </button>
-
-                <div className="text-xs text-slate-500 font-mono hidden sm:inline-block mr-1">
-                  نمایش {toPersianDigits(filteredExitSlips.length)} از {toPersianDigits(invoices.length)} حواله
-                </div>
-              </div>
-            </div>
 
             {filteredExitSlips.length === 0 ? (
               <div className="text-center py-12 text-slate-400 p-4 space-y-2">
@@ -2264,7 +2248,6 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                 </div>
               </>
             )}
-          </div>
         </div>
       )}
 

@@ -510,11 +510,13 @@ export const CustomerExportModal: React.FC<CustomerExportModalProps> = ({
         setDownloadSuccessMessage(`فایل PDF رسمی ${typeLabel} با موفقیت دانلود شد (${toPersianDigits(detailedReportItems.length)} ردیف کالایی).`);
         setTimeout(() => setDownloadSuccessMessage(null), 6000);
       } else {
-        alert(res.error || 'خطا در تولید فایل PDF');
+        setDownloadSuccessMessage(res.error || 'خطا در تولید فایل PDF');
+        setTimeout(() => setDownloadSuccessMessage(null), 5000);
       }
     } catch (err: any) {
       console.error('PDF export error:', err);
-      alert('خطا در صدور فایل PDF');
+      setDownloadSuccessMessage('خطا در صدور فایل PDF');
+      setTimeout(() => setDownloadSuccessMessage(null), 5000);
     } finally {
       setIsGeneratingPdf(false);
     }

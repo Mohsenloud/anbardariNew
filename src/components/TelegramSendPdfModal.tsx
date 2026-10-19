@@ -87,6 +87,7 @@ export const TelegramSendPdfModal: React.FC<TelegramSendPdfModalProps> = ({
 
     setIsSending(true);
     setStatus({ type: 'idle' });
+    await new Promise((resolve) => setTimeout(resolve, 25));
 
     try {
       if (sendFormat === 'text_only') {

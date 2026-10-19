@@ -10,7 +10,7 @@ import {
   StoreSettings, 
   AppUser 
 } from '../types';
-import { toPersianDigits, formatPrice, getCurrentJalaliDate, formatThousands } from '../utils/jalali';
+import { toPersianDigits, formatPrice, getCurrentJalaliDate } from '../utils/jalali';
 import { NumericInput } from './NumericInput';
 import { JalaliDatePicker } from './JalaliDatePicker';
 import { StorageService } from '../utils/storage';
@@ -21,23 +21,17 @@ import {
   ShoppingBag, 
   PackagePlus, 
   Building2, 
-  Calendar, 
   CreditCard, 
   X, 
   Check, 
   AlertCircle,
-  Truck,
   PlusCircle,
-  Calculator,
-  Phone,
-  MapPin,
   Hash,
   FileText,
   Search,
   ChevronDown,
   ChevronUp,
   UserCheck,
-  CheckCircle2,
   Send
 } from 'lucide-react';
 
@@ -59,16 +53,13 @@ interface NewPurchaseInvoiceModalProps {
 export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = ({
   products,
   settings,
-  currentUser,
-  lastInvoiceNumber,
-  previousSuppliers = [],
   editingInvoice,
+  previousSuppliers = [],
   onClose,
   onSavePurchase,
 }) => {
   const isEditing = !!editingInvoice;
 
-  // Generate sequential numbers for invoice and warehouse receipt or use editingInvoice
   const [invoiceNumber, setInvoiceNumber] = useState(() => 
     editingInvoice?.invoiceNumber || StorageService.getNextPurchaseInvoiceNumber()
   );
@@ -81,6 +72,9 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
   const [supplierAddress, setSupplierAddress] = useState(() => editingInvoice?.supplierAddress || '');
   const [supplierEconomicCode, setSupplierEconomicCode] = useState(() => editingInvoice?.supplierEconomicCode || '');
 
+  // Validation error message (replacing blocking browser alert)
+  const [validationError, setValidationError] = useState<string | null>(null);
+
   // Supplier dropdown search & details UI states
   const [isSupplierDropdownOpen, setIsSupplierDropdownOpen] = useState(false);
   const [supplierSearchInput, setSupplierSearchInput] = useState('');
@@ -89,7 +83,6 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
   );
   const supplierDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close supplier dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (supplierDropdownRef.current && !supplierDropdownRef.current.contains(e.target as Node)) {
@@ -105,7 +98,6 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
     const list: { name: string; phone?: string; address?: string; nationalId?: string }[] = [];
     const seen = new Set<string>();
 
-    // 1. Registered customers / counterparties in database
     try {
       const registered = StorageService.getCustomers();
       registered.forEach((c) => {
@@ -124,7 +116,6 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
       console.error(err);
     }
 
-    // 2. Previous purchase invoices suppliers
     try {
       const purchases = StorageService.getPurchaseInvoices();
       const fromPurchases = purchases.map((p) => p.supplierName).filter(Boolean);
@@ -142,7 +133,6 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
     return list;
   }, [previousSuppliers]);
 
-  // Filtered suppliers based on search query
   const filteredSuppliers = useMemo(() => {
     if (!supplierSearchInput.trim()) return availableSuppliers;
     const query = supplierSearchInput.trim().toLowerCase();
@@ -154,7 +144,6 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
     );
   }, [availableSuppliers, supplierSearchInput]);
 
-  // Handle selecting a supplier from the list
   const handleSelectSupplier = (s: { name: string; phone?: string; address?: string; nationalId?: string }) => {
     setSupplierName(s.name);
     if (s.phone) setSupplierPhone(s.phone);
@@ -162,9 +151,9 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
     if (s.nationalId) setSupplierEconomicCode(s.nationalId);
     setIsSupplierDropdownOpen(false);
     setSupplierSearchInput('');
+    setValidationError(null);
   };
 
-  // Clear selected supplier
   const handleClearSupplier = () => {
     setSupplierName('');
     setSupplierPhone('');
@@ -199,13 +188,16 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
   });
 
   // Financials
-  const [taxRate, setTaxRate] = useState<number>(() => editingInvoice?.taxRate || 0);
+  const [taxRate] = useState<number>(() => editingInvoice?.taxRate || 0);
   const [shippingCost, setShippingCost] = useState<number>(() => editingInvoice?.shippingCost || 0);
   const [overallDiscount, setOverallDiscount] = useState<number>(() => {
     if (!editingInvoice) return 0;
     const itemsDisc = editingInvoice.items?.reduce((s, it) => s + (it.discount || 0), 0) || 0;
     return Math.max(0, (editingInvoice.totalDiscount || 0) - itemsDisc);
   });
+  const [showExtraFinancials, setShowExtraFinancials] = useState<boolean>(() =>
+    Boolean(editingInvoice && ((editingInvoice.totalDiscount || 0) > 0 || (editingInvoice.shippingCost || 0) > 0))
+  );
 
   // Payment configuration
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(() => editingInvoice?.paymentStatus || 'paid');
@@ -213,9 +205,10 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
   const [paidAmount, setPaidAmount] = useState<number>(() => editingInvoice?.paidAmount || 0);
   const [chequeNumber, setChequeNumber] = useState(() => editingInvoice?.chequeNumber || '');
   const [chequeDueDate, setChequeDueDate] = useState(() => editingInvoice?.chequeDueDate || '');
-  const [chequeName, setChequeName] = useState(() => editingInvoice?.chequeName || '');
-  const [transferDescription, setTransferDescription] = useState(() => editingInvoice?.transferDescription || '');
+  const [chequeName] = useState(() => editingInvoice?.chequeName || '');
+  const [transferDescription] = useState(() => editingInvoice?.transferDescription || '');
   const [notes, setNotes] = useState(() => editingInvoice?.notes || '');
+  const [showNotesField, setShowNotesField] = useState<boolean>(() => Boolean(editingInvoice?.notes));
 
   // Quick product creation modal inside purchase
   const [isQuickProductModalOpen, setIsQuickProductModalOpen] = useState(false);
@@ -227,12 +220,12 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
 
   // Calculations
   const subtotal = items.reduce((sum, item) => sum + item.total, 0);
-  const totalDiscount = overallDiscount + items.reduce((sum, item) => sum + (item.discount || 0), 0);
+  const itemsDiscountSum = items.reduce((sum, item) => sum + (item.discount || 0), 0);
+  const totalDiscount = overallDiscount + itemsDiscountSum;
   const taxableAmount = Math.max(0, subtotal - overallDiscount);
   const taxAmount = Math.round((taxableAmount * taxRate) / 100);
   const finalTotal = Math.max(0, taxableAmount + taxAmount + (shippingCost || 0));
 
-  // Sync paidAmount when paymentStatus changes
   const handlePaymentStatusChange = (status: PaymentStatus) => {
     setPaymentStatus(status);
     if (status === 'paid') {
@@ -242,7 +235,6 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
     }
   };
 
-  // Add Item row
   const handleAddItem = () => {
     const firstProd = allAvailableProducts[0];
     const newItem: PurchaseInvoiceItem = {
@@ -261,8 +253,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
 
   const handleRemoveItem = (index: number) => {
     if (items.length <= 1) return;
-    const next = items.filter((_, i) => i !== index);
-    setItems(next);
+    setItems(items.filter((_, i) => i !== index));
   };
 
   const handleItemChange = (index: number, field: keyof PurchaseInvoiceItem, val: any) => {
@@ -295,9 +286,9 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
 
     next[index] = item;
     setItems(next);
+    setValidationError(null);
   };
 
-  // Quick product save
   const handleCreateQuickProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProductName.trim()) return;
@@ -319,7 +310,6 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
 
     setCreatedNewProducts([...createdNewProducts, newProd]);
 
-    // Replace the last item or add as a new item
     setItems((prev) => {
       const updated = [...prev];
       const lastIdx = updated.length - 1;
@@ -349,29 +339,29 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
       return updated;
     });
 
-    // Reset quick product form
     setNewProductName('');
     setNewProductBuyPrice(0);
     setNewProductSellPrice(0);
     setIsQuickProductModalOpen(false);
   };
 
-  // Form Submit
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setValidationError(null);
 
-    if (!supplierName.trim()) {
-      alert('لطفاً نام تامین‌کننده یا فروشنده را وارد و یا از لیست انتخاب نمایید.');
+    const finalSupplierName = supplierName.trim() || supplierSearchInput.trim();
+    if (!finalSupplierName) {
+      setValidationError('لطفاً نام تامین‌کننده یا فروشنده را وارد و یا از لیست انتخاب نمایید.');
       return;
     }
 
     if (!invoiceNumber.trim()) {
-      alert('لطفاً شماره فاکتور خرید را وارد نمایید.');
+      setValidationError('لطفاً شماره فاکتور خرید را وارد نمایید.');
       return;
     }
 
     if (items.length === 0 || items.some((it) => !it.productId || it.quantity <= 0)) {
-      alert('لطفاً حداقل یک قلم کالا با تعداد معتبر در فاکتور ثبت نمایید.');
+      setValidationError('لطفاً حداقل یک قلم کالا با تعداد معتبر در فاکتور ثبت نمایید.');
       return;
     }
 
@@ -379,7 +369,6 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
     const receiptId = editingInvoice?.inboundReceiptId || `inb-${Date.now()}`;
     const receiptNumber = StorageService.getNextInboundReceiptNumber();
 
-    // 1. Build Inbound Warehouse Receipt (GRN)
     let existingReceipt: InboundReceipt | undefined;
     if (editingInvoice?.inboundReceiptId) {
       try {
@@ -392,7 +381,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
     const inboundReceipt: InboundReceipt = existingReceipt ? {
       ...existingReceipt,
       purchaseInvoiceNumber: invoiceNumber.trim(),
-      supplierName: supplierName.trim(),
+      supplierName: finalSupplierName,
       date,
       items: items.map((item, idx) => {
         const existingItem = existingReceipt?.items.find((ri) => ri.productId === item.productId);
@@ -418,7 +407,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
       receiptNumber,
       purchaseInvoiceId: purchaseId,
       purchaseInvoiceNumber: invoiceNumber.trim(),
-      supplierName: supplierName.trim(),
+      supplierName: finalSupplierName,
       date,
       status: 'pending_verification',
       items: items.map((item, idx) => ({
@@ -439,11 +428,10 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
       createdAt: new Date().toISOString(),
     };
 
-    // 2. Build Purchase Invoice
     const purchaseInvoice: PurchaseInvoice = {
       id: purchaseId,
       invoiceNumber: invoiceNumber.trim(),
-      supplierName: supplierName.trim(),
+      supplierName: finalSupplierName,
       supplierPhone: supplierPhone.trim() || undefined,
       supplierAddress: supplierAddress.trim() || undefined,
       supplierEconomicCode: supplierEconomicCode.trim() || undefined,
@@ -470,17 +458,15 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
       updatedAt: isEditing ? new Date().toISOString() : undefined,
     };
 
-    // Auto-sync supplier to customers & counterparties list if not existing
     try {
       const customers = StorageService.getCustomers();
-      const trimmedSup = supplierName.trim();
       const existingCustomer = customers.find(
-        (c) => c.name.trim().toLowerCase() === trimmedSup.toLowerCase()
+        (c) => c.name.trim().toLowerCase() === finalSupplierName.toLowerCase()
       );
       if (!existingCustomer) {
         const newCustomer: Customer = {
           id: `cust-supp-${Date.now()}`,
-          name: trimmedSup,
+          name: finalSupplierName,
           phone: supplierPhone.trim() || '',
           address: supplierAddress.trim() || undefined,
           nationalId: supplierEconomicCode.trim() || undefined,
@@ -509,13 +495,13 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
-      <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
         
-        {/* Header Bar */}
-        <div className="bg-slate-900 text-white px-4 sm:px-6 py-3.5 flex items-center justify-between shrink-0 border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
-              <ShoppingBag className="w-5 h-5" />
+        {/* Compact Header Bar */}
+        <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between shrink-0 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
+              <ShoppingBag className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -523,12 +509,9 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                   {isEditing ? `ویرایش فاکتور خرید ${toPersianDigits(invoiceNumber)}` : 'ثبت فاکتور خرید کالا'}
                 </h2>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  {isEditing ? 'حالت ویرایش' : 'ورود به انبار'}
+                  {isEditing ? 'ویرایش' : 'صدور حواله انبار'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {isEditing ? 'اصلاح مشخصات فاکتور، اقلام و شرایط تسویه تامین‌کننده' : 'ثبت اقلام خریداری‌شده و صدور خودکار حواله ورود کالا جهت تایید انباردار'}
-              </p>
             </div>
           </div>
 
@@ -543,39 +526,50 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
         </div>
 
         {/* Modal Form */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4">
-          
-          {/* SECTION 1: SUPPLIER & INVOICE DETAILS (DECLUTTERED, REGULAR & PERFECTLY ALIGNED) */}
-          <div className="bg-slate-50/90 rounded-2xl border border-slate-200/90 p-4 sm:p-5 space-y-3.5 shadow-2xs">
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-start">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
+          {validationError && (
+            <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center justify-between gap-2 animate-in fade-in">
+              <div className="flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{validationError}</span>
+              </div>
+              <button type="button" onClick={() => setValidationError(null)} className="text-rose-500 hover:text-rose-800">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* SECTION 1: SUPPLIER & INVOICE DETAILS (COMPACT SINGLE STRIP) */}
+          <div className="bg-slate-50/90 rounded-xl border border-slate-200/90 p-3 space-y-2.5">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-start">
               
-              {/* Supplier Selection Column (6 cols on md/lg) */}
-              <div className="md:col-span-6 space-y-0" ref={supplierDropdownRef}>
-                <div className="h-5 flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+              {/* Supplier Selection Column (6 cols) */}
+              <div className="md:col-span-6" ref={supplierDropdownRef}>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
                     <Building2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>تامین‌کننده / فروشنده کالا</span>
+                    <span>تامین‌کننده / فروشنده</span>
                     <span className="text-rose-600">*</span>
                   </label>
-                  {availableSuppliers.length > 0 && !supplierName && (
-                    <span className="text-[10px] text-slate-400 font-bold">
-                      {toPersianDigits(availableSuppliers.length)} طرف‌حساب
-                    </span>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowOptionalDetails(!showOptionalDetails)}
+                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <span>{showOptionalDetails ? 'بستن مشخصات تکمیلی' : '+ مشخصات تکمیلی'}</span>
+                    {showOptionalDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
                 </div>
 
-                {/* Display when supplier is SELECTED */}
                 {supplierName ? (
-                  <div className="h-10 bg-white rounded-xl border border-emerald-500/50 px-3 flex items-center justify-between gap-2 shadow-2xs">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                        <UserCheck className="w-3.5 h-3.5 text-emerald-700" />
-                      </div>
-                      <span className="font-black text-slate-900 text-xs sm:text-sm truncate">
+                  <div className="h-9 bg-white rounded-xl border border-emerald-500/50 px-2.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <UserCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span className="font-black text-slate-900 text-xs truncate">
                         {supplierName}
                       </span>
                       {supplierPhone && (
-                        <span className="text-[11px] text-slate-500 font-mono hidden lg:inline">
+                        <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
                           ({toPersianDigits(supplierPhone)})
                         </span>
                       )}
@@ -584,92 +578,72 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                     <button
                       type="button"
                       onClick={handleClearSupplier}
-                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 text-[11px] font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1"
-                      title="تغییر تامین‌کننده"
+                      className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 text-[10px] font-bold transition-all shrink-0 cursor-pointer flex items-center gap-0.5"
                     >
                       <X className="w-3 h-3" />
                       <span>تغییر</span>
                     </button>
                   </div>
                 ) : (
-                  /* Search & Select Input when NO supplier is selected */
                   <div className="relative">
                     <input
                       type="text"
-                      required
                       value={supplierSearchInput}
                       onFocus={() => setIsSupplierDropdownOpen(true)}
                       onChange={(e) => {
                         setSupplierSearchInput(e.target.value);
                         setIsSupplierDropdownOpen(true);
+                        setValidationError(null);
                       }}
-                      placeholder="جستجو یا تایپ نام تامین‌کننده / فروشنده..."
-                      className="w-full h-10 bg-white border border-slate-300 rounded-xl pr-9 pl-8 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all font-medium shadow-2xs"
+                      placeholder="جستجو یا تایپ نام فروشنده..."
+                      className="w-full h-9 bg-white border border-slate-300 rounded-xl pr-8 pl-7 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-medium"
                     />
-                    <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     {supplierSearchInput && (
                       <button
                         type="button"
                         onClick={() => setSupplierSearchInput('')}
-                        className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                        className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <X className="w-3 h-3" />
                       </button>
                     )}
 
-                    {/* Interactive Dropdown Menu */}
                     {isSupplierDropdownOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-2xl shadow-xl border border-slate-200 max-h-56 overflow-y-auto z-40 p-1.5 text-xs animate-in fade-in slide-in-from-top-2">
-                        {/* Option to use custom typed text */}
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 max-h-48 overflow-y-auto z-40 p-1 text-xs">
                         {supplierSearchInput.trim() && (
                           <div
                             onClick={() => {
                               setSupplierName(supplierSearchInput.trim());
                               setIsSupplierDropdownOpen(false);
+                              setValidationError(null);
                             }}
-                            className="p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold flex items-center justify-between cursor-pointer mb-1 border border-emerald-200 transition-colors"
+                            className="p-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold flex items-center justify-between cursor-pointer mb-1 border border-emerald-200"
                           >
                             <span className="flex items-center gap-1.5">
-                              <PlusCircle className="w-4 h-4 text-emerald-600" />
-                              <span>ثبت با نام جدید: «{supplierSearchInput.trim()}»</span>
+                              <PlusCircle className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>انتخاب نام جدید: «{supplierSearchInput.trim()}»</span>
                             </span>
-                            <span className="text-[10px] bg-emerald-200/80 px-2 py-0.5 rounded-md">انتخاب</span>
+                            <span className="text-[10px] bg-emerald-200/80 px-1.5 py-0.5 rounded">ثبت</span>
                           </div>
                         )}
 
                         {filteredSuppliers.length === 0 ? (
-                          <div className="py-4 text-center text-slate-400">
-                            {supplierSearchInput ? 'تامین‌کننده‌ای با این نام یافت نشد. دکمه بالا را برای ثبت نام کلیک کنید.' : 'هیچ تامین‌کننده‌ای در سیستم ثبت نشده است. نام دلخواه را تایپ کنید.'}
+                          <div className="py-3 text-center text-slate-400 text-[11px]">
+                            تامین‌کننده‌ای یافت نشد. نام دلخواه را تایپ کنید.
                           </div>
                         ) : (
                           <div className="space-y-0.5">
-                            <div className="px-2 py-1 text-[10px] font-bold text-slate-400">
-                              لیست طرف‌حساب‌ها و تامین‌کنندگان:
-                            </div>
                             {filteredSuppliers.map((s, idx) => (
                               <div
                                 key={idx}
                                 onClick={() => handleSelectSupplier(s)}
-                                className="p-2 rounded-xl hover:bg-slate-100 flex items-center justify-between transition-colors cursor-pointer group"
+                                className="px-2.5 py-1.5 rounded-lg hover:bg-slate-100 flex items-center justify-between transition-colors cursor-pointer"
                               >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <div className="w-7 h-7 rounded-lg bg-slate-100 group-hover:bg-emerald-100 text-slate-700 group-hover:text-emerald-800 flex items-center justify-center font-bold text-xs shrink-0 transition-colors">
-                                    {s.name.charAt(0)}
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="font-bold text-slate-800 text-xs truncate group-hover:text-emerald-900">
-                                      {s.name}
-                                    </div>
-                                    {s.phone && (
-                                      <div className="text-[10px] text-slate-400 font-mono">
-                                        {toPersianDigits(s.phone)}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                {s.address && (
-                                  <span className="text-[10px] text-slate-400 max-w-[120px] truncate hidden sm:inline">
-                                    {s.address}
+                                <span className="font-bold text-slate-800 text-xs truncate">{s.name}</span>
+                                {s.phone && (
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    {toPersianDigits(s.phone)}
                                   </span>
                                 )}
                               </div>
@@ -682,18 +656,14 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                 )}
               </div>
 
-              {/* Invoice Number Column (3 cols on md/lg) */}
+              {/* Invoice Number Column (3 cols) */}
               <div className="md:col-span-3">
-                <div className="h-5 flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-black text-slate-800 flex items-center gap-1">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
                     <Hash className="w-3.5 h-3.5 text-slate-400" />
-                    <span>شماره فاکتور خرید</span>
-                    <span className="text-rose-600">*</span>
+                    <span>شماره فاکتور</span>
                   </label>
-                  <span 
-                    className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-200 select-none"
-                    title="شماره فاکتور خرید بصورت خودکار توسط سیستم تعیین می‌شود"
-                  >
+                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 rounded border border-emerald-200">
                     خودکار
                   </span>
                 </div>
@@ -703,117 +673,97 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
                   placeholder="PUR-1002"
-                  title="شماره فاکتور خرید بصورت خودکار توسط خود برنامه تعیین شده است"
-                  className="w-full h-10 bg-slate-50/90 border border-slate-300 rounded-xl px-3 text-xs sm:text-sm font-mono font-black text-slate-800 text-left focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-2xs"
+                  className="w-full h-9 bg-white border border-slate-300 rounded-xl px-2.5 text-xs font-mono font-black text-slate-800 text-left focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                 />
               </div>
 
-              {/* Invoice Date Column (3 cols on md/lg) */}
+              {/* Invoice Date Column (3 cols) */}
               <div className="md:col-span-3">
                 <JalaliDatePicker
                   value={date}
                   onChange={setDate}
                   label="تاریخ خرید"
                   required
+                  buttonClassName="!h-9"
                 />
               </div>
             </div>
 
-            {/* Optional Supplier Details Collapsible Toggle */}
-            <div className="pt-2.5 border-t border-slate-200/80">
-              <button
-                type="button"
-                onClick={() => setShowOptionalDetails(!showOptionalDetails)}
-                className="text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 transition-colors cursor-pointer py-0.5"
-              >
-                <span>{showOptionalDetails ? 'پنهان‌سازی اطلاعات تکمیلی فروشنده' : '+ اطلاعات تکمیلی فروشنده (تلفن، آدرس، کد اقتصادی، سررسید تسویه)'}</span>
-                {showOptionalDetails ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
-              </button>
-
-              {showOptionalDetails && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-3 text-xs animate-in fade-in">
-                  <div>
-                    <div className="h-4 flex items-center mb-1.5">
-                      <label className="text-[11px] font-bold text-slate-600">تلفن فروشنده:</label>
-                    </div>
-                    <input
-                      type="text"
-                      value={supplierPhone}
-                      onChange={(e) => setSupplierPhone(e.target.value)}
-                      placeholder="۰۲۱-۸۸۲۲۳۳۴۴"
-                      className="w-full h-9 bg-white border border-slate-300 rounded-xl px-3 font-mono text-xs text-left focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="h-4 flex items-center mb-1.5">
-                      <label className="text-[11px] font-bold text-slate-600">کد اقتصادی / ملی:</label>
-                    </div>
-                    <input
-                      type="text"
-                      value={supplierEconomicCode}
-                      onChange={(e) => setSupplierEconomicCode(e.target.value)}
-                      placeholder="شناسه ۱۰ یا ۱۱ رقمی"
-                      className="w-full h-9 bg-white border border-slate-300 rounded-xl px-3 font-mono text-xs text-left focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="h-4 flex items-center mb-1.5">
-                      <label className="text-[11px] font-bold text-slate-600">تاریخ سررسید تسویه:</label>
-                    </div>
-                    <JalaliDatePicker
-                      value={dueDate}
-                      onChange={setDueDate}
-                      placeholder="انتخاب سررسید"
-                      buttonClassName="!h-9"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="h-4 flex items-center mb-1.5">
-                      <label className="text-[11px] font-bold text-slate-600">آدرس فروشنده / انبار مبدأ:</label>
-                    </div>
-                    <input
-                      type="text"
-                      value={supplierAddress}
-                      onChange={(e) => setSupplierAddress(e.target.value)}
-                      placeholder="تهران، خیابان..."
-                      className="w-full h-9 bg-white border border-slate-300 rounded-xl px-3 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
+            {/* Optional Supplier Details Collapsible Panel */}
+            {showOptionalDetails && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-2.5 border-t border-slate-200/80 text-xs animate-in fade-in">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">تلفن فروشنده:</label>
+                  <input
+                    type="text"
+                    value={supplierPhone}
+                    onChange={(e) => setSupplierPhone(e.target.value)}
+                    placeholder="۰۲۱-۸۸۲۲۳۳۴۴"
+                    className="w-full h-8 bg-white border border-slate-300 rounded-lg px-2.5 font-mono text-xs text-left focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
                 </div>
-              )}
-            </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">کد اقتصادی / ملی:</label>
+                  <input
+                    type="text"
+                    value={supplierEconomicCode}
+                    onChange={(e) => setSupplierEconomicCode(e.target.value)}
+                    placeholder="شناسه ۱۰ یا ۱۱ رقمی"
+                    className="w-full h-8 bg-white border border-slate-300 rounded-lg px-2.5 font-mono text-xs text-left focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">سررسید تسویه:</label>
+                  <JalaliDatePicker
+                    value={dueDate}
+                    onChange={setDueDate}
+                    placeholder="انتخاب سررسید"
+                    buttonClassName="!h-8"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">آدرس فروشنده:</label>
+                  <input
+                    type="text"
+                    value={supplierAddress}
+                    onChange={(e) => setSupplierAddress(e.target.value)}
+                    placeholder="تهران، خیابان..."
+                    className="w-full h-8 bg-white border border-slate-300 rounded-lg px-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* SECTION 2: ITEMS TABLE (CLEAN, STREAMLINED & HIGHLY READABLE) */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
+          {/* SECTION 2: ITEMS TABLE (STREAMLINED & COMPACT) */}
+          <div className="bg-white rounded-xl border border-slate-200/90 overflow-hidden">
             {/* Items Toolbar */}
-            <div className="bg-slate-50/90 px-3.5 py-2.5 border-b border-slate-200 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+            <div className="bg-slate-50/90 px-3 py-2 border-b border-slate-200 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
                 <PackagePlus className="w-4 h-4 text-emerald-600" />
-                <span className="font-black text-slate-800 text-xs sm:text-sm">اقلام و کالاهای خریداری‌شده</span>
-                <span className="text-[11px] font-mono font-bold bg-white text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200">
+                <span className="font-bold text-slate-800 text-xs">اقلام فاکتور خرید</span>
+                <span className="text-[10px] font-mono font-bold bg-white text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
                   {toPersianDigits(items.length)} ردیف
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setIsQuickProductModalOpen(true)}
-                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-bold transition-colors cursor-pointer"
+                  className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-bold transition-colors cursor-pointer"
                 >
                   <PlusCircle className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="hidden sm:inline">تعریف کالای جدید</span>
-                  <span className="sm:hidden">کالای جدید</span>
+                  <span>تعریف کالای جدید</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handleAddItem}
-                  className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-xl bg-slate-900 text-white hover:bg-slate-800 font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                  className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 font-bold transition-all cursor-pointer active:scale-95"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>افزودن ردیف</span>
@@ -825,105 +775,92 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-right text-xs border-collapse">
                 <thead>
-                  <tr className="bg-slate-100/70 text-slate-700 border-b border-slate-200 font-bold">
-                    <th className="p-2.5 text-center w-10">#</th>
-                    <th className="p-2.5 min-w-[240px]">انتخاب کالا از انبار</th>
-                    <th className="p-2.5 text-center w-24">تعداد خرید</th>
-                    <th className="p-2.5 text-center w-16">واحد</th>
-                    <th className="p-2.5 text-center min-w-[130px]">قیمت خرید واحد (تومان)</th>
-                    <th className="p-2.5 text-center min-w-[100px]">تخفیف (تومان)</th>
-                    <th className="p-2.5 text-center min-w-[130px]">جمع ردیف</th>
-                    <th className="p-2.5 text-center w-10">حذف</th>
+                  <tr className="bg-slate-100/70 text-slate-600 border-b border-slate-200 font-bold text-[11px]">
+                    <th className="py-2 px-2 text-center w-9">#</th>
+                    <th className="py-2 px-2 min-w-[230px]">انتخاب کالا از انبار</th>
+                    <th className="py-2 px-2 text-center w-24">تعداد خرید</th>
+                    <th className="py-2 px-2 text-center w-14">واحد</th>
+                    <th className="py-2 px-2 text-center w-36">قیمت واحد (تومان)</th>
+                    <th className="py-2 px-2 text-center w-32">جمع ردیف</th>
+                    <th className="py-2 px-2 text-center w-9">حذف</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {items.map((item, index) => {
-                    const matchedProd = allAvailableProducts.find((p) => p.id === item.productId);
-                    return (
-                      <tr key={item.id} className={index % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'}>
-                        <td className="p-2 text-center font-mono text-slate-400 font-bold">
-                          {toPersianDigits(index + 1)}
-                        </td>
-                        <td className="p-2">
-                          <select
-                            value={item.productId}
-                            onChange={(e) => handleProductSelect(index, e.target.value)}
-                            className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none cursor-pointer"
-                          >
-                            <option value="" disabled>-- انتخاب کالا --</option>
-                            {allAvailableProducts.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name} (کد: {toPersianDigits(p.code)}) — موجودی: {toPersianDigits(p.stock)} {p.unit}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="p-2">
-                          <NumericInput
-                            min={1}
-                            value={item.quantity}
-                            onChange={(num) => handleItemChange(index, 'quantity', num || 1)}
-                            textAlign="center"
-                            className="w-full px-2 py-1.5 text-center font-mono font-black text-slate-900 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
-                          />
-                        </td>
-                        <td className="p-2 text-center">
-                          <span className="text-slate-600 font-medium bg-slate-100 px-2 py-0.5 rounded-lg text-[11px]">
-                            {item.unit || 'عدد'}
-                          </span>
-                        </td>
-                        <td className="p-2">
-                          <NumericInput
-                            min={0}
-                            value={item.buyPrice}
-                            onChange={(num) => handleItemChange(index, 'buyPrice', num)}
-                            textAlign="center"
-                            className="w-full px-2 py-1.5 text-center font-mono font-bold text-slate-800 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
-                          />
-                        </td>
-                        <td className="p-2">
-                          <NumericInput
-                            min={0}
-                            value={item.discount}
-                            onChange={(num) => handleItemChange(index, 'discount', num)}
-                            textAlign="center"
-                            className="w-full px-2 py-1.5 text-center font-mono font-bold text-rose-600 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
-                          />
-                        </td>
-                        <td className="p-2 text-center font-mono font-black text-emerald-900 text-sm">
-                          {toPersianDigits(formatPrice(item.total, ''))}
-                        </td>
-                        <td className="p-2 text-center">
-                          <button
-                            type="button"
-                            disabled={items.length <= 1}
-                            onClick={() => handleRemoveItem(index)}
-                            className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-20 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                            title="حذف ردیف"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {items.map((item, index) => (
+                    <tr key={item.id} className={index % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'}>
+                      <td className="p-1.5 text-center font-mono text-slate-400 font-bold text-[11px]">
+                        {toPersianDigits(index + 1)}
+                      </td>
+                      <td className="p-1.5">
+                        <select
+                          value={item.productId}
+                          onChange={(e) => handleProductSelect(index, e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none cursor-pointer"
+                        >
+                          <option value="" disabled>-- انتخاب کالا --</option>
+                          {allAvailableProducts.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} (کد: {toPersianDigits(p.code)}) — موجودی: {toPersianDigits(p.stock)} {p.unit}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="p-1.5">
+                        <NumericInput
+                          min={1}
+                          value={item.quantity}
+                          onChange={(num) => handleItemChange(index, 'quantity', num || 1)}
+                          textAlign="center"
+                          className="w-full px-2 py-1 text-center font-mono font-black text-slate-900 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                        />
+                      </td>
+                      <td className="p-1.5 text-center">
+                        <span className="text-slate-600 font-medium bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
+                          {item.unit || 'عدد'}
+                        </span>
+                      </td>
+                      <td className="p-1.5">
+                        <NumericInput
+                          min={0}
+                          value={item.buyPrice}
+                          onChange={(num) => handleItemChange(index, 'buyPrice', num)}
+                          textAlign="center"
+                          className="w-full px-2 py-1 text-center font-mono font-bold text-slate-800 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                        />
+                      </td>
+                      <td className="p-1.5 text-center font-mono font-black text-emerald-900 text-xs">
+                        {toPersianDigits(formatPrice(item.total, ''))}
+                      </td>
+                      <td className="p-1.5 text-center">
+                        <button
+                          type="button"
+                          disabled={items.length <= 1}
+                          onClick={() => handleRemoveItem(index)}
+                          className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-20 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                          title="حذف ردیف"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
 
             {/* Mobile Cards View */}
-            <div className="md:hidden p-3 space-y-2.5">
+            <div className="md:hidden p-2.5 space-y-2">
               {items.map((item, index) => (
-                <div key={item.id} className="p-3 bg-slate-50/80 rounded-2xl border border-slate-200/90 space-y-2.5">
+                <div key={item.id} className="p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/90 space-y-2">
                   <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-lg bg-emerald-600 text-white font-mono font-bold text-xs flex items-center justify-center shrink-0">
+                    <span className="w-5 h-5 rounded-md bg-emerald-600 text-white font-mono font-bold text-[11px] flex items-center justify-center shrink-0">
                       {toPersianDigits(index + 1)}
                     </span>
                     <div className="flex-1 min-w-0">
                       <select
                         value={item.productId}
                         onChange={(e) => handleProductSelect(index, e.target.value)}
-                        className="w-full px-2 py-1.5 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 text-xs"
+                        className="w-full px-2 py-1 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs"
                       >
                         <option value="" disabled>-- انتخاب کالا --</option>
                         {allAvailableProducts.map((p) => (
@@ -937,7 +874,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                       type="button"
                       disabled={items.length <= 1}
                       onClick={() => handleRemoveItem(index)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 disabled:opacity-20"
+                      className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-20"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -951,22 +888,22 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                         value={item.quantity}
                         onChange={(num) => handleItemChange(index, 'quantity', num || 1)}
                         textAlign="center"
-                        className="w-full p-1.5 text-center font-mono font-black text-sm rounded-xl border border-slate-300 bg-white"
+                        className="w-full p-1 text-center font-mono font-black text-xs rounded-lg border border-slate-300 bg-white"
                       />
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 block mb-0.5">قیمت خرید (فی):</span>
+                      <span className="text-[10px] text-slate-500 block mb-0.5">قیمت خرید:</span>
                       <NumericInput
                         min={0}
                         value={item.buyPrice}
                         onChange={(num) => handleItemChange(index, 'buyPrice', num)}
                         textAlign="center"
-                        className="w-full p-1.5 text-center font-mono font-bold text-xs rounded-xl border border-slate-300 bg-white"
+                        className="w-full p-1 text-center font-mono font-bold text-xs rounded-lg border border-slate-300 bg-white"
                       />
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 block mb-0.5">جمع کل ردیف:</span>
-                      <div className="p-1.5 text-center font-mono font-black text-emerald-900 bg-emerald-50 rounded-xl border border-emerald-200 text-xs">
+                      <span className="text-[10px] text-slate-500 block mb-0.5">جمع ردیف:</span>
+                      <div className="p-1 text-center font-mono font-black text-emerald-900 bg-emerald-50 rounded-lg border border-emerald-200 text-xs">
                         {toPersianDigits(formatPrice(item.total, ''))}
                       </div>
                     </div>
@@ -976,35 +913,45 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
             </div>
           </div>
 
-          {/* SECTION 3: PAYMENT & FINANCIAL TOTALS (STREAMLINED & ELEGANT) */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
+          {/* SECTION 3: PAYMENT & FINANCIAL TOTALS (COMPACT & UNIFIED) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
             
             {/* Payment Configuration (7 cols) */}
-            <div className="lg:col-span-7 bg-slate-50/90 rounded-2xl border border-slate-200/90 p-3.5 space-y-3">
-              <div className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                <CreditCard className="w-4 h-4 text-blue-600" />
-                <span>وضعیت و روش پرداخت فاکتور</span>
+            <div className="lg:col-span-7 bg-slate-50/90 rounded-xl border border-slate-200/90 p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+                  <span>وضعیت و روش تسویه</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowNotesField(!showNotesField)}
+                  className="text-[11px] font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer"
+                >
+                  <FileText className="w-3 h-3" />
+                  <span>{showNotesField ? 'بستن یادداشت' : '+ افزودن یادداشت'}</span>
+                </button>
               </div>
 
               {/* Status Segmented Pills */}
-              <div className="grid grid-cols-3 gap-1.5 bg-slate-200/60 p-1 rounded-xl text-xs font-bold">
+              <div className="grid grid-cols-3 gap-1 bg-slate-200/70 p-1 rounded-xl text-xs font-bold">
                 <button
                   type="button"
                   onClick={() => handlePaymentStatusChange('paid')}
                   className={`py-1.5 rounded-lg transition-all cursor-pointer ${
                     paymentStatus === 'paid'
-                      ? 'bg-emerald-600 text-white shadow-xs'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  تسویه کامل (پرداخت شد)
+                  تسویه کامل
                 </button>
                 <button
                   type="button"
                   onClick={() => handlePaymentStatusChange('partial')}
                   className={`py-1.5 rounded-lg transition-all cursor-pointer ${
                     paymentStatus === 'partial'
-                      ? 'bg-amber-600 text-white shadow-xs'
+                      ? 'bg-amber-600 text-white shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
@@ -1015,68 +962,70 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                   onClick={() => handlePaymentStatusChange('unpaid')}
                   className={`py-1.5 rounded-lg transition-all cursor-pointer ${
                     paymentStatus === 'unpaid'
-                      ? 'bg-rose-600 text-white shadow-xs'
+                      ? 'bg-rose-600 text-white shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  نسیه / حساب دفتری
+                  نسیه / دفتری
                 </button>
               </div>
 
-              {/* Method Selector */}
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-slate-600 font-bold shrink-0">روش پرداخت:</span>
-                <div className="flex-1 grid grid-cols-4 gap-1 bg-white p-1 rounded-xl border border-slate-200 text-[11px] font-bold">
-                  {[
-                    { id: 'transfer', label: 'کارت/شبا' },
-                    { id: 'pos', label: 'کارتخوان' },
-                    { id: 'cash', label: 'نقدی' },
-                    { id: 'cheque', label: 'چک بانکی' },
-                  ].map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setPaymentMethod(m.id as PaymentMethod)}
-                      className={`py-1 rounded-lg transition-all cursor-pointer ${
-                        paymentMethod === m.id
-                          ? 'bg-slate-900 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
+              {/* Method Selector (Shown when paid or partial) */}
+              {paymentStatus !== 'unpaid' && (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-slate-600 font-bold shrink-0 text-[11px]">روش پرداخت:</span>
+                  <div className="flex-1 grid grid-cols-4 gap-1 bg-white p-0.5 rounded-lg border border-slate-200 text-[11px] font-bold">
+                    {[
+                      { id: 'transfer', label: 'کارت/شبا' },
+                      { id: 'pos', label: 'کارتخوان' },
+                      { id: 'cash', label: 'نقدی' },
+                      { id: 'cheque', label: 'چک بانکی' },
+                    ].map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setPaymentMethod(m.id as PaymentMethod)}
+                        className={`py-1 rounded-md transition-all cursor-pointer ${
+                          paymentMethod === m.id
+                            ? 'bg-slate-900 text-white'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Conditional Partial Amount */}
               {paymentStatus === 'partial' && (
-                <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-xs flex items-center justify-between gap-3 animate-in fade-in">
-                  <span className="font-bold text-amber-900">مبلغ پرداخت شده نقد/کارت:</span>
+                <div className="p-2 bg-amber-50 rounded-lg border border-amber-200 text-xs flex items-center justify-between gap-2">
+                  <span className="font-bold text-amber-900">مبلغ پرداختی (تومان):</span>
                   <NumericInput
                     min={0}
                     max={finalTotal}
                     value={paidAmount}
                     onChange={(num) => setPaidAmount(num)}
                     textAlign="center"
-                    className="w-40 p-1.5 font-mono font-bold rounded-lg border border-amber-300 bg-white text-xs"
+                    className="w-36 p-1 font-mono font-bold rounded-lg border border-amber-300 bg-white text-xs"
                   />
                 </div>
               )}
 
               {/* Conditional Cheque Details */}
-              {paymentMethod === 'cheque' && (
-                <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-xs grid grid-cols-2 gap-2 animate-in fade-in">
+              {paymentStatus !== 'unpaid' && paymentMethod === 'cheque' && (
+                <div className="p-2 bg-amber-50 rounded-lg border border-amber-200 text-xs grid grid-cols-2 gap-2">
                   <input
                     type="text"
-                    placeholder="شماره صیاد / شماره چک"
+                    placeholder="شماره صیاد / چک"
                     value={chequeNumber}
                     onChange={(e) => setChequeNumber(e.target.value)}
                     className="p-1.5 rounded-lg border border-amber-300 bg-white font-mono text-xs text-left"
                   />
                   <input
                     type="text"
-                    placeholder="تاریخ سررسید (۱۴۰۳/۰۹/۱۵)"
+                    placeholder="تاریخ سررسید چک"
                     value={chequeDueDate}
                     onChange={(e) => setChequeDueDate(e.target.value)}
                     className="p-1.5 rounded-lg border border-amber-300 bg-white font-mono text-xs text-left"
@@ -1084,72 +1033,76 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                 </div>
               )}
 
-              {/* Notes */}
-              <div>
-                <input
-                  type="text"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="یادداشت، شرایط گارانتی یا تحویل بار..."
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs placeholder:text-slate-400"
-                />
-              </div>
-
-              {/* Telegram Auto-Send Indicator */}
-              {settings?.telegramBotEnabled && (
-                <div className="p-2.5 bg-sky-50/90 rounded-xl border border-sky-200 text-[11px] text-sky-950 flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-1.5 font-bold">
-                    <Send className="w-3.5 h-3.5 text-[#229ED9]" />
-                    <span>ارسال گزارش به تلگرام:</span>
-                    <span className="font-medium text-slate-600">
-                      {(settings.telegramAutoSendPurchaseInvoice || settings.telegramAutoSendInvoice) ? 'فاکتور خرید' : ''}
-                      {paidAmount > 0 && settings.telegramAutoSendSupplierPayment !== false ? ' + رسید پرداخت وجه' : ''}
-                    </span>
-                  </div>
-                  <span className="text-[10px] text-sky-800 bg-sky-200/70 font-bold px-2 py-0.5 rounded-full">
-                    فعال طبق تنظیمات
-                  </span>
+              {/* Collapsible Notes */}
+              {showNotesField && (
+                <div>
+                  <input
+                    type="text"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="یادداشت، شماره بارنامه یا شرایط گارانتی..."
+                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
+                  />
                 </div>
               )}
             </div>
 
             {/* Calculations & Totals (5 cols) */}
-            <div className="lg:col-span-5 bg-slate-50/90 rounded-2xl border border-slate-200/90 p-3.5 space-y-2.5 text-xs flex flex-col justify-between">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between pb-1.5 border-b border-slate-200 text-slate-700">
-                  <span>جمع ناخالص اقلام:</span>
-                  <span className="font-mono font-bold text-slate-900 text-sm">
+            <div className="lg:col-span-5 bg-slate-50/90 rounded-xl border border-slate-200/90 p-3 space-y-2 text-xs flex flex-col justify-between">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-slate-700">
+                  <span>جمع اقلام ({toPersianDigits(items.length)} ردیف):</span>
+                  <span className="font-mono font-bold text-slate-900">
                     {toPersianDigits(formatPrice(subtotal))} تومان
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-600">تخفیف کلی فاکتور:</span>
-                  <NumericInput
-                    min={0}
-                    value={overallDiscount}
-                    onChange={(num) => setOverallDiscount(num)}
-                    textAlign="center"
-                    className="w-32 px-2 py-1 rounded-lg border border-slate-300 bg-white font-mono font-bold text-rose-600 text-xs"
-                  />
-                </div>
+                <div className="pt-1 border-t border-slate-200/80">
+                  <button
+                    type="button"
+                    onClick={() => setShowExtraFinancials(!showExtraFinancials)}
+                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <span>
+                      {showExtraFinancials
+                        ? 'بستن تخفیف و کرایه حمل'
+                        : `+ افزودن تخفیف یا کرایه حمل${overallDiscount > 0 || shippingCost > 0 ? ' (دارای مقدار)' : ''}`}
+                    </span>
+                    {showExtraFinancials ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-600">کرایه حمل / باربری:</span>
-                  <NumericInput
-                    min={0}
-                    value={shippingCost}
-                    onChange={(num) => setShippingCost(num)}
-                    textAlign="center"
-                    className="w-32 px-2 py-1 rounded-lg border border-slate-300 bg-white font-mono font-medium text-slate-800 text-xs"
-                  />
+                  {showExtraFinancials && (
+                    <div className="space-y-1.5 pt-2 animate-in fade-in">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600 text-[11px]">تخفیف کلی (تومان):</span>
+                        <NumericInput
+                          min={0}
+                          value={overallDiscount}
+                          onChange={(num) => setOverallDiscount(num)}
+                          textAlign="center"
+                          className="w-28 px-2 py-1 rounded-lg border border-slate-300 bg-white font-mono font-bold text-rose-600 text-xs"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600 text-[11px]">کرایه حمل (تومان):</span>
+                        <NumericInput
+                          min={0}
+                          value={shippingCost}
+                          onChange={(num) => setShippingCost(num)}
+                          textAlign="center"
+                          className="w-28 px-2 py-1 rounded-lg border border-slate-300 bg-white font-mono font-medium text-slate-800 text-xs"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Big Final Total Badge */}
-              <div className="bg-emerald-600 text-white rounded-xl p-3 flex items-center justify-between shadow-xs">
-                <span className="font-extrabold text-xs">مبلغ نهایی فاکتور خرید:</span>
-                <span className="font-black font-mono text-base sm:text-lg">
+              {/* Final Total Box */}
+              <div className="bg-emerald-600 text-white rounded-xl px-3 py-2.5 flex items-center justify-between shadow-2xs">
+                <span className="font-bold text-xs">مبلغ نهایی فاکتور:</span>
+                <span className="font-black font-mono text-sm sm:text-base">
                   {toPersianDigits(formatPrice(finalTotal))} تومان
                 </span>
               </div>
@@ -1157,22 +1110,30 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
           </div>
 
           {/* Modal Action Buttons */}
-          <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-200">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold text-xs transition-colors cursor-pointer"
-            >
-              انصراف
-            </button>
+          <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-slate-200">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-3.5 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold text-xs transition-colors cursor-pointer"
+              >
+                انصراف
+              </button>
+              {settings?.telegramBotEnabled && (
+                <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-200 text-sky-800 text-[10px] font-bold">
+                  <Send className="w-3 h-3 text-[#229ED9]" />
+                  <span>ارسال خودکار به تلگرام فعال</span>
+                </span>
+              )}
+            </div>
 
             <button
               type="submit"
               id="submit-purchase-invoice-btn"
-              className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-xs sm:text-sm shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+              className="flex items-center justify-center gap-1.5 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-xs sm:text-sm shadow-sm transition-all cursor-pointer"
             >
               <Check className="w-4 h-4 stroke-[2.5]" />
-              <span>{isEditing ? 'ذخیره تغییرات فاکتور خرید' : 'ثبت فاکتور خرید و صدور حواله ورود به انبار'}</span>
+              <span>{isEditing ? 'ذخیره تغییرات فاکتور خرید' : 'ثبت فاکتور خرید و صدور حواله انبار'}</span>
             </button>
           </div>
         </form>
@@ -1180,8 +1141,8 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
         {/* Quick Product Creation Modal */}
         {isQuickProductModalOpen && (
           <div className="fixed inset-0 z-60 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-5 border border-slate-200 animate-in zoom-in-95 duration-150">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-3">
+            <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-4 border border-slate-200 animate-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between pb-2.5 border-b border-slate-200 mb-3">
                 <h3 className="font-black text-sm text-slate-900">
                   تعریف سریع کالای جدید
                 </h3>
@@ -1216,7 +1177,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                       type="text"
                       value={newProductCategory}
                       onChange={(e) => setNewProductCategory(e.target.value)}
-                      placeholder="لوازم یدکی"
+                      placeholder="عمومی"
                       className="w-full px-3 py-1.5 rounded-xl border border-slate-300"
                     />
                   </div>

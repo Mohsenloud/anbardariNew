@@ -10,13 +10,8 @@ import {
   Clock, 
   AlertTriangle, 
   Printer, 
-  ArrowDownRight, 
-  Eye, 
-  Check, 
-  Calendar,
-  Building2,
-  FileSpreadsheet,
-  FileDown
+  Check,
+  X
 } from 'lucide-react';
 
 interface InboundReceiptsListProps {
@@ -42,7 +37,6 @@ export const InboundReceiptsList: React.FC<InboundReceiptsListProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'has_discrepancy' | 'voice'>('all');
 
-  // Modals state
   const [verifyingReceipt, setVerifyingReceipt] = useState<InboundReceipt | null>(() => {
     if (initialSelectedReceiptId) {
       return inboundReceipts.find((r) => r.id === initialSelectedReceiptId) || null;
@@ -51,7 +45,6 @@ export const InboundReceiptsList: React.FC<InboundReceiptsListProps> = ({
   });
   const [printingReceipt, setPrintingReceipt] = useState<InboundReceipt | null>(null);
 
-  // Filtered receipts
   const filteredReceipts = inboundReceipts.filter((receipt) => {
     const matchesSearch =
       receipt.receiptNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -79,70 +72,39 @@ export const InboundReceiptsList: React.FC<InboundReceiptsListProps> = ({
   const voiceCount = inboundReceipts.filter((r) => r.source === 'telegram_voice').length;
 
   return (
-    <div className="space-y-4">
-      {/* KPI Cards for Inbound Receipts */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-          <span className="text-xs text-slate-500 font-medium">کل حواله‌های ورود</span>
-          <div className="text-xl font-black text-slate-800 mt-1">
-            {toPersianDigits(inboundReceipts.length)}{' '}
-            <span className="text-xs font-normal text-slate-400">حواله</span>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-blue-200 bg-blue-50/40 shadow-xs">
-          <span className="text-xs text-blue-800 font-bold flex items-center gap-1">
-            <Clock className="w-3.5 h-3.5" />
-            در انتظار شمارش و تایید
-          </span>
-          <div className="text-xl font-black text-blue-700 mt-1 flex items-center gap-2">
-            <span>{toPersianDigits(pendingCount)}</span>
-            {pendingCount > 0 && (
-              <span className="text-[10px] bg-blue-200 text-blue-900 font-bold px-1.5 py-0.5 rounded">
-                اقدام انباردار
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-emerald-200 bg-emerald-50/30 shadow-xs">
-          <span className="text-xs text-emerald-800 font-medium">ورود قطعی (تایید شده)</span>
-          <div className="text-xl font-black text-emerald-700 mt-1">
-            {toPersianDigits(confirmedCount)}{' '}
-            <span className="text-xs font-normal text-slate-400">حواله</span>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-amber-200 bg-amber-50/30 shadow-xs">
-          <span className="text-xs text-amber-800 font-medium">حواله‌های دارای مغایرت</span>
-          <div className="text-xl font-black text-amber-700 mt-1">
-            {toPersianDigits(discrepancyCount)}{' '}
-            <span className="text-xs font-normal text-slate-400">مورد کسری/مازاد</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Search & Filter Bar */}
-      <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+      {/* Unified Search & Filter Toolbar */}
+      <div className="p-3 sm:p-3.5 border-b border-slate-200/80 bg-slate-50/60 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5">
+        {/* Search Input */}
+        <div className="relative flex-1 max-w-md">
+          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="جستجوی شماره حواله، فاکتور خرید، تامین‌کننده..."
-            className="w-full pl-3 pr-9 py-2 text-xs rounded-xl border border-slate-300 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            placeholder="جستجوی شماره حواله، فاکتور خرید، تامین‌کننده یا کالا..."
+            className="w-full pr-9 pl-8 py-1.5 text-xs rounded-xl border border-slate-200/90 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-2xs"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 text-xs">
+        {/* Status Segmented Filter Pills */}
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar bg-slate-200/60 p-1 rounded-xl text-xs font-bold">
           <button
             type="button"
             onClick={() => setStatusFilter('all')}
-            className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+            className={`px-2.5 py-1 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
               statusFilter === 'all'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-white text-slate-900 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             همه ({toPersianDigits(inboundReceipts.length)})
@@ -150,32 +112,33 @@ export const InboundReceiptsList: React.FC<InboundReceiptsListProps> = ({
           <button
             type="button"
             onClick={() => setStatusFilter('pending')}
-            className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+            className={`px-2.5 py-1 rounded-lg whitespace-nowrap transition-all cursor-pointer flex items-center gap-1 ${
               statusFilter === 'pending'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                ? 'bg-blue-600 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            در انتظار شمارش ({toPersianDigits(pendingCount)})
+            <span>منتظر شمارش</span>
+            <span className="font-mono">({toPersianDigits(pendingCount)})</span>
           </button>
           <button
             type="button"
             onClick={() => setStatusFilter('confirmed')}
-            className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+            className={`px-2.5 py-1 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
               statusFilter === 'confirmed'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                ? 'bg-emerald-600 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            تایید شده کامل ({toPersianDigits(confirmedCount)})
+            تایید شده ({toPersianDigits(confirmedCount)})
           </button>
           <button
             type="button"
             onClick={() => setStatusFilter('has_discrepancy')}
-            className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+            className={`px-2.5 py-1 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
               statusFilter === 'has_discrepancy'
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                ? 'bg-amber-600 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             دارای مغایرت ({toPersianDigits(discrepancyCount)})
@@ -184,196 +147,254 @@ export const InboundReceiptsList: React.FC<InboundReceiptsListProps> = ({
             <button
               type="button"
               onClick={() => setStatusFilter('voice')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-lg whitespace-nowrap transition-all cursor-pointer flex items-center gap-1 ${
                 statusFilter === 'voice'
-                  ? 'bg-purple-600 text-white shadow-xs'
-                  : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                  ? 'bg-purple-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <span>🎙️ ویس تلگرام</span>
-              <span>({toPersianDigits(voiceCount)})</span>
+              <span>🎙️ صوتی ({toPersianDigits(voiceCount)})</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Receipts List */}
+      {/* Empty State */}
       {filteredReceipts.length === 0 ? (
-        <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/80 shadow-xs">
-          <div className="w-16 h-16 rounded-3xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
-            <Package className="w-8 h-8" />
+        <div className="p-12 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-2.5">
+            <Package className="w-6 h-6" />
           </div>
-          <h3 className="font-bold text-slate-800 text-sm sm:text-base">
+          <h3 className="font-bold text-slate-700 text-sm">
             حواله ورود کالایی یافت نشد
           </h3>
-          <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+          <p className="text-xs text-slate-400 mt-1">
             {searchQuery
               ? 'موردی با مشخصات جستجو شده پیدا نشد.'
-              : 'با ثبت فاکتورهای خرید، حواله‌های ورود به صورت خودکار در این قسمت ایجاد خواهند شد.'}
+              : 'با ثبت فاکتورهای خرید، حواله‌های ورود به صورت خودکار در این قسمت ایجاد می‌شوند.'}
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {filteredReceipts.map((receipt, index) => {
-            const isPending = receipt.status === 'pending_verification';
-            const hasDiscrepancy = receipt.status === 'has_discrepancy';
-            const isConfirmed = receipt.status === 'confirmed';
+        <>
+          {/* Mobile View: Compact 2-Row Cards */}
+          <div className="block sm:hidden divide-y divide-slate-100">
+            {filteredReceipts.map((receipt, index) => {
+              const isPending = receipt.status === 'pending_verification';
+              const hasDiscrepancy = receipt.status === 'has_discrepancy';
 
-            return (
-              <div
-                key={receipt.id}
-                className={`rounded-2xl border transition-all p-4 shadow-2xs hover:shadow-xs ${
-                  index % 2 === 1 ? 'bg-slate-50/85' : 'bg-white'
-                } ${
-                  isPending
-                    ? 'border-blue-200 hover:border-blue-300'
-                    : hasDiscrepancy
-                    ? 'border-amber-200 hover:border-amber-300'
-                    : 'border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  {/* Left Column: Number & Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono font-black text-sm text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">
+              return (
+                <div
+                  key={receipt.id}
+                  onClick={() => setVerifyingReceipt(receipt)}
+                  className={`p-3 space-y-2 transition-colors cursor-pointer active:bg-slate-100 ${
+                    index % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'
+                  }`}
+                >
+                  {/* Row 1: Receipt Number, Invoice Ref, Status Badge */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono font-black text-xs text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
                         {toPersianDigits(receipt.receiptNumber)}
                       </span>
                       {receipt.source === 'telegram_voice' ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 border border-sky-200">
-                          <span>🎙️ ورودی صوتی تلگرام</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-100 text-sky-800">
+                          🎙️ صوتی
                         </span>
                       ) : (
-                        <span className="text-xs text-slate-500 font-medium">
-                          (متناظر با فاکتور خرید{' '}
-                          <strong className="text-slate-900 font-mono">
-                            {toPersianDigits(receipt.purchaseInvoiceNumber)}
-                          </strong>
-                          )
+                        <span className="text-[11px] text-slate-500 font-mono">
+                          (فاکتور: {toPersianDigits(receipt.purchaseInvoiceNumber)})
                         </span>
                       )}
-                      <span className="font-bold text-slate-900 text-sm truncate">
-                        {receipt.supplierName}
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {toPersianDigits(receipt.date)}
                       </span>
                     </div>
 
-                    {receipt.voiceTranscription && (
-                      <div className="mt-2 text-xs text-sky-900 bg-sky-50/80 p-2 rounded-xl border border-sky-200 flex items-start gap-1.5">
-                        <span className="shrink-0">🎙️</span>
-                        <div className="leading-relaxed">
-                          <span className="font-bold text-sky-950">صوت ارسالی تلگرام: </span>
-                          <span className="italic">«{receipt.voiceTranscription}»</span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-2 text-xs text-slate-600">
-                      <div>
-                        تاریخ صدور:{' '}
-                        <span className="text-slate-800 font-mono">
-                          {toPersianDigits(receipt.date)}
-                        </span>
-                      </div>
-                      <div>
-                        اقلام حواله:{' '}
-                        <strong className="text-slate-800">
-                          {toPersianDigits(receipt.items.length)} قلم کالا
-                        </strong>
-                      </div>
-                      <div>
-                        تعداد مورد انتظار:{' '}
-                        <strong className="text-slate-800 font-mono">
-                          {toPersianDigits(receipt.totalExpectedQuantity)}
-                        </strong>
-                      </div>
-                      {receipt.verifiedDate && (
-                        <div>
-                          تایید انباردار:{' '}
-                          <span className="text-slate-800 font-mono">
-                            {toPersianDigits(receipt.verifiedDate)} ({receipt.verifiedBy || 'انباردار'})
-                          </span>
-                        </div>
-                      )}
-                      {receipt.totalDiscrepancy !== 0 && !isPending && (
-                        <div>
-                          مغایرت:{' '}
-                          <strong className={receipt.totalDiscrepancy < 0 ? 'text-rose-700' : 'text-blue-700'}>
-                            {toPersianDigits(receipt.totalDiscrepancy)} ({receipt.totalDiscrepancy < 0 ? 'کسری' : 'مازاد'})
-                          </strong>
-                        </div>
-                      )}
-                    </div>
-
-                    {receipt.warehouseNotes && (
-                      <div className="mt-2 text-[11px] text-slate-600 bg-slate-50 p-2 rounded-xl border border-slate-200 inline-block">
-                        <strong>یادداشت انباردار:</strong> {receipt.warehouseNotes}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Right Column: Status & Actions */}
-                  <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    {/* Status Badge */}
                     {isPending ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300 animate-pulse">
-                        <Clock className="w-3.5 h-3.5 text-blue-600" />
-                        در انتظار شمارش و تایید انباردار
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 shrink-0">
+                        منتظر شمارش
                       </span>
                     ) : hasDiscrepancy ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                        ثبت شده با مغایرت (کسری/مازاد)
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
+                        دارای مغایرت
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        تایید کامل (ورود به انبار)
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                        تایید شده
                       </span>
                     )}
+                  </div>
 
-                    {/* Verification Action Button */}
-                    <button
-                      type="button"
-                      onClick={() => setVerifyingReceipt(receipt)}
-                      className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        isPending
-                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm active:scale-95'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                      }`}
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      <span>{isPending ? 'شمارش و تایید ورود کالا' : 'ویرایش شمارش / مغایرت'}</span>
-                    </button>
+                  {/* Row 2: Supplier, Item Count & Actions */}
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs">
+                    <div className="min-w-0">
+                      <span className="font-bold text-slate-900 truncate block">
+                        {receipt.supplierName}
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        {toPersianDigits(receipt.items.length)} ردیف کالا ({toPersianDigits(receipt.totalExpectedQuantity)} واحد)
+                      </span>
+                    </div>
 
-                    {/* Preview & Print Button */}
-                    <button
-                      type="button"
-                      id={`btn-preview-inbound-${receipt.id}`}
-                      onClick={() => setPrintingReceipt(receipt)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
-                      title="پیش‌نمایش و چاپ حواله ورود کالا"
-                    >
-                      <Eye className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>پیش‌نمایش و چاپ</span>
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => setVerifyingReceipt(receipt)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer ${
+                          isPending
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        <Check className="w-3 h-3" />
+                        <span>{isPending ? 'شمارش و تایید' : 'بررسی شمارش'}</span>
+                      </button>
 
-                    {/* Quick PDF Button */}
-                    <button
-                      type="button"
-                      id={`btn-pdf-inbound-${receipt.id}`}
-                      onClick={() => setPrintingReceipt(receipt)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
-                      title="دانلود خروجی PDF حواله ورود کالا"
-                    >
-                      <FileDown className="w-3.5 h-3.5 text-indigo-600" />
-                      <span className="hidden sm:inline">PDF</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setPrintingReceipt(receipt)}
+                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
+                        title="چاپ و PDF حواله"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop View: Clean Single-Row Table */}
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full text-right border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-100/70 text-slate-700 border-b border-slate-200 select-none">
+                  <th className="py-3 px-3 font-bold text-center w-10">#</th>
+                  <th className="py-3 px-3 font-bold">شماره حواله و فاکتور خرید</th>
+                  <th className="py-3 px-3 font-bold">تامین‌کننده / مبدأ</th>
+                  <th className="py-3 px-3 font-bold text-center">تاریخ صدور</th>
+                  <th className="py-3 px-3 font-bold text-center">تعداد اقلام</th>
+                  <th className="py-3 px-3 font-bold text-center">وضعیت انبار</th>
+                  <th className="py-3 px-3 font-bold text-center w-44">عملیات</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredReceipts.map((receipt, index) => {
+                  const isPending = receipt.status === 'pending_verification';
+                  const hasDiscrepancy = receipt.status === 'has_discrepancy';
+
+                  return (
+                    <tr
+                      key={receipt.id}
+                      onClick={() => setVerifyingReceipt(receipt)}
+                      className={`${
+                        index % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'
+                      } hover:bg-emerald-50/40 transition-colors cursor-pointer group`}
+                    >
+                      <td className="py-3 px-3 text-center font-mono text-slate-400 font-bold text-[11px]">
+                        {toPersianDigits(index + 1)}
+                      </td>
+
+                      {/* Receipt & Purchase Invoice Numbers */}
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-black text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                            {toPersianDigits(receipt.receiptNumber)}
+                          </span>
+                          {receipt.source === 'telegram_voice' ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-sky-100 text-sky-800 border border-sky-200">
+                              🎙️ ویس تلگرام
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-500 font-mono">
+                              (فاکتور: <strong className="text-slate-700">{toPersianDigits(receipt.purchaseInvoiceNumber)}</strong>)
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Supplier */}
+                      <td className="py-3 px-3">
+                        <div className="font-bold text-slate-900 truncate max-w-[200px]" title={receipt.supplierName}>
+                          {receipt.supplierName}
+                        </div>
+                        {receipt.verifiedBy && !isPending && (
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            تایید: {receipt.verifiedBy}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Date */}
+                      <td className="py-3 px-3 text-center font-mono text-slate-600 whitespace-nowrap">
+                        {toPersianDigits(receipt.date)}
+                      </td>
+
+                      {/* Items & Quantity Summary */}
+                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                        <span className="font-bold text-slate-800">
+                          {toPersianDigits(receipt.items.length)} ردیف
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-mono mr-1">
+                          ({toPersianDigits(receipt.totalExpectedQuantity)} واحد)
+                        </span>
+                      </td>
+
+                      {/* Status Badge */}
+                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                        {isPending ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                            <Clock className="w-3 h-3 text-blue-600" />
+                            <span>منتظر شمارش</span>
+                          </span>
+                        ) : hasDiscrepancy ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                            <AlertTriangle className="w-3 h-3 text-amber-600" />
+                            <span>دارای مغایرت ({toPersianDigits(receipt.totalDiscrepancy)})</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            <span>تایید کامل</span>
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => setVerifyingReceipt(receipt)}
+                            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs ${
+                              isPending
+                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                            }`}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>{isPending ? 'شمارش و تایید' : 'ویرایش شمارش'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            id={`btn-preview-inbound-${receipt.id}`}
+                            onClick={() => setPrintingReceipt(receipt)}
+                            className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                            title="پیش‌نمایش، چاپ و دانلود PDF حواله ورود"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {/* Verification Modal */}

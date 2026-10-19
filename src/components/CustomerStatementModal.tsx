@@ -322,11 +322,13 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
         setPdfSuccessMessage('فایل PDF رسمی صورتحساب با موفقیت دانلود شد.');
         setTimeout(() => setPdfSuccessMessage(null), 5000);
       } else {
-        alert(result.error || 'خطا در صدور فایل PDF صورتحساب');
+        setPdfSuccessMessage(result.error || 'خطا در صدور فایل PDF صورتحساب');
+        setTimeout(() => setPdfSuccessMessage(null), 5000);
       }
     } catch (err: any) {
       console.error('PDF export error:', err);
-      alert('خطا در تولید فایل PDF صورتحساب');
+      setPdfSuccessMessage('خطا در تولید فایل PDF صورتحساب');
+      setTimeout(() => setPdfSuccessMessage(null), 5000);
     } finally {
       setIsExportingPdf(false);
     }
@@ -336,7 +338,8 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   const [isSendingTelegram, setIsSendingTelegram] = useState(false);
   const handleSendTelegramStatement = async () => {
     if (!settings?.telegramBotEnabled) {
-      alert('ربات تلگرام در تنظیمات سیستم فعال نیست.');
+      setPdfSuccessMessage('ربات تلگرام در تنظیمات سیستم فعال نیست.');
+      setTimeout(() => setPdfSuccessMessage(null), 5000);
       return;
     }
     const botToken = settings.telegramBotToken?.trim();
@@ -347,7 +350,8 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
       : primaryChatId;
 
     if (!botToken || !targetChatId) {
-      alert('توکن ربات یا شناسه چت تلگرام در تنظیمات ثبت نشده است.');
+      setPdfSuccessMessage('توکن ربات یا شناسه چت تلگرام در تنظیمات ثبت نشده است.');
+      setTimeout(() => setPdfSuccessMessage(null), 5000);
       return;
     }
 
@@ -383,10 +387,12 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
         setPdfSuccessMessage('گزارش وضعیت حساب طرف‌حساب با موفقیت به تلگرام ارسال گردید.');
         setTimeout(() => setPdfSuccessMessage(null), 5000);
       } else {
-        alert(res.error || 'خطا در ارسال به تلگرام');
+        setPdfSuccessMessage(res.error || 'خطا در ارسال به تلگرام');
+        setTimeout(() => setPdfSuccessMessage(null), 5000);
       }
     } catch (err: any) {
-      alert('خطا در ارسال: ' + (err?.message || ''));
+      setPdfSuccessMessage('خطا در ارسال: ' + (err?.message || ''));
+      setTimeout(() => setPdfSuccessMessage(null), 5000);
     } finally {
       setIsSendingTelegram(false);
     }

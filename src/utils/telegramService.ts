@@ -685,11 +685,14 @@ export async function generateInvoicePdfBlob(
       )
     );
 
-    // Wait for React 19 render cycle and web fonts to settle
-    await new Promise((resolve) => setTimeout(resolve, 380));
+    // Wait briefly for browser layout after flushSync
+    await new Promise((resolve) => setTimeout(resolve, 60));
     if (document.fonts) {
       try {
-        await document.fonts.ready;
+        await Promise.race([
+          document.fonts.ready,
+          new Promise((resolve) => setTimeout(resolve, 80)),
+        ]);
       } catch {}
     }
 
@@ -815,10 +818,13 @@ export async function generateExitSlipPdfBlob(
       )
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 380));
+    await new Promise((resolve) => setTimeout(resolve, 60));
     if (document.fonts) {
       try {
-        await document.fonts.ready;
+        await Promise.race([
+          document.fonts.ready,
+          new Promise((resolve) => setTimeout(resolve, 80)),
+        ]);
       } catch {}
     }
 
