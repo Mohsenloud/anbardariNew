@@ -911,257 +911,251 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
       {/* Top Header Card (Mobile & Desktop) */}
       <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-        {/* Top Tier: Title & Single Compact Actions Dropdown Beside Title */}
-        <div className="flex items-center justify-between gap-3">
+        {/* Top Tier: Title, Quick Add Product & Actions Dropdown */}
+        <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
           <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
             <span className="p-1.5 sm:p-2 rounded-xl bg-blue-50 text-blue-700 shrink-0 shadow-2xs border border-blue-200/60">
               <PackageCheck className="w-4 h-4 sm:w-5 sm:h-5" />
             </span>
-            <h2 className="text-sm sm:text-lg font-black text-slate-900 truncate">
-              مدیریت انبار و موجودی کالاها
-            </h2>
+            <div>
+              <h2 className="text-sm sm:text-base font-black text-slate-900 truncate">
+                مدیریت انبار و موجودی کالاها
+              </h2>
+              <p className="text-[11px] text-slate-500 hidden md:block">
+                کنترل موجودی، حواله‌های ورود و خروج، امانی و گردش انبار
+              </p>
+            </div>
           </div>
 
-          {/* Single Compact Actions Dropdown Beside Title */}
-          <div className="relative shrink-0" ref={actionsDropdownRef}>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Quick Action: New Product */}
             <button
               type="button"
-              id="inventory-actions-dropdown-btn"
-              onClick={() => setIsActionsDropdownOpen(!isActionsDropdownOpen)}
-              className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 active:scale-95 text-blue-900 border border-blue-200/90 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-              title="عملیات و ابزارهای انبار"
+              id="header-quick-add-product-btn"
+              onClick={handleOpenNewProduct}
+              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
             >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-blue-700" />
-              <span>عملیات</span>
-              {lowStockCount > 0 && (
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-              )}
-              <ChevronDown className={`w-3.5 h-3.5 text-blue-600 transition-transform duration-200 ${isActionsDropdownOpen ? 'rotate-180' : ''}`} />
+              <Plus className="w-4 h-4" />
+              <span>کالای جدید</span>
             </button>
 
-            {/* Dropdown Menu */}
-            {isActionsDropdownOpen && (
-              <div className="absolute left-0 top-full mt-1.5 w-56 sm:w-60 bg-white rounded-2xl border border-slate-200/90 shadow-xl z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100">
-                {/* 1. کالای جدید */}
-                <button
-                  type="button"
-                  id="add-new-product-btn"
-                  onClick={() => {
-                    setIsActionsDropdownOpen(false);
-                    handleOpenNewProduct();
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-emerald-800 bg-emerald-50 hover:bg-emerald-100 transition-colors cursor-pointer text-right"
-                >
-                  <Plus className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>کالای جدید</span>
-                </button>
+            {/* Single Compact Actions Dropdown */}
+            <div className="relative" ref={actionsDropdownRef}>
+              <button
+                type="button"
+                id="inventory-actions-dropdown-btn"
+                onClick={() => setIsActionsDropdownOpen(!isActionsDropdownOpen)}
+                className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200/80 active:scale-95 text-slate-700 border border-slate-200/90 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                title="عملیات و ابزارهای انبار"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-slate-600" />
+                <span>عملیات</span>
+                {lowStockCount > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                )}
+                <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isActionsDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-                <div className="my-1 border-t border-slate-100" />
+              {/* Dropdown Menu */}
+              {isActionsDropdownOpen && (
+                <div className="absolute left-0 top-full mt-1.5 w-56 sm:w-60 bg-white rounded-2xl border border-slate-200/90 shadow-xl z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100">
+                  {/* 1. خلاصه آمار انبار */}
+                  <button
+                    type="button"
+                    id="open-inventory-stats-modal-btn"
+                    onClick={() => {
+                      setIsActionsDropdownOpen(false);
+                      setIsStatsModalOpen(true);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl text-blue-800 bg-blue-50 hover:bg-blue-100 transition-colors cursor-pointer text-right"
+                  >
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-blue-600 shrink-0" />
+                      <span>خلاصه آمار انبار</span>
+                    </div>
+                    {lowStockCount > 0 && (
+                      <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+                        {toPersianDigits(lowStockCount)} کسری
+                      </span>
+                    )}
+                  </button>
 
-                {/* 2. خلاصه آمار انبار */}
-                <button
-                  type="button"
-                  id="open-inventory-stats-modal-btn"
-                  onClick={() => {
-                    setIsActionsDropdownOpen(false);
-                    setIsStatsModalOpen(true);
-                  }}
-                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl text-blue-800 bg-blue-50 hover:bg-blue-100 transition-colors cursor-pointer text-right"
-                >
-                  <div className="flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span>خلاصه آمار انبار</span>
-                  </div>
-                  {lowStockCount > 0 && (
-                    <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full">
-                      {toPersianDigits(lowStockCount)} کسری
+                  {/* 2. دسته‌بندی‌ها */}
+                  <button
+                    type="button"
+                    id="manage-categories-btn"
+                    onClick={() => {
+                      setIsActionsDropdownOpen(false);
+                      setIsCategoryModalOpen(true);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:text-indigo-900 hover:bg-indigo-50 transition-colors cursor-pointer text-right"
+                  >
+                    <div className="flex items-center gap-2">
+                      <FolderTree className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <span>دسته‌بندی‌ها</span>
+                    </div>
+                    <span className="bg-indigo-100 text-indigo-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                      {toPersianDigits(categories.length)}
                     </span>
-                  )}
-                </button>
+                  </button>
 
-                {/* 3. دسته‌بندی‌ها */}
-                <button
-                  type="button"
-                  id="manage-categories-btn"
-                  onClick={() => {
-                    setIsActionsDropdownOpen(false);
-                    setIsCategoryModalOpen(true);
-                  }}
-                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:text-indigo-900 hover:bg-indigo-50 transition-colors cursor-pointer text-right"
-                >
-                  <div className="flex items-center gap-2">
-                    <FolderTree className="w-4 h-4 text-indigo-600 shrink-0" />
-                    <span>دسته‌بندی‌ها</span>
-                  </div>
-                  <span className="bg-indigo-100 text-indigo-900 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                    {toPersianDigits(categories.length)}
-                  </span>
-                </button>
+                  <div className="my-1 border-t border-slate-100" />
 
-                {/* 4. خروجی اکسل */}
-                <button
-                  type="button"
-                  id="export-inventory-excel-btn"
-                  onClick={() => {
-                    setIsActionsDropdownOpen(false);
-                    exportProductsToExcel(products);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer text-right"
-                >
-                  <Download className="w-4 h-4 text-slate-500 shrink-0" />
-                  <span>خروجی اکسل کالاها</span>
-                </button>
+                  {/* 3. خروجی اکسل */}
+                  <button
+                    type="button"
+                    id="export-inventory-excel-btn"
+                    onClick={() => {
+                      setIsActionsDropdownOpen(false);
+                      exportProductsToExcel(products);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer text-right"
+                  >
+                    <Download className="w-4 h-4 text-slate-500 shrink-0" />
+                    <span>خروجی اکسل کالاها</span>
+                  </button>
 
-                {/* 5. ورود از اکسل */}
-                <button
-                  type="button"
-                  id="import-inventory-excel-btn"
-                  onClick={() => {
-                    setIsActionsDropdownOpen(false);
-                    setIsImportModalOpen(true);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl text-emerald-800 bg-emerald-50 hover:bg-emerald-100 transition-colors cursor-pointer text-right"
-                >
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>ورود کالاها از اکسل</span>
-                </button>
-              </div>
-            )}
+                  {/* 4. ورود از اکسل */}
+                  <button
+                    type="button"
+                    id="import-inventory-excel-btn"
+                    onClick={() => {
+                      setIsActionsDropdownOpen(false);
+                      setIsImportModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl text-emerald-800 bg-emerald-50 hover:bg-emerald-100 transition-colors cursor-pointer text-right"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>ورود کالاها از اکسل</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Bottom Tier: Sub-Tab Navigation Bar (Desktop & Tablet) */}
-        <div className="hidden sm:flex border-t border-slate-100/90 pt-3 mt-3 items-center justify-between gap-3 overflow-x-auto no-scrollbar">
-          {/* Sub Tab Switcher */}
-          <div className="flex items-center bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/80 gap-1.5 shadow-2xs shrink-0 w-full flex-wrap sm:flex-nowrap">
+        {/* Bottom Tier: Modern 5-Segment Grid (Desktop & Tablet) */}
+        <div className="hidden sm:block border-t border-slate-100/90 pt-3 mt-3">
+          <div className="grid grid-cols-5 gap-1.5 p-1.5 bg-slate-100/80 rounded-2xl border border-slate-200/80 shadow-2xs w-full">
             {/* Tab 1: کالاها و موجودی */}
             <button
+              type="button"
               id="subtab-items"
               onClick={() => handleSelectSubTab('items')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-98 ${
+              className={`flex items-center justify-center gap-1.5 lg:gap-2 py-2 px-1.5 rounded-xl text-xs transition-all duration-150 cursor-pointer select-none active:scale-98 ${
                 activeSubTab === 'items'
-                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20 font-black ring-2 ring-blue-500/30 scale-[1.01]'
-                  : 'bg-white/70 hover:bg-white text-slate-700 font-bold hover:text-blue-700 border border-slate-200/60 shadow-2xs'
+                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200/90 font-black ring-1 ring-blue-500/20'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold border border-transparent'
               }`}
             >
-              <Boxes className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'items' ? 'text-white' : 'text-blue-600'}`} />
-              <span>کالاها و موجودی</span>
-              <span
-                className={`text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors ${
-                  activeSubTab === 'items'
-                    ? 'bg-white/20 text-white font-extrabold'
-                    : 'bg-blue-50 text-blue-800 border border-blue-200/60'
-                }`}
-              >
+              <Boxes className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'items' ? 'text-blue-600' : 'text-slate-400'}`} />
+              <span className="truncate">کالاها و موجودی</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md font-bold transition-colors ${
+                activeSubTab === 'items' ? 'bg-blue-50 text-blue-700 border border-blue-200/60' : 'bg-slate-200/70 text-slate-600'
+              }`}>
                 {toPersianDigits(products.length)}
               </span>
               {lowStockCount > 0 && (
-                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full shadow-2xs ${
-                  activeSubTab === 'items' ? 'bg-amber-400 text-amber-950' : 'bg-amber-500 text-white'
-                }`}>
-                  {toPersianDigits(lowStockCount)} کسری
+                <span className="bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full shrink-0 shadow-2xs">
+                  {toPersianDigits(lowStockCount)}
                 </span>
               )}
             </button>
 
-            {/* Tab 2: حواله‌های ورود کالا */}
+            {/* Tab 2: حواله‌های ورود */}
             <button
+              type="button"
               id="subtab-inbound-receipts"
               onClick={() => handleSelectSubTab('inbound-receipts')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-98 ${
+              className={`flex items-center justify-center gap-1.5 lg:gap-2 py-2 px-1.5 rounded-xl text-xs transition-all duration-150 cursor-pointer select-none active:scale-98 ${
                 activeSubTab === 'inbound-receipts'
-                  ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-500/20 font-black ring-2 ring-emerald-500/30 scale-[1.01]'
-                  : 'bg-white/70 hover:bg-white text-slate-700 font-bold hover:text-emerald-700 border border-slate-200/60 shadow-2xs'
+                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200/90 font-black ring-1 ring-emerald-500/20'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold border border-transparent'
               }`}
             >
-              <ArrowDownRight className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'inbound-receipts' ? 'text-white' : 'text-emerald-600'}`} />
-              <span>حواله‌های ورود کالا</span>
-              <span
-                className={`text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors ${
-                  activeSubTab === 'inbound-receipts'
-                    ? 'bg-white/20 text-white font-extrabold'
-                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200/60'
-                }`}
-              >
+              <ArrowDownRight className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'inbound-receipts' ? 'text-emerald-600' : 'text-slate-400'}`} />
+              <span className="truncate">حواله‌های ورود</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md font-bold transition-colors ${
+                activeSubTab === 'inbound-receipts' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60' : 'bg-slate-200/70 text-slate-600'
+              }`}>
                 {toPersianDigits(inboundReceipts.length)}
               </span>
               {pendingInboundCount > 0 && (
-                <span className="bg-rose-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full animate-pulse shadow-xs">
-                  {toPersianDigits(pendingInboundCount)} منتظر تایید
+                <span className="bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full animate-pulse shrink-0">
+                  {toPersianDigits(pendingInboundCount)}
                 </span>
               )}
             </button>
 
-            {/* Tab 3: برگه‌های خروج انبار */}
+            {/* Tab 3: برگه‌های خروج */}
             <button
+              type="button"
               id="subtab-exit-slips"
               onClick={() => handleSelectSubTab('exit-slips')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-98 ${
+              className={`flex items-center justify-center gap-1.5 lg:gap-2 py-2 px-1.5 rounded-xl text-xs transition-all duration-150 cursor-pointer select-none active:scale-98 ${
                 activeSubTab === 'exit-slips'
-                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/20 font-black ring-2 ring-indigo-500/30 scale-[1.01]'
-                  : 'bg-white/70 hover:bg-white text-slate-700 font-bold hover:text-indigo-700 border border-slate-200/60 shadow-2xs'
+                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200/90 font-black ring-1 ring-indigo-500/20'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold border border-transparent'
               }`}
             >
-              <Truck className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'exit-slips' ? 'text-white' : 'text-indigo-600'}`} />
-              <span>برگه‌های خروج انبار</span>
-              <span
-                className={`text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors ${
-                  activeSubTab === 'exit-slips'
-                    ? 'bg-white/20 text-white font-extrabold'
-                    : 'bg-indigo-50 text-indigo-800 border border-indigo-200/60'
-                }`}
-              >
+              <Truck className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'exit-slips' ? 'text-indigo-600' : 'text-slate-400'}`} />
+              <span className="truncate">برگه‌های خروج</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md font-bold transition-colors ${
+                activeSubTab === 'exit-slips' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200/60' : 'bg-slate-200/70 text-slate-600'
+              }`}>
                 {toPersianDigits(invoices.length)}
               </span>
               {unprintedSlipsCount > 0 && (
-                <span className="bg-amber-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-xs">
-                  {toPersianDigits(unprintedSlipsCount)} جدید
+                <span className="bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full shrink-0">
+                  {toPersianDigits(unprintedSlipsCount)}
                 </span>
               )}
             </button>
 
-            {/* Tab 4: خروج و ورود مستقیم (بدون فاکتور - امانی/تعمیرات) */}
+            {/* Tab 4: امانی و تعمیرات */}
             <button
+              type="button"
               id="subtab-direct-transfers"
               onClick={() => handleSelectSubTab('direct-transfers')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-98 ${
+              title="خروج و ورود بدون فاکتور (امانی / تعمیرات)"
+              className={`flex items-center justify-center gap-1.5 lg:gap-2 py-2 px-1.5 rounded-xl text-xs transition-all duration-150 cursor-pointer select-none active:scale-98 ${
                 activeSubTab === 'direct-transfers'
-                  ? 'bg-amber-600 text-white shadow-sm shadow-amber-500/20 font-black ring-2 ring-amber-500/30 scale-[1.01]'
-                  : 'bg-white/70 hover:bg-white text-slate-700 font-bold hover:text-amber-700 border border-slate-200/60 shadow-2xs'
+                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200/90 font-black ring-1 ring-amber-500/20'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold border border-transparent'
               }`}
             >
-              <ArrowLeftRight className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'direct-transfers' ? 'text-white' : 'text-amber-600'}`} />
-              <span>خروج و ورود بدون فاکتور (امانی/تعمیرات)</span>
-              <span
-                className={`text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors ${
-                  activeSubTab === 'direct-transfers'
-                    ? 'bg-white/20 text-white font-extrabold'
-                    : 'bg-amber-50 text-amber-800 border border-amber-200/60'
-                }`}
-              >
+              <ArrowLeftRight className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'direct-transfers' ? 'text-amber-600' : 'text-slate-400'}`} />
+              <span className="truncate">امانی و تعمیرات</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md font-bold transition-colors ${
+                activeSubTab === 'direct-transfers' ? 'bg-amber-50 text-amber-700 border border-amber-200/60' : 'bg-slate-200/70 text-slate-600'
+              }`}>
                 {toPersianDigits(directTransfers.length)}
               </span>
               {activeDirectCount > 0 && (
-                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs animate-pulse ${
-                  activeSubTab === 'direct-transfers' ? 'bg-amber-300 text-amber-950' : 'bg-amber-500 text-white'
-                }`}>
-                  {toPersianDigits(activeDirectCount)} بیرون انبار
+                <span className="bg-amber-400 text-slate-950 text-[9px] font-black px-1.5 py-0.2 rounded-full shrink-0 animate-pulse">
+                  {toPersianDigits(activeDirectCount)}
                 </span>
               )}
             </button>
 
             {/* Tab 5: گردش و کاردکس */}
             <button
+              type="button"
               id="subtab-movements"
               onClick={() => handleSelectSubTab('movements')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-98 ${
+              className={`flex items-center justify-center gap-1.5 lg:gap-2 py-2 px-1.5 rounded-xl text-xs transition-all duration-150 cursor-pointer select-none active:scale-98 ${
                 activeSubTab === 'movements'
-                  ? 'bg-slate-800 text-white shadow-sm shadow-slate-800/20 font-black ring-2 ring-slate-700/30 scale-[1.01]'
-                  : 'bg-white/70 hover:bg-white text-slate-700 font-bold hover:text-slate-900 border border-slate-200/60 shadow-2xs'
+                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200/90 font-black ring-1 ring-slate-800/20'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-bold border border-transparent'
               }`}
             >
-              <History className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'movements' ? 'text-white' : 'text-slate-600'}`} />
-              <span>گردش و کاردکس</span>
+              <History className={`w-4 h-4 shrink-0 transition-colors ${activeSubTab === 'movements' ? 'text-slate-800' : 'text-slate-400'}`} />
+              <span className="truncate">گردش و کاردکس</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md font-bold transition-colors ${
+                activeSubTab === 'movements' ? 'bg-slate-100 text-slate-800 border border-slate-200' : 'bg-slate-200/70 text-slate-600'
+              }`}>
+                {toPersianDigits(movements.length)}
+              </span>
             </button>
           </div>
         </div>
