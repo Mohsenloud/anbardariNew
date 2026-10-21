@@ -1829,6 +1829,8 @@ export default function App() {
           <ReportsDashboard
             products={products}
             invoices={invoices}
+            purchaseInvoices={purchaseInvoices}
+            customers={customers}
             settings={settings}
             currentUser={currentUser || undefined}
             onOpenNewInvoice={() => {
@@ -1841,6 +1843,7 @@ export default function App() {
                 setActiveTab('inventory');
               }
             }}
+            onViewInvoice={(inv) => setViewingInvoice(inv)}
           />
         )}
 
