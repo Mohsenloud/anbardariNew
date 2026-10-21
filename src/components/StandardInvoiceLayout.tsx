@@ -120,24 +120,10 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
                     {toPersianDigits(invoice.invoiceNumber)}
                   </strong>
                 </div>
-                {invoice.createdByName && (
-                  <div className="flex items-center gap-1.5 pt-0.5 text-slate-600">
-                    <span>کاربر ثبت‌کننده:</span>
-                    <strong className="text-slate-800 font-bold">{invoice.createdByName}</strong>
-                  </div>
-                )}
               </div>
             </div>
           </div>
         </div>
-
-        {invoice.isProforma && (
-          <div className={`bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-lg text-center font-semibold ${
-            isA5 ? 'p-1 text-[9.5px]' : 'p-1.5 text-xs'
-          }`}>
-            این سند «پیش‌فاکتور» است و فاقد اثر قطعی خروج از انبار می‌باشد (برای نهایی شدن به فاکتور رسمی تبدیل خواهد شد).
-          </div>
-        )}
 
         {/* Customer & Transaction info bar */}
         {invoice.type === 'official' ? (
@@ -251,7 +237,7 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
       </div>
 
       {/* ZONE 2: MIDDLE (Items Table) */}
-      <div className="invoice-table-box overflow-x-auto flex-1 flex flex-col justify-start my-auto py-1">
+      <div className="invoice-table-box overflow-x-auto flex-1 flex flex-col justify-start mb-auto py-1">
         <table className="w-full text-right border-collapse text-xs border border-slate-300">
           <thead>
             <tr className="bg-slate-100 text-slate-900 border-b border-slate-300 font-bold" style={{ height: `${headerH}px` }}>

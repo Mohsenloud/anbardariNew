@@ -287,13 +287,19 @@ export function buildPdfDocumentFromCanvas(
   const pxPerMm = canvas.width / usableWidth;
   const fullPageHeightPx = Math.floor(usableHeight * pxPerMm);
 
-  // If content fits comfortably on a single page, render full single page coverage
+  // If content fits comfortably on a single page, render full single page coverage with 100% preserved aspect ratio
   if (canvas.height <= fullPageHeightPx * 1.15) {
     paintPageWhite();
     const naturalHeightMm = (canvas.height * usableWidth) / canvas.width;
-    const renderHeightMm = Math.min(usableHeight, Math.max(naturalHeightMm, usableHeight));
     const imgData = canvas.toDataURL('image/jpeg', jpegCompression);
-    pdf.addImage(imgData, 'JPEG', marginMm, marginMm, usableWidth, renderHeightMm, undefined, 'FAST');
+    if (naturalHeightMm > usableHeight) {
+      const fitScale = usableHeight / naturalHeightMm;
+      const scaledWidthMm = usableWidth * fitScale;
+      const xOffsetMm = marginMm + (usableWidth - scaledWidthMm) / 2;
+      pdf.addImage(imgData, 'JPEG', xOffsetMm, marginMm, scaledWidthMm, usableHeight, undefined, 'FAST');
+    } else {
+      pdf.addImage(imgData, 'JPEG', marginMm, marginMm, usableWidth, naturalHeightMm, undefined, 'FAST');
+    }
     return pdf;
   }
 
@@ -814,6 +820,8 @@ function setupClonedDocumentForPdfCapture(
       tbel.style.setProperty('display', 'flex', 'important');
       tbel.style.setProperty('flex-direction', 'column', 'important');
       tbel.style.setProperty('justify-content', 'flex-start', 'important');
+      tbel.style.setProperty('margin-top', '4px', 'important');
+      tbel.style.setProperty('margin-bottom', 'auto', 'important');
     });
   }
 

@@ -152,12 +152,6 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
                   {toPersianDigits(invoice.invoiceNumber)}
                 </span>
               </div>
-              {invoice.createdByName && (
-                <div className="flex justify-between items-center gap-2 pt-0.5">
-                  <span className="text-slate-600 font-medium">کاربر ثبت‌کننده:</span>
-                  <span className="font-bold text-slate-800">{invoice.createdByName}</span>
-                </div>
-              )}
               {invoice.dueDate && (
                 <div className="flex justify-between items-center gap-2">
                   <span className="text-slate-600 font-medium">تاریخ سررسید:</span>
@@ -167,15 +161,6 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
             </div>
           </div>
         </div>
-
-        {/* یادداشت پیش‌فاکتور یا سند مرجع در صورت وجود */}
-        {invoice.isProforma && (
-          <div className={`bg-amber-50/90 border border-amber-300 text-amber-900 rounded font-semibold text-center ${
-            isA5Landscape ? 'px-2 py-0.5 text-[8.5px]' : isA5Portrait ? 'px-2.5 py-1 text-[9.5px]' : 'px-3 py-1.5 text-xs'
-          }`}>
-            این سند صرفاً پیش‌فاکتور غیرقطعی بوده و جنبه استعلام قیمت دارد.
-          </div>
-        )}
 
         {/* مشخصات خریدار و فروشنده در ۲ ستون تراز و مشخص */}
         <div className={`invoice-parties grid grid-cols-2 ${
@@ -252,7 +237,7 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
       </div>
 
       {/* 2. SECTION: MIDDLE ZONE (جدول اقلام کالا و خدمات با خوانایی بالا) */}
-      <div className="flex-1 flex flex-col justify-start w-full my-auto overflow-hidden">
+      <div className="simple-invoice-table-box flex-1 flex flex-col justify-start w-full mb-auto py-1 overflow-hidden">
         <div className="border border-slate-700 rounded-md overflow-hidden bg-white shadow-2xs">
           <table className={`w-full text-right border-collapse ${tableFontSize}`}>
             <thead>

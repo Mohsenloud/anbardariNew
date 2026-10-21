@@ -811,30 +811,30 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             /* === A4 PORTRAIT === */
             #printable-invoice.paper-a4.paper-portrait {
               width: 100% !important;
-              max-width: 840px !important;
-              min-height: 1188px !important;
-              padding: 24px 30px !important;
-              font-size: 13px !important;
+              max-width: 820px !important;
+              min-height: 1175px !important;
+              padding: 18px 22px !important;
+              font-size: 12.5px !important;
             }
 
             /* === A4 LANDSCAPE === */
             #printable-invoice.paper-a4.paper-landscape {
               width: 100% !important;
-              max-width: 1140px !important;
-              min-height: 806px !important;
-              padding: 18px 26px !important;
+              max-width: 1180px !important;
+              min-height: 824px !important;
+              padding: 14px 20px !important;
               font-size: 12px !important;
             }
             #printable-invoice.paper-a4.paper-landscape .invoice-signatures {
-              padding-top: 12px !important;
+              padding-top: 8px !important;
             }
 
             /* === A5 PORTRAIT === */
             #printable-invoice.paper-a5.paper-portrait {
               width: 100% !important;
-              max-width: 600px !important;
-              min-height: 852px !important;
-              padding: 12px 16px !important;
+              max-width: 620px !important;
+              min-height: 892px !important;
+              padding: 10px 14px !important;
               font-size: 10.5px !important;
               line-height: 1.35 !important;
             }
@@ -845,28 +845,28 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
               font-size: 15px !important;
             }
             #printable-invoice.paper-a5.paper-portrait .invoice-header {
-              padding-bottom: 8px !important;
-              margin-bottom: 6px !important;
+              padding-bottom: 6px !important;
+              margin-bottom: 4px !important;
             }
             #printable-invoice.paper-a5.paper-portrait .space-y-5 {
-              gap: 8px !important;
+              gap: 6px !important;
             }
             #printable-invoice.paper-a5.paper-portrait .space-y-4 {
-              gap: 8px !important;
+              gap: 6px !important;
             }
             #printable-invoice.paper-a5.paper-portrait .space-y-12 {
-              gap: 16px !important;
+              gap: 12px !important;
             }
             #printable-invoice.paper-a5.paper-portrait .invoice-signatures {
-              padding-top: 8px !important;
+              padding-top: 6px !important;
               padding-bottom: 2px !important;
             }
 
             /* === A5 LANDSCAPE === */
             #printable-invoice.paper-a5.paper-landscape {
               width: 100% !important;
-              max-width: 850px !important;
-              min-height: 600px !important;
+              max-width: 900px !important;
+              min-height: 625px !important;
               padding: 10px 14px !important;
               font-size: 9.5px !important;
               line-height: 1.3 !important;
@@ -888,7 +888,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
               gap: 6px !important;
             }
             #printable-invoice.paper-a5.paper-landscape .space-y-12 {
-              gap: 12px !important;
+              gap: 10px !important;
             }
             #printable-invoice.paper-a5.paper-landscape .invoice-signatures {
               padding-top: 6px !important;
@@ -1117,28 +1117,16 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                               {toPersianDigits(invoice.invoiceNumber)}
                             </strong>
                           </div>
-                          {(activeInvoice?.createdByName || invoice.createdByName) && (
-                            <div className="flex items-center gap-1.5 pt-0.5 text-slate-600">
-                              <span>کاربر ثبت‌کننده:</span>
-                              <strong className="text-slate-800 font-bold">{activeInvoice?.createdByName || invoice.createdByName}</strong>
-                            </div>
-                          )}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {invoice.isProforma && (
-                    <div className={`bg-indigo-50/90 border border-indigo-200 text-indigo-900 rounded-lg text-center font-semibold ${isA5 ? 'p-1.5 text-[10px]' : 'p-2.5 text-xs'}`}>
-                      این سند صرفاً «پیش‌فاکتور» است و فاقد اثر مالیاتی یا کسر قطعی از انبار می‌باشد. (برای نهایی شدن باید به فاکتور اصلی تبدیل شود)
-                    </div>
-                  )}
-
                   {/* Seller & Buyer Info Blocks */}
                   {currentTemplate === 'official' ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                       {/* Seller Box */}
-                      <div className="border border-slate-300 rounded-lg p-2.5 bg-slate-50/50">
+                      <div className="border border-slate-300 rounded-lg p-2 bg-slate-50/50">
                         <div className="font-bold text-slate-800 pb-1 mb-1 border-b border-slate-200 flex items-center justify-between">
                           <div className="flex items-center gap-1">
                             <Building2 className="w-3.5 h-3.5 text-emerald-700" />
@@ -1158,7 +1146,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                       </div>
 
                       {/* Buyer Box */}
-                      <div className="border border-slate-300 rounded-lg p-2.5 bg-slate-50/50">
+                      <div className="border border-slate-300 rounded-lg p-2 bg-slate-50/50">
                         <div className="font-bold text-slate-800 pb-1 mb-1 border-b border-slate-200">
                           مشخصات خریدار:
                         </div>
@@ -1172,7 +1160,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                     </div>
                   ) : (
                     /* Standard customer info bar */
-                    <div className={`bg-slate-50 border border-slate-200 rounded-lg flex flex-wrap justify-between items-center gap-2 text-slate-700 ${isA5 ? 'p-2 text-[10px]' : 'p-2.5 text-xs'}`}>
+                    <div className={`bg-slate-50 border border-slate-200 rounded-lg flex flex-wrap justify-between items-center gap-2 text-slate-700 ${isA5 ? 'p-1.5 text-[10px]' : 'p-2 text-xs'}`}>
                       <div><strong>خریدار:</strong> {invoice.customerName || 'مشتری محترم'}</div>
                       <div><strong>موبایل خریدار:</strong> <span className="font-mono">{buyerMobile ? toPersianDigits(buyerMobile) : '---'}</span></div>
                       {invoice.customerAddress && <div><strong>آدرس:</strong> {invoice.customerAddress}</div>}
@@ -1180,8 +1168,8 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                   )}
                 </div>
 
-                {/* ZONE 2: MIDDLE (Items Table - Flexible to fill available vertical space) */}
-                <div className="invoice-table-box overflow-x-auto flex-1 flex flex-col justify-start my-auto">
+                {/* ZONE 2: MIDDLE (Items Table - Anchored directly under header/buyer info) */}
+                <div className="invoice-table-box overflow-x-auto flex-1 flex flex-col justify-start mb-auto py-1">
                   <table className="w-full text-right border-collapse text-xs border border-slate-300">
                     <thead>
                       <tr className="bg-slate-100 text-slate-800 border-b border-slate-300" style={{ height: `${liveHeaderH}px` }}>
@@ -1570,18 +1558,23 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                   </div>
 
                   {/* Signatures & Stamps */}
-                  <div className={`invoice-signatures grid grid-cols-2 text-center text-slate-600 border-t border-slate-200 ${
-                    isA5 ? 'pt-2 pb-1 text-[10px]' : 'pt-5 pb-2 text-xs'
-                  }`}>
-                    <div className={isA5 ? (isLandscape ? 'space-y-2' : 'space-y-3') : 'space-y-8'}>
-                      <span className="font-bold text-slate-700">مهر و امضای خریدار</span>
-                      <div className="text-[11px] text-slate-400">کالا صحیح و سالم تحویل گردید</div>
+                  {currentPrintLayout.showSignaturesBlock !== false && (
+                    <div 
+                      className={`invoice-signatures grid grid-cols-2 text-center text-slate-600 border-t border-slate-200 items-end ${
+                        isA5 ? 'pt-1.5 text-[10px]' : 'pt-2 text-xs'
+                      }`}
+                      style={{ minHeight: `${currentPrintLayout.signatureBoxHeight || (isA5 ? 45 : 55)}px` }}
+                    >
+                      <div className="border-t border-dashed border-slate-300 pt-1 mx-4">
+                        <span className="font-bold text-slate-800 block">مهر و امضای خریدار</span>
+                        <span className="text-[9.5px] text-slate-400">کالا صحیح و سالم تحویل گردید</span>
+                      </div>
+                      <div className="border-t border-dashed border-slate-300 pt-1 mx-4">
+                        <span className="font-bold text-slate-800 block">مهر و امضای فروشنده</span>
+                        <span className="text-[9.5px] text-slate-400">{settings.storeName}</span>
+                      </div>
                     </div>
-                    <div className={isA5 ? (isLandscape ? 'space-y-2' : 'space-y-3') : 'space-y-8'}>
-                      <span className="font-bold text-slate-700">مهر و امضای فروشنده</span>
-                      <div className="text-[11px] text-slate-400">{settings.storeName}</div>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -1591,7 +1584,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                   <h2 className="font-bold text-sm text-slate-900">{settings.storeName}</h2>
                   <p className="text-[11px] text-slate-500">{settings.phone}</p>
                   <p className="text-[11px] font-bold text-slate-800 mt-1">
-                    {invoice.isProforma ? 'پیش‌فاکتور فروش کالا (غیرقطعی)' : 'رسید فروش کالا'}
+                    {invoice.isProforma ? 'پیش‌فاکتور فروش کالا' : 'رسید فروش کالا'}
                   </p>
                 </div>
 
