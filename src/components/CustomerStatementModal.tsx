@@ -415,9 +415,9 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   return (
     <div 
       id="customer-statement-modal" 
-      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-0 sm:p-3 md:p-5 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-0 sm:p-3 md:p-4 animate-in fade-in duration-150"
     >
-      <div className="bg-white w-full max-w-5xl rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-200 overflow-hidden flex flex-col h-[100dvh] sm:h-[92vh] max-h-[100dvh] text-right">
+      <div className="bg-white w-full max-w-[96vw] xl:max-w-7xl 2xl:max-w-[1440px] rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-200 overflow-hidden flex flex-col h-[100dvh] sm:h-[94vh] max-h-[100dvh] text-right">
         
         {/* MODAL HEADER */}
         <div className="no-print bg-slate-900 text-white px-3.5 py-3 sm:px-5 sm:py-4 flex items-center justify-between gap-2.5 border-b border-slate-800 shrink-0">
@@ -835,9 +835,9 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
         <div className="no-print flex-1 overflow-y-auto p-2.5 sm:p-4 md:p-5">
           {/* A. MOBILE CARDS VIEW (Clean, Touch-Friendly, High Contrast) */}
           {viewMode === 'cards' ? (
-            <div className="space-y-2.5">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               {filteredEntries.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
+                <div className="col-span-full bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
                   <ReceiptText className="w-10 h-10 mx-auto mb-2 text-slate-300" />
                   <p className="text-xs">
                     {fullLedger.entries.length === 0 
@@ -1091,28 +1091,28 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
             /* B. TABLE VIEW (Desktop / Detailed) */
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
               <div className="overflow-x-auto">
-                <table className="w-full text-right text-xs border-collapse">
-                  <thead>
+                <table className="w-full text-right text-xs border-collapse min-w-[880px]">
+                  <thead className="sticky top-0 z-10 bg-slate-100 shadow-2xs">
                     <tr className="bg-slate-100 text-slate-700 border-b border-slate-200 font-bold">
-                      <th className="py-3 px-3 w-10 text-center">#</th>
-                      <th className="py-3 px-3 w-24">تاریخ</th>
-                      <th className="py-3 px-3 w-32">نوع سند</th>
-                      <th className="py-3 px-3 w-28">شماره سند/پیگیری</th>
-                      <th className="py-3 px-3 min-w-[200px]">شرح تراکنش</th>
-                      <th className="py-3 px-3 w-28 text-rose-700">بدهکار ({settings.currency})</th>
-                      <th className="py-3 px-3 w-28 text-emerald-700">بستانکار ({settings.currency})</th>
-                      <th className="py-3 px-3 w-32" title="مانده لحظه‌ای حساب مشتری پس از اعمال هر ردیف">
-                        <div className="flex items-center gap-1.5 cursor-help">
+                      <th className="py-2.5 px-2 w-10 text-center font-bold text-slate-500 shrink-0">#</th>
+                      <th className="py-2.5 px-2.5 w-24 whitespace-nowrap text-right shrink-0">تاریخ</th>
+                      <th className="py-2.5 px-2.5 w-24 whitespace-nowrap text-right shrink-0">نوع سند</th>
+                      <th className="py-2.5 px-2.5 w-28 whitespace-nowrap text-right shrink-0">شماره سند/پیگیری</th>
+                      <th className="py-2.5 px-3 min-w-[200px] text-right">شرح تراکنش</th>
+                      <th className="py-2.5 px-3 w-32 whitespace-nowrap text-left text-rose-700 font-bold shrink-0">بدهکار ({settings.currency})</th>
+                      <th className="py-2.5 px-3 w-32 whitespace-nowrap text-left text-emerald-700 font-bold shrink-0">بستانکار ({settings.currency})</th>
+                      <th className="py-2.5 px-3 w-36 whitespace-nowrap text-left font-bold shrink-0" title="مانده لحظه‌ای حساب مشتری پس از اعمال هر ردیف">
+                        <div className="flex items-center justify-end gap-1.5 cursor-help">
                           <span>مانده جاری</span>
                           <span
-                            className="w-4 h-4 rounded-full bg-slate-200 text-slate-600 text-[10px] inline-flex items-center justify-center font-bold"
+                            className="w-3.5 h-3.5 rounded-full bg-slate-200 text-slate-600 text-[10px] inline-flex items-center justify-center font-bold"
                             title="مانده جاری: مانده لحظه‌ای بدهی یا طلب مشتری پس از این تراکنش"
                           >
                             ؟
                           </span>
                         </div>
                       </th>
-                      <th className="py-3 px-2 w-28 text-center">عملیات</th>
+                      <th className="py-2.5 px-2 w-24 text-center whitespace-nowrap shrink-0">عملیات</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1136,13 +1136,13 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                               index % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'
                             }`}
                           >
-                            <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
+                            <td className="py-2.5 px-2 text-center text-slate-400 font-mono text-[11px] w-10 shrink-0">
                               {toPersianDigits(index + 1)}
                             </td>
-                            <td className="py-2.5 px-3 font-mono text-slate-700 font-semibold whitespace-nowrap">
+                            <td className="py-2.5 px-2.5 font-mono text-slate-700 font-semibold whitespace-nowrap w-24 text-right shrink-0">
                               {toPersianDigits(entry.date)}
                             </td>
-                            <td className="py-2.5 px-3 whitespace-nowrap">
+                            <td className="py-2.5 px-2.5 whitespace-nowrap w-24 text-right shrink-0">
                               <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md ${
                                 entry.documentType === 'invoice'
                                   ? 'bg-purple-50 text-purple-700 border border-purple-200'
@@ -1159,10 +1159,10 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                                 {getDisplayDocTypeLabel(entry)}
                               </span>
                             </td>
-                            <td className="py-2.5 px-3 font-mono text-slate-800 text-[11px] whitespace-nowrap font-medium">
+                            <td className="py-2.5 px-2.5 font-mono text-slate-800 text-[11px] whitespace-nowrap font-medium w-28 text-right shrink-0">
                               {toPersianDigits(entry.documentNumber)}
                             </td>
-                            <td className="py-2.5 px-3 text-slate-700 leading-relaxed">
+                            <td className="py-2.5 px-3 text-slate-700 leading-relaxed min-w-[200px]">
                               <div>{entry.description}</div>
                               {showSuppliers && entry.supplierNames && entry.supplierNames.length > 0 && (
                                 <div className="mt-1 flex items-center gap-1 flex-wrap">
@@ -1173,23 +1173,23 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                                 </div>
                               )}
                               {entry.trackingNumber && (
-                                <span className="text-[10px] text-slate-400 block font-mono">
+                                <span className="text-[10px] text-slate-400 block font-mono mt-0.5">
                                   پیگیری: {toPersianDigits(entry.trackingNumber)}
                                 </span>
                               )}
                             </td>
-                            <td className="py-2.5 px-3 font-mono font-bold text-rose-700 whitespace-nowrap">
+                            <td className="py-2.5 px-3 font-mono tabular-nums font-bold text-rose-700 whitespace-nowrap text-left w-32 shrink-0">
                               {entry.debit > 0 ? toPersianDigits(entry.debit.toLocaleString('en-US')) : '—'}
                             </td>
-                            <td className="py-2.5 px-3 font-mono font-bold text-emerald-700 whitespace-nowrap">
+                            <td className="py-2.5 px-3 font-mono tabular-nums font-bold text-emerald-700 whitespace-nowrap text-left w-32 shrink-0">
                               {entry.credit > 0 ? toPersianDigits(entry.credit.toLocaleString('en-US')) : '—'}
                             </td>
-                            <td className="py-2.5 px-3 font-mono font-bold whitespace-nowrap">
-                              <div className="flex items-center gap-1">
+                            <td className="py-2.5 px-3 font-mono tabular-nums font-bold whitespace-nowrap text-left w-36 shrink-0">
+                              <div className="flex items-center justify-end gap-1.5">
                                 <span className={entry.balance > 0 ? 'text-rose-800' : entry.balance < 0 ? 'text-blue-800' : 'text-slate-600'}>
                                   {toPersianDigits(Math.abs(entry.balance).toLocaleString('en-US'))}
                                 </span>
-                                <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
                                   entry.balance > 0 
                                     ? 'bg-rose-100 text-rose-700' 
                                     : entry.balance < 0 
@@ -1200,7 +1200,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                                 </span>
                               </div>
                             </td>
-                            <td className="py-2.5 px-2 text-center whitespace-nowrap">
+                            <td className="py-2.5 px-2 text-center whitespace-nowrap w-24 shrink-0">
                               <div className="flex items-center justify-center gap-1">
                                 {/* 1. View Invoice */}
                                 {entry.rawInvoice && onViewInvoice && (
@@ -1308,18 +1308,18 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                   </tbody>
                   {/* Table Footer Totals */}
                   {filteredEntries.length > 0 && (
-                    <tfoot>
+                    <tfoot className="sticky bottom-0 z-10 bg-slate-100 shadow-2xs">
                       <tr className="bg-slate-100 font-bold text-slate-800 border-t-2 border-slate-300">
-                        <td colSpan={5} className="py-3 px-4 text-left font-bold text-xs">
+                        <td colSpan={5} className="py-2.5 px-4 text-left font-bold text-xs">
                           مجموع گردش و مانده نهایی ({settings.currency}):
                         </td>
-                        <td className="py-3 px-3 font-mono font-black text-rose-800 text-xs whitespace-nowrap">
+                        <td className="py-2.5 px-3 font-mono tabular-nums font-black text-rose-800 text-xs whitespace-nowrap text-left w-32 shrink-0">
                           {toPersianDigits(fullLedger.totalDebit.toLocaleString('en-US'))}
                         </td>
-                        <td className="py-3 px-3 font-mono font-black text-emerald-800 text-xs whitespace-nowrap">
+                        <td className="py-2.5 px-3 font-mono tabular-nums font-black text-emerald-800 text-xs whitespace-nowrap text-left w-32 shrink-0">
                           {toPersianDigits(fullLedger.totalCredit.toLocaleString('en-US'))}
                         </td>
-                        <td colSpan={2} className="py-3 px-3 font-mono font-black text-xs whitespace-nowrap">
+                        <td colSpan={2} className="py-2.5 px-3 font-mono tabular-nums font-black text-xs whitespace-nowrap text-left w-60">
                           <span className={fullLedger.netBalance > 0 ? 'text-rose-800' : fullLedger.netBalance < 0 ? 'text-blue-800' : 'text-emerald-800'}>
                             {toPersianDigits(Math.abs(fullLedger.netBalance).toLocaleString('en-US'))} {settings.currency} (
                             {fullLedger.netBalance > 0 ? 'بدهکار' : fullLedger.netBalance < 0 ? 'بستانکار' : 'تسویه'})
