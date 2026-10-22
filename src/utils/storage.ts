@@ -47,7 +47,7 @@ import { isPureServiceInvoice } from './serviceHelper';
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cheque: 'چک (شماره، تاریخ و نام چک)',
   cash: 'نقدی',
-  transfer: 'واریز به حساب (با ثبت توضیحات)',
+  transfer: 'واریز به حساب',
   pos: 'کارتخوان فروشگاه (POS)',
   credit: 'حساب دفتری / نسیه',
 };
@@ -1836,7 +1836,7 @@ export const StorageService = {
           date: txn.date,
           documentNumber: txn.trackingNumber || txn.id.substring(0, 8),
           documentType: 'deposit',
-          documentTypeLabel: `واریزی / ${payMethodLabel}`,
+          documentTypeLabel: 'واریز',
           description: `${txn.title || 'واریز وجه مشتری'}${txn.bankName ? ` - بانک ${txn.bankName}` : ''}${txn.invoiceNumber ? ` (بابت فاکتور ${txn.invoiceNumber})` : ''}${txn.notes ? ` - ${txn.notes}` : ''}`,
           debit: 0,
           credit: txn.amount,

@@ -1435,7 +1435,7 @@ export function exportCustomerStatementToExcel(
     return {
       'ردیف': index + 1,
       'تاریخ': entry.date,
-      'نوع سند': entry.documentTypeLabel,
+      'نوع سند': entry.documentType === 'deposit' || entry.documentTypeLabel === 'واریزی / واریز به حساب (با ثبت توضیحات)' || entry.documentTypeLabel?.startsWith('واریزی /') ? 'واریز' : entry.documentTypeLabel,
       'شماره سند / پیگیری': entry.documentNumber,
       'روش پرداخت': entry.paymentMethod || '—',
       'شرح تراکنش و سند': entry.description,

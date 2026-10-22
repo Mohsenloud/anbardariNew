@@ -129,6 +129,18 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
     setActiveTxnModalType(type);
   };
 
+  // Helper to format document type label clean and concisely
+  const getDisplayDocTypeLabel = (entry: { documentType: string; documentTypeLabel: string }) => {
+    if (
+      entry.documentType === 'deposit' ||
+      entry.documentTypeLabel === 'واریزی / واریز به حساب (با ثبت توضیحات)' ||
+      entry.documentTypeLabel?.startsWith('واریزی /')
+    ) {
+      return 'واریز';
+    }
+    return entry.documentTypeLabel;
+  };
+
   // Open edit modal for a transaction
   const handleOpenEditTransaction = (txn: CustomerTransaction) => {
     setTransactionToEdit(txn);
@@ -873,7 +885,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                             ) : (
                               <ArrowUpRight className="w-3 h-3 text-rose-600" />
                             )}
-                            <span>{entry.documentTypeLabel}</span>
+                            <span>{getDisplayDocTypeLabel(entry)}</span>
                           </span>
 
                           <span className="font-mono text-xs font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md">
@@ -1144,7 +1156,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                                           ? 'bg-teal-50 text-teal-700 border border-teal-200'
                                           : 'bg-rose-50 text-rose-700 border border-rose-200'
                               }`}>
-                                {entry.documentTypeLabel}
+                                {getDisplayDocTypeLabel(entry)}
                               </span>
                             </td>
                             <td className="py-2.5 px-3 font-mono text-slate-800 text-[11px] whitespace-nowrap font-medium">
@@ -1408,7 +1420,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                 <tr key={item.id} className="border-b border-slate-200 text-[11px]">
                   <td className="py-1.5 px-2 border-l border-slate-200 text-center font-mono">{toPersianDigits(idx + 1)}</td>
                   <td className="py-1.5 px-2 border-l border-slate-200 font-mono">{toPersianDigits(item.date)}</td>
-                  <td className="py-1.5 px-2 border-l border-slate-200 font-medium">{item.documentTypeLabel}</td>
+                  <td className="py-1.5 px-2 border-l border-slate-200 font-medium">{getDisplayDocTypeLabel(item)}</td>
                   <td className="py-1.5 px-2 border-l border-slate-200 font-mono">{toPersianDigits(item.documentNumber)}</td>
                   <td className="py-1.5 px-2 border-l border-slate-200">
                     <div>{item.description}</div>
@@ -1776,7 +1788,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                     {toPersianDigits(item.date)}
                   </td>
                   <td style={{ padding: '5px 6px', border: '1px solid #cbd5e1' }}>
-                    {item.documentTypeLabel}
+                    {getDisplayDocTypeLabel(item)}
                   </td>
                   <td style={{ padding: '5px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace' }}>
                     {toPersianDigits(item.documentNumber)}
