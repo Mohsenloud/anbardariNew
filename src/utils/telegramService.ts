@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { Invoice, ExitSlipData, StoreSettings, AppUser, InboundReceipt, PurchaseInvoice, Customer, CustomerTransaction } from '../types';
+import { Invoice, ExitSlipData, StoreSettings, AppUser, InboundReceipt, PurchaseInvoice, Customer, CustomerTransaction, CustomerFollowUpNote } from '../types';
 import { toPersianDigits, formatPrice, getCurrentJalaliTime, getCurrentJalaliDate, getInvoiceDaysAge } from './jalali';
 import { generatePdfBlob, getInvoicePdfFilename } from './pdfHelper';
 import { StorageService } from './storage';
@@ -1803,4 +1803,113 @@ export async function sendDatabaseBackupToTelegram(params?: {
   }
 }
 
+/**
+ * فرمت پیام یادآوری تماس با مشتری (مذاکرات و پیگیری) برای ارسال به تلگرام
+ */
+export function formatCustomerFollowUpReminderText(
+  customer: Customer,
+  note?: CustomerFollowUpNote | null,
+  settings?: StoreSettings
+): string {
+  const store = settings?.storeName || 'سامانه حسابداری و بازرگانی';
+  const todayJalali = getCurrentJalaliDate();
+  const targetNote = note || (customer.followUps && customer.followUps.length > 0 ? customer.followUps[0] : undefined);
+  const dueDate = targetNote?.nextFollowUpDate || customer.nextFollowUpDate || todayJalali;
+  const noteText = targetNote?.note || customer.notes || 'یادآوری تماس و پیگیری وضعیت سفارش مشتری';
+  const noteDate = targetNote?.date || customer.createdAt || todayJalali;
+  const createdBy = targetNote?.createdBy || 'مدیریت';
 
+  const lines = [
+    `🔔 <b>یادآوری تماس با مشتری (موعد پیگیری مذاکره)</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `👤 <b>نام مشتری / طرف‌حساب:</b> <b>${customer.name}</b>${customer.customerType === 'colleague' ? ' (همکار / عمده)' : ''}`,
+    customer.phone ? `📞 <b>شماره تماس:</b> <code>${toPersianDigits(customer.phone)}</code>` : '',
+    `📅 <b>تاریخ یادآور تماس:</b> <b>${toPersianDigits(dueDate)}</b>${dueDate === todayJalali ? ' (موعد امروز)' : ''}`,
+    `📝 <b>متن یادداشت مذاکره:</b>`,
+    `<i>«${noteText}»</i>`,
+    `🗓️ <b>تاریخ ثبت مذاکره:</b> ${toPersianDigits(noteDate)}`,
+    createdBy ? `👨‍💼 <b>ثبت‌کننده:</b> ${createdBy}` : '',
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `📌 <b>اقدام لازم:</b> زمان یادآوری تماس با <b>${customer.name}</b> فرا رسیده است. لطفاً جهت پیگیری مذاکرات و هماهنگی سفارش با مشتری تماس حاصل فرمایید.`,
+    store ? `🏪 <i>${store}</i>` : '',
+  ].filter(Boolean);
+
+  return lines.join('\n');
+}
+
+/**
+ * ارسال پیام یادآوری تماس مشتری به تلگرام (دستی یا خودکار)
+ */
+export async function sendCustomerFollowUpReminderToTelegram(
+  customer: Customer,
+  note?: CustomerFollowUpNote | null,
+  passedSettings?: StoreSettings
+): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> {
+  const settings = StorageService.getSettings() || passedSettings;
+  const botToken = settings?.telegramBotToken?.trim();
+  const chatId = settings?.telegramChatId?.trim();
+
+  if (!botToken || !chatId) {
+    return {
+      success: false,
+      error: 'تنظیمات ربات تلگرام (توکن ربات یا شناسه چت) در بخش تنظیمات سیستم ثبت نشده است.',
+    };
+  }
+
+  const text = formatCustomerFollowUpReminderText(customer, note, settings);
+  const res = await sendTelegramTextMessage({
+    botToken,
+    chatId,
+    text,
+    parseMode: 'HTML',
+  });
+
+  if (res.success) {
+    StorageService.logActivity({
+      category: 'customer',
+      actionType: 'telegram_followup_reminder_sent',
+      actionTitle: 'ارسال یادآور تماس مشتری به تلگرام',
+      details: `پیام یادآوری تماس با مشتری «${customer.name}» به تلگرام ارسال گردید.`,
+    });
+  }
+
+  return res;
+}
+
+/**
+ * بررسی و ارسال خودکار یادآورهای تماس مشتریان که موعد آن‌ها فرا رسیده است
+ */
+export async function checkDueFollowUpRemindersOnTelegram(params?: {
+  customerId?: string;
+  noteId?: string;
+  forceSend?: boolean;
+}): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+  result?: {
+    checkedCount: number;
+    dueCount: number;
+    sentCount: number;
+    sentCustomerNames: string[];
+    errors: string[];
+  };
+}> {
+  try {
+    const res = await fetch('/api/telegram/check-followup-reminders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params || {}),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return {
+      success: false,
+      error: 'خطا در ارتباط با سرور جهت بررسی یادآورهای تماس: ' + (err?.message || ''),
+    };
+  }
+}

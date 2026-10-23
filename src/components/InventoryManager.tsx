@@ -2394,12 +2394,13 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                             <th className="p-3">نام تنوع / رنگ *</th>
                             <th className="p-3">کد تنوع (سیستم)</th>
                             <th className="p-3 text-center w-24">موجودی</th>
-                            {currentUser?.role === 'admin' && <th className="p-3 text-center w-28">قیمت فروش</th>}
+                            {currentUser?.role === 'admin' && <th className="p-3 text-center w-28">قیمت فروش عادی</th>}
+                            {currentUser?.role === 'admin' && <th className="p-3 text-center w-28">قیمت همکار</th>}
                             <th className="p-3 text-center w-10">حذف</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-purple-50">
-                          {(editingProduct.variants || []).map((v, vIndex) => (
+                          {(editingProduct.variants || []).map((v) => (
                             <tr key={v.id} className="hover:bg-purple-50/30 transition-colors">
                               <td className="p-2">
                                 <input
@@ -2437,6 +2438,18 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                                     onChange={(num) => handleUpdateVariantField(v.id, 'sellPrice', num)}
                                     textAlign="center"
                                     className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-center font-mono outline-none focus:border-purple-500"
+                                  />
+                                </td>
+                              )}
+                              {currentUser?.role === 'admin' && (
+                                <td className="p-2">
+                                  <NumericInput
+                                    min={0}
+                                    value={v.wholesalePrice || editingProduct.wholesalePrice || 0}
+                                    onChange={(num) => handleUpdateVariantField(v.id, 'wholesalePrice', num)}
+                                    textAlign="center"
+                                    placeholder="نرخ همکار"
+                                    className="w-full bg-indigo-50/40 focus:bg-white border border-indigo-200 rounded-xl px-2.5 py-1.5 text-xs text-center font-mono text-indigo-700 font-bold outline-none focus:border-indigo-500"
                                   />
                                 </td>
                               )}
@@ -2503,15 +2516,27 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                             </div>
                           </div>
                           {currentUser?.role === 'admin' && (
-                            <div>
-                              <label className="block text-[10px] font-medium text-slate-500 mb-1">قیمت فروش ({settings.currency})</label>
-                              <NumericInput
-                                min={0}
-                                value={v.sellPrice || editingProduct.sellPrice || 0}
-                                onChange={(num) => handleUpdateVariantField(v.id, 'sellPrice', num)}
-                                textAlign="center"
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono text-center"
-                              />
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="block text-[10px] font-medium text-slate-500 mb-1">قیمت فروش عادی ({settings.currency})</label>
+                                <NumericInput
+                                  min={0}
+                                  value={v.sellPrice || editingProduct.sellPrice || 0}
+                                  onChange={(num) => handleUpdateVariantField(v.id, 'sellPrice', num)}
+                                  textAlign="center"
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono text-center"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold text-indigo-700 mb-1">قیمت همکار ({settings.currency})</label>
+                                <NumericInput
+                                  min={0}
+                                  value={v.wholesalePrice || editingProduct.wholesalePrice || 0}
+                                  onChange={(num) => handleUpdateVariantField(v.id, 'wholesalePrice', num)}
+                                  textAlign="center"
+                                  className="w-full bg-indigo-50/40 border border-indigo-200 rounded-xl px-2.5 py-1.5 text-xs font-mono font-bold text-indigo-700 text-center"
+                                />
+                              </div>
                             </div>
                           )}
                         </div>

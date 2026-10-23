@@ -266,10 +266,33 @@ const initialProducts: Product[] = [
     unit: 'کیسه ۲۵ کیلویی',
     buyPrice: 2800000,
     sellPrice: 3500000,
+    wholesalePrice: 3250000,
     stock: 155,
     minStockAlert: 20,
     description: 'پودر سخت کننده ضدسایش پایه سیمانی و سیلیسی ویژه کفسازی بتنی',
     updatedAt: getCurrentJalaliDate(),
+    priceHistory: [
+      {
+        id: 'ph-init-1',
+        date: '1403/09/10',
+        buyPrice: 2550000,
+        sellPrice: 3200000,
+        wholesalePrice: 2980000,
+        supplierName: 'کارخانه شیمی‌بتن البرز',
+        invoiceNumber: 'P-101',
+        note: 'خرید پارت اول پاییز',
+      },
+      {
+        id: 'ph-init-2',
+        date: getCurrentJalaliDate(),
+        buyPrice: 2800000,
+        sellPrice: 3500000,
+        wholesalePrice: 3250000,
+        supplierName: 'کارخانه شیمی‌بتن البرز',
+        invoiceNumber: 'P-104',
+        note: 'بروزرسانی نرخ خرید کارخانه',
+      },
+    ],
     hasVariants: true,
     variants: [
       {
@@ -279,6 +302,7 @@ const initialProducts: Product[] = [
         barcode: '2110000100011',
         buyPrice: 2800000,
         sellPrice: 3500000,
+        wholesalePrice: 3250000,
         stock: 80,
         minStockAlert: 15,
       },
@@ -289,6 +313,7 @@ const initialProducts: Product[] = [
         barcode: '2110000100028',
         buyPrice: 2950000,
         sellPrice: 3750000,
+        wholesalePrice: 3480000,
         stock: 45,
         minStockAlert: 10,
       },
@@ -299,6 +324,7 @@ const initialProducts: Product[] = [
         barcode: '2110000100035',
         buyPrice: 3200000,
         sellPrice: 4100000,
+        wholesalePrice: 3800000,
         stock: 30,
         minStockAlert: 10,
       },
@@ -313,6 +339,7 @@ const initialProducts: Product[] = [
     unit: 'دستگاه',
     buyPrice: 28500000,
     sellPrice: 33200000,
+    wholesalePrice: 31500000,
     stock: 6,
     minStockAlert: 2,
     description: 'رنگ نقره‌ای، گارانتی ۲۴ ماهه سازگار',
@@ -327,6 +354,7 @@ const initialProducts: Product[] = [
     unit: 'عدد',
     buyPrice: 430000,
     sellPrice: 590000,
+    wholesalePrice: 525000,
     stock: 18,
     minStockAlert: 5,
     description: 'اتصال دانگل USB نانو، رنگ مشکی/خاکستری',
@@ -411,7 +439,8 @@ const initialCustomers: Customer[] = [
     phone: '۰۲۱-۸۸۹۹۰۰۱۱',
     nationalId: '۱۰۱۰۴۵۶۷۸۹۰',
     address: 'تهران، خیابان میرداماد، برج آرین، طبقه ۷ واحد ۱۴',
-    notes: 'مشتری حقوقی معتبر - طرف قرارداد پشتیبانی',
+    notes: 'مشتری حقوقی معتبر - طرف قرارداد پشتیبانی و خرید عمده',
+    customerType: 'colleague',
     createdAt: getCurrentJalaliDate(),
   },
   {
@@ -421,6 +450,7 @@ const initialCustomers: Customer[] = [
     nationalId: '۰۰۱۴۸۷۲۲۳۱',
     address: 'تهران، سعادت‌آباد، میدان کاج، خ سرو غربی',
     notes: 'مشتری دائمی تجهیزات اداری',
+    customerType: 'regular',
     createdAt: getCurrentJalaliDate(),
   },
   {
@@ -2447,6 +2477,51 @@ export const StorageService = {
     }
 
     const idx = products.findIndex((p) => p.id === toSave.id);
+    const existingProduct = idx >= 0 ? products[idx] : undefined;
+
+    // ثبت خودکار تاریخچه تغییر قیمت خرید در طول زمان
+    const existingHistory = Array.isArray(toSave.priceHistory)
+      ? [...toSave.priceHistory]
+      : Array.isArray(existingProduct?.priceHistory)
+      ? [...existingProduct.priceHistory]
+      : [];
+
+    if (toSave.buyPrice > 0) {
+      if (!existingProduct) {
+        if (existingHistory.length === 0) {
+          existingHistory.push({
+            id: `ph-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            date: toSave.updatedAt || getCurrentJalaliDate(),
+            buyPrice: toSave.buyPrice,
+            sellPrice: toSave.sellPrice,
+            wholesalePrice: toSave.wholesalePrice,
+            note: 'ثبت اولیه قیمت خرید کالا',
+          });
+        }
+      } else if (existingProduct.buyPrice !== toSave.buyPrice) {
+        // اگر تاریخچه قبلی خالی بود، قیمت قبلی را هم به عنوان نقطه شروع ثبت کن
+        if (existingHistory.length === 0 && existingProduct.buyPrice > 0) {
+          existingHistory.push({
+            id: `ph-prev-${Date.now()}`,
+            date: existingProduct.updatedAt || getCurrentJalaliDate(),
+            buyPrice: existingProduct.buyPrice,
+            sellPrice: existingProduct.sellPrice,
+            wholesalePrice: existingProduct.wholesalePrice,
+            note: 'قیمت خرید قبلی',
+          });
+        }
+        existingHistory.push({
+          id: `ph-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          date: getCurrentJalaliDate(),
+          buyPrice: toSave.buyPrice,
+          sellPrice: toSave.sellPrice,
+          wholesalePrice: toSave.wholesalePrice,
+          note: 'ویرایش و بروزرسانی قیمت خرید کالا',
+        });
+      }
+    }
+    toSave.priceHistory = existingHistory;
+
     if (idx >= 0) {
       products[idx] = toSave;
     } else {

@@ -1985,6 +1985,231 @@ setInterval(() => {
   checkAndSendServerProformaReminders().catch((e) => console.warn('[Proforma Reminder] Interval check error:', e));
 }, 30 * 60 * 1000);
 
+// 12.2.3 Customer Negotiation Notes & Next Call Reminder (یادآوری تماس با مشتری در تلگرام در زمان فرا رسیدن موعد)
+function normalizeJalaliDateServer(raw?: string | null): string {
+  if (!raw) return '';
+  const clean = toEnglishDigitsServer(String(raw)).replace(/[^\d/]/g, '').trim();
+  const parts = clean.split('/').map(Number);
+  if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+    let jy = parts[0];
+    if (jy < 100) jy += 1400;
+    const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+    return `${jy}/${pad(parts[1])}/${pad(parts[2])}`;
+  }
+  return clean;
+}
+
+async function checkAndSendCustomerFollowUpReminders(overrides?: {
+  botToken?: string;
+  chatId?: string;
+  customerId?: string;
+  noteId?: string;
+  forceSend?: boolean;
+}): Promise<{
+  checkedCount: number;
+  dueCount: number;
+  sentCount: number;
+  sentCustomerNames: string[];
+  errors: string[];
+}> {
+  try {
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const serverSettings = dbData?.settings || {};
+    const customers = Array.isArray(dbData?.customers) ? dbData.customers : [];
+
+    const isManualForce = Boolean(overrides?.forceSend);
+    const isEnabled = isManualForce || Boolean(serverSettings?.telegramBotEnabled);
+    const botToken = (overrides?.botToken || serverSettings?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    const targetChatId = (overrides?.chatId || serverSettings?.telegramChatId || process.env.TELEGRAM_CHAT_ID || '').trim();
+
+    if (!isEnabled || !botToken || !targetChatId) {
+      return {
+        checkedCount: 0,
+        dueCount: 0,
+        sentCount: 0,
+        sentCustomerNames: [],
+        errors: [
+          !isEnabled
+            ? 'ربات تلگرام در تنظیمات سیستم غیرفعال است.'
+            : 'تنظیمات ربات تلگرام ناقص است (توکن ربات یا شناسه چت در تنظیمات وارد نشده است).',
+        ],
+      };
+    }
+
+    const todayJalali = getJalaliDateStr(new Date());
+    const sentCustomerNames: string[] = [];
+    const errors: string[] = [];
+    let dueCount = 0;
+    let modified = false;
+
+    const targetCustomers = overrides?.customerId
+      ? customers.filter((c: any) => c.id === overrides.customerId)
+      : customers;
+
+    for (const cust of targetCustomers) {
+      const followUps = Array.isArray(cust.followUps) ? cust.followUps : [];
+
+      // Find the relevant follow-up note
+      let targetNote = overrides?.noteId
+        ? followUps.find((fn: any) => fn.id === overrides.noteId)
+        : followUps.find(
+            (fn: any) =>
+              !fn.isCompleted &&
+              fn.nextFollowUpDate &&
+              normalizeJalaliDateServer(fn.nextFollowUpDate) <= todayJalali
+          );
+
+      const custDueDate = normalizeJalaliDateServer(
+        targetNote?.nextFollowUpDate || cust.nextFollowUpDate
+      );
+
+      if (!custDueDate && !isManualForce) {
+        continue;
+      }
+
+      const isDue = isManualForce || (Boolean(custDueDate) && custDueDate <= todayJalali);
+      if (!isDue) {
+        continue;
+      }
+
+      dueCount++;
+
+      // Check if already notified for this due date unless forceSend is requested
+      const alreadySentForNote = Boolean(targetNote?.telegramReminderSentAt);
+      const alreadySentForCustomerDate =
+        Boolean(custDueDate) &&
+        normalizeJalaliDateServer(cust.lastTelegramReminderForDate) === custDueDate;
+
+      if (!isManualForce && (alreadySentForNote || alreadySentForCustomerDate)) {
+        continue;
+      }
+
+      if (!targetNote && followUps.length > 0) {
+        targetNote = followUps[0];
+      }
+
+      const store = serverSettings.storeName || 'سامانه حسابداری و بازرگانی';
+      const noteText = targetNote?.note || cust.notes || 'یادآوری تماس و پیگیری وضعیت سفارش مشتری';
+      const noteDate = targetNote?.date || cust.createdAt || todayJalali;
+      const createdBy = targetNote?.createdBy || 'مدیریت';
+      const dueLabel = custDueDate || todayJalali;
+      const isTodayDue = dueLabel === todayJalali;
+
+      const messageLines = [
+        `🔔 <b>یادآوری تماس با مشتری (موعد پیگیری مذاکره)</b>`,
+        `━━━━━━━━━━━━━━━━━━━━`,
+        `👤 <b>نام مشتری / طرف‌حساب:</b> <b>${cust.name}</b>${cust.customerType === 'colleague' ? ' (همکار / عمده)' : ''}`,
+        cust.phone ? `📞 <b>شماره تماس:</b> <code>${toPersianDigitsServer(cust.phone)}</code>` : '',
+        `📅 <b>تاریخ یادآور تماس:</b> <b>${toPersianDigitsServer(dueLabel)}</b>${isTodayDue ? ' (موعد امروز)' : ''}`,
+        `📝 <b>متن یادداشت مذاکره:</b>`,
+        `<i>«${noteText}»</i>`,
+        `🗓️ <b>تاریخ ثبت مذاکره:</b> ${toPersianDigitsServer(noteDate)}`,
+        createdBy ? `👨‍💼 <b>ثبت‌کننده:</b> ${createdBy}` : '',
+        `━━━━━━━━━━━━━━━━━━━━`,
+        `📌 <b>اقدام لازم:</b> زمان یادآوری تماس با <b>${cust.name}</b> فرا رسیده است. لطفاً جهت پیگیری مذاکرات و هماهنگی سفارش با مشتری تماس حاصل فرمایید.`,
+        store ? `🏪 <i>${store}</i>` : '',
+      ].filter(Boolean);
+
+      const messageText = messageLines.join('\n');
+
+      try {
+        const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: targetChatId,
+            text: messageText,
+            parse_mode: 'HTML',
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+        const data = await response.json();
+        if (response.ok && data.ok) {
+          const nowIso = new Date().toISOString();
+          if (targetNote) {
+            targetNote.telegramReminderSentAt = nowIso;
+          }
+          if (custDueDate) {
+            cust.lastTelegramReminderForDate = custDueDate;
+          }
+          sentCustomerNames.push(cust.name);
+          modified = true;
+          console.log(`[Follow-Up Reminder] Sent Telegram call reminder for customer "${cust.name}" (due: ${dueLabel}).`);
+        } else {
+          errors.push(`مشتری «${cust.name}»: ${data.description || 'خطا در ارسال به تلگرام'}`);
+        }
+      } catch (err: any) {
+        errors.push(`مشتری «${cust.name}»: ${err?.message || 'خطا در ارتباط با تلگرام'}`);
+      }
+    }
+
+    if (modified) {
+      writeDatabase(dbData, true, true);
+      if (getPostgresStatus().connected) {
+        saveStateToPostgres(dbData).catch(() => {});
+      }
+    }
+
+    return {
+      checkedCount: targetCustomers.length,
+      dueCount,
+      sentCount: sentCustomerNames.length,
+      sentCustomerNames,
+      errors,
+    };
+  } catch (err: any) {
+    console.error('[Follow-Up Reminder] Error running check:', err);
+    return {
+      checkedCount: 0,
+      dueCount: 0,
+      sentCount: 0,
+      sentCustomerNames: [],
+      errors: [err?.message || 'خطای سرور در بررسی یادآورهای تماس'],
+    };
+  }
+}
+
+app.post('/api/telegram/check-followup-reminders', async (req, res) => {
+  try {
+    const result = await checkAndSendCustomerFollowUpReminders({
+      botToken: req.body?.botToken,
+      chatId: req.body?.chatId,
+      customerId: req.body?.customerId,
+      noteId: req.body?.noteId,
+      forceSend: Boolean(req.body?.forceSend),
+    });
+
+    if (result.errors.length > 0 && result.sentCount === 0) {
+      return res.json({
+        success: false,
+        result,
+        error: result.errors.join(' | '),
+      });
+    }
+
+    return res.json({
+      success: true,
+      result,
+      message:
+        result.sentCount > 0
+          ? `پیام یادآوری تماس برای ${toPersianDigitsServer(result.sentCount)} مشتری (${result.sentCustomerNames.join('، ')}) با موفقیت به تلگرام ارسال شد.`
+          : result.dueCount > 0
+          ? 'پیام یادآوری تماس برای موعدهای امروز قبلاً به تلگرام ارسال شده است.'
+          : 'هیچ یادآور تماسی که موعد آن فرا رسیده باشد یافت نشد.',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'خطای سرور' });
+  }
+});
+
+// Run background customer follow-up reminder check periodically (every 15 mins) & 12 seconds after startup
+setTimeout(() => {
+  checkAndSendCustomerFollowUpReminders().catch((e) => console.warn('[Follow-Up Reminder] Initial check error:', e));
+}, 12000);
+setInterval(() => {
+  checkAndSendCustomerFollowUpReminders().catch((e) => console.warn('[Follow-Up Reminder] Interval check error:', e));
+}, 15 * 60 * 1000);
+
 // 12.3 Send PDF Document to Chat/Channel/Group (sendDocument)
 app.post('/api/telegram/send-pdf', async (req, res) => {
   try {

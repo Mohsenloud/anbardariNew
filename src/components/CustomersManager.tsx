@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Customer, Invoice, StoreSettings, AppUser, CustomerTransaction } from '../types';
-import { formatPrice, toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
+import { Customer, Invoice, PurchaseInvoice, StoreSettings, AppUser, CustomerTransaction, CustomerFollowUpNote } from '../types';
+import { formatPrice, toPersianDigits, getCurrentJalaliDate, addDaysToJalali } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
+import { sendCustomerFollowUpReminderToTelegram, checkDueFollowUpRemindersOnTelegram, isTelegramConfigured } from '../utils/telegramService';
 import { exportCustomersToExcel, exportPersonInvoicesAndExitSlipsToExcel } from '../utils/excelHelper';
 import { ExcelImportModal } from './ExcelImportModal';
 import { CustomerExportModal } from './CustomerExportModal';
@@ -9,6 +10,8 @@ import { CustomerBulkPaymentModal } from './CustomerBulkPaymentModal';
 import { CustomerStatementModal } from './CustomerStatementModal';
 import { CustomerStatementsReportModal } from './CustomerStatementsReportModal';
 import { CustomerTransactionModal } from './CustomerTransactionModal';
+import { JalaliDatePicker } from './JalaliDatePicker';
+import { NumericInput } from './NumericInput';
 import { 
   Users, 
   Search, 
@@ -37,12 +40,19 @@ import {
   User,
   Calendar,
   Copy,
-  Check
+  Check,
+  Bell,
+  MessageSquarePlus,
+  Truck,
+  Building2,
+  Wallet,
+  Send
 } from 'lucide-react';
 
 interface CustomersManagerProps {
   customers: Customer[];
   invoices: Invoice[];
+  purchaseInvoices?: PurchaseInvoice[];
   transactions?: CustomerTransaction[];
   settings: StoreSettings;
   currentUser?: AppUser;
@@ -60,11 +70,24 @@ interface CustomersManagerProps {
   onEditInvoice?: (invoice: Invoice) => void;
   onDeleteInvoice?: (invoiceId: string) => void;
   onUpdatePaymentStatus?: (invoiceId: string, status: 'paid' | 'unpaid' | 'partial', paidAmount?: number) => void;
+  onUpdatePurchaseInvoice?: (invoice: PurchaseInvoice) => void;
+}
+
+export interface SupplierSummary {
+  key: string;
+  supplierName: string;
+  supplierPhone: string;
+  invoices: PurchaseInvoice[];
+  totalPurchased: number; // چقدر جنس از این تامین‌کننده خریده‌ایم
+  totalPaid: number; // چقدر به او پرداخت کرده‌ایم
+  remainingDebt: number; // چقدر هنوز به او بدهکاریم
+  lastPurchaseDate: string;
 }
 
 export const CustomersManager: React.FC<CustomersManagerProps> = ({
   customers,
   invoices,
+  purchaseInvoices = [],
   transactions = [],
   settings,
   currentUser,
@@ -79,8 +102,12 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   onEditInvoice,
   onDeleteInvoice,
   onUpdatePaymentStatus,
+  onUpdatePurchaseInvoice,
 }) => {
+  const [activeSubSection, setActiveSubSection] = useState<'customers' | 'suppliers' | 'followups'>('customers');
   const [searchQuery, setSearchQuery] = useState('');
+  const [supplierSearchQuery, setSupplierSearchQuery] = useState('');
+  const [followUpFilter, setFollowUpFilter] = useState<'all' | 'due' | 'upcoming'>('all');
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -98,6 +125,21 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   const [isStatementsReportOpen, setIsStatementsReportOpen] = useState(false);
   const [isActionsDropdownOpen, setIsActionsDropdownOpen] = useState(false);
   const actionsDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Follow-up & Negotiation Note Modal State (ثبت یادداشت مذاکره و یادآور تماس بعدی)
+  const [followUpModalCustomer, setFollowUpModalCustomer] = useState<Customer | null>(null);
+  const [newFollowUpNote, setNewFollowUpNote] = useState('');
+  const [newFollowUpDate, setNewFollowUpDate] = useState('');
+  const [sendingFollowUpTelegramId, setSendingFollowUpTelegramId] = useState<string | null>(null);
+  const [followUpTelegramStatus, setFollowUpTelegramStatus] = useState<{
+    message: string;
+    type: 'success' | 'error' | 'info';
+  } | null>(null);
+
+  // Supplier Details & Payment Settlement Modal State (مانده حساب و ریز گردش تامین‌کننده)
+  const [selectedSupplierKey, setSelectedSupplierKey] = useState<string | null>(null);
+  const [payingPurchaseInvoice, setPayingPurchaseInvoice] = useState<PurchaseInvoice | null>(null);
+  const [supplierPaymentInput, setSupplierPaymentInput] = useState<number>(0);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -284,13 +326,14 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
       nationalId: '',
       address: '',
       notes: '',
+      customerType: 'regular',
       createdAt: getCurrentJalaliDate(),
     });
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (cust: Customer) => {
-    setEditingCustomer({ ...cust });
+    setEditingCustomer({ ...cust, customerType: cust.customerType || 'regular' });
     setIsModalOpen(true);
   };
 
@@ -308,6 +351,9 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
       notes: editingCustomer.notes?.trim() || '',
       gender: editingCustomer.gender,
       titlePrefix: editingCustomer.titlePrefix,
+      customerType: editingCustomer.customerType || 'regular',
+      nextFollowUpDate: editingCustomer.nextFollowUpDate?.trim() || undefined,
+      followUps: editingCustomer.followUps || [],
       createdAt: editingCustomer.createdAt || getCurrentJalaliDate(),
     };
 
@@ -315,6 +361,267 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
     setIsModalOpen(false);
     setEditingCustomer(null);
   };
+
+  // ------------------------------------------------------------------
+  // 1. SUPPLIERS BALANCE & LEDGER AGGREGATION (مانده حساب تامین‌کنندگان)
+  // ------------------------------------------------------------------
+  const suppliersList = useMemo<SupplierSummary[]>(() => {
+    const activePurchaseInvoices = (
+      purchaseInvoices && purchaseInvoices.length > 0
+        ? purchaseInvoices
+        : StorageService.getPurchaseInvoices()
+    ).filter((pi) => pi.status !== 'cancelled');
+
+    const map = new Map<string, SupplierSummary>();
+
+    activePurchaseInvoices.forEach((pi) => {
+      const cleanName = (pi.supplierName || 'تامین‌کننده عمومی').trim();
+      const key = cleanName.toLowerCase();
+      const existing = map.get(key);
+
+      const finalTotal = Number(pi.finalTotal) || 0;
+      const paid =
+        pi.paymentStatus === 'paid'
+          ? finalTotal
+          : Math.min(finalTotal, Math.max(0, Number(pi.paidAmount) || 0));
+      const debt = Math.max(0, finalTotal - paid);
+
+      if (!existing) {
+        map.set(key, {
+          key,
+          supplierName: cleanName,
+          supplierPhone: pi.supplierPhone || '',
+          invoices: [pi],
+          totalPurchased: finalTotal,
+          totalPaid: paid,
+          remainingDebt: debt,
+          lastPurchaseDate: pi.date || '',
+        });
+      } else {
+        existing.invoices.push(pi);
+        existing.totalPurchased += finalTotal;
+        existing.totalPaid += paid;
+        existing.remainingDebt += debt;
+        if (!existing.supplierPhone && pi.supplierPhone) {
+          existing.supplierPhone = pi.supplierPhone;
+        }
+        if ((pi.date || '') > existing.lastPurchaseDate) {
+          existing.lastPurchaseDate = pi.date || '';
+        }
+      }
+    });
+
+    const q = supplierSearchQuery.trim().toLowerCase();
+    return Array.from(map.values())
+      .filter((s) => !q || s.supplierName.toLowerCase().includes(q) || s.supplierPhone.includes(q))
+      .sort((a, b) => b.remainingDebt - a.remainingDebt || b.totalPurchased - a.totalPurchased);
+  }, [purchaseInvoices, supplierSearchQuery]);
+
+  const suppliersTotals = useMemo(() => {
+    return suppliersList.reduce(
+      (acc, s) => {
+        acc.totalPurchased += s.totalPurchased;
+        acc.totalPaid += s.totalPaid;
+        acc.remainingDebt += s.remainingDebt;
+        if (s.remainingDebt > 0) acc.creditorSuppliersCount += 1;
+        return acc;
+      },
+      { totalPurchased: 0, totalPaid: 0, remainingDebt: 0, creditorSuppliersCount: 0 }
+    );
+  }, [suppliersList]);
+
+  const selectedSupplier = useMemo(
+    () => suppliersList.find((s) => s.key === selectedSupplierKey) || null,
+    [suppliersList, selectedSupplierKey]
+  );
+
+  const handleSaveSupplierPayment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!payingPurchaseInvoice) return;
+    const newPaid = Math.min(
+      payingPurchaseInvoice.finalTotal,
+      Math.max(0, Number(supplierPaymentInput) || 0)
+    );
+    const newRemaining = Math.max(0, payingPurchaseInvoice.finalTotal - newPaid);
+    const newStatus: 'paid' | 'unpaid' | 'partial' =
+      newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
+
+    const updatedPi: PurchaseInvoice = {
+      ...payingPurchaseInvoice,
+      paidAmount: newPaid,
+      remainingAmount: newRemaining,
+      paymentStatus: newStatus,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (onUpdatePurchaseInvoice) {
+      onUpdatePurchaseInvoice(updatedPi);
+    } else {
+      StorageService.savePurchaseInvoice(updatedPi);
+    }
+    setPayingPurchaseInvoice(null);
+  };
+
+  // ------------------------------------------------------------------
+  // 2. CUSTOMER NEGOTIATION NOTES & CALL REMINDERS (یادداشت مذاکره و یادآور تماس)
+  // ------------------------------------------------------------------
+  const todayJalali = getCurrentJalaliDate();
+
+  const handleOpenFollowUpModal = (cust: Customer) => {
+    setFollowUpModalCustomer(cust);
+    setNewFollowUpNote('');
+    setNewFollowUpDate(cust.nextFollowUpDate || addDaysToJalali(7));
+    setFollowUpTelegramStatus(null);
+  };
+
+  const handleManualSendFollowUpTelegram = async (cust: Customer, note?: CustomerFollowUpNote) => {
+    const targetId = note?.id || cust.id;
+    setSendingFollowUpTelegramId(targetId);
+    setFollowUpTelegramStatus(null);
+    try {
+      const res = await sendCustomerFollowUpReminderToTelegram(cust, note, settings);
+      if (res.success) {
+        const nowIso = new Date().toISOString();
+        const dueDate = note?.nextFollowUpDate || cust.nextFollowUpDate || todayJalali;
+        const updatedFollowUps = (cust.followUps || []).map((f) =>
+          note ? (f.id === note.id ? { ...f, telegramReminderSentAt: nowIso } : f) : f
+        );
+        const updatedCustomer: Customer = {
+          ...cust,
+          lastTelegramReminderForDate: dueDate,
+          followUps: updatedFollowUps,
+        };
+        onSaveCustomer(updatedCustomer);
+        if (followUpModalCustomer?.id === cust.id) {
+          setFollowUpModalCustomer(updatedCustomer);
+        }
+        if (detailCustomer?.id === cust.id) {
+          setDetailCustomer(updatedCustomer);
+        }
+        setFollowUpTelegramStatus({
+          type: 'success',
+          message: `پیام یادآوری تماس با «${cust.name}» با موفقیت به تلگرام ارسال شد.`,
+        });
+      } else {
+        setFollowUpTelegramStatus({
+          type: 'error',
+          message: res.error || 'خطا در ارسال پیام یادآور به تلگرام.',
+        });
+      }
+    } finally {
+      setSendingFollowUpTelegramId(null);
+    }
+  };
+
+  const handleAddFollowUpNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!followUpModalCustomer || !newFollowUpNote.trim()) return;
+
+    const chosenDueDate = newFollowUpDate.trim() || undefined;
+    const noteObj: CustomerFollowUpNote = {
+      id: `fn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      date: getCurrentJalaliDate(),
+      note: newFollowUpNote.trim(),
+      nextFollowUpDate: chosenDueDate,
+      isCompleted: false,
+      createdBy: currentUser?.fullName || currentUser?.username || 'مدیر سیستم',
+      createdAt: new Date().toISOString(),
+    };
+
+    const existingFollowUps = Array.isArray(followUpModalCustomer.followUps)
+      ? [...followUpModalCustomer.followUps]
+      : [];
+
+    const nextDate = chosenDueDate || followUpModalCustomer.nextFollowUpDate;
+    const updatedCustomer: Customer = {
+      ...followUpModalCustomer,
+      nextFollowUpDate: nextDate,
+      // Reset lastTelegramReminderForDate if a new reminder is registered so it triggers on the due date
+      lastTelegramReminderForDate: chosenDueDate ? undefined : followUpModalCustomer.lastTelegramReminderForDate,
+      followUps: [noteObj, ...existingFollowUps],
+    };
+
+    onSaveCustomer(updatedCustomer);
+    setFollowUpModalCustomer(updatedCustomer);
+    if (detailCustomer?.id === updatedCustomer.id) {
+      setDetailCustomer(updatedCustomer);
+    }
+    setNewFollowUpNote('');
+
+    if (chosenDueDate) {
+      if (chosenDueDate <= todayJalali && isTelegramConfigured(settings)) {
+        // Due date is today or earlier: send Telegram reminder immediately
+        await handleManualSendFollowUpTelegram(updatedCustomer, noteObj);
+      } else {
+        // Trigger server background check and inform user about scheduled Telegram dispatch
+        checkDueFollowUpRemindersOnTelegram().catch(() => {});
+        setFollowUpTelegramStatus({
+          type: 'info',
+          message: `یادداشت مذاکره ثبت شد. در زمان فرارسیدن موعد (${toPersianDigits(chosenDueDate)})، پیام یادآوری تماس به صورت خودکار در تلگرام ارسال خواهد شد.`,
+        });
+      }
+    } else {
+      setFollowUpTelegramStatus({
+        type: 'success',
+        message: 'یادداشت مذاکره با موفقیت در پرونده مشتری ثبت شد.',
+      });
+    }
+  };
+
+  const handleToggleCompleteFollowUp = (cust: Customer, noteId?: string) => {
+    const updatedFollowUps = (cust.followUps || []).map((f) =>
+      noteId ? (f.id === noteId ? { ...f, isCompleted: !f.isCompleted } : f) : { ...f, isCompleted: true }
+    );
+    const updatedCustomer: Customer = {
+      ...cust,
+      nextFollowUpDate: noteId ? cust.nextFollowUpDate : undefined,
+      followUps: updatedFollowUps,
+    };
+    onSaveCustomer(updatedCustomer);
+    if (followUpModalCustomer?.id === cust.id) {
+      setFollowUpModalCustomer(updatedCustomer);
+    }
+    if (detailCustomer?.id === cust.id) {
+      setDetailCustomer(updatedCustomer);
+    }
+  };
+
+  const handleDeleteFollowUpNote = (cust: Customer, noteId: string) => {
+    const remaining = (cust.followUps || []).filter((f) => f.id !== noteId);
+    const latestActiveReminder = remaining.find((f) => !f.isCompleted && f.nextFollowUpDate)?.nextFollowUpDate;
+    const updatedCustomer: Customer = {
+      ...cust,
+      nextFollowUpDate: latestActiveReminder,
+      followUps: remaining,
+    };
+    onSaveCustomer(updatedCustomer);
+    if (followUpModalCustomer?.id === cust.id) {
+      setFollowUpModalCustomer(updatedCustomer);
+    }
+    if (detailCustomer?.id === cust.id) {
+      setDetailCustomer(updatedCustomer);
+    }
+  };
+
+  const customersWithFollowUps = useMemo(() => {
+    return customers
+      .filter((c) => c.nextFollowUpDate || (c.followUps && c.followUps.length > 0))
+      .filter((c) => {
+        if (followUpFilter === 'due') {
+          return !!c.nextFollowUpDate && c.nextFollowUpDate <= todayJalali;
+        }
+        if (followUpFilter === 'upcoming') {
+          return !!c.nextFollowUpDate && c.nextFollowUpDate > todayJalali;
+        }
+        return true;
+      })
+      .sort((a, b) => (a.nextFollowUpDate || '9999').localeCompare(b.nextFollowUpDate || '9999'));
+  }, [customers, followUpFilter, todayJalali]);
+
+  const dueFollowUpsCount = useMemo(
+    () => customers.filter((c) => c.nextFollowUpDate && c.nextFollowUpDate <= todayJalali).length,
+    [customers, todayJalali]
+  );
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
@@ -430,9 +737,379 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
             )}
           </div>
         </div>
+
+        {/* Navigation Sub-Tabs: مشتریان | مانده حساب تامین‌کنندگان | یادداشت مذاکره و یادآور تماس */}
+        <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveSubSection('customers')}
+            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs transition-all cursor-pointer ${
+              activeSubSection === 'customers'
+                ? 'bg-purple-600 text-white font-black shadow-xs'
+                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold border border-slate-200/80'
+            }`}
+          >
+            <Users className="w-4 h-4 shrink-0" />
+            <span>لیست مشتریان و خریداران</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono ${
+                activeSubSection === 'customers' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+              }`}
+            >
+              {toPersianDigits(customers.length)}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubSection('suppliers')}
+            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs transition-all cursor-pointer ${
+              activeSubSection === 'suppliers'
+                ? 'bg-indigo-600 text-white font-black shadow-xs'
+                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold border border-slate-200/80'
+            }`}
+          >
+            <Building2 className="w-4 h-4 shrink-0" />
+            <span>مانده حساب تامین‌کنندگان</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono ${
+                activeSubSection === 'suppliers' ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-800'
+              }`}
+            >
+              {toPersianDigits(suppliersList.length)}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubSection('followups')}
+            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs transition-all cursor-pointer ${
+              activeSubSection === 'followups'
+                ? 'bg-amber-600 text-white font-black shadow-xs'
+                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold border border-slate-200/80'
+            }`}
+          >
+            <Bell className="w-4 h-4 shrink-0" />
+            <span>یادداشت مذاکره و یادآور تماس</span>
+            {dueFollowUpsCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black bg-rose-500 text-white">
+                {toPersianDigits(dueFollowUpsCount)}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
+      {/* =====================================================================
+          SECTION B: DEDICATED SUPPLIERS BALANCE & LEDGER (مانده حساب تامین‌کنندگان)
+          ===================================================================== */}
+      {activeSubSection === 'suppliers' && (
+        <div className="space-y-4">
+          {/* 3 KPI Cards: چقدر خریده‌ایم، چقدر پرداخت کرده‌ایم، چقدر بدهکاریم */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1">
+              <div className="flex items-center justify-between text-xs text-slate-500 font-bold">
+                <span>کل خرید کالا از تامین‌کنندگان</span>
+                <Truck className="w-4 h-4 text-indigo-600" />
+              </div>
+              <div className="text-lg font-black font-mono text-slate-900">
+                {formatPrice(suppliersTotals.totalPurchased, settings.currency)}
+              </div>
+              <div className="text-[11px] text-slate-400">
+                مجموع ارزش فاکتورهای خرید ثبت‌شده از {toPersianDigits(suppliersList.length)} تامین‌کننده
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-xs space-y-1">
+              <div className="flex items-center justify-between text-xs text-emerald-700 font-bold">
+                <span>کل مبالغ پرداخت‌شده به تامین‌کنندگان</span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="text-lg font-black font-mono text-emerald-700">
+                {formatPrice(suppliersTotals.totalPaid, settings.currency)}
+              </div>
+              <div className="text-[11px] text-slate-400">
+                مجموع تسویه‌ها و پرداخت‌های انجام‌شده به تامین‌کنندگان
+              </div>
+            </div>
+
+            <div className="bg-rose-50/70 p-4 rounded-2xl border border-rose-200 shadow-xs space-y-1">
+              <div className="flex items-center justify-between text-xs text-rose-800 font-bold">
+                <span>مانده بدهی ما به تامین‌کنندگان (بستانکاران)</span>
+                <Wallet className="w-4 h-4 text-rose-600" />
+              </div>
+              <div className="text-lg font-black font-mono text-rose-700">
+                {formatPrice(suppliersTotals.remainingDebt, settings.currency)}
+              </div>
+              <div className="text-[11px] text-rose-600/80 font-medium">
+                {suppliersTotals.creditorSuppliersCount > 0
+                  ? `بدهکار به ${toPersianDigits(suppliersTotals.creditorSuppliersCount)} تامین‌کننده`
+                  : 'تمامی حساب‌های تامین‌کنندگان تسویه کامل است'}
+              </div>
+            </div>
+          </div>
+
+          {/* Suppliers Table Card */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="p-3.5 border-b border-slate-200/80 bg-slate-50/70 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+              <div className="relative flex-1 max-w-md">
+                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={supplierSearchQuery}
+                  onChange={(e) => setSupplierSearchQuery(e.target.value)}
+                  placeholder="جستجوی نام یا شماره تماس تامین‌کننده..."
+                  className="w-full bg-white border border-slate-200 rounded-xl pr-9 pl-3 py-1.5 text-xs outline-none focus:border-indigo-500"
+                />
+              </div>
+              <span className="text-[11px] text-slate-500 font-medium">
+                لیست تفکیکی مانده حساب، خریدها و پرداختی‌های هر تامین‌کننده
+              </span>
+            </div>
+
+            {suppliersList.length === 0 ? (
+              <div className="text-center py-14 p-6 space-y-2 text-slate-400">
+                <Building2 className="w-10 h-10 mx-auto text-slate-300" />
+                <div className="text-sm font-bold text-slate-600">هنوز فاکتور خریدی از تامین‌کنندگان ثبت نشده است</div>
+                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                  با ثبت فاکتور خرید در بخش «فاکتور خرید و ورود کالا»، حساب هر تامین‌کننده (مجموع خرید، پرداختی و مانده بدهی شما) به صورت خودکار در این بخش ایجاد می‌شود.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-right border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-100/80 text-slate-700 border-b border-slate-200">
+                      <th className="py-3 px-3 font-bold text-center w-10">#</th>
+                      <th className="py-3 px-3 font-bold">نام تامین‌کننده / فروشنده</th>
+                      <th className="py-3 px-3 font-bold text-center">تعداد فاکتور خرید</th>
+                      <th className="py-3 px-3 font-bold text-left">کل خرید ما (جنس خریداری‌شده)</th>
+                      <th className="py-3 px-3 font-bold text-left">کل پرداختی ما</th>
+                      <th className="py-3 px-3 font-bold text-left">مانده بدهی ما به تامین‌کننده</th>
+                      <th className="py-3 px-3 font-bold text-center">عملیات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {suppliersList.map((sup, idx) => (
+                      <tr key={sup.key} className="hover:bg-indigo-50/30 transition-colors">
+                        <td className="py-3 px-3 text-center font-mono text-slate-400 font-bold">
+                          {toPersianDigits(idx + 1)}
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="font-black text-slate-900 text-xs sm:text-sm">{sup.supplierName}</div>
+                          <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+                            {sup.supplierPhone && <span className="font-mono">{toPersianDigits(sup.supplierPhone)}</span>}
+                            {sup.lastPurchaseDate && (
+                              <span>آخرین خرید: {toPersianDigits(sup.lastPurchaseDate)}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-center font-mono font-bold text-slate-700">
+                          {toPersianDigits(sup.invoices.length)} فاکتور
+                        </td>
+                        <td className="py-3 px-3 text-left font-mono font-bold text-slate-900">
+                          {formatPrice(sup.totalPurchased, settings.currency)}
+                        </td>
+                        <td className="py-3 px-3 text-left font-mono font-bold text-emerald-700">
+                          {formatPrice(sup.totalPaid, settings.currency)}
+                        </td>
+                        <td className="py-3 px-3 text-left whitespace-nowrap">
+                          {sup.remainingDebt > 0 ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 font-mono font-black text-xs">
+                              <span>بدهکاریم:</span>
+                              <span>{formatPrice(sup.remainingDebt, settings.currency)}</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[11px]">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>تسویه کامل</span>
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSupplierKey(sup.key)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-bold transition-colors cursor-pointer"
+                          >
+                            <ReceiptText className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>ریز حساب و ثبت پرداخت</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          SECTION C: CUSTOMER NEGOTIATION NOTES & CALL REMINDERS (یادداشت مذاکره و یادآور تماس)
+          ===================================================================== */}
+      {activeSubSection === 'followups' && (
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+          <div className="p-3.5 sm:p-4 border-b border-slate-200/80 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
+                <Bell className="w-4 h-4 text-amber-600" />
+                <span>مدیریت یادداشت‌های مذاکره و یادآوری تماس بعدی مشتریان</span>
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                ثبت خلاصه مذاکرات تلفنی یا حضوری به همراه تاریخ یادآوری تماس بعدی برای پیگیری فروش و وصول مطالبات
+              </p>
+            </div>
+
+            <div className="flex items-center gap-1.5 bg-slate-200/60 p-1 rounded-xl border border-slate-200 text-xs self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setFollowUpFilter('all')}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                  followUpFilter === 'all' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
+                }`}
+              >
+                همه پیگیری‌ها
+              </button>
+              <button
+                type="button"
+                onClick={() => setFollowUpFilter('due')}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  followUpFilter === 'due' ? 'bg-rose-600 text-white shadow-2xs' : 'text-slate-600'
+                }`}
+              >
+                <span>موعد تماس (امروز و معوق)</span>
+                {dueFollowUpsCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-rose-100 text-rose-800">
+                    {toPersianDigits(dueFollowUpsCount)}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFollowUpFilter('upcoming')}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                  followUpFilter === 'upcoming' ? 'bg-amber-600 text-white shadow-2xs' : 'text-slate-600'
+                }`}
+              >
+                یادآوری‌های آینده
+              </button>
+            </div>
+          </div>
+
+          {customersWithFollowUps.length === 0 ? (
+            <div className="text-center py-14 p-6 space-y-2 text-slate-400">
+              <MessageSquarePlus className="w-10 h-10 mx-auto text-slate-300" />
+              <div className="text-sm font-bold text-slate-600">هیچ یادداشت مذاکره یا یادآور تماسی در این بخش وجود ندارد</div>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
+                در لیست مشتریان بر روی دکمه «یادداشت مذاکره» کلیک کنید تا مذاکرات و تاریخ تماس بعدی را برای مشتری ثبت نمایید.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {customersWithFollowUps.map((cust) => {
+                const isDue = !!cust.nextFollowUpDate && cust.nextFollowUpDate <= todayJalali;
+                const latestNote = cust.followUps && cust.followUps.length > 0 ? cust.followUps[0] : null;
+                return (
+                  <div key={cust.id} className="p-4 hover:bg-amber-50/20 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1.5 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-black text-slate-900 text-sm">{cust.name}</span>
+                        {cust.customerType === 'colleague' && (
+                          <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
+                            همکار / عمده
+                          </span>
+                        )}
+                        {cust.phone && (
+                          <a href={`tel:${cust.phone}`} className="font-mono text-xs text-emerald-700 font-bold hover:underline">
+                            {toPersianDigits(cust.phone)}
+                          </a>
+                        )}
+                        {cust.nextFollowUpDate && (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-bold border ${
+                              isDue
+                                ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                            }`}
+                          >
+                            <Bell className="w-3 h-3" />
+                            <span>
+                              {isDue ? 'موعد تماس:' : 'یادآور تماس بعدی:'} {toPersianDigits(cust.nextFollowUpDate)}
+                            </span>
+                          </span>
+                        )}
+                        {(latestNote?.telegramReminderSentAt ||
+                          (cust.nextFollowUpDate && cust.lastTelegramReminderForDate === cust.nextFollowUpDate)) ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-sky-50 text-sky-700 border border-sky-200 text-[10px] font-bold">
+                            <Send className="w-2.5 h-2.5" />
+                            <span>یادآور تلگرام ارسال شد ✓</span>
+                          </span>
+                        ) : cust.nextFollowUpDate ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-medium">
+                            <Send className="w-2.5 h-2.5 text-sky-600" />
+                            <span>ارسال خودکار به تلگرام در موعد</span>
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {latestNote && (
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 text-xs text-slate-700">
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                            <span>آخرین مذاکره ثبت‌شده ({toPersianDigits(latestNote.date)}):</span>
+                            <span>ثبت توسط: {latestNote.createdBy || 'کاربر'}</span>
+                          </div>
+                          <p className="font-medium text-slate-800 leading-relaxed">{latestNote.note}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center flex-wrap">
+                      <button
+                        type="button"
+                        disabled={sendingFollowUpTelegramId === (latestNote?.id || cust.id)}
+                        onClick={() => handleManualSendFollowUpTelegram(cust, latestNote || undefined)}
+                        className="px-2.5 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                        title="ارسال فوری پیام یادآوری تماس به تلگرام"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>
+                          {sendingFollowUpTelegramId === (latestNote?.id || cust.id)
+                            ? 'در حال ارسال...'
+                            : 'ارسال به تلگرام'}
+                        </span>
+                      </button>
+                      {cust.nextFollowUpDate && (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleCompleteFollowUp(cust)}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                          title="علامت‌گذاری تماس به عنوان انجام‌شده"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>تماس انجام شد</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenFollowUpModal(cust)}
+                        className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                      >
+                        <MessageSquarePlus className="w-3.5 h-3.5" />
+                        <span>مشاهده و ثبت مذاکره ({toPersianDigits((cust.followUps || []).length)})</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Customer List Card */}
+      {activeSubSection === 'customers' && (
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
         {/* Search, Sort, Filter & View Mode Toolbar (Decluttered & Mobile-Optimized) */}
         <div className="p-2.5 sm:p-3.5 border-b border-slate-200/80 bg-slate-50/70 space-y-2 sm:space-y-2.5">
@@ -664,8 +1341,32 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                               {cust.name.trim().charAt(0) || 'م'}
                             </div>
                             <div>
-                              <div className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-purple-800 transition-colors">
-                                {cust.name}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-purple-800 transition-colors">
+                                  {cust.name}
+                                </span>
+                                {cust.customerType === 'colleague' && (
+                                  <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
+                                    همکار / عمده
+                                  </span>
+                                )}
+                                {cust.nextFollowUpDate && (
+                                  <span
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenFollowUpModal(cust);
+                                    }}
+                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold border cursor-pointer ${
+                                      cust.nextFollowUpDate <= todayJalali
+                                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                        : 'bg-amber-50 text-amber-800 border-amber-200'
+                                    }`}
+                                    title="یادآور تماس بعدی - کلیک برای مشاهده مذاکرات"
+                                  >
+                                    <Bell className="w-2.5 h-2.5" />
+                                    <span>تماس: {toPersianDigits(cust.nextFollowUpDate)}</span>
+                                  </span>
+                                )}
                               </div>
                               {cust.nationalId && (
                                 <div className="text-[10px] text-slate-400 font-mono mt-0.5">
@@ -747,6 +1448,21 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                             >
                               <Eye className="w-3.5 h-3.5 text-purple-700" />
                               <span>جزئیات</span>
+                            </button>
+
+                            {/* Follow-up & Negotiation Note Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenFollowUpModal(cust)}
+                              title="ثبت یادداشت مذاکره و تاریخ یادآوری تماس بعدی"
+                              className={`flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg border transition-all cursor-pointer ${
+                                cust.nextFollowUpDate
+                                  ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300'
+                                  : 'bg-slate-50 hover:bg-amber-50 text-slate-700 hover:text-amber-800 border-slate-200'
+                              }`}
+                            >
+                              <MessageSquarePlus className="w-3.5 h-3.5 text-amber-600" />
+                              <span className="hidden xl:inline">مذاکره</span>
                             </button>
 
                             {/* Statement Button */}
@@ -1109,6 +1825,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
           </div>
         )}
       </div>
+      )}
 
       {/* CUSTOMER DETAILS MODAL (پنجره مشخصات و جزئیات کامل مشتری) */}
       {detailCustomer && (() => {
@@ -1252,6 +1969,47 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                   <p className="text-slate-800 text-xs leading-relaxed pr-5">
                     {detailCustomer.address ? detailCustomer.address : 'هنوز آدرسی برای این مشتری ثبت نشده است.'}
                   </p>
+                </div>
+
+                {/* Negotiation Notes & Call Reminder Section inside Customer Details Modal */}
+                <div className="bg-amber-50/50 p-4 rounded-2xl border border-amber-200/80 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 font-bold text-amber-900 text-xs">
+                      <Bell className="w-4 h-4 text-amber-600" />
+                      <span>یادداشت‌های مذاکره و یادآور تماس بعدی:</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenFollowUpModal(detailCustomer)}
+                      className="px-2.5 py-1 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <MessageSquarePlus className="w-3.5 h-3.5" />
+                      <span>ثبت مذاکره / یادآور جدید</span>
+                    </button>
+                  </div>
+
+                  {detailCustomer.nextFollowUpDate && (
+                    <div className="text-xs font-bold text-amber-800 bg-white px-3 py-1.5 rounded-xl border border-amber-200 flex items-center justify-between">
+                      <span>تاریخ یادآوری تماس بعدی:</span>
+                      <span className="font-mono font-black text-rose-700">{toPersianDigits(detailCustomer.nextFollowUpDate)}</span>
+                    </div>
+                  )}
+
+                  {detailCustomer.followUps && detailCustomer.followUps.length > 0 ? (
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                      {detailCustomer.followUps.slice(0, 3).map((fn) => (
+                        <div key={fn.id} className="bg-white p-2.5 rounded-xl border border-amber-100 text-xs space-y-1">
+                          <div className="flex items-center justify-between text-[10px] text-slate-400">
+                            <span>تاریخ مذاکره: {toPersianDigits(fn.date)}</span>
+                            {fn.nextFollowUpDate && <span>یادآور: {toPersianDigits(fn.nextFollowUpDate)}</span>}
+                          </div>
+                          <p className="text-slate-800 font-medium">{fn.note}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-400">هنوز یادداشت مذاکره‌ای برای این مشتری ثبت نشده است.</p>
+                  )}
                 </div>
 
                 {/* Notes Section */}
@@ -1583,6 +2341,36 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
               </div>
 
               <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  نوع مشتری و سطح قیمت‌گذاری پیش‌فرض در فاکتور
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingCustomer({ ...editingCustomer, customerType: 'regular' })}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      (editingCustomer.customerType || 'regular') === 'regular'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    مشتری عادی (نرخ پایه)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingCustomer({ ...editingCustomer, customerType: 'colleague' })}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      editingCustomer.customerType === 'colleague'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    همکار / عمده (نرخ همکار)
+                  </button>
+                </div>
+              </div>
+
+              <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">شماره تماس / همراه</label>
                 <input
                   type="text"
@@ -1615,6 +2403,15 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                   onChange={(e) => setEditingCustomer({ ...editingCustomer, address: e.target.value })}
                   placeholder="شهر، خیابان، پلاک، طبقه..."
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">تاریخ یادآوری تماس بعدی (اختیاری)</label>
+                <JalaliDatePicker
+                  value={editingCustomer.nextFollowUpDate || ''}
+                  onChange={(d) => setEditingCustomer({ ...editingCustomer, nextFollowUpDate: d })}
+                  placeholder="انتخاب تاریخ یادآوری تماس..."
                 />
               </div>
 
@@ -1836,6 +2633,390 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
             setTransactionCustomer(null);
           }}
         />
+      )}
+
+      {/* MODAL: CUSTOMER NEGOTIATION NOTES & NEXT CALL REMINDER (ثبت یادداشت مذاکره و یادآور تماس بعدی) */}
+      {followUpModalCustomer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden text-right">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-400/30 flex items-center justify-center">
+                  <MessageSquarePlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm sm:text-base">یادداشت مذاکره و یادآور تماس</h3>
+                  <span className="text-[11px] text-slate-300">مشتری: {followUpModalCustomer.name}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFollowUpModalCustomer(null)}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs flex-1">
+              <form onSubmit={handleAddFollowUpNote} className="bg-amber-50/50 border border-amber-200/80 rounded-2xl p-3.5 space-y-3">
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">
+                    متن یادداشت مذاکره / توافقات انجام‌شده با مشتری *
+                  </label>
+                  <textarea
+                    rows={3}
+                    required
+                    value={newFollowUpNote}
+                    onChange={(e) => setNewFollowUpNote(e.target.value)}
+                    placeholder="خلاصه صحبت‌ها، استعلام قیمت، شرایط تسویه یا سفارش بعدی مشتری..."
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-500/20"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block font-bold text-slate-800">
+                    تاریخ یادآوری تماس بعدی (ارسال خودکار یادآور در تلگرام در تاریخ انتخابی)
+                  </label>
+                  <JalaliDatePicker
+                    value={newFollowUpDate}
+                    onChange={(d) => setNewFollowUpDate(d)}
+                    placeholder="انتخاب تاریخ یادآوری تماس بعدی..."
+                  />
+                  {/* Quick Date Presets */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                    <span className="text-[10px] text-slate-500 font-bold">انتخاب سریع:</span>
+                    {[
+                      { label: 'فردا', days: 1 },
+                      { label: '۳ روز دیگر', days: 3 },
+                      { label: 'هفته آینده (۷ روز)', days: 7 },
+                      { label: '۲ هفته دیگر', days: 14 },
+                      { label: 'ماه آینده', days: 30 },
+                    ].map((preset) => {
+                      const targetDate = addDaysToJalali(preset.days);
+                      const isSelected = newFollowUpDate === targetDate;
+                      return (
+                        <button
+                          key={preset.days}
+                          type="button"
+                          onClick={() => setNewFollowUpDate(targetDate)}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-amber-600 text-white border-amber-600'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-300'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                    {newFollowUpDate && (
+                      <button
+                        type="button"
+                        onClick={() => setNewFollowUpDate('')}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      >
+                        بدون یادآور
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[11px] text-sky-800 bg-sky-50/90 border border-sky-200/80 rounded-xl px-2.5 py-1.5">
+                    <Send className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                    <span>
+                      در زمان فرارسیدن تاریخ یادآوری (مثلاً هفته آینده)، پیام یادآوری جهت تماس با مشتری به صورت خودکار در تلگرام ارسال می‌شود.
+                    </span>
+                  </div>
+                </div>
+
+                {followUpTelegramStatus && (
+                  <div
+                    className={`p-2.5 rounded-xl border text-[11px] font-bold flex items-center justify-between gap-2 ${
+                      followUpTelegramStatus.type === 'success'
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                        : followUpTelegramStatus.type === 'error'
+                        ? 'bg-rose-50 border-rose-200 text-rose-800'
+                        : 'bg-sky-50 border-sky-200 text-sky-800'
+                    }`}
+                  >
+                    <span>{followUpTelegramStatus.message}</span>
+                    <button
+                      type="button"
+                      onClick={() => setFollowUpTelegramStatus(null)}
+                      className="text-slate-400 hover:text-slate-700"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>ثبت یادداشت مذاکره و یادآور تلگرام</span>
+                  </button>
+                </div>
+              </form>
+
+              {/* History of Follow-Up Notes */}
+              <div className="space-y-2">
+                <div className="font-bold text-slate-800 flex items-center justify-between">
+                  <span>سوابق مذاکرات قبلی ({toPersianDigits((followUpModalCustomer.followUps || []).length)} مورد)</span>
+                  {followUpModalCustomer.nextFollowUpDate && (
+                    <span className="text-[11px] font-mono text-amber-800 bg-amber-100 px-2 py-0.5 rounded-lg">
+                      یادآور فعال: {toPersianDigits(followUpModalCustomer.nextFollowUpDate)}
+                    </span>
+                  )}
+                </div>
+
+                {(!followUpModalCustomer.followUps || followUpModalCustomer.followUps.length === 0) ? (
+                  <div className="text-center py-6 bg-slate-50 rounded-2xl border border-slate-200 text-slate-400">
+                    هنوز یادداشت مذاکره‌ای برای این مشتری ثبت نشده است.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {followUpModalCustomer.followUps.map((fn) => (
+                      <div
+                        key={fn.id}
+                        className={`p-3 rounded-2xl border space-y-1.5 ${
+                          fn.isCompleted
+                            ? 'bg-slate-50 border-slate-200 opacity-75'
+                            : 'bg-white border-slate-200 shadow-2xs'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500 flex-wrap">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                              {toPersianDigits(fn.date)}
+                            </span>
+                            {fn.nextFollowUpDate && (
+                              <span className="font-mono text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded font-bold">
+                                تماس بعدی: {toPersianDigits(fn.nextFollowUpDate)}
+                              </span>
+                            )}
+                            {fn.telegramReminderSentAt && (
+                              <span className="text-[10px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                <Send className="w-2.5 h-2.5" />
+                                <span>ارسال‌شده به تلگرام ✓</span>
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              disabled={sendingFollowUpTelegramId === fn.id}
+                              onClick={() => handleManualSendFollowUpTelegram(followUpModalCustomer, fn)}
+                              className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                              title="ارسال این یادآور به تلگرام"
+                            >
+                              <Send className="w-2.5 h-2.5" />
+                              <span>{sendingFollowUpTelegramId === fn.id ? '...' : 'تلگرام'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleCompleteFollowUp(followUpModalCustomer, fn.id)}
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold border cursor-pointer ${
+                                fn.isCompleted
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-emerald-50'
+                              }`}
+                            >
+                              {fn.isCompleted ? 'انجام شد ✓' : 'علامت انجام'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteFollowUpNote(followUpModalCustomer, fn.id)}
+                              className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
+                              title="حذف یادداشت"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-slate-800 font-medium leading-relaxed whitespace-pre-line">{fn.note}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: SUPPLIER LEDGER & PAYMENT SETTLEMENT (ریز گردش حساب و تسویه بدهی تامین‌کننده) */}
+      {selectedSupplier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden text-right">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 flex items-center justify-center">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm sm:text-base">
+                    صورتحساب و فاکتورهای خرید از: {selectedSupplier.supplierName}
+                  </h3>
+                  <span className="text-[11px] text-slate-300">
+                    {selectedSupplier.supplierPhone
+                      ? `شماره تماس: ${toPersianDigits(selectedSupplier.supplierPhone)}`
+                      : 'ریز کل خریدها، پرداختی‌ها و مانده بدهی به تامین‌کننده'}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSupplierKey(null);
+                  setPayingPurchaseInvoice(null);
+                }}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs flex-1">
+              {/* Supplier Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
+                  <span className="text-[11px] text-slate-500 block mb-1">کل خرید ما از این تامین‌کننده:</span>
+                  <span className="font-mono font-black text-sm text-slate-900">
+                    {formatPrice(selectedSupplier.totalPurchased, settings.currency)}
+                  </span>
+                </div>
+                <div className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-3">
+                  <span className="text-[11px] text-emerald-700 block mb-1">کل پرداختی ما:</span>
+                  <span className="font-mono font-black text-sm text-emerald-800">
+                    {formatPrice(selectedSupplier.totalPaid, settings.currency)}
+                  </span>
+                </div>
+                <div className="bg-rose-50/70 border border-rose-200 rounded-2xl p-3">
+                  <span className="text-[11px] text-rose-700 block mb-1">مانده بدهی ما به تامین‌کننده:</span>
+                  <span className="font-mono font-black text-sm text-rose-800">
+                    {selectedSupplier.remainingDebt > 0
+                      ? formatPrice(selectedSupplier.remainingDebt, settings.currency)
+                      : 'تسویه کامل (۰)'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Payment Adjustment Form for Selected Purchase Invoice */}
+              {payingPurchaseInvoice && (
+                <form
+                  onSubmit={handleSaveSupplierPayment}
+                  className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-3.5 space-y-3 animate-in fade-in"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-black text-indigo-950">
+                      ثبت / اصلاح مبلغ پرداختی برای فاکتور خرید شماره {toPersianDigits(payingPurchaseInvoice.invoiceNumber)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPayingPurchaseInvoice(null)}
+                      className="text-slate-400 hover:text-slate-700"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        مجموع مبلغ پرداخت‌شده بابت این فاکتور ({settings.currency}) — کل فاکتور:{' '}
+                        {formatPrice(payingPurchaseInvoice.finalTotal, settings.currency)}
+                      </label>
+                      <NumericInput
+                        min={0}
+                        max={payingPurchaseInvoice.finalTotal}
+                        value={supplierPaymentInput}
+                        onChange={(num) => setSupplierPaymentInput(num)}
+                        currency={settings.currency}
+                        className="w-full bg-white border border-indigo-300 rounded-xl px-3 py-2 text-xs font-mono font-black text-slate-900"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSupplierPaymentInput(payingPurchaseInvoice.finalTotal)}
+                        className="px-3 py-2 rounded-xl bg-white border border-indigo-200 text-indigo-700 font-bold text-xs hover:bg-indigo-100 cursor-pointer"
+                      >
+                        تسویه کامل فاکتور
+                      </button>
+                      <button
+                        type="submit"
+                        className="flex-1 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs cursor-pointer"
+                      >
+                        ذخیره پرداخت
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              )}
+
+              {/* Purchase Invoices List for this Supplier */}
+              <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                <table className="w-full text-right border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 text-slate-700 border-b border-slate-200">
+                      <th className="p-2.5 font-bold">شماره فاکتور خرید</th>
+                      <th className="p-2.5 font-bold text-center">تاریخ</th>
+                      <th className="p-2.5 font-bold">اقلام خریداری‌شده</th>
+                      <th className="p-2.5 font-bold text-left">مبلغ کل</th>
+                      <th className="p-2.5 font-bold text-left">پرداخت‌شده</th>
+                      <th className="p-2.5 font-bold text-left">مانده بدهی</th>
+                      <th className="p-2.5 font-bold text-center">تسویه / پرداخت</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {selectedSupplier.invoices.map((pi) => {
+                      const paid =
+                        pi.paymentStatus === 'paid'
+                          ? pi.finalTotal
+                          : Math.min(pi.finalTotal, Math.max(0, Number(pi.paidAmount) || 0));
+                      const rem = Math.max(0, pi.finalTotal - paid);
+                      return (
+                        <tr key={pi.id} className="hover:bg-slate-50">
+                          <td className="p-2.5 font-mono font-bold text-slate-900">
+                            {toPersianDigits(pi.invoiceNumber)}
+                          </td>
+                          <td className="p-2.5 text-center font-mono text-slate-600">
+                            {toPersianDigits(pi.date)}
+                          </td>
+                          <td className="p-2.5 text-slate-600 max-w-xs truncate">
+                            {(pi.items || []).map((it) => `${it.productName} (${toPersianDigits(it.quantity)})`).join('، ')}
+                          </td>
+                          <td className="p-2.5 text-left font-mono font-bold text-slate-900">
+                            {formatPrice(pi.finalTotal, settings.currency)}
+                          </td>
+                          <td className="p-2.5 text-left font-mono font-bold text-emerald-700">
+                            {formatPrice(paid, settings.currency)}
+                          </td>
+                          <td className="p-2.5 text-left font-mono font-black text-rose-700">
+                            {rem > 0 ? formatPrice(rem, settings.currency) : '۰ (تسویه)'}
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPayingPurchaseInvoice(pi);
+                                setSupplierPaymentInput(paid);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-[11px] cursor-pointer"
+                            >
+                              ثبت پرداخت
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

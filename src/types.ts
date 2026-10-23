@@ -1,3 +1,14 @@
+export interface ProductPriceHistoryEntry {
+  id: string;
+  date: string; // تاریخ شمسی تغییر یا خرید (مثلاً ۱۴۰۳/۰۶/۲۴)
+  buyPrice: number; // قیمت خرید ثبت شده
+  sellPrice?: number; // قیمت فروش عادی در آن زمان
+  wholesalePrice?: number; // قیمت فروش همکار/عمده در آن زمان
+  supplierName?: string; // نام تامین‌کننده (در صورت ثبت از طریق فاکتور خرید/ورود کالا)
+  invoiceNumber?: string; // شماره فاکتور خرید یا سند ورود
+  note?: string; // توضیح تغییر قیمت
+}
+
 export interface ProductVariant {
   id: string;
   name: string; // نام یا ویژگی تنوع (مانند: طوسی، قرمز، سایز، بسته‌بندی، مدل و...)
@@ -6,6 +17,7 @@ export interface ProductVariant {
   sku?: string;
   buyPrice?: number; // قیمت خرید اختصاصی تنوع (در صورت تفاوت با کالای پایه)
   sellPrice?: number; // قیمت فروش اختصاصی تنوع (در صورت تفاوت با کالای پایه)
+  wholesalePrice?: number; // قیمت فروش همکار / عمده اختصاصی تنوع
   stock: number; // موجودی این تنوع در انبار
   minStockAlert?: number; // حداقل موجودی برای هشدار
 }
@@ -17,7 +29,8 @@ export interface Product {
   category: string; // دسته‌بندی
   unit: string; // واحد سنجش (عدد، بسته، کیلوگرم، متر، کیسه و...)
   buyPrice: number; // قیمت خرید (به تومان یا ریال)
-  sellPrice: number; // قیمت فروش (به تومان یا ریال)
+  sellPrice: number; // قیمت فروش عادی (به تومان یا ریال)
+  wholesalePrice?: number; // قیمت فروش همکار / عمده (به تومان یا ریال)
   stock: number; // موجودی فعلی در انبار (مجموع تنوع‌ها در صورت داشتن تنوع)
   minStockAlert: number; // حداقل موجودی برای هشدار
   description?: string;
@@ -27,6 +40,18 @@ export interface Product {
   hasVariants?: boolean;
   variants?: ProductVariant[];
   purchasePrice?: number; // آلیاس buyPrice برای سازگاری
+  priceHistory?: ProductPriceHistoryEntry[]; // تاریخچه تغییرات قیمت خرید در طول زمان
+}
+
+export interface CustomerFollowUpNote {
+  id: string;
+  date: string; // تاریخ ثبت یادداشت مذاکره (شمسی)
+  note: string; // متن یادداشت مذاکره یا پیگیری
+  nextFollowUpDate?: string; // تاریخ یادآوری تماس بعدی (شمسی)
+  isCompleted?: boolean; // آیا تماس پیگیری انجام شده است؟
+  telegramReminderSentAt?: string; // زمان ارسال پیام یادآور این مذاکره به تلگرام
+  createdBy?: string; // نام کاربر ثبت‌کننده
+  createdAt: string;
 }
 
 export interface Customer {
@@ -39,6 +64,10 @@ export interface Customer {
   gender?: 'male' | 'female' | 'company' | 'other'; // جنسیت یا نوع طرف‌حساب
   titlePrefix?: string; // عنوان یا پیشوند: آقای، خانم، شرکت
   telegramChatId?: string; // شناسه یا چت‌آیدی تلگرام مشتری (اختیاری جهت ارسال مستقیم فاکتور به مشتری)
+  customerType?: 'regular' | 'colleague'; // نوع مشتری: عادی ('regular') یا همکار/عمده ('colleague')
+  nextFollowUpDate?: string; // تاریخ یادآوری تماس بعدی (شمسی)
+  lastTelegramReminderForDate?: string; // آخرین تاریخ یادآوری که پیام تلگرام آن ارسال شده است
+  followUps?: CustomerFollowUpNote[]; // سوابق مذاکرات و یادآوری‌های تماس
   createdAt: string;
 }
 

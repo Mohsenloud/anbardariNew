@@ -228,13 +228,21 @@ export default function App() {
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('online', onOnline);
 
-    // Periodic check for 7-day proforma follow-up reminders on Telegram (at startup & every 30 mins)
-    const proformaTimer = setTimeout(() => {
+    // Periodic check for 7-day proforma follow-up reminders & due customer call reminders on Telegram
+    const runTelegramRemindersCheck = () => {
       fetch('/api/telegram/check-proforma-reminders', { method: 'POST' }).catch(() => {});
-    }, 6000);
-    const proformaInterval = setInterval(() => {
-      fetch('/api/telegram/check-proforma-reminders', { method: 'POST' }).catch(() => {});
-    }, 30 * 60 * 1000);
+      fetch('/api/telegram/check-followup-reminders', { method: 'POST' })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.result?.sentCount > 0) {
+            triggerSync();
+          }
+        })
+        .catch(() => {});
+    };
+
+    const proformaTimer = setTimeout(runTelegramRemindersCheck, 5000);
+    const proformaInterval = setInterval(runTelegramRemindersCheck, 10 * 60 * 1000);
 
     return () => {
       unsubStorage();
@@ -958,12 +966,42 @@ export default function App() {
   };
 
   // 5. INVENTORY PRODUCT MANAGEMENT
-  const handleSaveProduct = (product: Product) => {
+  const handleSaveProduct = (rawProduct: Product) => {
+    let product = { ...rawProduct };
     let updatedProducts: Product[];
     const exists = products.some((p) => p.id === product.id);
 
     if (exists) {
       const oldProd = products.find((p) => p.id === product.id);
+
+      // ثبت خودکار تاریخچه تغییر قیمت خرید در طول زمان
+      const history = Array.isArray(product.priceHistory)
+        ? [...product.priceHistory]
+        : Array.isArray(oldProd?.priceHistory)
+        ? [...oldProd.priceHistory]
+        : [];
+      if (oldProd && Number(oldProd.buyPrice) !== Number(product.buyPrice) && Number(product.buyPrice) > 0) {
+        if (history.length === 0 && Number(oldProd.buyPrice) > 0) {
+          history.push({
+            id: `ph-prev-${Date.now()}`,
+            date: oldProd.updatedAt || getCurrentJalaliDate(),
+            buyPrice: Number(oldProd.buyPrice),
+            sellPrice: oldProd.sellPrice,
+            wholesalePrice: oldProd.wholesalePrice,
+            note: 'قیمت خرید قبلی',
+          });
+        }
+        history.push({
+          id: `ph-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          date: getCurrentJalaliDate(),
+          buyPrice: Number(product.buyPrice),
+          sellPrice: product.sellPrice,
+          wholesalePrice: product.wholesalePrice,
+          note: 'ویرایش و بروزرسانی قیمت خرید کالا',
+        });
+      }
+      product.priceHistory = history;
+
       updatedProducts = products.map((p) => (p.id === product.id ? product : p));
 
       // If user modified stock directly in the edit product modal, log Kardex movement
@@ -986,6 +1024,18 @@ export default function App() {
 
       showToast(`مشخصات کالای "${product.name}" بروزرسانی شد.`);
     } else {
+      if (Number(product.buyPrice) > 0 && (!product.priceHistory || product.priceHistory.length === 0)) {
+        product.priceHistory = [
+          {
+            id: `ph-${Date.now()}`,
+            date: product.updatedAt || getCurrentJalaliDate(),
+            buyPrice: Number(product.buyPrice),
+            sellPrice: product.sellPrice,
+            wholesalePrice: product.wholesalePrice,
+            note: 'ثبت اولیه قیمت خرید هنگام تعریف کالا',
+          },
+        ];
+      }
       updatedProducts = [product, ...products];
       // If product has initial stock > 0, log an initial stock intake
       if (product.stock > 0) {
@@ -1808,6 +1858,7 @@ export default function App() {
           <CustomersManager
             customers={customers}
             invoices={invoices}
+            purchaseInvoices={purchaseInvoices}
             transactions={customerTransactions}
             settings={settings}
             currentUser={currentUser || undefined}
@@ -1822,6 +1873,11 @@ export default function App() {
             onEditInvoice={handleStartEditInvoice}
             onDeleteInvoice={handleDeleteInvoice}
             onUpdatePaymentStatus={handleUpdatePaymentStatus}
+            onUpdatePurchaseInvoice={(updatedPi) => {
+              StorageService.savePurchaseInvoice(updatedPi);
+              setPurchaseInvoices(StorageService.getPurchaseInvoices());
+              showToast(`وضعیت پرداخت فاکتور خرید «${updatedPi.invoiceNumber}» بروزرسانی شد.`);
+            }}
           />
         )}
 

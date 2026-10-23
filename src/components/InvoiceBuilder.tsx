@@ -21,6 +21,7 @@ import {
   ScanLine, 
   Camera, 
   User, 
+  Users,
   UserPlus, 
   Contact, 
   FileText, 
@@ -287,6 +288,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     minStockAlert: number;
     buyPrice: number;
     sellPrice: number;
+    wholesalePrice: number;
     description: string;
   }>({
     name: '',
@@ -298,6 +300,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     minStockAlert: 5,
     buyPrice: 0,
     sellPrice: 0,
+    wholesalePrice: 0,
     description: '',
   });
 
@@ -411,6 +414,55 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   const [newCustPhone, setNewCustPhone] = useState('');
   const [newCustAddress, setNewCustAddress] = useState('');
   const [newCustNationalId, setNewCustNationalId] = useState('');
+  const [newCustType, setNewCustType] = useState<'regular' | 'colleague'>('regular');
+
+  // سطح قیمت‌گذاری فعال فاکتور (عادی یا همکار/عمده) - متناسب با نوع مشتری انتخاب‌شده
+  const [pricingTier, setPricingTier] = useState<'regular' | 'colleague'>(() => {
+    const initialCustId = selectedCustomerId || editingInvoice?.customerId || savedDraft?.selectedCustomerId || '';
+    const matchedCust = customers.find((c) => c.id === initialCustId);
+    return matchedCust?.customerType === 'colleague' ? 'colleague' : 'regular';
+  });
+
+  // محاسبه قیمت موثر هر کالا بر اساس سطح قیمت‌گذاری (عادی یا همکار/عمده)
+  const getEffectiveProductPrice = (
+    prod: Product,
+    variant?: ProductVariant,
+    tier: 'regular' | 'colleague' = pricingTier
+  ): number => {
+    if (tier === 'colleague') {
+      if (variant?.wholesalePrice && variant.wholesalePrice > 0) return variant.wholesalePrice;
+      if (prod.wholesalePrice && prod.wholesalePrice > 0) return prod.wholesalePrice;
+    }
+    return variant?.sellPrice && variant.sellPrice > 0 ? variant.sellPrice : prod.sellPrice;
+  };
+
+  // تغییر سطح قیمت‌گذاری فاکتور و بروزرسانی خودکار قیمت واحد کالاهای موجود در فاکتور
+  const handleSwitchPricingTier = (newTier: 'regular' | 'colleague', showFeedback = true) => {
+    setPricingTier(newTier);
+    setItems((prev) =>
+      prev.map((it) => {
+        if (!it.productId || it.isService) return it;
+        const prod = products.find((p) => p.id === it.productId);
+        if (!prod) return it;
+        const variant = it.variantId ? prod.variants?.find((v) => v.id === it.variantId) : undefined;
+        const newUnitPrice = getEffectiveProductPrice(prod, variant, newTier);
+        return {
+          ...it,
+          unitPrice: newUnitPrice,
+          price: newUnitPrice,
+          total: Math.max(0, it.quantity * newUnitPrice - (it.discount || 0)),
+        };
+      })
+    );
+    if (showFeedback) {
+      setTaxToast(
+        newTier === 'colleague'
+          ? 'سطح قیمت‌گذاری «همکار / عمده» فعال شد و قیمت اقلام فاکتور بر اساس نرخ همکار بروزرسانی گردید.'
+          : 'سطح قیمت‌گذاری «مشتری عادی» فعال شد و قیمت اقلام فاکتور به نرخ فروش عادی تغییر یافت.'
+      );
+      setTimeout(() => setTaxToast(''), 4000);
+    }
+  };
 
   // Calculations
   const subtotal = useMemo(() => {
@@ -620,8 +672,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
         return next;
       });
     } else {
-      // Add new row
-      const unitPrice = variant?.sellPrice && variant.sellPrice > 0 ? variant.sellPrice : prod.sellPrice;
+      // Add new row using active pricing tier (regular vs colleague/wholesale)
+      const unitPrice = getEffectiveProductPrice(prod, variant, pricingTier);
       const newItem: InvoiceItem = {
         id: `row-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
         productId: prod.id,
@@ -680,6 +732,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       minStockAlert: prod.minStockAlert ?? 5,
       buyPrice: prod.buyPrice ?? 0,
       sellPrice: prod.sellPrice ?? 0,
+      wholesalePrice: prod.wholesalePrice ?? 0,
       description: prod.description || '',
     });
   };
@@ -704,6 +757,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       minStockAlert: Math.max(0, Number(editProductForm.minStockAlert) || 0),
       buyPrice: Math.max(0, Number(editProductForm.buyPrice) || 0),
       sellPrice: Math.max(0, Number(editProductForm.sellPrice) || 0),
+      wholesalePrice: Number(editProductForm.wholesalePrice) > 0 ? Math.max(0, Number(editProductForm.wholesalePrice)) : undefined,
       description: editProductForm.description.trim() || undefined,
       updatedAt: getCurrentJalaliDate(),
     };
@@ -718,13 +772,14 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     setItems((prev) =>
       prev.map((it) => {
         if (it.productId === updatedProduct.id) {
+          const effectivePrice = getEffectiveProductPrice(updatedProduct, undefined, pricingTier);
           return {
             ...it,
             productCode: updatedProduct.code,
             barcode: updatedProduct.barcode,
             productName: updatedProduct.name,
-            unitPrice: updatedProduct.sellPrice,
-            total: Math.max(0, it.quantity * updatedProduct.sellPrice - (it.discount || 0)),
+            unitPrice: effectivePrice,
+            total: Math.max(0, it.quantity * effectivePrice - (it.discount || 0)),
           };
         }
         return it;
@@ -807,7 +862,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
     setItems((prev) => prev.filter((it) => it.id !== itemId));
   };
 
-  // Select customer
+  // Select customer & auto-apply customer pricing tier (عادی vs همکار/عمده)
   const handleSelectCustomer = (cust: Customer | null) => {
     if (!cust) {
       setSelectedCustomerId('');
@@ -815,12 +870,22 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       setCustomerPhone('');
       setCustomerAddress('');
       setCustomerNationalId('');
+      if (pricingTier !== 'regular') {
+        handleSwitchPricingTier('regular', true);
+      }
     } else {
       setSelectedCustomerId(cust.id);
       setCustomerName(cust.name);
       setCustomerPhone(cust.phone || '');
       setCustomerAddress(cust.address || '');
       setCustomerNationalId(cust.nationalId || '');
+      const targetTier: 'regular' | 'colleague' = cust.customerType === 'colleague' ? 'colleague' : 'regular';
+      if (targetTier !== pricingTier) {
+        handleSwitchPricingTier(targetTier, true);
+      } else if (targetTier === 'colleague') {
+        setTaxToast(`مشتری همکار «${cust.name}» انتخاب شد؛ قیمت‌های فروش همکار/عمده به صورت خودکار اعمال می‌گردد.`);
+        setTimeout(() => setTaxToast(''), 3500);
+      }
     }
     setIsCustomerModalOpen(false);
   };
@@ -836,12 +901,14 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       phone: newCustPhone.trim(),
       address: newCustAddress.trim(),
       nationalId: newCustNationalId.trim(),
+      customerType: newCustType,
     });
     handleSelectCustomer(created);
     setNewCustName('');
     setNewCustPhone('');
     setNewCustAddress('');
     setNewCustNationalId('');
+    setNewCustType('regular');
     setIsNewCustomerFormOpen(false);
   };
 
@@ -1550,8 +1617,8 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
           </div>
         )}
 
-        {/* ================= 2. SUB-BAR: CUSTOMER SELECTOR ================= */}
-        <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-slate-100 bg-slate-50/70 shrink-0">
+        {/* ================= 2. SUB-BAR: CUSTOMER SELECTOR & PRICING TIER ================= */}
+        <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 border-b border-slate-100 bg-slate-50/70 shrink-0">
           {/* Customer Selection Target */}
           <div
             id="btn-customer-selector"
@@ -1577,14 +1644,39 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
             </div>
           </div>
 
-          {/* Quick Change Customer Button */}
-          <button
-            type="button"
-            onClick={() => setIsCustomerModalOpen(true)}
-            className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-[11px] font-bold transition-colors cursor-pointer shrink-0"
-          >
-            تغییر
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Quick Pricing Tier Toggle (Icon-only: عادی / همکار) */}
+            <button
+              type="button"
+              onClick={() => handleSwitchPricingTier(pricingTier === 'colleague' ? 'regular' : 'colleague')}
+              className={`w-8 h-8 rounded-xl border transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+                pricingTier === 'colleague'
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+              }`}
+              title={
+                pricingTier === 'colleague'
+                  ? 'نرخ همکار / عمده فعال است (کلیک برای تغییر به نرخ عادی)'
+                  : 'نرخ فروش عادی فعال است (کلیک برای تغییر به نرخ همکار/عمده)'
+              }
+              aria-label="تغییر سطح قیمت‌گذاری فاکتور"
+            >
+              {pricingTier === 'colleague' ? (
+                <Users className="w-4 h-4 stroke-[2.2]" />
+              ) : (
+                <User className="w-4 h-4 stroke-[2.2]" />
+              )}
+            </button>
+
+            {/* Quick Change Customer Button */}
+            <button
+              type="button"
+              onClick={() => setIsCustomerModalOpen(true)}
+              className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-[11px] font-bold transition-colors cursor-pointer shrink-0"
+            >
+              تغییر
+            </button>
+          </div>
         </div>
 
         {/* ================= 2.5. MOBILE FAST PRODUCT SEARCH & SCAN BAR ================= */}
@@ -2206,7 +2298,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               </div>
             )}
 
-            {/* 1. Customer Selection Card */}
+            {/* 1. Customer Selection Card & Automatic Pricing Tier Switcher */}
             <div className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3.5">
               <div className="flex items-center gap-3.5 min-w-0">
                 <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200/60 flex items-center justify-center shrink-0 shadow-2xs">
@@ -2218,6 +2310,11 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     <span className="text-sm font-black text-slate-900 truncate">
                       {customerName || 'مشتری متفرقه / گذری (نقدی)'}
                     </span>
+                    {pricingTier === 'colleague' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 text-[11px] font-black border border-indigo-200">
+                        همکار / عمده
+                      </span>
+                    )}
                     {customerPhone && (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-mono font-bold border border-slate-200/80 shadow-2xs" dir="ltr">
                         {customerPhone}
@@ -2227,7 +2324,37 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+              <div className="flex items-center gap-2 shrink-0 self-end md:self-auto flex-wrap">
+                {/* Pricing Tier Segmented Switcher (Icon-Only for Decluttered UI) */}
+                <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 gap-0.5 h-[33.6px]">
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchPricingTier('regular')}
+                    title="نرخ فروش عادی (مصرف‌کننده)"
+                    aria-label="نرخ فروش عادی"
+                    className={`w-[30px] h-[26px] rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                      pricingTier === 'regular'
+                        ? 'bg-white text-emerald-700 shadow-2xs'
+                        : 'text-slate-400 hover:text-slate-700'
+                    }`}
+                  >
+                    <User className="w-4 h-4 stroke-[2.2]" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchPricingTier('colleague')}
+                    title="نرخ فروش همکار / عمده"
+                    aria-label="نرخ فروش همکار / عمده"
+                    className={`w-[30px] h-[26px] pr-0 mr-[2px] rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                      pricingTier === 'colleague'
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-400 hover:text-indigo-700'
+                    }`}
+                  >
+                    <Users className="w-4 h-4 stroke-[2.2]" />
+                  </button>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -3518,6 +3645,24 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   </div>
                 </div>
 
+                {/* Wholesale Price */}
+                <div className="p-3 rounded-2xl bg-indigo-50/60 border border-indigo-200/80 space-y-1">
+                  <span className="text-[11px] font-bold text-indigo-700 flex items-center gap-1">
+                    <Tag className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                    قیمت فروش همکار/عمده:
+                  </span>
+                  <div className="text-xs sm:text-base font-black text-indigo-900 font-mono">
+                    {viewingCatalogProduct.wholesalePrice ? (
+                      <>
+                        {formatPrice(viewingCatalogProduct.wholesalePrice)}{' '}
+                        <span className="text-[11px] font-medium text-indigo-600">{settings.currency}</span>
+                      </>
+                    ) : (
+                      <span className="text-xs font-normal text-slate-400">تعریف نشده</span>
+                    )}
+                  </div>
+                </div>
+
                 {/* Buy Price */}
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
                   <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
@@ -3605,9 +3750,38 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                             موجودی: <strong className="text-slate-800 font-mono">{toPersianDigits(v.stock)}</strong>
                           </span>
                           <span className="text-[11px] font-black text-emerald-700 font-mono">
-                            {formatPrice(v.sellPrice || viewingCatalogProduct.sellPrice)} {settings.currency}
+                            {formatPrice(getEffectiveProductPrice(viewingCatalogProduct, v, pricingTier))} {settings.currency}
                           </span>
                         </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Purchase Price History inside Catalog Details Modal */}
+              {viewingCatalogProduct.priceHistory && viewingCatalogProduct.priceHistory.length > 0 && (
+                <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                    <span className="flex items-center gap-1.5">
+                      <RefreshCw className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      تاریخچه تغییرات قیمت خرید ({toPersianDigits(viewingCatalogProduct.priceHistory.length)} مورد):
+                    </span>
+                  </div>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                    {[...viewingCatalogProduct.priceHistory].reverse().map((ph, idx) => (
+                      <div key={ph.id || idx} className="bg-white p-2 rounded-xl border border-slate-200/80 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[11px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                            {toPersianDigits(ph.date)}
+                          </span>
+                          <span className="text-[11px] text-slate-600 truncate">
+                            {ph.supplierName ? `تامین: ${ph.supplierName}` : ph.note || 'ثبت قیمت خرید'}
+                          </span>
+                        </div>
+                        <span className="font-mono font-black text-slate-900 text-xs">
+                          {formatPrice(ph.buyPrice)} {settings.currency}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -3789,16 +3963,28 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   <span className="text-[11px] font-black text-slate-700 block">
                     قیمت‌گذاری مالی ({settings.currency}):
                   </span>
-                  <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
                     <div>
                       <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                        قیمت فروش ({settings.currency}) *
+                        قیمت فروش عادی ({settings.currency}) *
                       </label>
                       <NumericInput
                         min={0}
                         value={editProductForm.sellPrice}
                         onChange={(num) => setEditProductForm({ ...editProductForm, sellPrice: num })}
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-indigo-700 mb-1">
+                        قیمت فروش همکار/عمده ({settings.currency})
+                      </label>
+                      <NumericInput
+                        min={0}
+                        value={editProductForm.wholesalePrice}
+                        onChange={(num) => setEditProductForm({ ...editProductForm, wholesalePrice: num })}
+                        placeholder="نرخ ویژه همکار..."
+                        className="w-full bg-indigo-50/40 border border-indigo-200 rounded-xl px-3 py-2 text-xs font-bold text-indigo-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                       />
                     </div>
                     <div>
@@ -3918,7 +4104,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   (it) => it.productId === variantPickerProduct.id && it.variantId === v.id
                 );
                 const isOutOfStock = v.stock <= 0;
-                const price = (v.sellPrice && v.sellPrice > 0) ? v.sellPrice : variantPickerProduct.sellPrice;
+                const price = getEffectiveProductPrice(variantPickerProduct, v, pricingTier);
 
                 return (
                   <div
@@ -4215,9 +4401,16 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                               {cust.name.slice(0, 1)}
                             </div>
                             <div>
-                              <span className="font-extrabold text-slate-900 text-xs sm:text-sm block">
-                                {cust.name}
-                              </span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-extrabold text-slate-900 text-xs sm:text-sm">
+                                  {cust.name}
+                                </span>
+                                {cust.customerType === 'colleague' && (
+                                  <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
+                                    همکار / عمده
+                                  </span>
+                                )}
+                              </div>
                               {cust.phone && (
                                 <span className="text-[11px] text-slate-400" dir="ltr">
                                   {cust.phone}
@@ -4258,6 +4451,36 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     autoFocus
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    نوع مشتری و سطح قیمت‌گذاری پیش‌فرض:
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewCustType('regular')}
+                      className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        newCustType === 'regular'
+                          ? 'bg-emerald-50 border-emerald-500 text-emerald-900 font-black'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      مشتری عادی (نرخ پایه)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewCustType('colleague')}
+                      className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        newCustType === 'colleague'
+                          ? 'bg-indigo-50 border-indigo-500 text-indigo-900 font-black'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      همکار / عمده (نرخ همکار)
+                    </button>
+                  </div>
                 </div>
 
                 <div>
