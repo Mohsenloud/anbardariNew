@@ -10,7 +10,16 @@ import {
   StoreSettings, 
   AppUser 
 } from '../types';
-import { toPersianDigits, formatPrice, getCurrentJalaliDate } from '../utils/jalali';
+import { 
+  toPersianDigits, 
+  toEnglishDigits,
+  formatPrice, 
+  getCurrentJalaliDate,
+  addDaysToJalali,
+  JALALI_MONTH_NAMES,
+  getJalaliMonthDays,
+  getJalaliMonthStartWeekday
+} from '../utils/jalali';
 import { NumericInput } from './NumericInput';
 import { JalaliDatePicker } from './JalaliDatePicker';
 import { StorageService } from '../utils/storage';
@@ -31,6 +40,9 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
+  ChevronLeft,
+  Calendar,
   UserCheck,
   Send
 } from 'lucide-react';
@@ -166,6 +178,49 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
   const [createdNewProducts, setCreatedNewProducts] = useState<Product[]>([]);
   const allAvailableProducts = useMemo(() => [...products, ...createdNewProducts], [products, createdNewProducts]);
 
+  // Live product search state (toolbar quick-add + per-row combobox)
+  const [quickItemSearch, setQuickItemSearch] = useState('');
+  const [isQuickItemDropdownOpen, setIsQuickItemDropdownOpen] = useState(false);
+  const [activeRowDropdownIndex, setActiveRowDropdownIndex] = useState<number | null>(null);
+  const [rowSearchQuery, setRowSearchQuery] = useState('');
+  const quickItemSearchRef = useRef<HTMLDivElement>(null);
+  const rowDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutsideProductClick = (e: MouseEvent) => {
+      if (quickItemSearchRef.current && !quickItemSearchRef.current.contains(e.target as Node)) {
+        setIsQuickItemDropdownOpen(false);
+      }
+      if (rowDropdownRef.current && !rowDropdownRef.current.contains(e.target as Node)) {
+        setActiveRowDropdownIndex(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideProductClick);
+    return () => document.removeEventListener('mousedown', handleOutsideProductClick);
+  }, []);
+
+  const filteredQuickProducts = useMemo(() => {
+    const q = toEnglishDigits(quickItemSearch.trim()).toLowerCase();
+    if (!q) return allAvailableProducts.slice(0, 30);
+    return allAvailableProducts.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        toEnglishDigits(p.code || '').toLowerCase().includes(q) ||
+        (p.category && p.category.toLowerCase().includes(q))
+    );
+  }, [allAvailableProducts, quickItemSearch]);
+
+  const filteredRowProducts = useMemo(() => {
+    const q = toEnglishDigits(rowSearchQuery.trim()).toLowerCase();
+    if (!q) return allAvailableProducts;
+    return allAvailableProducts.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        toEnglishDigits(p.code || '').toLowerCase().includes(q) ||
+        (p.category && p.category.toLowerCase().includes(q))
+    );
+  }, [allAvailableProducts, rowSearchQuery]);
+
   // Items in purchase invoice
   const [items, setItems] = useState<PurchaseInvoiceItem[]>(() => {
     if (editingInvoice && editingInvoice.items && editingInvoice.items.length > 0) {
@@ -205,6 +260,30 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
   const [paidAmount, setPaidAmount] = useState<number>(() => editingInvoice?.paidAmount || 0);
   const [chequeNumber, setChequeNumber] = useState(() => editingInvoice?.chequeNumber || '');
   const [chequeDueDate, setChequeDueDate] = useState(() => editingInvoice?.chequeDueDate || '');
+  const [isChequeDateModalOpen, setIsChequeDateModalOpen] = useState(false);
+
+  const parsedInitialChequeDate = useMemo(() => {
+    const baseDate = toEnglishDigits(chequeDueDate || getCurrentJalaliDate());
+    const parts = baseDate.split('/').map(Number);
+    return {
+      year: parts[0] || 1404,
+      month: parts[1] || 1,
+    };
+  }, [chequeDueDate]);
+
+  const [chequeCalYear, setChequeCalYear] = useState(parsedInitialChequeDate.year);
+  const [chequeCalMonth, setChequeCalMonth] = useState(parsedInitialChequeDate.month);
+
+  const openChequeDateModal = () => {
+    const baseDate = toEnglishDigits(chequeDueDate || date || getCurrentJalaliDate());
+    const parts = baseDate.split('/').map(Number);
+    if (parts[0] && parts[1]) {
+      setChequeCalYear(parts[0]);
+      setChequeCalMonth(parts[1]);
+    }
+    setIsChequeDateModalOpen(true);
+  };
+
   const [chequeName] = useState(() => editingInvoice?.chequeName || '');
   const [transferDescription] = useState(() => editingInvoice?.transferDescription || '');
   const [notes, setNotes] = useState(() => editingInvoice?.notes || '');
@@ -286,6 +365,62 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
 
     next[index] = item;
     setItems(next);
+    setActiveRowDropdownIndex(null);
+    setRowSearchQuery('');
+    setValidationError(null);
+  };
+
+  const handleQuickAddProductFromSearch = (prod: Product) => {
+    const buyPrice = prod.purchasePrice || prod.buyPrice || 0;
+    setItems((prev) => {
+      // Check if product already exists in rows
+      const existingIdx = prev.findIndex((it) => it.productId === prod.id);
+      if (existingIdx !== -1) {
+        const updated = [...prev];
+        const current = updated[existingIdx];
+        const newQty = (current.quantity || 0) + 1;
+        updated[existingIdx] = {
+          ...current,
+          quantity: newQty,
+          total: Math.max(0, newQty * current.buyPrice - (current.discount || 0)),
+        };
+        return updated;
+      }
+
+      // If there's a single row or last row without a selected product, replace it
+      if (prev.length === 1 && !prev[0].productId) {
+        return [
+          {
+            ...prev[0],
+            productId: prod.id,
+            productName: prod.name,
+            productCode: prod.code,
+            unit: prod.unit || 'عدد',
+            quantity: 1,
+            buyPrice,
+            discount: 0,
+            total: buyPrice,
+          },
+        ];
+      }
+
+      return [
+        ...prev,
+        {
+          id: `item-${Date.now()}-${prev.length + 1}`,
+          productId: prod.id,
+          productName: prod.name,
+          productCode: prod.code,
+          unit: prod.unit || 'عدد',
+          quantity: 1,
+          buyPrice,
+          discount: 0,
+          total: buyPrice,
+        },
+      ];
+    });
+    setQuickItemSearch('');
+    setIsQuickItemDropdownOpen(false);
     setValidationError(null);
   };
 
@@ -738,46 +873,144 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
             )}
           </div>
 
-          {/* SECTION 2: ITEMS TABLE (STREAMLINED & COMPACT) */}
-          <div className="bg-white rounded-xl border border-slate-200/90 overflow-hidden">
-            {/* Items Toolbar */}
-            <div className="bg-slate-50/90 px-3 py-2 border-b border-slate-200 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5">
-                <PackagePlus className="w-4 h-4 text-emerald-600" />
-                <span className="font-bold text-slate-800 text-xs">اقلام فاکتور خرید</span>
-                <span className="text-[10px] font-mono font-bold bg-white text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
-                  {toPersianDigits(items.length)} ردیف
-                </span>
+          {/* SECTION 2: ITEMS TABLE (WITH LIVE PRODUCT SEARCH) */}
+          <div className="bg-white rounded-xl border border-slate-200/90">
+            {/* Items Toolbar + Live Search Bar */}
+            <div className="bg-slate-50/90 p-2.5 sm:px-3 border-b border-slate-200 rounded-t-xl space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <PackagePlus className="w-4 h-4 text-emerald-600" />
+                  <span className="font-bold text-slate-800 text-xs">اقلام فاکتور خرید</span>
+                  <span className="text-[10px] font-mono font-bold bg-white text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                    {toPersianDigits(items.length)} ردیف
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsQuickProductModalOpen(true)}
+                    className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-bold transition-colors cursor-pointer"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>تعریف کالای جدید</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleAddItem}
+                    className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 font-bold transition-all cursor-pointer active:scale-95"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>افزودن ردیف</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setIsQuickProductModalOpen(true)}
-                  className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-bold transition-colors cursor-pointer"
-                >
-                  <PlusCircle className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>تعریف کالای جدید</span>
-                </button>
+              {/* Live Product Search & Instant Add Bar */}
+              <div className="relative" ref={quickItemSearchRef}>
+                <div className="relative flex items-center">
+                  <Search className="w-4 h-4 text-emerald-600 absolute right-3 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={quickItemSearch}
+                    onFocus={() => setIsQuickItemDropdownOpen(true)}
+                    onChange={(e) => {
+                      setQuickItemSearch(e.target.value);
+                      setIsQuickItemDropdownOpen(true);
+                    }}
+                    placeholder="جستجوی زنده کالا (نام، کد یا دسته‌بندی) برای افزودن سریع به فاکتور..."
+                    className="w-full h-9 pr-9 pl-8 rounded-xl border border-emerald-300 bg-white text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-2xs"
+                  />
+                  {quickItemSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuickItemSearch('');
+                        setIsQuickItemDropdownOpen(false);
+                      }}
+                      className="absolute left-2.5 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
 
-                <button
-                  type="button"
-                  onClick={handleAddItem}
-                  className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 font-bold transition-all cursor-pointer active:scale-95"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>افزودن ردیف</span>
-                </button>
+                {isQuickItemDropdownOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 max-h-60 overflow-y-auto z-50 p-1.5 text-xs animate-in fade-in duration-100">
+                    {quickItemSearch.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewProductName(quickItemSearch.trim());
+                          setIsQuickItemDropdownOpen(false);
+                          setQuickItemSearch('');
+                          setIsQuickProductModalOpen(true);
+                        }}
+                        className="w-full p-2 mb-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold flex items-center justify-between border border-emerald-200 cursor-pointer transition-colors"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <PlusCircle className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>تعریف کالای جدید با نام «{quickItemSearch.trim()}»</span>
+                        </span>
+                        <span className="text-[10px] bg-emerald-200/80 px-1.5 py-0.5 rounded">ایجاد سریع</span>
+                      </button>
+                    )}
+
+                    {filteredQuickProducts.length === 0 ? (
+                      <div className="py-4 text-center text-slate-400 text-[11px]">
+                        کالایی با این مشخصات یافت نشد. می‌توانید آن را به عنوان کالای جدید تعریف کنید.
+                      </div>
+                    ) : (
+                      <div className="space-y-0.5">
+                        {filteredQuickProducts.map((p) => {
+                          const inInvoiceItem = items.find((it) => it.productId === p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => handleQuickAddProductFromSearch(p)}
+                              className="w-full px-2.5 py-2 rounded-lg hover:bg-emerald-50/80 flex items-center justify-between gap-2 text-right transition-colors cursor-pointer group border border-transparent hover:border-emerald-200/70"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
+                                  کد {toPersianDigits(p.code)}
+                                </span>
+                                <span className="font-bold text-slate-900 truncate group-hover:text-emerald-900">
+                                  {p.name}
+                                </span>
+                                {inInvoiceItem && (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 shrink-0">
+                                    در فاکتور ({toPersianDigits(inInvoiceItem.quantity)} {p.unit})
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-3 shrink-0 text-[11px]">
+                                <span className="text-slate-500">
+                                  موجودی: <strong className="font-mono text-slate-800">{toPersianDigits(p.stock)}</strong> {p.unit}
+                                </span>
+                                <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/60">
+                                  خرید: {toPersianDigits(formatPrice(p.purchasePrice || p.buyPrice || 0))} ت
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Desktop Table View */}
-            <div className="hidden md:block overflow-x-auto">
+            <div className="hidden md:block">
               <table className="w-full text-right text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-100/70 text-slate-600 border-b border-slate-200 font-bold text-[11px]">
                     <th className="py-2 px-2 text-center w-9">#</th>
-                    <th className="py-2 px-2 min-w-[230px]">انتخاب کالا از انبار</th>
+                    <th className="py-2 px-2 min-w-[250px]">انتخاب / جستجوی زنده کالا</th>
                     <th className="py-2 px-2 text-center w-24">تعداد خرید</th>
                     <th className="py-2 px-2 text-center w-14">واحد</th>
                     <th className="py-2 px-2 text-center w-36">قیمت واحد (تومان)</th>
@@ -786,130 +1019,246 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {items.map((item, index) => (
-                    <tr key={item.id} className={index % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'}>
-                      <td className="p-1.5 text-center font-mono text-slate-400 font-bold text-[11px]">
-                        {toPersianDigits(index + 1)}
-                      </td>
-                      <td className="p-1.5">
-                        <select
-                          value={item.productId}
-                          onChange={(e) => handleProductSelect(index, e.target.value)}
-                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none cursor-pointer"
-                        >
-                          <option value="" disabled>-- انتخاب کالا --</option>
-                          {allAvailableProducts.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} (کد: {toPersianDigits(p.code)}) — موجودی: {toPersianDigits(p.stock)} {p.unit}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="p-1.5">
-                        <NumericInput
-                          min={1}
-                          value={item.quantity}
-                          onChange={(num) => handleItemChange(index, 'quantity', num || 1)}
-                          textAlign="center"
-                          className="w-full px-2 py-1 text-center font-mono font-black text-slate-900 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
-                        />
-                      </td>
-                      <td className="p-1.5 text-center">
-                        <span className="text-slate-600 font-medium bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
-                          {item.unit || 'عدد'}
-                        </span>
-                      </td>
-                      <td className="p-1.5">
-                        <NumericInput
-                          min={0}
-                          value={item.buyPrice}
-                          onChange={(num) => handleItemChange(index, 'buyPrice', num)}
-                          textAlign="center"
-                          className="w-full px-2 py-1 text-center font-mono font-bold text-slate-800 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
-                        />
-                      </td>
-                      <td className="p-1.5 text-center font-mono font-black text-emerald-900 text-xs">
-                        {toPersianDigits(formatPrice(item.total, ''))}
-                      </td>
-                      <td className="p-1.5 text-center">
-                        <button
-                          type="button"
-                          disabled={items.length <= 1}
-                          onClick={() => handleRemoveItem(index)}
-                          className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-20 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                          title="حذف ردیف"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {items.map((item, index) => {
+                    const selectedProd = allAvailableProducts.find((p) => p.id === item.productId);
+                    const isRowOpen = activeRowDropdownIndex === index;
+
+                    return (
+                      <tr key={item.id} className={index % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'}>
+                        <td className="p-1.5 text-center font-mono text-slate-400 font-bold text-[11px]">
+                          {toPersianDigits(index + 1)}
+                        </td>
+                        <td className="p-1.5 relative">
+                          <div className="relative" ref={isRowOpen ? rowDropdownRef : undefined}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isRowOpen) {
+                                  setActiveRowDropdownIndex(null);
+                                } else {
+                                  setActiveRowDropdownIndex(index);
+                                  setRowSearchQuery('');
+                                }
+                              }}
+                              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 hover:border-emerald-500 bg-white font-bold text-slate-800 text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer text-right"
+                            >
+                              <div className="flex items-center gap-1.5 min-w-0 truncate">
+                                <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                {selectedProd ? (
+                                  <span className="truncate">
+                                    {selectedProd.name}{' '}
+                                    <span className="text-[10px] font-mono text-slate-500 font-normal">
+                                      (کد: {toPersianDigits(selectedProd.code)} | موجودی: {toPersianDigits(selectedProd.stock)})
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 font-normal">-- جستجو و انتخاب کالا --</span>
+                                )}
+                              </div>
+                              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            </button>
+
+                            {isRowOpen && (
+                              <div className="absolute top-full right-0 left-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 p-1.5 min-w-[300px] animate-in fade-in duration-100">
+                                <div className="relative mb-1.5">
+                                  <Search className="w-3.5 h-3.5 text-emerald-600 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                  <input
+                                    type="text"
+                                    autoFocus
+                                    value={rowSearchQuery}
+                                    onChange={(e) => setRowSearchQuery(e.target.value)}
+                                    placeholder="تایپ نام یا کد کالا..."
+                                    className="w-full h-8 pr-8 pl-7 rounded-lg border border-emerald-400 bg-slate-50 focus:bg-white text-xs text-slate-800 focus:outline-none"
+                                  />
+                                  {rowSearchQuery && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setRowSearchQuery('')}
+                                      className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+
+                                <div className="max-h-48 overflow-y-auto space-y-0.5">
+                                  {filteredRowProducts.length === 0 ? (
+                                    <div className="py-3 text-center text-slate-400 text-[11px]">
+                                      کالایی یافت نشد
+                                    </div>
+                                  ) : (
+                                    filteredRowProducts.map((p) => (
+                                      <button
+                                        key={p.id}
+                                        type="button"
+                                        onClick={() => handleProductSelect(index, p.id)}
+                                        className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2 text-right text-xs transition-colors cursor-pointer ${
+                                          p.id === item.productId
+                                            ? 'bg-emerald-50 text-emerald-900 font-black border border-emerald-200'
+                                            : 'hover:bg-slate-100 text-slate-800 font-bold'
+                                        }`}
+                                      >
+                                        <span className="truncate">
+                                          {p.name}{' '}
+                                          <span className="text-[10px] font-mono text-slate-400 font-normal">
+                                            (کد {toPersianDigits(p.code)})
+                                          </span>
+                                        </span>
+                                        <span className="text-[10px] font-mono text-slate-500 shrink-0">
+                                          موجودی: {toPersianDigits(p.stock)} {p.unit}
+                                        </span>
+                                      </button>
+                                    ))
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-1.5">
+                          <NumericInput
+                            min={1}
+                            value={item.quantity}
+                            onChange={(num) => handleItemChange(index, 'quantity', num || 1)}
+                            textAlign="center"
+                            className="w-full px-2 py-1 text-center font-mono font-black text-slate-900 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center">
+                          <span className="text-slate-600 font-medium bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
+                            {item.unit || 'عدد'}
+                          </span>
+                        </td>
+                        <td className="p-1.5">
+                          <NumericInput
+                            min={0}
+                            value={item.buyPrice}
+                            onChange={(num) => handleItemChange(index, 'buyPrice', num)}
+                            textAlign="center"
+                            className="w-full px-2 py-1 text-center font-mono font-bold text-slate-800 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                          />
+                        </td>
+                        <td className="p-1.5 text-center font-mono font-black text-emerald-900 text-xs">
+                          {toPersianDigits(formatPrice(item.total, ''))}
+                        </td>
+                        <td className="p-1.5 text-center">
+                          <button
+                            type="button"
+                            disabled={items.length <= 1}
+                            onClick={() => handleRemoveItem(index)}
+                            className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-20 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                            title="حذف ردیف"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
 
             {/* Mobile Cards View */}
             <div className="md:hidden p-2.5 space-y-2">
-              {items.map((item, index) => (
-                <div key={item.id} className="p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/90 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-md bg-emerald-600 text-white font-mono font-bold text-[11px] flex items-center justify-center shrink-0">
-                      {toPersianDigits(index + 1)}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <select
-                        value={item.productId}
-                        onChange={(e) => handleProductSelect(index, e.target.value)}
-                        className="w-full px-2 py-1 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs"
-                      >
-                        <option value="" disabled>-- انتخاب کالا --</option>
-                        {allAvailableProducts.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} (موجودی: {toPersianDigits(p.stock)})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={items.length <= 1}
-                      onClick={() => handleRemoveItem(index)}
-                      className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-20"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+              {items.map((item, index) => {
+                const selectedProd = allAvailableProducts.find((p) => p.id === item.productId);
+                const isRowOpen = activeRowDropdownIndex === index;
 
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div>
-                      <span className="text-[10px] text-slate-500 block mb-0.5">تعداد ({item.unit || 'عدد'}):</span>
-                      <NumericInput
-                        min={1}
-                        value={item.quantity}
-                        onChange={(num) => handleItemChange(index, 'quantity', num || 1)}
-                        textAlign="center"
-                        className="w-full p-1 text-center font-mono font-black text-xs rounded-lg border border-slate-300 bg-white"
-                      />
+                return (
+                  <div key={item.id} className="p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/90 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-md bg-emerald-600 text-white font-mono font-bold text-[11px] flex items-center justify-center shrink-0">
+                        {toPersianDigits(index + 1)}
+                      </span>
+                      <div className="flex-1 min-w-0 relative" ref={isRowOpen ? rowDropdownRef : undefined}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isRowOpen) {
+                              setActiveRowDropdownIndex(null);
+                            } else {
+                              setActiveRowDropdownIndex(index);
+                              setRowSearchQuery('');
+                            }
+                          }}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs flex items-center justify-between gap-1 text-right"
+                        >
+                          <span className="truncate">
+                            {selectedProd ? `${selectedProd.name} (موجودی: ${toPersianDigits(selectedProd.stock)})` : '-- جستجو و انتخاب کالا --'}
+                          </span>
+                          <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        </button>
+
+                        {isRowOpen && (
+                          <div className="absolute top-full right-0 left-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 p-1.5">
+                            <input
+                              type="text"
+                              autoFocus
+                              value={rowSearchQuery}
+                              onChange={(e) => setRowSearchQuery(e.target.value)}
+                              placeholder="جستجوی نام یا کد کالا..."
+                              className="w-full h-8 px-2.5 mb-1.5 rounded-lg border border-emerald-400 bg-slate-50 text-xs"
+                            />
+                            <div className="max-h-44 overflow-y-auto space-y-0.5">
+                              {filteredRowProducts.map((p) => (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onClick={() => handleProductSelect(index, p.id)}
+                                  className="w-full px-2 py-1.5 rounded-lg hover:bg-slate-100 flex items-center justify-between text-right text-xs font-bold"
+                                >
+                                  <span className="truncate">{p.name}</span>
+                                  <span className="text-[10px] font-mono text-slate-500">
+                                    موجودی: {toPersianDigits(p.stock)}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={items.length <= 1}
+                        onClick={() => handleRemoveItem(index)}
+                        className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-20"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 block mb-0.5">قیمت خرید:</span>
-                      <NumericInput
-                        min={0}
-                        value={item.buyPrice}
-                        onChange={(num) => handleItemChange(index, 'buyPrice', num)}
-                        textAlign="center"
-                        className="w-full p-1 text-center font-mono font-bold text-xs rounded-lg border border-slate-300 bg-white"
-                      />
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 block mb-0.5">جمع ردیف:</span>
-                      <div className="p-1 text-center font-mono font-black text-emerald-900 bg-emerald-50 rounded-lg border border-emerald-200 text-xs">
-                        {toPersianDigits(formatPrice(item.total, ''))}
+
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div>
+                        <span className="text-[10px] text-slate-500 block mb-0.5">تعداد ({item.unit || 'عدد'}):</span>
+                        <NumericInput
+                          min={1}
+                          value={item.quantity}
+                          onChange={(num) => handleItemChange(index, 'quantity', num || 1)}
+                          textAlign="center"
+                          className="w-full p-1 text-center font-mono font-black text-xs rounded-lg border border-slate-300 bg-white"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block mb-0.5">قیمت خرید:</span>
+                        <NumericInput
+                          min={0}
+                          value={item.buyPrice}
+                          onChange={(num) => handleItemChange(index, 'buyPrice', num)}
+                          textAlign="center"
+                          className="w-full p-1 text-center font-mono font-bold text-xs rounded-lg border border-slate-300 bg-white"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 block mb-0.5">جمع ردیف:</span>
+                        <div className="p-1 text-center font-mono font-black text-emerald-900 bg-emerald-50 rounded-lg border border-emerald-200 text-xs">
+                          {toPersianDigits(formatPrice(item.total, ''))}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -1021,15 +1370,45 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                     placeholder="شماره صیاد / چک"
                     value={chequeNumber}
                     onChange={(e) => setChequeNumber(e.target.value)}
-                    className="p-1.5 rounded-lg border border-amber-300 bg-white font-mono text-xs text-left"
+                    className="h-8 px-2.5 rounded-lg border border-amber-300 bg-white font-mono text-xs text-left focus:outline-none focus:border-amber-500"
                   />
-                  <input
-                    type="text"
-                    placeholder="تاریخ سررسید چک"
-                    value={chequeDueDate}
-                    onChange={(e) => setChequeDueDate(e.target.value)}
-                    className="p-1.5 rounded-lg border border-amber-300 bg-white font-mono text-xs text-left"
-                  />
+                  <div className="relative flex items-center">
+                    <button
+                      type="button"
+                      onClick={openChequeDateModal}
+                      className="w-full h-8 px-2.5 rounded-lg border border-amber-300 bg-white hover:bg-amber-50/60 transition-colors flex items-center justify-between gap-1.5 text-xs cursor-pointer"
+                      title="انتخاب تاریخ سررسید چک"
+                    >
+                      <span className="flex items-center gap-1.5 text-amber-800 font-bold truncate">
+                        <Calendar className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        {chequeDueDate ? (
+                          <span className="font-mono font-black text-slate-900" dir="ltr">
+                            {toPersianDigits(chequeDueDate)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 font-medium text-[11px]">
+                            انتخاب تاریخ سررسید چک
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded shrink-0">
+                        تقویم
+                      </span>
+                    </button>
+                    {chequeDueDate && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setChequeDueDate('');
+                        }}
+                        className="mr-1 p-1 text-slate-400 hover:text-rose-600 rounded-md transition-colors cursor-pointer"
+                        title="پاک کردن تاریخ چک"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1230,6 +1609,153 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+        {/* Simple & Uncluttered Cheque Due Date Modal */}
+        {isChequeDateModalOpen && (
+          <div
+            className="fixed inset-0 z-70 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+            onClick={() => setIsChequeDateModalOpen(false)}
+          >
+            <div
+              className="bg-white w-full max-w-xs rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 bg-amber-50/80 border-b border-amber-200/70">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-amber-600" />
+                  <h3 className="font-black text-xs sm:text-sm text-slate-900">
+                    انتخاب تاریخ سررسید چک
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsChequeDateModalOpen(false)}
+                  className="p-1 text-slate-400 hover:text-slate-700 hover:bg-amber-100/60 rounded-lg transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-3.5 space-y-3">
+                {/* Quick Presets for Cheque */}
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[
+                    { label: 'امروز', days: 0 },
+                    { label: '۱۵ روزه', days: 15 },
+                    { label: '۱ ماهه', days: 30 },
+                    { label: '۴۵ روزه', days: 45 },
+                    { label: '۲ ماهه', days: 60 },
+                    { label: '۳ ماهه', days: 90 },
+                  ].map((preset) => {
+                    const base = toEnglishDigits(date || getCurrentJalaliDate());
+                    const targetDate = preset.days === 0 ? getCurrentJalaliDate() : addDaysToJalali(base, preset.days);
+                    const isSelected = toEnglishDigits(chequeDueDate) === toEnglishDigits(targetDate);
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          setChequeDueDate(targetDate);
+                          setIsChequeDateModalOpen(false);
+                        }}
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition-all cursor-pointer border ${
+                          isSelected
+                            ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                            : 'bg-slate-50 hover:bg-amber-50 text-slate-700 border-slate-200 hover:border-amber-300'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Month & Year Navigation */}
+                <div className="flex items-center justify-between bg-slate-50 rounded-xl px-2 py-1.5 border border-slate-200/80">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (chequeCalMonth === 1) {
+                        setChequeCalMonth(12);
+                        setChequeCalYear((y) => y - 1);
+                      } else {
+                        setChequeCalMonth((m) => m - 1);
+                      }
+                    }}
+                    className="p-1 text-slate-600 hover:bg-white hover:shadow-2xs rounded-lg transition-all cursor-pointer"
+                    title="ماه قبل"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+
+                  <div className="flex items-center gap-1.5 text-xs font-black text-slate-800">
+                    <span>{JALALI_MONTH_NAMES[chequeCalMonth - 1]}</span>
+                    <span className="font-mono text-amber-700">{toPersianDigits(chequeCalYear)}</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (chequeCalMonth === 12) {
+                        setChequeCalMonth(1);
+                        setChequeCalYear((y) => y + 1);
+                      } else {
+                        setChequeCalMonth((m) => m + 1);
+                      }
+                    }}
+                    className="p-1 text-slate-600 hover:bg-white hover:shadow-2xs rounded-lg transition-all cursor-pointer"
+                    title="ماه بعد"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Days Grid */}
+                <div>
+                  <div className="grid grid-cols-7 gap-1 text-center mb-1">
+                    {['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'].map((w) => (
+                      <div key={w} className="text-[10px] font-bold text-slate-400 py-0.5">
+                        {w}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1">
+                    {Array.from({ length: getJalaliMonthStartWeekday(chequeCalYear, chequeCalMonth) }).map((_, idx) => (
+                      <div key={`empty-${idx}`} className="h-8" />
+                    ))}
+                    {Array.from({ length: getJalaliMonthDays(chequeCalYear, chequeCalMonth) }).map((_, idx) => {
+                      const d = idx + 1;
+                      const formatted = `${chequeCalYear}/${String(chequeCalMonth).padStart(2, '0')}/${String(d).padStart(2, '0')}`;
+                      const isSelected = toEnglishDigits(chequeDueDate) === formatted;
+                      const isToday = toEnglishDigits(getCurrentJalaliDate()) === formatted;
+
+                      return (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => {
+                            setChequeDueDate(formatted);
+                            setIsChequeDateModalOpen(false);
+                          }}
+                          className={`h-8 rounded-lg font-mono text-xs font-bold flex items-center justify-center transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-amber-500 text-white font-black shadow-xs scale-105'
+                              : isToday
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 font-black'
+                              : 'hover:bg-amber-50 text-slate-700'
+                          }`}
+                        >
+                          {toPersianDigits(d)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
