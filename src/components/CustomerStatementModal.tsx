@@ -2060,7 +2060,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
               backgroundColor: '#ffffff',
             }}
           >
-            {/* C. Official Amount in Words & Administrative Notes Box */}
+            {/* C. Official Amount in Words Box */}
             <div
               style={{
                 border: '1px solid #64748b',
@@ -2072,31 +2072,19 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                 lineHeight: '1.65',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                <div>
-                  <strong style={{ color: '#0f172a' }}>مانده نهایی حساب به حروف: </strong>
-                  <span
-                    style={{
-                      fontWeight: '800',
-                      color: fullLedger.netBalance > 0 ? '#991b1b' : fullLedger.netBalance < 0 ? '#1e40af' : '#065f46',
-                    }}
-                  >
-                    {fullLedger.netBalance === 0
-                      ? 'حساب طرف‌حساب کاملاً تسویه و بی‌حساب می‌باشد.'
-                      : `${numberToPersianWords(Math.abs(fullLedger.netBalance))} ${settings.currency} (${
-                          fullLedger.netBalance > 0 ? 'بدهکار به فروشگاه' : 'بستانکار از فروشگاه'
-                        })`}
-                  </span>
-                </div>
-                <div style={{ fontSize: '9.5px', color: '#475569' }}>
-                  تنظیم‌کننده: <strong>{currentUser?.fullName || currentUser?.username || 'واحد امور مالی'}</strong>
-                </div>
+              <div>
+                <strong style={{ color: '#0f172a' }}>مانده نهایی حساب به حروف: </strong>
+                <span
+                  style={{
+                    fontWeight: '800',
+                    color: fullLedger.netBalance > 0 ? '#991b1b' : fullLedger.netBalance < 0 ? '#1e40af' : '#065f46',
+                  }}
+                >
+                  {fullLedger.netBalance === 0
+                    ? 'حساب طرف‌حساب کاملاً تسویه و بی‌حساب می‌باشد.'
+                    : `${numberToPersianWords(Math.abs(fullLedger.netBalance))} ${settings.currency}`}
+                </span>
               </div>
-              {settings.invoiceFooterText && (
-                <div style={{ color: '#475569', fontSize: '9.5px', marginTop: '4px', borderTop: '1px dashed #cbd5e1', paddingTop: '4px' }}>
-                  توضیحات: {settings.invoiceFooterText}
-                </div>
-              )}
             </div>
 
             {/* D. Official 3-Column Administrative Signature & Stamp Boxes */}
