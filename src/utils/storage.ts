@@ -1815,14 +1815,44 @@ export const StorageService = {
       });
       const supplierNames = Array.from(suppliersSet);
 
+      // Detect service items vs product items
+      const isItemService = (it: InvoiceItem) =>
+        Boolean(
+          it.isService ||
+          it.itemType === 'service' ||
+          it.id?.startsWith('service-') ||
+          (it.productCode || it.code || '').toUpperCase().startsWith('SRV-') ||
+          !it.productId
+        );
+
+      const serviceItems = inv.items.filter(isItemService);
+      const productItems = inv.items.filter((it) => !isItemService(it));
+      const hasServices = serviceItems.length > 0;
+      const isOnlyServices = hasServices && productItems.length === 0;
+      const serviceTitles = serviceItems
+        .map((s) => (s.productName || s.name || '').trim())
+        .filter(Boolean)
+        .join('، ');
+
+      let docLabel = inv.type === 'official' ? 'فاکتور رسمی فروش' : 'فاکتور فروش';
+      let invDescription = `خرید کالا طبق فاکتور شماره ${inv.invoiceNumber} (${inv.items.length} قلم)${inv.notes ? ` - ${inv.notes}` : ''}`;
+
+      if (isOnlyServices) {
+        docLabel = inv.type === 'official' ? 'فاکتور رسمی خدماتی' : 'فاکتور خدماتی';
+        invDescription = `فاکتور خدماتی شماره ${inv.invoiceNumber} (${serviceItems.length} مورد خدمات${serviceTitles ? `: ${serviceTitles}` : ''})${inv.notes ? ` - ${inv.notes}` : ''}`;
+      } else if (hasServices) {
+        docLabel = inv.type === 'official' ? 'فاکتور رسمی فروش و خدمات' : 'فاکتور فروش و خدمات';
+        invDescription = `فاکتور فروش و خدمات شماره ${inv.invoiceNumber} (${productItems.length} قلم کالا و ${serviceItems.length} مورد خدمات${serviceTitles ? `: ${serviceTitles}` : ''})${inv.notes ? ` - ${inv.notes}` : ''}`;
+      }
+
       // 1.1 Debit entry for the full invoice amount
       rawEntries.push({
         id: `inv-deb-${inv.id}`,
         date: inv.date,
         documentNumber: inv.invoiceNumber,
         documentType: 'invoice',
-        documentTypeLabel: inv.type === 'official' ? 'فاکتور رسمی فروش' : 'فاکتور فروش',
-        description: `خرید کالا طبق فاکتور شماره ${inv.invoiceNumber} (${inv.items.length} قلم)${inv.notes ? ` - ${inv.notes}` : ''}`,
+        documentTypeLabel: docLabel,
+        description: invDescription,
         debit: inv.finalTotal,
         credit: 0,
         paymentMethod: inv.paymentMethod ? PAYMENT_METHOD_LABELS[inv.paymentMethod] || inv.paymentMethod : undefined,
@@ -1833,13 +1863,18 @@ export const StorageService = {
 
       // 1.2 Credit entry if payment occurred at invoice issuance
       if (inv.paidAmount && inv.paidAmount > 0) {
+        const payDocTarget = isOnlyServices
+          ? `فاکتور خدماتی شماره ${inv.invoiceNumber}`
+          : hasServices
+          ? `فاکتور فروش و خدمات شماره ${inv.invoiceNumber}`
+          : `فاکتور شماره ${inv.invoiceNumber}`;
         rawEntries.push({
           id: `inv-pay-${inv.id}`,
           date: inv.date,
           documentNumber: inv.invoiceNumber,
           documentType: 'invoice_payment',
           documentTypeLabel: 'واریز همزمان با فاکتور',
-          description: `پرداخت وجه همزمان با صدور فاکتور شماره ${inv.invoiceNumber}${inv.paymentMethod ? ` [${PAYMENT_METHOD_LABELS[inv.paymentMethod] || inv.paymentMethod}]` : ''}${inv.transferDescription ? ` (${inv.transferDescription})` : ''}`,
+          description: `پرداخت وجه همزمان با صدور ${payDocTarget}${inv.paymentMethod ? ` [${PAYMENT_METHOD_LABELS[inv.paymentMethod] || inv.paymentMethod}]` : ''}${inv.transferDescription ? ` (${inv.transferDescription})` : ''}`,
           debit: 0,
           credit: inv.paidAmount,
           paymentMethod: inv.paymentMethod ? PAYMENT_METHOD_LABELS[inv.paymentMethod] || inv.paymentMethod : undefined,

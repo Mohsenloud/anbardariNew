@@ -39,6 +39,7 @@ import {
 import { 
   Customer, 
   Invoice, 
+  InvoiceItem,
   StoreSettings, 
   AppUser, 
   CustomerTransaction, 
@@ -122,6 +123,32 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
   const [pdfSuccessMessage, setPdfSuccessMessage] = useState<string | null>(null);
   const [showSuppliers, setShowSuppliers] = useState<boolean>(true);
+  // Compact brief invoice details modal state when clicking a ledger row
+  const [briefInvoiceEntry, setBriefInvoiceEntry] = useState<CustomerLedgerEntry | null>(null);
+
+  // Helper to check if an invoice item is a service
+  const isServiceItem = (it: InvoiceItem) =>
+    Boolean(
+      it.isService ||
+      it.itemType === 'service' ||
+      it.id?.startsWith('service-') ||
+      (it.productCode || it.code || '').toUpperCase().startsWith('SRV-') ||
+      !it.productId
+    );
+
+  // Helper to inspect service status of an invoice
+  const getInvoiceServiceInfo = (inv?: Invoice) => {
+    if (!inv || !Array.isArray(inv.items) || inv.items.length === 0) {
+      return { hasService: false, isOnlyService: false, serviceNames: [] as string[] };
+    }
+    const srvItems = inv.items.filter(isServiceItem);
+    const prodItems = inv.items.filter((it) => !isServiceItem(it));
+    return {
+      hasService: srvItems.length > 0,
+      isOnlyService: srvItems.length > 0 && prodItems.length === 0,
+      serviceNames: srvItems.map((s) => (s.productName || s.name || '').trim()).filter(Boolean),
+    };
+  };
 
   // Open separate transaction modal
   const handleOpenTransactionModal = (type: 'deposit' | 'debt') => {
@@ -850,11 +877,21 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                   const isInvoice = entry.documentType === 'invoice';
                   const isPayment = entry.documentType === 'deposit' || entry.documentType === 'invoice_payment';
                   const isManualTxn = !!entry.rawTransaction;
+                  const hasClickableInvoice = Boolean(entry.rawInvoice || entry.rawPurchaseInvoice);
+                  const serviceInfo = getInvoiceServiceInfo(entry.rawInvoice);
 
                   return (
                     <div 
                       key={entry.id}
-                      className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-3 hover:border-slate-300 transition-all text-right"
+                      onClick={() => {
+                        if (hasClickableInvoice) {
+                          setBriefInvoiceEntry(entry);
+                        }
+                      }}
+                      title={hasClickableInvoice ? 'کلیک جهت مشاهده خلاصه جزئیات فاکتور' : undefined}
+                      className={`bg-white rounded-2xl border border-slate-200/90 shadow-xs p-3 hover:border-purple-300 transition-all text-right ${
+                        hasClickableInvoice ? 'cursor-pointer hover:shadow-md' : ''
+                      }`}
                     >
                       {/* Top Row: Type Badge + Doc Number + Date */}
                       <div className="flex items-center justify-between gap-2 mb-2">
@@ -888,6 +925,13 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                             <span>{getDisplayDocTypeLabel(entry)}</span>
                           </span>
 
+                          {serviceInfo.hasService && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              <Sparkles className="w-2.5 h-2.5 text-indigo-600" />
+                              <span>{serviceInfo.isOnlyService ? 'فاکتور خدماتی' : 'شامل خدمات'}</span>
+                            </span>
+                          )}
+
                           <span className="font-mono text-xs font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md">
                             #{toPersianDigits(entry.documentNumber)}
                           </span>
@@ -911,7 +955,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                           </div>
                         )}
                         {entry.trackingNumber && (
-                          <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-500 font-mono">
+                          <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-500 font-mono" onClick={(e) => e.stopPropagation()}>
                             <span>کد پیگیری:</span>
                             <span className="font-bold text-slate-700">{toPersianDigits(entry.trackingNumber)}</span>
                             <button
@@ -975,7 +1019,10 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
                       {/* Action buttons (View Invoice / Edit / Delete) */}
                       {(entry.rawInvoice || (isManualTxn && entry.rawTransaction)) && (
-                        <div className="flex items-center justify-end gap-1.5 mt-2 pt-2 border-t border-slate-100 flex-wrap">
+                        <div
+                          className="flex items-center justify-end gap-1.5 mt-2 pt-2 border-t border-slate-100 flex-wrap"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {/* 1. View Invoice Button */}
                           {entry.rawInvoice && onViewInvoice && (
                             <button
@@ -1128,11 +1175,23 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                       filteredEntries.map((entry, index) => {
                         const isInvoice = entry.documentType === 'invoice';
                         const isManualTxn = !!entry.rawTransaction;
+                        const hasClickableInvoice = Boolean(entry.rawInvoice || entry.rawPurchaseInvoice);
+                        const serviceInfo = getInvoiceServiceInfo(entry.rawInvoice);
 
                         return (
                           <tr 
-                            key={entry.id} 
-                            className={`hover:bg-slate-50 transition-colors ${
+                            key={entry.id}
+                            onClick={() => {
+                              if (hasClickableInvoice) {
+                                setBriefInvoiceEntry(entry);
+                              }
+                            }}
+                            title={hasClickableInvoice ? 'کلیک جهت مشاهده خلاصه جزئیات فاکتور' : undefined}
+                            className={`transition-colors ${
+                              hasClickableInvoice
+                                ? 'cursor-pointer hover:bg-purple-50/50'
+                                : 'hover:bg-slate-50'
+                            } ${
                               index % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'
                             }`}
                           >
@@ -1163,7 +1222,15 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                               {toPersianDigits(entry.documentNumber)}
                             </td>
                             <td className="py-2.5 px-3 text-slate-700 leading-relaxed min-w-[200px]">
-                              <div>{entry.description}</div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span>{entry.description}</span>
+                                {serviceInfo.hasService && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                                    <Sparkles className="w-2.5 h-2.5 text-indigo-600" />
+                                    <span>{serviceInfo.isOnlyService ? 'فاکتور خدماتی' : 'شامل خدمات'}</span>
+                                  </span>
+                                )}
+                              </div>
                               {showSuppliers && entry.supplierNames && entry.supplierNames.length > 0 && (
                                 <div className="mt-1 flex items-center gap-1 flex-wrap">
                                   <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md">
@@ -1200,7 +1267,10 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                                 </span>
                               </div>
                             </td>
-                            <td className="py-2.5 px-2 text-center whitespace-nowrap w-24 shrink-0">
+                            <td
+                              className="py-2.5 px-2 text-center whitespace-nowrap w-24 shrink-0"
+                              onClick={(e) => e.stopPropagation()}
+                            >
                               <div className="flex items-center justify-center gap-1">
                                 {/* 1. View Invoice */}
                                 {entry.rawInvoice && onViewInvoice && (
@@ -1886,6 +1956,215 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* COMPACT BRIEF INVOICE DETAILS MINI-MODAL (ON ROW CLICK) */}
+      {briefInvoiceEntry && (briefInvoiceEntry.rawInvoice || briefInvoiceEntry.rawPurchaseInvoice) && (() => {
+        const salesInv = briefInvoiceEntry.rawInvoice;
+        const purchaseInv = briefInvoiceEntry.rawPurchaseInvoice;
+        const srvInfo = getInvoiceServiceInfo(salesInv);
+
+        const docNumber = salesInv ? salesInv.invoiceNumber : purchaseInv!.invoiceNumber;
+        const docDate = salesInv ? salesInv.date : purchaseInv!.date;
+        const finalTotal = salesInv ? salesInv.finalTotal : purchaseInv!.finalTotal;
+        const paidAmount = salesInv
+          ? salesInv.paymentStatus === 'paid'
+            ? salesInv.finalTotal
+            : salesInv.paidAmount || 0
+          : purchaseInv!.paymentStatus === 'paid'
+          ? purchaseInv!.finalTotal
+          : purchaseInv!.paidAmount || 0;
+        const remaining = Math.max(0, finalTotal - paidAmount);
+        const totalDiscount = salesInv ? salesInv.totalDiscount || 0 : purchaseInv!.totalDiscount || 0;
+        const taxAmount = salesInv ? salesInv.taxAmount || 0 : purchaseInv!.taxAmount || 0;
+        const notes = salesInv ? salesInv.notes : purchaseInv!.notes;
+
+        return (
+          <div
+            className="fixed inset-0 z-70 bg-slate-900/55 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150"
+            onClick={() => setBriefInvoiceEntry(null)}
+          >
+            <div
+              className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-right animate-in zoom-in-95 duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Compact Header */}
+              <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center justify-center shrink-0">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h4 className="font-black text-xs sm:text-sm text-white truncate">
+                        {salesInv
+                          ? srvInfo.isOnlyService
+                            ? 'خلاصه فاکتور خدماتی'
+                            : srvInfo.hasService
+                            ? 'خلاصه فاکتور فروش و خدمات'
+                            : 'خلاصه فاکتور فروش'
+                          : 'خلاصه فاکتور خرید کالا'}
+                      </h4>
+                      <span className="font-mono text-[11px] font-bold bg-white/15 px-2 py-0.5 rounded-md text-emerald-300">
+                        #{toPersianDigits(docNumber)}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-300 font-mono mt-0.5">
+                      تاریخ سند: {toPersianDigits(docDate)}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setBriefInvoiceEntry(null)}
+                  className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                  title="بستن"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Compact Body */}
+              <div className="p-3.5 space-y-3 max-h-[70vh] overflow-y-auto text-xs">
+                {/* Items List */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="bg-slate-50 px-3 py-1.5 border-b border-slate-200 flex items-center justify-between text-[11px] font-bold text-slate-700">
+                    <span>اقلام فاکتور</span>
+                    <span className="font-mono text-slate-500">
+                      {toPersianDigits(salesInv ? salesInv.items.length : purchaseInv!.items.length)} ردیف
+                    </span>
+                  </div>
+
+                  <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto">
+                    {salesInv
+                      ? salesInv.items.map((it, i) => {
+                          const isSrv = isServiceItem(it);
+                          const unitPrice = it.unitPrice ?? it.price ?? 0;
+                          const rowTotal = it.total ?? it.quantity * unitPrice;
+                          return (
+                            <div key={it.id || i} className="px-3 py-2 flex items-center justify-between gap-2 bg-white hover:bg-slate-50/70">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-mono text-[10px] text-slate-400">{toPersianDigits(i + 1)}.</span>
+                                  <span className="font-bold text-slate-900 truncate">
+                                    {it.productName || it.name || 'آیتم'}
+                                  </span>
+                                  {isSrv && (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                      خدمات
+                                    </span>
+                                  )}
+                                </div>
+                                {(it.description || it.notes) && (
+                                  <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                                    {it.description || it.notes}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="text-left shrink-0 font-mono">
+                                <div className="font-black text-slate-900 text-xs">
+                                  {toPersianDigits(rowTotal.toLocaleString('en-US'))} <span className="text-[9px] font-normal text-slate-400">{settings.currency}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-500">
+                                  {toPersianDigits(it.quantity)} {it.unit || 'عدد'} × {toPersianDigits(unitPrice.toLocaleString('en-US'))}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      : purchaseInv!.items.map((it, i) => (
+                          <div key={it.id || i} className="px-3 py-2 flex items-center justify-between gap-2 bg-white">
+                            <div className="min-w-0 flex-1">
+                              <span className="font-mono text-[10px] text-slate-400 ml-1">{toPersianDigits(i + 1)}.</span>
+                              <span className="font-bold text-slate-900 truncate">{it.productName}</span>
+                            </div>
+                            <div className="text-left shrink-0 font-mono">
+                              <div className="font-black text-slate-900 text-xs">
+                                {toPersianDigits(it.total.toLocaleString('en-US'))} <span className="text-[9px] font-normal text-slate-400">{settings.currency}</span>
+                              </div>
+                              <div className="text-[10px] text-slate-500">
+                                {toPersianDigits(it.quantity)} {it.unit || 'عدد'} × {toPersianDigits(it.buyPrice.toLocaleString('en-US'))}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                  </div>
+                </div>
+
+                {/* Financial Summary Box */}
+                <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-200 space-y-1.5 text-[11px]">
+                  {totalDiscount > 0 && (
+                    <div className="flex items-center justify-between text-rose-600">
+                      <span>تخفیف فاکتور:</span>
+                      <span className="font-mono font-bold">{formatPrice(totalDiscount, settings.currency)}</span>
+                    </div>
+                  )}
+                  {taxAmount > 0 && (
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span>مالیات بر ارزش افزوده:</span>
+                      <span className="font-mono font-bold">{formatPrice(taxAmount, settings.currency)}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between font-bold text-slate-900 text-xs pt-0.5">
+                    <span>مبلغ نهایی فاکتور:</span>
+                    <span className="font-mono font-black">{formatPrice(finalTotal, settings.currency)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-emerald-700 pt-1 border-t border-slate-200/80">
+                    <span>پرداخت شده:</span>
+                    <span className="font-mono font-bold">{formatPrice(paidAmount, settings.currency)}</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-200/80">
+                    <span className="font-bold text-slate-700">وضعیت تسویه این فاکتور:</span>
+                    {remaining > 0 ? (
+                      <span className="font-mono font-black text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                        مانده: {formatPrice(remaining, settings.currency)}
+                      </span>
+                    ) : (
+                      <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                        تسویه کامل
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {notes && (
+                  <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-2.5 text-[11px] text-slate-700">
+                    <span className="font-bold text-amber-900 ml-1">توضیحات فاکتور:</span>
+                    <span>{notes}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Compact Footer */}
+              <div className="px-3.5 py-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">
+                {salesInv && onViewInvoice ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBriefInvoiceEntry(null);
+                      onViewInvoice(salesInv);
+                    }}
+                    className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>مشاهده کامل و چاپ فاکتور</span>
+                  </button>
+                ) : (
+                  <div />
+                )}
+                <button
+                  type="button"
+                  onClick={() => setBriefInvoiceEntry(null)}
+                  className="py-2 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  بستن
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* SEPARATE MODAL: REGISTER / EDIT DEPOSIT OR DEBT */}
       {activeTxnModalType && (

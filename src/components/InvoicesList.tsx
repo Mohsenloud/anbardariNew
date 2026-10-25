@@ -1097,8 +1097,11 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                       </span>
                       {inv.isProforma && (
                         <>
-                          <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded font-bold">
-                            پیش‌فاکتور
+                          <span
+                            className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-200 shrink-0"
+                            title="پیش‌فاکتور"
+                          >
+                            <FileClock className="w-3.5 h-3.5" />
                           </span>
                           {!inv.convertedAt && (() => {
                             const daysAge = getInvoiceDaysAge(inv.date, inv.createdAt);
@@ -1108,21 +1111,22 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                                 type="button"
                                 onClick={(e) => handleSendTelegramReminder(e, inv)}
                                 disabled={sendingReminderId === inv.id}
-                                className={`text-[10px] px-1.5 py-0.5 rounded font-bold flex items-center gap-1 cursor-pointer transition-all disabled:opacity-50 ${
+                                className={`inline-flex items-center justify-center w-6 h-6 rounded-lg cursor-pointer transition-all disabled:opacity-50 shrink-0 ${
                                   inv.proformaReminderSentAt
-                                    ? 'bg-sky-50 text-sky-700 border border-sky-200'
-                                    : 'bg-amber-500 text-white'
+                                    ? 'bg-sky-50 text-sky-600 border border-sky-200 hover:bg-sky-100'
+                                    : 'bg-amber-500 text-white hover:bg-amber-600 shadow-2xs'
                                 }`}
-                                title="ارسال پیام هشدار پیگیری ۷ روزه به تلگرام"
+                                title={
+                                  inv.proformaReminderSentAt
+                                    ? `${toPersianDigits(daysAge)} روز گذشته (یادآوری ارسال شده - کلیک جهت ارسال مجدد به تلگرام)`
+                                    : `پیگیری پیش‌فاکتور (${toPersianDigits(daysAge)} روز گذشته) - کلیک جهت ارسال هشدار تلگرام`
+                                }
                               >
-                                <Send className="w-2.5 h-2.5" />
-                                <span>
-                                  {sendingReminderId === inv.id
-                                    ? '...'
-                                    : inv.proformaReminderSentAt
-                                    ? `${toPersianDigits(daysAge)} روز (ارسال مجدد)`
-                                    : `پیگیری (${toPersianDigits(daysAge)} روز)`}
-                                </span>
+                                {sendingReminderId === inv.id ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Send className="w-3.5 h-3.5" />
+                                )}
                               </button>
                             );
                           })()}
@@ -1246,8 +1250,11 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                           </span>
                           {inv.isProforma && (
                             <>
-                              <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded font-bold font-sans">
-                                پیش‌فاکتور
+                              <span
+                                className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-200 shrink-0"
+                                title="پیش‌فاکتور"
+                              >
+                                <FileClock className="w-3.5 h-3.5" />
                               </span>
                               {!inv.convertedAt && (() => {
                                 const daysAge = getInvoiceDaysAge(inv.date, inv.createdAt);
@@ -1257,21 +1264,22 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                                     type="button"
                                     onClick={(e) => handleSendTelegramReminder(e, inv)}
                                     disabled={sendingReminderId === inv.id}
-                                    className={`text-[10px] px-1.5 py-0.5 rounded font-bold font-sans flex items-center gap-1 cursor-pointer transition-all disabled:opacity-50 ${
+                                    className={`inline-flex items-center justify-center w-6 h-6 rounded-lg cursor-pointer transition-all disabled:opacity-50 shrink-0 ${
                                       inv.proformaReminderSentAt
-                                        ? 'bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200'
+                                        ? 'bg-sky-50 hover:bg-sky-100 text-sky-600 border border-sky-200'
                                         : 'bg-amber-500 hover:bg-amber-600 text-white shadow-2xs'
                                     }`}
-                                    title={`بیش از ۷ روز (${daysAge} روز) گذشته - کلیک جهت ارسال هشدار تلگرام`}
+                                    title={
+                                      inv.proformaReminderSentAt
+                                        ? `${toPersianDigits(daysAge)} روز گذشته (یادآوری ارسال شده - کلیک جهت ارسال مجدد به تلگرام)`
+                                        : `پیگیری پیش‌فاکتور (${toPersianDigits(daysAge)} روز گذشته) - کلیک جهت ارسال هشدار تلگرام`
+                                    }
                                   >
-                                    <Send className="w-2.5 h-2.5" />
-                                    <span>
-                                      {sendingReminderId === inv.id
-                                        ? '...'
-                                        : inv.proformaReminderSentAt
-                                        ? `${toPersianDigits(daysAge)} روز (ارسال شده)`
-                                        : `پیگیری (${toPersianDigits(daysAge)} روز)`}
-                                    </span>
+                                    {sendingReminderId === inv.id ? (
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <Send className="w-3.5 h-3.5" />
+                                    )}
                                   </button>
                                 );
                               })()}
