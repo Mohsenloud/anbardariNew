@@ -642,16 +642,38 @@ function setupClonedDocumentForPdfCapture(
       outline: none !important;
     }
 
+    /* Customer Statement PDF: Pure white background everywhere, distinct table header row, no outer page frame, preserve internal boxes & table cells */
+    #printable-customer-statement-pdf {
+      border: none !important;
+      box-shadow: none !important;
+      outline: none !important;
+      background-color: #ffffff !important;
+      background: #ffffff !important;
+    }
+    #printable-customer-statement-pdf *:not(.pdf-table-col-header-row):not(.pdf-table-col-header-cell) {
+      background-color: #ffffff !important;
+      background: #ffffff !important;
+    }
+    #printable-customer-statement-pdf table {
+      border: none !important;
+    }
+    #printable-customer-statement-pdf tr.pdf-doc-header-row,
+    #printable-customer-statement-pdf tr.pdf-doc-header-row > th {
+      border: none !important;
+      border-width: 0 !important;
+      background-color: #ffffff !important;
+    }
+
     /* Bulletproof Table & Border Styles (only for standard tables with borders) */
-    table:not(.no-pdf-border):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]) {
+    table:not(.no-pdf-border):not(#printable-customer-statement-pdf table):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]) {
       border-collapse: collapse !important;
       border-spacing: 0 !important;
       width: 100% !important;
       border: 1px solid #94a3b8 !important;
       background-color: #ffffff !important;
     }
-    th:not(.no-pdf-border):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]), 
-    thead th:not(.no-pdf-border):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]) {
+    th:not(.no-pdf-border):not(.pdf-doc-header-cell):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]), 
+    thead tr:not(.pdf-doc-header-row) th:not(.no-pdf-border):not(.pdf-doc-header-cell):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]) {
       border: 1px solid #94a3b8 !important;
       border-color: #94a3b8 !important;
       border-style: solid !important;
@@ -662,6 +684,14 @@ function setupClonedDocumentForPdfCapture(
       vertical-align: middle !important;
       opacity: 1 !important;
       visibility: visible !important;
+    }
+    #printable-customer-statement-pdf thead tr:not(.pdf-doc-header-row),
+    #printable-customer-statement-pdf thead tr:not(.pdf-doc-header-row) th {
+      background-color: #e2e8f0 !important;
+      background: #e2e8f0 !important;
+      border: 1px solid #64748b !important;
+      height: 40px !important;
+      min-height: 40px !important;
     }
     td:not(.no-pdf-border):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]), 
     tbody td:not(.no-pdf-border):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]) {
@@ -812,7 +842,7 @@ function setupClonedDocumentForPdfCapture(
 
   if (isSinglePageMode) {
     const tableBoxes = clonedElement.querySelectorAll(
-      '.exit-slip-table-box, .invoice-table-box, .simple-invoice-table-box'
+      '.exit-slip-table-box, .invoice-table-box, .simple-invoice-table-box, .pdf-statement-top-group'
     );
     tableBoxes.forEach((tb) => {
       const tbel = tb as HTMLElement;
@@ -820,9 +850,17 @@ function setupClonedDocumentForPdfCapture(
       tbel.style.setProperty('display', 'flex', 'important');
       tbel.style.setProperty('flex-direction', 'column', 'important');
       tbel.style.setProperty('justify-content', 'flex-start', 'important');
-      tbel.style.setProperty('margin-top', '4px', 'important');
+      tbel.style.setProperty('margin-top', '0px', 'important');
       tbel.style.setProperty('margin-bottom', 'auto', 'important');
+      tbel.style.setProperty('width', '100%', 'important');
     });
+  }
+
+  const statementFooterGroup = clonedElement.querySelector('.pdf-statement-footer-group');
+  if (statementFooterGroup) {
+    const sfgEl = statementFooterGroup as HTMLElement;
+    sfgEl.style.setProperty('margin-top', 'auto', 'important');
+    sfgEl.style.setProperty('width', '100%', 'important');
   }
 
   const headerRow = clonedElement.querySelector('.exit-slip-header-row');
@@ -879,7 +917,11 @@ function setupClonedDocumentForPdfCapture(
     element.id === 'invoices-slips-pdf-report-canvas' ||
     element.classList.contains('no-pdf-border');
 
-  if (isBorderless) {
+  const isCustomerStatementPdf =
+    clonedElement.id === 'printable-customer-statement-pdf' ||
+    element.id === 'printable-customer-statement-pdf';
+
+  if (isBorderless || isCustomerStatementPdf) {
     clonedElement.style.setProperty('border', 'none', 'important');
     clonedElement.style.setProperty('border-width', '0', 'important');
     clonedElement.style.setProperty('border-color', 'transparent', 'important');
@@ -891,12 +933,13 @@ function setupClonedDocumentForPdfCapture(
   const defaultMinRowH = isA5 ? (isLandscape ? 24 : 28) : (isLandscape ? 32 : 36);
   tables.forEach((tbl) => {
     const tblEl = tbl as HTMLElement;
+    const hasDocHeaderRow = Boolean(tblEl.querySelector('.pdf-doc-header-row'));
     tblEl.style.setProperty('width', '100%', 'important');
     tblEl.style.setProperty('min-width', '100%', 'important');
     tblEl.style.setProperty('table-layout', 'auto', 'important');
     tblEl.style.setProperty('border-collapse', 'collapse', 'important');
 
-    if (isBorderless) {
+    if (isBorderless || isCustomerStatementPdf || hasDocHeaderRow) {
       tblEl.style.setProperty('border', 'none', 'important');
       tblEl.style.setProperty('border-width', '0', 'important');
       tblEl.style.setProperty('border-color', 'transparent', 'important');
@@ -908,20 +951,36 @@ function setupClonedDocumentForPdfCapture(
 
     tblEl.querySelectorAll('thead th, th').forEach((th) => {
       const thEl = th as HTMLElement;
+      const isDocHeaderCell =
+        thEl.classList.contains('pdf-doc-header-cell') ||
+        Boolean(thEl.closest('.pdf-doc-header-row'));
       thEl.style.setProperty('vertical-align', 'middle', 'important');
       thEl.style.setProperty('box-sizing', 'border-box', 'important');
-      if (isBorderless) {
+      if (isBorderless || isDocHeaderCell) {
         thEl.style.setProperty('border', 'none', 'important');
         thEl.style.setProperty('border-width', '0', 'important');
         thEl.style.setProperty('border-color', 'transparent', 'important');
         thEl.style.setProperty('box-shadow', 'none', 'important');
         thEl.style.setProperty('outline', 'none', 'important');
+        if (isDocHeaderCell) {
+          thEl.style.setProperty('background-color', '#ffffff', 'important');
+          thEl.style.setProperty('background', '#ffffff', 'important');
+        }
       } else {
-        thEl.style.setProperty('border', '1px solid #94a3b8', 'important');
-        thEl.style.setProperty('border-color', '#94a3b8', 'important');
+        thEl.style.setProperty('border', isCustomerStatementPdf ? '1px solid #64748b' : '1px solid #94a3b8', 'important');
+        thEl.style.setProperty('border-color', isCustomerStatementPdf ? '#64748b' : '#94a3b8', 'important');
         thEl.style.setProperty('border-style', 'solid', 'important');
         thEl.style.setProperty('border-width', '1px', 'important');
-        thEl.style.setProperty('background-color', '#f1f5f9', 'important');
+        thEl.style.setProperty(
+          'background-color',
+          isCustomerStatementPdf ? '#e2e8f0' : '#f1f5f9',
+          'important'
+        );
+        if (isCustomerStatementPdf) {
+          thEl.style.setProperty('background', '#e2e8f0', 'important');
+          thEl.style.setProperty('height', '40px', 'important');
+          thEl.style.setProperty('min-height', '40px', 'important');
+        }
       }
       thEl.style.setProperty('opacity', '1', 'important');
       thEl.style.setProperty('visibility', 'visible', 'important');

@@ -442,9 +442,9 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   return (
     <div 
       id="customer-statement-modal" 
-      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-0 sm:p-3 md:p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-0 sm:p-3 md:p-4 print:p-0 print:bg-white animate-in fade-in duration-150"
     >
-      <div className="bg-white w-full max-w-[96vw] xl:max-w-7xl 2xl:max-w-[1440px] rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-200 overflow-hidden flex flex-col h-[100dvh] sm:h-[94vh] max-h-[100dvh] text-right">
+      <div className="bg-white w-full max-w-[96vw] xl:max-w-7xl 2xl:max-w-[1440px] rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-200 print:border-0 print:shadow-none print:rounded-none print:max-w-none print:h-auto print:max-h-none print:overflow-visible overflow-hidden flex flex-col h-[100dvh] sm:h-[94vh] max-h-[100dvh] text-right">
         
         {/* MODAL HEADER */}
         <div className="no-print bg-slate-900 text-white px-3.5 py-3 sm:px-5 sm:py-4 flex items-center justify-between gap-2.5 border-b border-slate-800 shrink-0">
@@ -739,18 +739,6 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                   <FileDown className="w-3.5 h-3.5 text-rose-600" />
                 )}
                 <span className="hidden sm:inline">{isExportingPdf ? 'در حال صدور...' : 'PDF'}</span>
-              </button>
-
-              {/* Print Statement */}
-              <button
-                type="button"
-                id="print-statement-btn"
-                onClick={handlePrint}
-                className="p-2 sm:px-3 sm:py-1.5 flex items-center gap-1 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                title="چاپ صورتحساب رسمی"
-              >
-                <Printer className="w-3.5 h-3.5 text-slate-600" />
-                <span className="hidden sm:inline">چاپ</span>
               </button>
 
               {/* Export to Excel */}
@@ -1441,10 +1429,10 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
           </div>
         </div>
 
-        {/* PRINTABLE OFFICIAL CUSTOMER STATEMENT SHEET (Visible only during print) */}
-        <div className="print-only hidden p-8 text-black bg-white">
+        {/* PRINTABLE OFFICIAL CUSTOMER STATEMENT SHEET (Visible only during print - No outer page border, pure white bg, internal borders preserved) */}
+        <div className="print-only hidden p-8 text-black bg-white border-0 shadow-none">
           {/* Header */}
-          <div className="border-b-2 border-slate-800 pb-4 mb-6">
+          <div className="border-b-2 border-slate-800 pb-4 mb-6 bg-white">
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-black text-slate-900">{settings.storeName || 'سیستم صدور فاکتور و حسابداری'}</h1>
@@ -1462,7 +1450,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
           </div>
 
           {/* Customer Info Card */}
-          <div className="border border-slate-300 rounded-xl p-4 mb-6 bg-slate-50/50">
+          <div className="border border-slate-300 rounded-xl p-4 mb-6 bg-white">
             <div className="grid grid-cols-2 gap-3 text-xs leading-relaxed">
               <div><strong>نام طرف‌حساب:</strong> {customer.name}</div>
               <div><strong>شماره تماس:</strong> {customer.phone ? toPersianDigits(customer.phone) : '—'}</div>
@@ -1472,27 +1460,27 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
           </div>
 
           {/* Ledger Table for Print */}
-          <table className="w-full text-right text-xs border border-slate-300 border-collapse mb-6">
+          <table className="w-full text-right text-xs border border-slate-300 border-collapse mb-6 bg-white">
             <thead>
-              <tr className="bg-slate-200 text-slate-900 font-bold border-b border-slate-300">
-                <th className="py-2 px-2 border-l border-slate-300 text-center w-8">#</th>
-                <th className="py-2 px-2 border-l border-slate-300 w-24">تاریخ</th>
-                <th className="py-2 px-2 border-l border-slate-300 w-28">نوع سند</th>
-                <th className="py-2 px-2 border-l border-slate-300 w-24">شماره سند/پیگیری</th>
-                <th className="py-2 px-2 border-l border-slate-300">شرح سند</th>
-                <th className="py-2 px-2 border-l border-slate-300 w-24">بدهکار ({settings.currency})</th>
-                <th className="py-2 px-2 border-l border-slate-300 w-24">بستانکار ({settings.currency})</th>
-                <th className="py-2 px-2 w-28">مانده حساب</th>
+              <tr className="bg-white text-slate-900 font-bold border-b border-slate-300">
+                <th className="py-2 px-2 border-l border-slate-300 text-center w-8 bg-white">#</th>
+                <th className="py-2 px-2 border-l border-slate-300 w-24 bg-white">تاریخ</th>
+                <th className="py-2 px-2 border-l border-slate-300 w-28 bg-white">نوع سند</th>
+                <th className="py-2 px-2 border-l border-slate-300 w-24 bg-white">شماره سند/پیگیری</th>
+                <th className="py-2 px-2 border-l border-slate-300 bg-white">شرح سند</th>
+                <th className="py-2 px-2 border-l border-slate-300 w-24 bg-white">بدهکار ({settings.currency})</th>
+                <th className="py-2 px-2 border-l border-slate-300 w-24 bg-white">بستانکار ({settings.currency})</th>
+                <th className="py-2 px-2 w-28 bg-white">مانده حساب</th>
               </tr>
             </thead>
             <tbody>
               {fullLedger.entries.map((item, idx) => (
-                <tr key={item.id} className="border-b border-slate-200 text-[11px]">
-                  <td className="py-1.5 px-2 border-l border-slate-200 text-center font-mono">{toPersianDigits(idx + 1)}</td>
-                  <td className="py-1.5 px-2 border-l border-slate-200 font-mono">{toPersianDigits(item.date)}</td>
-                  <td className="py-1.5 px-2 border-l border-slate-200 font-medium">{getDisplayDocTypeLabel(item)}</td>
-                  <td className="py-1.5 px-2 border-l border-slate-200 font-mono">{toPersianDigits(item.documentNumber)}</td>
-                  <td className="py-1.5 px-2 border-l border-slate-200">
+                <tr key={item.id} className="bg-white border-b border-slate-300 text-[11px]">
+                  <td className="py-1.5 px-2 border-l border-slate-300 text-center font-mono bg-white">{toPersianDigits(idx + 1)}</td>
+                  <td className="py-1.5 px-2 border-l border-slate-300 font-mono bg-white">{toPersianDigits(item.date)}</td>
+                  <td className="py-1.5 px-2 border-l border-slate-300 font-medium bg-white">{getDisplayDocTypeLabel(item)}</td>
+                  <td className="py-1.5 px-2 border-l border-slate-300 font-mono bg-white">{toPersianDigits(item.documentNumber)}</td>
+                  <td className="py-1.5 px-2 border-l border-slate-300 bg-white">
                     <div>{item.description}</div>
                     {showSuppliers && item.supplierNames && item.supplierNames.length > 0 && (
                       <div className="text-[9.5px] text-amber-800 font-medium mt-0.5">
@@ -1500,26 +1488,26 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                       </div>
                     )}
                   </td>
-                  <td className="py-1.5 px-2 border-l border-slate-200 font-mono">{item.debit > 0 ? toPersianDigits(item.debit.toLocaleString('en-US')) : '—'}</td>
-                  <td className="py-1.5 px-2 border-l border-slate-200 font-mono">{item.credit > 0 ? toPersianDigits(item.credit.toLocaleString('en-US')) : '—'}</td>
-                  <td className="py-1.5 px-2 font-mono font-bold">
+                  <td className="py-1.5 px-2 border-l border-slate-300 font-mono bg-white">{item.debit > 0 ? toPersianDigits(item.debit.toLocaleString('en-US')) : '—'}</td>
+                  <td className="py-1.5 px-2 border-l border-slate-300 font-mono bg-white">{item.credit > 0 ? toPersianDigits(item.credit.toLocaleString('en-US')) : '—'}</td>
+                  <td className="py-1.5 px-2 font-mono font-bold bg-white">
                     {toPersianDigits(Math.abs(item.balance).toLocaleString('en-US'))} ({item.balance > 0 ? 'بد' : item.balance < 0 ? 'بس' : 'تسویه'})
                   </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="bg-slate-100 font-bold border-t-2 border-slate-400">
-                <td colSpan={5} className="py-2 px-3 border-l border-slate-300 text-left font-bold">
+              <tr className="bg-white font-bold border-t-2 border-slate-400">
+                <td colSpan={5} className="py-2 px-3 border-l border-slate-300 text-left font-bold bg-white">
                   جمع کل و مانده نهایی ({settings.currency}):
                 </td>
-                <td className="py-2 px-2 border-l border-slate-300 font-mono font-black">
+                <td className="py-2 px-2 border-l border-slate-300 font-mono font-black bg-white">
                   {toPersianDigits(fullLedger.totalDebit.toLocaleString('en-US'))}
                 </td>
-                <td className="py-2 px-2 border-l border-slate-300 font-mono font-black">
+                <td className="py-2 px-2 border-l border-slate-300 font-mono font-black bg-white">
                   {toPersianDigits(fullLedger.totalCredit.toLocaleString('en-US'))}
                 </td>
-                <td className="py-2 px-2 font-mono font-black">
+                <td className="py-2 px-2 font-mono font-black bg-white">
                   {toPersianDigits(Math.abs(fullLedger.netBalance).toLocaleString('en-US'))} ({fullLedger.netBalance > 0 ? 'بدهکار' : fullLedger.netBalance < 0 ? 'بستانکار' : 'تسویه'})
                 </td>
               </tr>
@@ -1527,7 +1515,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
           </table>
 
           {/* Bottom Statement Summary & Signatures */}
-          <div className="border border-slate-300 rounded-xl p-4 mb-8 bg-slate-50">
+          <div className="border border-slate-300 rounded-xl p-4 mb-8 bg-white">
             <div className="text-xs leading-relaxed mb-1">
               <strong>مانده نهایی حساب به حروف:</strong> {fullLedger.netBalance === 0 
                 ? 'حساب کاملاً تسویه و بی‌حساب است.' 
@@ -1538,7 +1526,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-8 text-center text-xs mt-12 pt-4">
+          <div className="grid grid-cols-2 gap-8 text-center text-xs mt-12 pt-4 bg-white">
             <div className="border-t border-slate-400 pt-3">
               <span className="font-bold">مهر و امضای امور مالی / فروشگاه</span>
             </div>
@@ -1734,224 +1722,441 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
           style={{
             width: '820px',
             backgroundColor: '#ffffff',
-            padding: '24px 20px',
+            border: 'none',
+            outline: 'none',
+            boxShadow: 'none',
+            padding: '20px 18px',
             fontFamily: "'Vazirmatn', -apple-system, BlinkMacSystemFont, sans-serif",
             color: '#0f172a',
             boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
           }}
         >
-          {/* Official Report Table with Persistent Repeating Header */}
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10.5px', direction: 'rtl' }}>
-            <thead data-pdf-thead="true">
-              {/* 1. Official Report Document Header inside thead (Preserved on ALL pages in PDF export) */}
-              <tr className="pdf-doc-header-row" style={{ backgroundColor: '#ffffff', color: '#0f172a' }}>
-                <th
-                  colSpan={8}
-                  style={{
-                    padding: '0 0 14px 0',
-                    border: 'none',
-                    fontWeight: 'normal',
-                    textAlign: 'right',
-                  }}
-                >
-                  {/* Top Bar: Company Details & Statement Metadata */}
-                  <div style={{ borderBottom: '2px solid #0f172a', paddingBottom: '12px', marginBottom: '14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '18px', fontWeight: '900', color: '#0f172a' }}>
-                          {settings.storeName || 'سیستم صدور فاکتور و حسابداری'}
+          {/* Top Section: Official Administrative Accounting Ledger Table */}
+          <div className="pdf-statement-top-group" style={{ width: '100%', backgroundColor: '#ffffff' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', border: 'none', backgroundColor: '#ffffff', fontSize: '10.5px', direction: 'rtl' }}>
+              <thead data-pdf-thead="true" style={{ border: 'none', backgroundColor: '#ffffff' }}>
+                {/* 1. Official Administrative Document Header inside thead (Preserved on ALL pages in PDF export - No outer page border) */}
+                <tr className="pdf-doc-header-row" style={{ backgroundColor: '#ffffff', color: '#0f172a', border: 'none' }}>
+                  <th
+                    colSpan={9}
+                    className="pdf-doc-header-cell"
+                    style={{
+                      padding: '0 0 12px 0',
+                      border: 'none',
+                      backgroundColor: '#ffffff',
+                      fontWeight: 'normal',
+                      textAlign: 'right',
+                    }}
+                  >
+                    {/* A. Official 3-Column Administrative Header */}
+                    <div
+                      style={{
+                        borderBottom: '2px solid #1e293b',
+                        backgroundColor: '#ffffff',
+                        paddingBottom: '12px',
+                        marginBottom: '12px',
+                        display: 'grid',
+                        gridTemplateColumns: '1.3fr 1.2fr 1fr',
+                        alignItems: 'center',
+                        gap: '12px',
+                      }}
+                    >
+                      {/* Right: Store / Organization Info */}
+                      <div style={{ textAlign: 'right', backgroundColor: '#ffffff' }}>
+                        <div style={{ fontSize: '16px', fontWeight: '900', color: '#0f172a', lineHeight: '1.3' }}>
+                          {settings.storeName || 'سامانه یکپارچه فروش و حسابداری'}
                         </div>
                         {settings.tagline && (
-                          <div style={{ fontSize: '11px', color: '#475569', marginTop: '3px' }}>
+                          <div style={{ fontSize: '10px', color: '#334155', marginTop: '3px', fontWeight: '600' }}>
                             {settings.tagline}
                           </div>
                         )}
-                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '3px' }}>
-                          نشانی: {settings.address || '—'} {settings.phone || settings.mobile ? ` | تلفن: ${toPersianDigits(settings.phone || settings.mobile || '')}` : ''}
+                        <div style={{ fontSize: '9.5px', color: '#475569', marginTop: '4px', lineHeight: '1.5' }}>
+                          {settings.address ? `نشانی: ${settings.address}` : ''}
+                          {settings.phone || settings.mobile
+                            ? `${settings.address ? ' | ' : ''}تلفن: ${toPersianDigits(settings.phone || settings.mobile || '')}`
+                            : ''}
                         </div>
                       </div>
 
-                      <div style={{ textAlign: 'left', fontFamily: 'monospace', fontSize: '11px', lineHeight: '1.6' }}>
-                        <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#0f172a', fontFamily: "'Vazirmatn', sans-serif" }}>
-                          صورتحساب رسمی طرف‌حساب
+                      {/* Center: Official Administrative Document Title */}
+                      <div style={{ textAlign: 'center', backgroundColor: '#ffffff' }}>
+                        <div
+                          style={{
+                            display: 'inline-block',
+                            border: '1.5px solid #1e293b',
+                            borderRadius: '6px',
+                            padding: '6px 16px',
+                            backgroundColor: '#ffffff',
+                          }}
+                        >
+                          <div style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', letterSpacing: '-0.2px' }}>
+                            صورتحساب
+                          </div>
+                          <div style={{ fontSize: '9.5px', fontWeight: '600', color: '#475569', marginTop: '2px' }}>
+                            برگه وضعیت مالی و ریز گردش حساب دفتری
+                          </div>
                         </div>
-                        <div style={{ color: '#475569' }}>
-                          تاریخ صدور: {toPersianDigits(getCurrentJalaliDate())}
+                      </div>
+
+                      {/* Left: Official Administrative Document Metadata Box */}
+                      <div
+                        style={{
+                          border: '1px solid #94a3b8',
+                          borderRadius: '6px',
+                          padding: '6px 10px',
+                          backgroundColor: '#ffffff',
+                          fontSize: '10px',
+                          lineHeight: '1.65',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#475569' }}>تاریخ تنظیم سند:</span>
+                          <strong style={{ fontFamily: 'monospace', color: '#0f172a' }}>
+                            {toPersianDigits(getCurrentJalaliDate())}
+                          </strong>
                         </div>
-                        <div style={{ color: '#475569' }}>
-                          کد مشتری: #{toPersianDigits(customer.id.substring(0, 8))}
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#475569' }}>شناسه طرف‌حساب:</span>
+                          <strong style={{ fontFamily: 'monospace', color: '#0f172a' }}>
+                            {toPersianDigits(customer.id.substring(0, 8).toUpperCase())}
+                          </strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#475569' }}>واحد مالی گزارش:</span>
+                          <strong style={{ color: '#0f172a' }}>{settings.currency}</strong>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Customer Information Card */}
-                  <div
-                    style={{
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '10px',
-                      padding: '10px 14px',
-                      backgroundColor: '#f8fafc',
-                      marginBottom: '14px',
-                    }}
-                  >
+                    {/* B. Customer Identification & Executive Financial Summary Box */}
                     <div
                       style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(2, 1fr)',
-                        gap: '6px 20px',
-                        fontSize: '11px',
-                        lineHeight: '1.6',
-                        color: '#1e293b',
+                        border: '1px solid #64748b',
+                        borderRadius: '6px',
+                        backgroundColor: '#ffffff',
+                        overflow: 'hidden',
+                        marginBottom: '6px',
                       }}
                     >
-                      <div>
-                        <span style={{ color: '#64748b' }}>نام طرف‌حساب: </span>
-                        <strong>{customer.name}</strong>
+                      {/* Section Title Strip */}
+                      <div
+                        style={{
+                          borderBottom: '1px solid #94a3b8',
+                          padding: '5px 12px',
+                          fontSize: '10px',
+                          fontWeight: '800',
+                          color: '#0f172a',
+                          backgroundColor: '#ffffff',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <span>مشخصات طرف‌حساب (خریدار / متقاضی)</span>
+                        <span>تعداد کل ردیف‌های گردش: {toPersianDigits(fullLedger.entries.length)} سند</span>
                       </div>
-                      <div>
-                        <span style={{ color: '#64748b' }}>شماره تماس: </span>
-                        <strong style={{ fontFamily: 'monospace' }}>
-                          {customer.phone ? toPersianDigits(customer.phone) : '—'}
-                        </strong>
+
+                      {/* Customer Details 4-Cell Grid */}
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1.3fr 1fr 1fr',
+                          padding: '8px 12px',
+                          gap: '6px 16px',
+                          fontSize: '10.5px',
+                          lineHeight: '1.6',
+                          color: '#0f172a',
+                          backgroundColor: '#ffffff',
+                        }}
+                      >
+                        <div>
+                          <span style={{ color: '#475569' }}>نام شخص حقیقی / حقوقی: </span>
+                          <strong style={{ fontSize: '11px' }}>{customer.name}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#475569' }}>شماره تماس: </span>
+                          <strong style={{ fontFamily: 'monospace' }}>
+                            {customer.phone ? toPersianDigits(customer.phone) : '—'}
+                          </strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#475569' }}>کد ملی / اقتصادی: </span>
+                          <strong style={{ fontFamily: 'monospace' }}>
+                            {customer.nationalId ? toPersianDigits(customer.nationalId) : '—'}
+                          </strong>
+                        </div>
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <span style={{ color: '#475569' }}>نشانی کامل: </span>
+                          <span>{customer.address || '—'}</span>
+                        </div>
                       </div>
-                      <div>
-                        <span style={{ color: '#64748b' }}>کد ملی / شناسه اقتصادی: </span>
-                        <strong style={{ fontFamily: 'monospace' }}>
-                          {customer.nationalId ? toPersianDigits(customer.nationalId) : '—'}
-                        </strong>
-                      </div>
-                      <div>
-                        <span style={{ color: '#64748b' }}>نشانی: </span>
-                        <span>{customer.address || '—'}</span>
+
+                      {/* Executive Financial Summary 3-Column Strip */}
+                      <div
+                        style={{
+                          borderTop: '1px solid #94a3b8',
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(3, 1fr)',
+                          backgroundColor: '#ffffff',
+                          fontSize: '10.5px',
+                        }}
+                      >
+                        <div style={{ padding: '6px 12px', borderLeft: '1px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff' }}>
+                          <span style={{ color: '#475569', fontWeight: '600' }}>جمع کل بدهکار:</span>
+                          <strong style={{ fontFamily: 'monospace', color: '#991b1b', fontSize: '11px' }}>
+                            {toPersianDigits(fullLedger.totalDebit.toLocaleString('en-US'))} {settings.currency}
+                          </strong>
+                        </div>
+                        <div style={{ padding: '6px 12px', borderLeft: '1px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff' }}>
+                          <span style={{ color: '#475569', fontWeight: '600' }}>جمع کل بستانکار:</span>
+                          <strong style={{ fontFamily: 'monospace', color: '#065f46', fontSize: '11px' }}>
+                            {toPersianDigits(fullLedger.totalCredit.toLocaleString('en-US'))} {settings.currency}
+                          </strong>
+                        </div>
+                        <div style={{ padding: '6px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff' }}>
+                          <span style={{ color: '#0f172a', fontWeight: '800' }}>مانده نهایی حساب:</span>
+                          <strong
+                            style={{
+                              fontFamily: 'monospace',
+                              fontSize: '11px',
+                              color:
+                                fullLedger.netBalance > 0
+                                  ? '#991b1b'
+                                  : fullLedger.netBalance < 0
+                                  ? '#1e40af'
+                                  : '#065f46',
+                            }}
+                          >
+                            {toPersianDigits(Math.abs(fullLedger.netBalance).toLocaleString('en-US'))} {settings.currency} (
+                            {fullLedger.netBalance > 0 ? 'بدهکار' : fullLedger.netBalance < 0 ? 'بستانکار' : 'تسویه'})
+                          </strong>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </th>
-              </tr>
+                  </th>
+                </tr>
 
-              {/* Table Column Headers */}
-              <tr style={{ backgroundColor: '#f1f5f9', color: '#0f172a', fontWeight: 'bold' }}>
-                <th style={{ padding: '7px 4px', border: '1px solid #cbd5e1', textAlign: 'center', width: '32px' }}>#</th>
-                <th style={{ padding: '7px 6px', border: '1px solid #cbd5e1', textAlign: 'right', width: '75px' }}>تاریخ</th>
-                <th style={{ padding: '7px 6px', border: '1px solid #cbd5e1', textAlign: 'right', width: '90px' }}>نوع سند</th>
-                <th style={{ padding: '7px 6px', border: '1px solid #cbd5e1', textAlign: 'right', width: '85px' }}>شماره سند/پیگیری</th>
-                <th style={{ padding: '7px 8px', border: '1px solid #cbd5e1', textAlign: 'right' }}>شرح تراکنش</th>
-                <th style={{ padding: '7px 6px', border: '1px solid #cbd5e1', textAlign: 'right', width: '90px', color: '#b91c1c' }}>بدهکار ({settings.currency})</th>
-                <th style={{ padding: '7px 6px', border: '1px solid #cbd5e1', textAlign: 'right', width: '90px', color: '#047857' }}>بستانکار ({settings.currency})</th>
-                <th style={{ padding: '7px 6px', border: '1px solid #cbd5e1', textAlign: 'right', width: '100px' }}>مانده جاری</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {fullLedger.entries.map((item, idx) => (
+                {/* 2. Official Accounting Table Column Headers */}
                 <tr
-                  key={`pdf-${item.id}`}
-                  style={{
-                    backgroundColor: idx % 2 === 1 ? '#f8fafc' : '#ffffff',
-                  }}
+                  className="pdf-table-col-header-row"
+                  style={{ backgroundColor: '#e2e8f0', color: '#0f172a', fontWeight: '900', fontSize: '10.5px', height: '40px' }}
                 >
-                  <td style={{ padding: '5px 4px', border: '1px solid #cbd5e1', textAlign: 'center', fontFamily: 'monospace', color: '#64748b' }}>
-                    {toPersianDigits(idx + 1)}
+                  <th className="pdf-table-col-header-cell" style={{ padding: '10px 4px', border: '1px solid #64748b', backgroundColor: '#e2e8f0', textAlign: 'center', width: '32px' }}>ردیف</th>
+                  <th className="pdf-table-col-header-cell" style={{ padding: '10px 5px', border: '1px solid #64748b', backgroundColor: '#e2e8f0', textAlign: 'center', width: '72px' }}>تاریخ</th>
+                  <th className="pdf-table-col-header-cell" style={{ padding: '10px 5px', border: '1px solid #64748b', backgroundColor: '#e2e8f0', textAlign: 'center', width: '82px' }}>نوع سند</th>
+                  <th className="pdf-table-col-header-cell" style={{ padding: '10px 5px', border: '1px solid #64748b', backgroundColor: '#e2e8f0', textAlign: 'center', width: '78px' }}>شماره سند</th>
+                  <th className="pdf-table-col-header-cell" style={{ padding: '10px 8px', border: '1px solid #64748b', backgroundColor: '#e2e8f0', textAlign: 'right' }}>شرح کامل تراکنش و جزئیات سند</th>
+                  <th className="pdf-table-col-header-cell" style={{ padding: '10px 6px', border: '1px solid #64748b', backgroundColor: '#e2e8f0', textAlign: 'center', width: '88px', color: '#991b1b' }}>بدهکار ({settings.currency})</th>
+                  <th className="pdf-table-col-header-cell" style={{ padding: '10px 6px', border: '1px solid #64748b', backgroundColor: '#e2e8f0', textAlign: 'center', width: '88px', color: '#065f46' }}>بستانکار ({settings.currency})</th>
+                  <th className="pdf-table-col-header-cell" style={{ padding: '10px 6px', border: '1px solid #64748b', backgroundColor: '#e2e8f0', textAlign: 'center', width: '92px' }}>مانده حساب</th>
+                  <th className="pdf-table-col-header-cell" style={{ padding: '10px 4px', border: '1px solid #64748b', backgroundColor: '#e2e8f0', textAlign: 'center', width: '44px' }}>تشخیص</th>
+                </tr>
+              </thead>
+
+              <tbody style={{ backgroundColor: '#ffffff' }}>
+                {fullLedger.entries.map((item, idx) => (
+                  <tr
+                    key={`pdf-${item.id}`}
+                    style={{
+                      backgroundColor: '#ffffff',
+                    }}
+                  >
+                    <td style={{ padding: '5px 4px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', color: '#334155', fontWeight: 'bold' }}>
+                      {toPersianDigits(idx + 1)}
+                    </td>
+                    <td style={{ padding: '5px 5px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>
+                      {toPersianDigits(item.date)}
+                    </td>
+                    <td style={{ padding: '5px 5px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontWeight: '600', color: '#1e293b' }}>
+                      {getDisplayDocTypeLabel(item)}
+                    </td>
+                    <td style={{ padding: '5px 5px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#334155' }}>
+                      {toPersianDigits(item.documentNumber)}
+                    </td>
+                    <td style={{ padding: '5px 8px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', lineHeight: '1.45', color: '#0f172a' }}>
+                      <div style={{ fontWeight: '500' }}>{item.description}</div>
+                      {showSuppliers && item.supplierNames && item.supplierNames.length > 0 && (
+                        <div style={{ color: '#92400e', fontSize: '9px', marginTop: '2px', fontWeight: 'bold' }}>
+                          تامین‌کننده / فروشنده کالا: {item.supplierNames.join('، ')}
+                        </div>
+                      )}
+                      {item.trackingNumber && (
+                        <span style={{ display: 'block', fontSize: '9px', color: '#475569', fontFamily: 'monospace', marginTop: '1px' }}>
+                          کد پیگیری / سریال: {toPersianDigits(item.trackingNumber)}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: '5px 6px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#991b1b' }}>
+                      {item.debit > 0 ? toPersianDigits(item.debit.toLocaleString('en-US')) : '—'}
+                    </td>
+                    <td style={{ padding: '5px 6px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#065f46' }}>
+                      {item.credit > 0 ? toPersianDigits(item.credit.toLocaleString('en-US')) : '—'}
+                    </td>
+                    <td style={{ padding: '5px 6px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: '800', color: '#0f172a' }}>
+                      {toPersianDigits(Math.abs(item.balance).toLocaleString('en-US'))}
+                    </td>
+                    <td
+                      style={{
+                        padding: '5px 4px',
+                        border: '1px solid #94a3b8',
+                        backgroundColor: '#ffffff',
+                        textAlign: 'center',
+                        fontWeight: '800',
+                        fontSize: '9.5px',
+                        color: item.balance > 0 ? '#991b1b' : item.balance < 0 ? '#1e40af' : '#065f46',
+                      }}
+                    >
+                      {item.balance > 0 ? 'بد' : item.balance < 0 ? 'بس' : 'تسویه'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+
+              <tfoot style={{ backgroundColor: '#ffffff' }}>
+                {/* Grand Totals Row */}
+                <tr style={{ backgroundColor: '#ffffff', fontWeight: '900', color: '#0f172a', fontSize: '10.5px' }}>
+                  <td colSpan={5} style={{ padding: '8px 10px', border: '1px solid #64748b', backgroundColor: '#ffffff', textAlign: 'left', fontWeight: '900' }}>
+                    جمع کل گردش حساب و مانده نهایی ({settings.currency}):
                   </td>
-                  <td style={{ padding: '5px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontWeight: 'bold' }}>
-                    {toPersianDigits(item.date)}
+                  <td style={{ padding: '8px 6px', border: '1px solid #64748b', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: '900', color: '#991b1b' }}>
+                    {toPersianDigits(fullLedger.totalDebit.toLocaleString('en-US'))}
                   </td>
-                  <td style={{ padding: '5px 6px', border: '1px solid #cbd5e1' }}>
-                    {getDisplayDocTypeLabel(item)}
+                  <td style={{ padding: '8px 6px', border: '1px solid #64748b', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: '900', color: '#065f46' }}>
+                    {toPersianDigits(fullLedger.totalCredit.toLocaleString('en-US'))}
                   </td>
-                  <td style={{ padding: '5px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace' }}>
-                    {toPersianDigits(item.documentNumber)}
+                  <td style={{ padding: '8px 6px', border: '1px solid #64748b', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: '900', color: '#0f172a' }}>
+                    {toPersianDigits(Math.abs(fullLedger.netBalance).toLocaleString('en-US'))}
                   </td>
-                  <td style={{ padding: '5px 8px', border: '1px solid #cbd5e1', lineHeight: '1.4' }}>
-                    <div>{item.description}</div>
-                    {showSuppliers && item.supplierNames && item.supplierNames.length > 0 && (
-                      <div style={{ color: '#b45309', fontSize: '9px', marginTop: '2px', fontWeight: 'bold' }}>
-                        تامین‌کننده / فروشنده کالا: {item.supplierNames.join('، ')}
-                      </div>
-                    )}
-                    {item.trackingNumber && (
-                      <span style={{ display: 'block', fontSize: '9.5px', color: '#64748b', fontFamily: 'monospace' }}>
-                        پیگیری: {toPersianDigits(item.trackingNumber)}
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ padding: '5px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontWeight: 'bold', color: '#b91c1c' }}>
-                    {item.debit > 0 ? toPersianDigits(item.debit.toLocaleString('en-US')) : '—'}
-                  </td>
-                  <td style={{ padding: '5px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontWeight: 'bold', color: '#047857' }}>
-                    {item.credit > 0 ? toPersianDigits(item.credit.toLocaleString('en-US')) : '—'}
-                  </td>
-                  <td style={{ padding: '5px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontWeight: 'bold' }}>
-                    {toPersianDigits(Math.abs(item.balance).toLocaleString('en-US'))} ({item.balance > 0 ? 'بدهکار' : item.balance < 0 ? 'بستانکار' : 'تسویه'})
+                  <td
+                    style={{
+                      padding: '8px 4px',
+                      border: '1px solid #64748b',
+                      backgroundColor: '#ffffff',
+                      textAlign: 'center',
+                      fontWeight: '900',
+                      fontSize: '9.5px',
+                      color: fullLedger.netBalance > 0 ? '#991b1b' : fullLedger.netBalance < 0 ? '#1e40af' : '#065f46',
+                    }}
+                  >
+                    {fullLedger.netBalance > 0 ? 'بدهکار' : fullLedger.netBalance < 0 ? 'بستانکار' : 'تسویه'}
                   </td>
                 </tr>
-              ))}
-            </tbody>
-
-            <tfoot>
-              {/* Grand Totals */}
-              <tr style={{ backgroundColor: '#f1f5f9', fontWeight: 'bold', borderTop: '2px solid #64748b', color: '#0f172a' }}>
-                <td colSpan={5} style={{ padding: '7px 10px', border: '1px solid #cbd5e1', textAlign: 'left', fontWeight: 'bold' }}>
-                  مجموع گردش و مانده نهایی ({settings.currency}):
-                </td>
-                <td style={{ padding: '7px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontWeight: '900', color: '#b91c1c' }}>
-                  {toPersianDigits(fullLedger.totalDebit.toLocaleString('en-US'))}
-                </td>
-                <td style={{ padding: '7px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontWeight: '900', color: '#047857' }}>
-                  {toPersianDigits(fullLedger.totalCredit.toLocaleString('en-US'))}
-                </td>
-                <td style={{ padding: '7px 6px', border: '1px solid #cbd5e1', fontFamily: 'monospace', fontWeight: '900' }}>
-                  {toPersianDigits(Math.abs(fullLedger.netBalance).toLocaleString('en-US'))} ({fullLedger.netBalance > 0 ? 'بدهکار' : fullLedger.netBalance < 0 ? 'بستانکار' : 'تسویه'})
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-
-          {/* Bottom Statement Summary & Signatures */}
-          <div
-            style={{
-              border: '1px solid #cbd5e1',
-              borderRadius: '10px',
-              padding: '10px 14px',
-              backgroundColor: '#f8fafc',
-              marginTop: '14px',
-              marginBottom: '16px',
-              fontSize: '11px',
-              lineHeight: '1.6',
-            }}
-          >
-            <div>
-              <strong>مانده نهایی حساب به حروف: </strong>
-              <span style={{ fontWeight: 'bold', color: fullLedger.netBalance > 0 ? '#b91c1c' : fullLedger.netBalance < 0 ? '#1d4ed8' : '#047857' }}>
-                {fullLedger.netBalance === 0
-                  ? 'حساب کاملاً تسویه و بی‌حساب است.'
-                  : `${numberToPersianWords(Math.abs(fullLedger.netBalance))} ${settings.currency} (${fullLedger.netBalance > 0 ? 'بدهکار' : 'بستانکار'})`}
-              </span>
-            </div>
-            {settings.invoiceFooterText && (
-              <div style={{ color: '#64748b', fontSize: '10px', marginTop: '4px' }}>
-                {settings.invoiceFooterText}
-              </div>
-            )}
+              </tfoot>
+            </table>
           </div>
 
+          {/* Bottom Section: Pinned to bottom of page when row count is small */}
           <div
+            className="pdf-statement-footer-group"
+            data-pdf-footer="true"
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, 1fr)',
-              gap: '28px',
-              textAlign: 'center',
-              fontSize: '11px',
-              marginTop: '20px',
-              paddingTop: '6px',
+              width: '100%',
+              marginTop: 'auto',
+              paddingTop: '14px',
+              backgroundColor: '#ffffff',
             }}
           >
-            <div style={{ borderTop: '1px dashed #94a3b8', paddingTop: '8px' }}>
-              <span style={{ fontWeight: 'bold', color: '#334155' }}>مهر و امضای امور مالی / صادرکننده</span>
+            {/* C. Official Amount in Words & Administrative Notes Box */}
+            <div
+              style={{
+                border: '1px solid #64748b',
+                borderRadius: '6px',
+                padding: '9px 14px',
+                backgroundColor: '#ffffff',
+                marginBottom: '12px',
+                fontSize: '10.5px',
+                lineHeight: '1.65',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <div>
+                  <strong style={{ color: '#0f172a' }}>مانده نهایی حساب به حروف: </strong>
+                  <span
+                    style={{
+                      fontWeight: '800',
+                      color: fullLedger.netBalance > 0 ? '#991b1b' : fullLedger.netBalance < 0 ? '#1e40af' : '#065f46',
+                    }}
+                  >
+                    {fullLedger.netBalance === 0
+                      ? 'حساب طرف‌حساب کاملاً تسویه و بی‌حساب می‌باشد.'
+                      : `${numberToPersianWords(Math.abs(fullLedger.netBalance))} ${settings.currency} (${
+                          fullLedger.netBalance > 0 ? 'بدهکار به فروشگاه' : 'بستانکار از فروشگاه'
+                        })`}
+                  </span>
+                </div>
+                <div style={{ fontSize: '9.5px', color: '#475569' }}>
+                  تنظیم‌کننده: <strong>{currentUser?.fullName || currentUser?.username || 'واحد امور مالی'}</strong>
+                </div>
+              </div>
+              {settings.invoiceFooterText && (
+                <div style={{ color: '#475569', fontSize: '9.5px', marginTop: '4px', borderTop: '1px dashed #cbd5e1', paddingTop: '4px' }}>
+                  توضیحات: {settings.invoiceFooterText}
+                </div>
+              )}
             </div>
-            <div style={{ borderTop: '1px dashed #94a3b8', paddingTop: '8px' }}>
-              <span style={{ fontWeight: 'bold', color: '#334155' }}>امضا و تایید مانده حساب توسط طرف‌حساب</span>
+
+            {/* D. Official 3-Column Administrative Signature & Stamp Boxes */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '12px',
+                textAlign: 'center',
+                fontSize: '10px',
+                backgroundColor: '#ffffff',
+              }}
+            >
+              <div
+                style={{
+                  border: '1px solid #94a3b8',
+                  borderRadius: '6px',
+                  padding: '8px 10px',
+                  minHeight: '68px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                <span style={{ fontWeight: '800', color: '#1e293b' }}>تنظیم‌کننده / واحد حسابداری</span>
+                <span style={{ fontSize: '9px', color: '#64748b' }}>نام، تاریخ و امضا</span>
+              </div>
+
+              <div
+                style={{
+                  border: '1px solid #94a3b8',
+                  borderRadius: '6px',
+                  padding: '8px 10px',
+                  minHeight: '68px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                <span style={{ fontWeight: '800', color: '#1e293b' }}>مهر و امضای مدیریت / فروشگاه</span>
+                <span style={{ fontSize: '9px', color: '#64748b' }}>محل مهر و تایید رسمی</span>
+              </div>
+
+              <div
+                style={{
+                  border: '1px solid #94a3b8',
+                  borderRadius: '6px',
+                  padding: '8px 10px',
+                  minHeight: '68px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                <span style={{ fontWeight: '800', color: '#1e293b' }}>تایید و امضای طرف‌حساب (خریدار)</span>
+                <span style={{ fontSize: '9px', color: '#64748b' }}>تایید صحت مانده حساب</span>
+              </div>
             </div>
           </div>
         </div>
