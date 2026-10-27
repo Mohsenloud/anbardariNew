@@ -6,9 +6,11 @@ import {
   toPersianDigits,
   toEnglishDigits,
   getCurrentJalaliDate,
+  addDaysToJalali,
   getInvoiceDaysAge,
 } from '../utils/jalali';
 import { isServiceItem } from '../utils/serviceHelper';
+import { JalaliDatePicker } from './JalaliDatePicker';
 import {
   TrendingUp,
   DollarSign,
@@ -27,9 +29,14 @@ import {
   Layers,
   Users,
   BarChart3,
-  PackageX,
-  Wrench,
   FileText,
+  UserCheck,
+  PackageSearch,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  X,
+  Filter,
 } from 'lucide-react';
 
 interface ReportsDashboardProps {
@@ -44,11 +51,27 @@ interface ReportsDashboardProps {
   onViewInvoice?: (invoice: Invoice) => void;
 }
 
-type DatePeriodFilter = 'all' | 'today' | '7days' | '30days' | 'year';
-type ReportSubTab = 'overview' | 'profitability' | 'cashflow' | 'warehouse';
+type DatePeriodFilter = 'all' | 'today' | '7days' | '30days' | 'year' | 'custom';
+type ReportSubTab = 'overview' | 'product_customer' | 'profitability' | 'cashflow' | 'warehouse';
 type ItemSortMode = 'profit' | 'revenue' | 'quantity' | 'margin';
 type ItemTypeFilter = 'all' | 'goods' | 'services';
 type WarehouseHealthFilter = 'low_stock' | 'out_of_stock' | 'stagnant';
+type MatrixViewMode = 'by_product' | 'by_customer' | 'flat_log';
+type MatrixSortMode = 'quantity' | 'revenue' | 'profit' | 'invoices';
+
+/**
+ * Normalizes any Jalali date string (e.g. "۱۴۰۳/۷/۵") to standard comparable "1403/07/05"
+ */
+function normalizeJalaliComparable(dateStr?: string): string {
+  if (!dateStr) return '';
+  const clean = toEnglishDigits(dateStr).replace(/[^\d/]/g, '').trim();
+  const parts = clean.split('/').map(Number);
+  if (parts.length < 3 || isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])) {
+    return clean;
+  }
+  const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+  return `${parts[0]}/${pad(parts[1])}/${pad(parts[2])}`;
+}
 
 /**
  * Checks whether a catalog product represents a non-physical service item.
@@ -115,6 +138,28 @@ function resolveInvoicePaymentBreakdown(inv: Invoice): { paid: number; remaining
   return { paid, remaining: Math.max(0, finalTotal - paid) };
 }
 
+export interface ProductCustomerSaleInvoiceRecord {
+  invoiceId: string;
+  invoiceNumber: string;
+  date: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  productKey: string;
+  productCode: string;
+  productName: string;
+  unit: string;
+  isService: boolean;
+  quantity: number;
+  unitPrice: number;
+  discountShare: number;
+  netRevenue: number;
+  totalCost: number;
+  netProfit: number;
+  paymentStatus: Invoice['paymentStatus'];
+  rawInvoice: Invoice;
+}
+
 export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
   products,
   invoices,
@@ -122,22 +167,44 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
   settings,
   currentUser,
   onOpenInventory,
+  onViewInvoice,
 }) => {
   const [periodFilter, setPeriodFilter] = useState<DatePeriodFilter>('all');
+  const [customFromDate, setCustomFromDate] = useState<string>(() => addDaysToJalali(-30));
+  const [customToDate, setCustomToDate] = useState<string>(() => getCurrentJalaliDate());
+
   const [activeSubTab, setActiveSubTab] = useState<ReportSubTab>('overview');
   const [itemSortMode, setItemSortMode] = useState<ItemSortMode>('profit');
   const [itemTypeFilter, setItemTypeFilter] = useState<ItemTypeFilter>('all');
   const [itemSearchQuery, setItemSearchQuery] = useState<string>('');
   const [warehouseHealthFilter, setWarehouseHealthFilter] = useState<WarehouseHealthFilter>('low_stock');
 
+  // States for Product-to-Customer Matrix Report Tab
+  const [matrixViewMode, setMatrixViewMode] = useState<MatrixViewMode>('by_product');
+  const [matrixSortMode, setMatrixSortMode] = useState<MatrixSortMode>('quantity');
+  const [selectedProductKey, setSelectedProductKey] = useState<string>('ALL');
+  const [selectedCustomerKey, setSelectedCustomerKey] = useState<string>('ALL');
+  const [matrixProductSearch, setMatrixProductSearch] = useState<string>('');
+  const [matrixCustomerSearch, setMatrixCustomerSearch] = useState<string>('');
+  const [expandedMatrixRowKey, setExpandedMatrixRowKey] = useState<string | null>(null);
+
   const currentJalaliYear = useMemo(() => {
     const today = toEnglishDigits(getCurrentJalaliDate());
     return today.split('/')[0] || '1404';
   }, []);
 
-  // Filter helper by date period
+  // Filter helper by date period (including custom from/to Jalali range)
   const matchesPeriod = (dateStr?: string, createdAt?: string): boolean => {
     if (periodFilter === 'all') return true;
+    if (periodFilter === 'custom') {
+      const targetNorm = normalizeJalaliComparable(dateStr);
+      if (!targetNorm) return false;
+      const fromNorm = normalizeJalaliComparable(customFromDate);
+      const toNorm = normalizeJalaliComparable(customToDate);
+      if (fromNorm && targetNorm < fromNorm) return false;
+      if (toNorm && targetNorm > toNorm) return false;
+      return true;
+    }
     const ageDays = getInvoiceDaysAge(dateStr, createdAt);
     if (periodFilter === 'today') return ageDays === 0;
     if (periodFilter === '7days') return ageDays <= 7;
@@ -163,9 +230,9 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
       proformaInvoices: proformas,
       periodPurchaseInvoices: purchases,
     };
-  }, [invoices, purchaseInvoices, periodFilter, currentJalaliYear]);
+  }, [invoices, purchaseInvoices, periodFilter, customFromDate, customToDate, currentJalaliYear]);
 
-  // Comprehensive Financial, COGS, Profit & Item-Level Analytics
+  // Comprehensive Financial, COGS, Profit, Item-Level & Product-to-Customer Matrix Analytics
   const financialAnalytics = useMemo(() => {
     let grossSalesTotal = 0; // Sum of finalTotal (includes tax, net of discounts)
     let netSalesExclTax = 0; // Revenue excluding VAT/Tax
@@ -205,8 +272,11 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
         netProfit: number;
         marginPercent: number;
         invoiceCount: number;
+        uniqueBuyersCount: number;
       }
     > = {};
+
+    const itemBuyersSetMap: Record<string, Set<string>> = {};
 
     const customerStatsMap: Record<
       string,
@@ -220,6 +290,8 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
         totalDebt: number;
       }
     > = {};
+
+    const saleRecords: ProductCustomerSaleInvoiceRecord[] = [];
 
     confirmedInvoices.forEach((inv) => {
       const invFinal = Math.max(0, Number(inv.finalTotal) || 0);
@@ -245,12 +317,15 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
       paymentMethodTotals[methodKey].count += 1;
 
       // Customer breakdown
-      const custKey = inv.customerId || inv.customerName || 'unknown';
+      const custKey = (inv.customerId || inv.customerName || 'unknown').trim();
+      const custName = (inv.customerName || 'مشتری عمومی').trim();
+      const custPhone = (inv.customerPhone || '').trim();
+
       if (!customerStatsMap[custKey]) {
         customerStatsMap[custKey] = {
           id: custKey,
-          name: inv.customerName || 'مشتری عمومی',
-          phone: inv.customerPhone || '',
+          name: custName,
+          phone: custPhone,
           invoicesCount: 0,
           totalPurchased: 0,
           totalPaid: 0,
@@ -290,6 +365,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
 
         const unitCost = resolveItemUnitCost(item, products);
         const itemTotalCost = qty * unitCost;
+        const itemNetProfit = itemNetRevenue - itemTotalCost;
         const serviceFlag = isServiceItem(item, products);
 
         totalCostOfGoodsSold += itemTotalCost;
@@ -309,13 +385,16 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
           (item.productName || item.name || 'item').trim();
         const variantSuffix = item.variantName ? ` (${item.variantName})` : '';
         const statKey = item.variantId ? `${pid}_${item.variantId}` : pid;
+        const displayProductName = `${item.productName || item.name || 'بدون نام'}${variantSuffix}`;
+        const displayProductCode = item.productCode || item.code || '-';
+        const displayUnit = item.unit || 'عدد';
 
         if (!itemStatsMap[statKey]) {
           itemStatsMap[statKey] = {
             key: statKey,
-            code: item.productCode || item.code || '-',
-            name: `${item.productName || item.name || 'بدون نام'}${variantSuffix}`,
-            unit: item.unit || 'عدد',
+            code: displayProductCode,
+            name: displayProductName,
+            unit: displayUnit,
             isService: serviceFlag,
             quantity: 0,
             netRevenue: 0,
@@ -323,22 +402,48 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
             netProfit: 0,
             marginPercent: 0,
             invoiceCount: 0,
+            uniqueBuyersCount: 0,
           };
+          itemBuyersSetMap[statKey] = new Set<string>();
         }
 
         itemStatsMap[statKey].quantity += qty;
         itemStatsMap[statKey].netRevenue += itemNetRevenue;
         itemStatsMap[statKey].totalCost += itemTotalCost;
+        itemBuyersSetMap[statKey].add(custKey);
+
         if (!seenItemsInInvoice.has(statKey)) {
           itemStatsMap[statKey].invoiceCount += 1;
           seenItemsInInvoice.add(statKey);
         }
+
+        saleRecords.push({
+          invoiceId: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          date: inv.date,
+          customerId: custKey,
+          customerName: custName,
+          customerPhone: custPhone,
+          productKey: statKey,
+          productCode: displayProductCode,
+          productName: displayProductName,
+          unit: displayUnit,
+          isService: serviceFlag,
+          quantity: qty,
+          unitPrice,
+          discountShare: rowDiscount + discountShare,
+          netRevenue: itemNetRevenue,
+          totalCost: itemTotalCost,
+          netProfit: itemNetProfit,
+          paymentStatus: inv.paymentStatus,
+          rawInvoice: inv,
+        });
       });
 
       totalDiscountsGiven += invInvoiceDiscount + rowDiscountsSum;
     });
 
-    // Finalize item profit and margin
+    // Finalize item profit, margin, and unique buyers count
     const allSoldItems = Object.values(itemStatsMap).map((entry) => {
       const netProfit = entry.netRevenue - entry.totalCost;
       const marginPercent =
@@ -347,6 +452,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
         ...entry,
         netProfit,
         marginPercent,
+        uniqueBuyersCount: itemBuyersSetMap[entry.key]?.size || 0,
       };
     });
 
@@ -396,8 +502,195 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
       totalPurchaseSpend,
       topCustomers,
       debtorCustomers,
+      saleRecords,
     };
   }, [confirmedInvoices, proformaInvoices, periodPurchaseInvoices, products]);
+
+  // Product-to-Customer Matrix Analytics (کدام محصول به چه اشخاصی و به چه مقدار فروخته شده است)
+  const productCustomerMatrix = useMemo(() => {
+    const prodSearch = matrixProductSearch.trim().toLowerCase();
+    const custSearch = matrixCustomerSearch.trim().toLowerCase();
+
+    // Filter saleRecords by selected product, selected customer, and search queries
+    const filteredRecords = financialAnalytics.saleRecords.filter((rec) => {
+      if (selectedProductKey !== 'ALL' && rec.productKey !== selectedProductKey) return false;
+      if (selectedCustomerKey !== 'ALL' && rec.customerId !== selectedCustomerKey) return false;
+      if (prodSearch) {
+        const matchProd =
+          rec.productName.toLowerCase().includes(prodSearch) ||
+          rec.productCode.toLowerCase().includes(prodSearch);
+        if (!matchProd) return false;
+      }
+      if (custSearch) {
+        const matchCust =
+          rec.customerName.toLowerCase().includes(custSearch) ||
+          rec.customerPhone.toLowerCase().includes(custSearch);
+        if (!matchCust) return false;
+      }
+      return true;
+    });
+
+    // Summary metrics for filtered selection
+    let totalQuantity = 0;
+    let totalNetRevenue = 0;
+    let totalNetProfit = 0;
+    let minUnitPrice = Infinity;
+    let maxUnitPrice = 0;
+    const uniqueCustomersSet = new Set<string>();
+    const uniqueProductsSet = new Set<string>();
+    const uniqueInvoicesSet = new Set<string>();
+    const unitsSet = new Set<string>();
+
+    filteredRecords.forEach((rec) => {
+      totalQuantity += rec.quantity;
+      totalNetRevenue += rec.netRevenue;
+      totalNetProfit += rec.netProfit;
+      if (rec.unitPrice > 0) {
+        if (rec.unitPrice < minUnitPrice) minUnitPrice = rec.unitPrice;
+        if (rec.unitPrice > maxUnitPrice) maxUnitPrice = rec.unitPrice;
+      }
+      uniqueCustomersSet.add(rec.customerId);
+      uniqueProductsSet.add(rec.productKey);
+      uniqueInvoicesSet.add(rec.invoiceId);
+      unitsSet.add(rec.unit);
+    });
+
+    if (minUnitPrice === Infinity) minUnitPrice = 0;
+    const avgUnitPrice = totalQuantity > 0 ? Math.round(totalNetRevenue / totalQuantity) : 0;
+    const dominantUnit = unitsSet.size === 1 ? Array.from(unitsSet)[0] : 'واحد';
+
+    // Group 1: By Product -> Breakdown of Customers who bought that product (and also direct Customer rows when a product is selected)
+    const productCustomerPairMap: Record<
+      string,
+      {
+        pairKey: string;
+        productKey: string;
+        productCode: string;
+        productName: string;
+        unit: string;
+        isService: boolean;
+        customerId: string;
+        customerName: string;
+        customerPhone: string;
+        quantity: number;
+        netRevenue: number;
+        totalCost: number;
+        netProfit: number;
+        minUnitPrice: number;
+        maxUnitPrice: number;
+        avgUnitPrice: number;
+        firstDate: string;
+        lastDate: string;
+        invoicesCount: number;
+        invoiceIds: Set<string>;
+        records: ProductCustomerSaleInvoiceRecord[];
+      }
+    > = {};
+
+    // Total quantity per product (to calculate each customer's percentage share of that product)
+    const productTotalQtyMap: Record<string, number> = {};
+    const customerTotalSpentMap: Record<string, number> = {};
+
+    filteredRecords.forEach((rec) => {
+      productTotalQtyMap[rec.productKey] = (productTotalQtyMap[rec.productKey] || 0) + rec.quantity;
+      customerTotalSpentMap[rec.customerId] =
+        (customerTotalSpentMap[rec.customerId] || 0) + rec.netRevenue;
+
+      const pairKey = `${rec.productKey}__${rec.customerId}`;
+      if (!productCustomerPairMap[pairKey]) {
+        productCustomerPairMap[pairKey] = {
+          pairKey,
+          productKey: rec.productKey,
+          productCode: rec.productCode,
+          productName: rec.productName,
+          unit: rec.unit,
+          isService: rec.isService,
+          customerId: rec.customerId,
+          customerName: rec.customerName,
+          customerPhone: rec.customerPhone,
+          quantity: 0,
+          netRevenue: 0,
+          totalCost: 0,
+          netProfit: 0,
+          minUnitPrice: rec.unitPrice > 0 ? rec.unitPrice : Infinity,
+          maxUnitPrice: rec.unitPrice > 0 ? rec.unitPrice : 0,
+          avgUnitPrice: 0,
+          firstDate: rec.date,
+          lastDate: rec.date,
+          invoicesCount: 0,
+          invoiceIds: new Set<string>(),
+          records: [],
+        };
+      }
+
+      const entry = productCustomerPairMap[pairKey];
+      entry.quantity += rec.quantity;
+      entry.netRevenue += rec.netRevenue;
+      entry.totalCost += rec.totalCost;
+      entry.netProfit += rec.netProfit;
+      if (rec.unitPrice > 0) {
+        if (rec.unitPrice < entry.minUnitPrice) entry.minUnitPrice = rec.unitPrice;
+        if (rec.unitPrice > entry.maxUnitPrice) entry.maxUnitPrice = rec.unitPrice;
+      }
+
+      const recNorm = normalizeJalaliComparable(rec.date);
+      if (recNorm < normalizeJalaliComparable(entry.firstDate)) {
+        entry.firstDate = rec.date;
+      }
+      if (recNorm > normalizeJalaliComparable(entry.lastDate)) {
+        entry.lastDate = rec.date;
+      }
+
+      entry.invoiceIds.add(rec.invoiceId);
+      entry.invoicesCount = entry.invoiceIds.size;
+      entry.records.push(rec);
+    });
+
+    const pairRows = Object.values(productCustomerPairMap)
+      .map((entry) => {
+        const avg = entry.quantity > 0 ? Math.round(entry.netRevenue / entry.quantity) : 0;
+        const prodTotalQty = productTotalQtyMap[entry.productKey] || 1;
+        const shareOfProductQtyPercent = Math.round((entry.quantity / prodTotalQty) * 100);
+        const custTotalSpent = customerTotalSpentMap[entry.customerId] || 1;
+        const shareOfCustomerSpendPercent = Math.round((entry.netRevenue / custTotalSpent) * 100);
+
+        return {
+          ...entry,
+          minUnitPrice: entry.minUnitPrice === Infinity ? 0 : entry.minUnitPrice,
+          avgUnitPrice: avg,
+          shareOfProductQtyPercent,
+          shareOfCustomerSpendPercent,
+        };
+      })
+      .sort((a, b) => {
+        if (matrixSortMode === 'quantity') return b.quantity - a.quantity;
+        if (matrixSortMode === 'revenue') return b.netRevenue - a.netRevenue;
+        if (matrixSortMode === 'profit') return b.netProfit - a.netProfit;
+        return b.invoicesCount - a.invoicesCount;
+      });
+
+    return {
+      filteredRecords,
+      pairRows,
+      totalQuantity,
+      totalNetRevenue,
+      totalNetProfit,
+      minUnitPrice,
+      maxUnitPrice,
+      avgUnitPrice,
+      dominantUnit,
+      uniqueCustomersCount: uniqueCustomersSet.size,
+      uniqueProductsCount: uniqueProductsSet.size,
+      uniqueInvoicesCount: uniqueInvoicesSet.size,
+    };
+  }, [
+    financialAnalytics.saleRecords,
+    selectedProductKey,
+    selectedCustomerKey,
+    matrixProductSearch,
+    matrixCustomerSearch,
+    matrixSortMode,
+  ]);
 
   // Physical Inventory Valuation & Health Analysis (Excludes non-physical Services & handles Variants)
   const warehouseAnalytics = useMemo(() => {
@@ -587,6 +880,63 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
       });
   }, [financialAnalytics.allSoldItems, itemTypeFilter, itemSearchQuery, itemSortMode]);
 
+  // Helper to jump from any product row to its buyers report in the Product-Customer Matrix tab
+  const handleInspectProductBuyers = (productKey: string) => {
+    setSelectedProductKey(productKey);
+    setSelectedCustomerKey('ALL');
+    setMatrixProductSearch('');
+    setMatrixCustomerSearch('');
+    setMatrixViewMode('by_product');
+    setActiveSubTab('product_customer');
+  };
+
+  // Export only the Product-to-Customer Matrix Excel
+  const handleExportMatrixExcel = () => {
+    const wb = XLSX.utils.book_new();
+    const rows = productCustomerMatrix.pairRows.map((r, idx) => ({
+      'ردیف': idx + 1,
+      'کد کالا / خدمت': r.productCode,
+      'نام کالا / محصول': r.productName,
+      'نام شخص / مشتری': r.customerName,
+      'تلفن مشتری': r.customerPhone || '-',
+      'مقدار خریداری‌شده': r.quantity,
+      'واحد': r.unit,
+      'سهم از کل فروش این محصول (%)': `${r.shareOfProductQtyPercent}%`,
+      'تعداد دفعات خرید (فاکتور)': r.invoicesCount,
+      'میانگین فی فروش': r.avgUnitPrice,
+      'کمترین فی': r.minUnitPrice,
+      'بیشترین فی': r.maxUnitPrice,
+      'مبلغ خالص فروش': Math.round(r.netRevenue),
+      'سود خالص': Math.round(r.netProfit),
+      'اولین خرید در بازه': r.firstDate,
+      'آخرین خرید در بازه': r.lastDate,
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, 'فروش کالا به اشخاص');
+
+    const logRows = productCustomerMatrix.filteredRecords.map((rec, idx) => ({
+      'ردیف': idx + 1,
+      'تاریخ فاکتور': rec.date,
+      'شماره فاکتور': rec.invoiceNumber,
+      'نام مشتری / شخص': rec.customerName,
+      'کد کالا': rec.productCode,
+      'نام کالا / محصول': rec.productName,
+      'مقدار': rec.quantity,
+      'واحد': rec.unit,
+      'فی واحد': rec.unitPrice,
+      'مبلغ خالص ردیف': Math.round(rec.netRevenue),
+      'سود ردیف': Math.round(rec.netProfit),
+    }));
+    if (logRows.length > 0) {
+      const wsLog = XLSX.utils.json_to_sheet(logRows);
+      XLSX.utils.book_append_sheet(wb, wsLog, 'ریز فاکتورهای فروش کالا');
+    }
+
+    const dateStamp = toEnglishDigits(getCurrentJalaliDate()).replace(/\//g, '-');
+    XLSX.writeFile(wb, `گزارش_فروش_کالا_به_اشخاص_${dateStamp}.xlsx`);
+  };
+
   // Export comprehensive Excel workbook
   const handleExportExcelReport = () => {
     const wb = XLSX.utils.book_new();
@@ -610,7 +960,28 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
     const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
     XLSX.utils.book_append_sheet(wb, wsSummary, 'خلاصه مالی و سود');
 
-    // 2. Item Profitability Sheet
+    // 2. Product-to-Customer Matrix Sheet
+    if (productCustomerMatrix.pairRows.length > 0) {
+      const matrixRows = productCustomerMatrix.pairRows.map((r, idx) => ({
+        'ردیف': idx + 1,
+        'کد کالا': r.productCode,
+        'نام محصول / خدمت': r.productName,
+        'نام مشتری / شخص': r.customerName,
+        'تلفن مشتری': r.customerPhone || '-',
+        'مقدار خریداری‌شده': r.quantity,
+        'واحد': r.unit,
+        'سهم از کل فروش کالا (%)': `${r.shareOfProductQtyPercent}%`,
+        'تعداد فاکتور': r.invoicesCount,
+        'میانگین فی': r.avgUnitPrice,
+        'مبلغ خالص فروش': Math.round(r.netRevenue),
+        'سود خالص': Math.round(r.netProfit),
+        'آخرین خرید': r.lastDate,
+      }));
+      const wsMatrix = XLSX.utils.json_to_sheet(matrixRows);
+      XLSX.utils.book_append_sheet(wb, wsMatrix, 'فروش هر کالا به اشخاص');
+    }
+
+    // 3. Item Profitability Sheet
     const itemRows = sortedItems.map((it, idx) => ({
       'رتبه': idx + 1,
       'کد کالا / خدمت': it.code,
@@ -618,6 +989,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
       'نوع': it.isService ? 'خدمات' : 'کالای فیزیکی',
       'تعداد فروش': it.quantity,
       'واحد': it.unit,
+      'تعداد خریداران یکتا': it.uniqueBuyersCount,
       'فروش خالص': Math.round(it.netRevenue),
       'بهای تمام‌شده (خرید)': Math.round(it.totalCost),
       'سود خالص': Math.round(it.netProfit),
@@ -629,7 +1001,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
       XLSX.utils.book_append_sheet(wb, wsItems, 'سودآوری تفکیکی اقلام');
     }
 
-    // 3. Warehouse Categories & Low Stock Sheet
+    // 4. Warehouse Categories & Low Stock Sheet
     const warehouseRows = warehouseAnalytics.categoryBreakdown.map((cat) => ({
       'دسته‌بندی انبار': cat.category,
       'تعداد اقلام (SKU)': cat.skuCount,
@@ -669,73 +1041,128 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
   return (
     <div className="max-w-7xl mx-auto space-y-5 pb-12">
       {/* Top Header & Time Period Controls */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <span className="p-2 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-100">
-                <TrendingUp className="w-5 h-5" />
-              </span>
-              <div>
-                <h2 className="text-lg sm:text-xl font-black text-slate-800">
-                  گزارشات مالی، سود و تحلیل انبار
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  محاسبه دقیق سود خالص فاکتورهای قطعی (بدون پیش‌فاکتورها)، جریان نقدینگی و سلامت موجودی انبار
-                </p>
-              </div>
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-3.5">
+        {/* Top Row: Title & Excel Export Button */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="p-2 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-100 shrink-0">
+              <TrendingUp className="w-5 h-5" />
+            </span>
+            <div>
+              <h2 className="text-lg sm:text-xl font-black text-slate-800">
+                مرکز پیشرفته گزارشات مالی، فروش کالا به اشخاص و تحلیل انبار
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                گزارش‌گیری دقیق در بازه زمانی دلخواه، رهگیری فروش هر محصول به تفکیک خریدار، سود خالص و سلامت انبار
+              </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Period Filter Segmented Control */}
-            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200/70 overflow-x-auto">
-              <span className="text-[11px] font-bold text-slate-500 px-2 flex items-center gap-1 shrink-0">
-                <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                بازه:
-              </span>
-              {(
-                [
-                  { id: 'all', label: 'همه زمان‌ها' },
-                  { id: 'today', label: 'امروز' },
-                  { id: '7days', label: '۷ روز اخیر' },
-                  { id: '30days', label: '۳۰ روز اخیر' },
-                  { id: 'year', label: `سال ${toPersianDigits(currentJalaliYear)}` },
-                ] as { id: DatePeriodFilter; label: string }[]
-              ).map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setPeriodFilter(p.id)}
-                  className={`px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer shrink-0 ${
-                    periodFilter === p.id
-                      ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+          {/* Excel Export Button */}
+          <button
+            type="button"
+            onClick={handleExportExcelReport}
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs shrink-0 self-start sm:self-auto"
+            title="دریافت فایل اکسل چندبرگی از گزارش مالی، ماتریس فروش کالا به اشخاص و وضعیت انبار"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>خروجی اکسل جامع</span>
+          </button>
+        </div>
 
-            {/* Excel Export Button */}
-            <button
-              type="button"
-              onClick={handleExportExcelReport}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs shrink-0"
-              title="دریافت فایل اکسل چندبرگی از گزارش مالی، سود کالاها و وضعیت انبار"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>خروجی اکسل جامع</span>
-            </button>
+        {/* Second Row: Period Filter Segmented Control on its own dedicated line */}
+        <div className="pt-2.5 border-t border-slate-100 flex items-center">
+          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200/70 overflow-x-auto max-w-full">
+            <span className="text-[11px] font-bold text-slate-500 px-2.5 flex items-center gap-1.5 shrink-0">
+              <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+              بازه زمانی:
+            </span>
+            {(
+              [
+                { id: 'all', label: 'همه زمان‌ها' },
+                { id: 'today', label: 'امروز' },
+                { id: '7days', label: '۷ روز اخیر' },
+                { id: '30days', label: '۳۰ روز اخیر' },
+                { id: 'year', label: `سال ${toPersianDigits(currentJalaliYear)}` },
+                { id: 'custom', label: 'بازه دلخواه (از / تا تاریخ)' },
+              ] as { id: DatePeriodFilter; label: string }[]
+            ).map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setPeriodFilter(p.id)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer shrink-0 ${
+                  periodFilter === p.id
+                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
         </div>
+
+        {/* Custom Date Range Picker Bar (Shown when 'custom' is active) */}
+        {periodFilter === 'custom' && (
+          <div className="p-3.5 rounded-xl bg-indigo-50/60 border border-indigo-200/80 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-indigo-600" />
+                انتخاب دوره زمانی دلخواه:
+              </span>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-600">از تاریخ:</span>
+                <div className="w-40">
+                  <JalaliDatePicker
+                    value={customFromDate}
+                    onChange={(val) => setCustomFromDate(val)}
+                    placeholder="۱۴۰۳/۰۱/۰۱"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-600">تا تاریخ:</span>
+                <div className="w-40">
+                  <JalaliDatePicker
+                    value={customToDate}
+                    onChange={(val) => setCustomToDate(val)}
+                    placeholder="۱۴۰۳/۱۲/۲۹"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs">
+              <span className="px-2.5 py-1 rounded-lg bg-white border border-indigo-200 text-indigo-800 font-bold tabular-nums">
+                {toPersianDigits(confirmedInvoices.length)} فاکتور قطعی در این بازه
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomFromDate(`${currentJalaliYear}/01/01`);
+                  setCustomToDate(getCurrentJalaliDate());
+                }}
+                className="px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-100 text-slate-700 border border-slate-200 font-bold transition-colors cursor-pointer"
+              >
+                ابتدای سال تا امروز
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Sub-Navigation Tabs */}
         <div className="flex items-center gap-1.5 pt-3 border-t border-slate-100 overflow-x-auto">
           {(
             [
               { id: 'overview', label: 'نمای کلی و شاخص‌ها', icon: BarChart3 },
+              {
+                id: 'product_customer',
+                label: 'فروش کالا به اشخاص (محصول ⇄ مشتری)',
+                icon: UserCheck,
+              },
               {
                 id: 'profitability',
                 label: `تحلیل سودآوری اقلام (${toPersianDigits(financialAnalytics.allSoldItems.length)})`,
@@ -984,12 +1411,20 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                           </span>
                           <div className="min-w-0">
                             <h4 className="font-bold text-slate-800 truncate">{item.name}</h4>
-                            <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5 tabular-nums">
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 mt-0.5 tabular-nums">
                               <span>
                                 فروش: <strong className="text-slate-700">{toPersianDigits(item.quantity)}</strong> {item.unit}
                               </span>
                               <span>·</span>
-                              <span>مبلغ: {formatPrice(item.netRevenue, settings.currency)}</span>
+                              <span>به {toPersianDigits(item.uniqueBuyersCount)} شخص</span>
+                              <span>·</span>
+                              <button
+                                type="button"
+                                onClick={() => handleInspectProductBuyers(item.key)}
+                                className="text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+                              >
+                                مشاهده خریداران
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -1009,13 +1444,20 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
               </div>
 
               {sortedItems.length > 0 && (
-                <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end">
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab('product_customer')}
+                    className="text-xs font-bold text-emerald-700 hover:text-emerald-900 transition-colors cursor-pointer"
+                  >
+                    گزارش فروش هر کالا به اشخاص ←
+                  </button>
                   <button
                     type="button"
                     onClick={() => setActiveSubTab('profitability')}
                     className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
                   >
-                    مشاهده جدول کامل سودآوری اقلام ({toPersianDigits(sortedItems.length)} مورد) ←
+                    جدول کامل سودآوری ({toPersianDigits(sortedItems.length)} مورد) ←
                   </button>
                 </div>
               )}
@@ -1105,7 +1547,603 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
       )}
 
       {/* ===================================================================
-          SUB-TAB 2: ITEM PROFITABILITY (تحلیل سودآوری اقلام و خدمات)
+          SUB-TAB 2: PRODUCT-TO-CUSTOMER SALES MATRIX (گزارش فروش کالا به اشخاص)
+         =================================================================== */}
+      {activeSubTab === 'product_customer' && (
+        <div className="space-y-4">
+          {/* Filter & Control Deck */}
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-sm sm:text-base font-black text-slate-800 flex items-center gap-2">
+                  <PackageSearch className="w-4 h-4 text-indigo-600" />
+                  <span>گزارش تحلیلی فروش هر محصول به اشخاص (در بازه زمانی انتخابی)</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  مشاهده دقیق اینکه از هر محصول یا خدمت، چه مقداری، با چه قیمتی و طی کدام فاکتورها به چه اشخاصی فروخته شده است
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* View Mode Toggle */}
+                <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200/70">
+                  {(
+                    [
+                      { id: 'by_product', label: 'تفکیک محصول ← خریداران' },
+                      { id: 'by_customer', label: 'تفکیک شخص ← کالاهای خریداری‌شده' },
+                      { id: 'flat_log', label: 'ریز فاکتور به فاکتور' },
+                    ] as { id: MatrixViewMode; label: string }[]
+                  ).map((vm) => (
+                    <button
+                      key={vm.id}
+                      type="button"
+                      onClick={() => setMatrixViewMode(vm.id)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                        matrixViewMode === vm.id
+                          ? 'bg-white text-indigo-700 shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {vm.label}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleExportMatrixExcel}
+                  disabled={productCustomerMatrix.pairRows.length === 0}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>اکسل این گزارش</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Product & Customer Filters Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* 1. Select Specific Product */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  انتخاب محصول / کالا:
+                </label>
+                <select
+                  value={selectedProductKey}
+                  onChange={(e) => {
+                    setSelectedProductKey(e.target.value);
+                    setExpandedMatrixRowKey(null);
+                  }}
+                  className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-500 text-slate-800 outline-none cursor-pointer"
+                >
+                  <option value="ALL">
+                    همه محصولات فروخته‌شده ({toPersianDigits(financialAnalytics.allSoldItems.length)} قلم)
+                  </option>
+                  {financialAnalytics.allSoldItems
+                    .slice()
+                    .sort((a, b) => a.name.localeCompare(b.name, 'fa'))
+                    .map((prod) => (
+                      <option key={prod.key} value={prod.key}>
+                        {prod.name} (فروش کل: {toPersianDigits(prod.quantity)} {prod.unit} به{' '}
+                        {toPersianDigits(prod.uniqueBuyersCount)} نفر)
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {/* 2. Select Specific Customer */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  انتخاب شخص / مشتری:
+                </label>
+                <select
+                  value={selectedCustomerKey}
+                  onChange={(e) => {
+                    setSelectedCustomerKey(e.target.value);
+                    setExpandedMatrixRowKey(null);
+                  }}
+                  className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-500 text-slate-800 outline-none cursor-pointer"
+                >
+                  <option value="ALL">
+                    همه اشخاص / مشتریان ({toPersianDigits(financialAnalytics.topCustomers.length)} نفر)
+                  </option>
+                  {financialAnalytics.topCustomers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({toPersianDigits(c.invoicesCount)} فاکتور)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 3. Live Search Product / Customer */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  جستجوی سریع نام کالا یا شخص:
+                </label>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={matrixProductSearch || matrixCustomerSearch}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (matrixViewMode === 'by_customer') {
+                        setMatrixCustomerSearch(val);
+                        setMatrixProductSearch('');
+                      } else {
+                        setMatrixProductSearch(val);
+                        setMatrixCustomerSearch('');
+                      }
+                    }}
+                    placeholder={
+                      matrixViewMode === 'by_customer'
+                        ? 'جستجوی نام مشتری یا تلفن...'
+                        : 'جستجوی نام یا کد محصول...'
+                    }
+                    className="w-full pr-8 pl-7 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none"
+                  />
+                  {(matrixProductSearch || matrixCustomerSearch) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMatrixProductSearch('');
+                        setMatrixCustomerSearch('');
+                      }}
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 4. Sort Matrix */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  مرتب‌سازی نتایج:
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={matrixSortMode}
+                    onChange={(e) => setMatrixSortMode(e.target.value as MatrixSortMode)}
+                    className="flex-1 px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 text-slate-800 outline-none cursor-pointer"
+                  >
+                    <option value="quantity">بیشترین مقدار / تعداد خرید</option>
+                    <option value="revenue">بیشترین مبلغ خرید</option>
+                    <option value="profit">بیشترین سود خالص</option>
+                    <option value="invoices">بیشترین دفعات خرید (فاکتور)</option>
+                  </select>
+
+                  {(selectedProductKey !== 'ALL' ||
+                    selectedCustomerKey !== 'ALL' ||
+                    matrixProductSearch ||
+                    matrixCustomerSearch) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedProductKey('ALL');
+                        setSelectedCustomerKey('ALL');
+                        setMatrixProductSearch('');
+                        setMatrixCustomerSearch('');
+                        setExpandedMatrixRowKey(null);
+                      }}
+                      className="px-2.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-colors cursor-pointer shrink-0"
+                      title="پاک کردن تمام فیلترها"
+                    >
+                      حذف فیلتر
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Summary Strip for Selected Filter */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 tabular-nums">
+              <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-100">
+                <div className="text-[11px] font-bold text-indigo-700">مجموع مقدار فروخته‌شده</div>
+                <div className="text-base sm:text-lg font-black text-indigo-950 mt-0.5">
+                  {toPersianDigits(productCustomerMatrix.totalQuantity)}{' '}
+                  <span className="text-xs font-bold text-indigo-700">
+                    {productCustomerMatrix.dominantUnit}
+                  </span>
+                </div>
+                <div className="text-[10px] text-indigo-600 mt-0.5">
+                  طی {toPersianDigits(productCustomerMatrix.uniqueInvoicesCount)} فاکتور فروش
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-100">
+                <div className="text-[11px] font-bold text-emerald-700">تعداد اشخاص خریدار</div>
+                <div className="text-base sm:text-lg font-black text-emerald-950 mt-0.5">
+                  {toPersianDigits(productCustomerMatrix.uniqueCustomersCount)}{' '}
+                  <span className="text-xs font-bold text-emerald-700">شخص / مشتری</span>
+                </div>
+                <div className="text-[10px] text-emerald-600 mt-0.5">
+                  برای {toPersianDigits(productCustomerMatrix.uniqueProductsCount)} نوع کالا/خدمت
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                <div className="text-[11px] font-bold text-slate-600">مجموع مبلغ خالص فروش</div>
+                <div className="text-base sm:text-lg font-black text-slate-900 mt-0.5">
+                  {formatPrice(productCustomerMatrix.totalNetRevenue, settings.currency)}
+                </div>
+                <div className="text-[10px] text-slate-500 mt-0.5">
+                  سود خالص: {formatPrice(productCustomerMatrix.totalNetProfit, settings.currency)}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-100">
+                <div className="text-[11px] font-bold text-amber-800">میانگین فی واحد فروش</div>
+                <div className="text-base sm:text-lg font-black text-amber-950 mt-0.5">
+                  {formatPrice(productCustomerMatrix.avgUnitPrice, settings.currency)}
+                </div>
+                <div className="text-[10px] text-amber-700 mt-0.5">
+                  حداقل: {formatPrice(productCustomerMatrix.minUnitPrice, '')} | حداکثر:{' '}
+                  {formatPrice(productCustomerMatrix.maxUnitPrice, '')}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Results Table */}
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+            {productCustomerMatrix.pairRows.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 text-xs">
+                هیچ سابقه فروشی مطابق با فیلتر محصول، شخص و بازه زمانی انتخابی یافت نشد.
+              </div>
+            ) : matrixViewMode === 'flat_log' ? (
+              /* MODE 3: Flat Invoice-by-Invoice Sales Log */
+              <div className="overflow-x-auto">
+                <table className="w-full text-right border-collapse text-xs tabular-nums">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-600 bg-slate-50">
+                      <th className="py-3 px-3 font-bold w-10">#</th>
+                      <th className="py-3 px-3 font-bold">تاریخ</th>
+                      <th className="py-3 px-3 font-bold">شماره فاکتور</th>
+                      <th className="py-3 px-3 font-bold">نام شخص / مشتری</th>
+                      <th className="py-3 px-3 font-bold">نام کالا / محصول</th>
+                      <th className="py-3 px-3 font-bold">مقدار</th>
+                      <th className="py-3 px-3 font-bold">فی واحد ({settings.currency})</th>
+                      <th className="py-3 px-3 font-bold">مبلغ خالص ({settings.currency})</th>
+                      <th className="py-3 px-3 font-bold">سود ({settings.currency})</th>
+                      <th className="py-3 px-3 font-bold text-center">فاکتور</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {productCustomerMatrix.filteredRecords.map((rec, i) => (
+                      <tr key={`${rec.invoiceId}_${rec.productKey}_${i}`} className="hover:bg-slate-50/80">
+                        <td className="py-2.5 px-3 text-slate-400 font-bold">{toPersianDigits(i + 1)}</td>
+                        <td className="py-2.5 px-3 font-mono font-bold text-slate-700">
+                          {toPersianDigits(rec.date)}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono font-bold text-indigo-700">
+                          #{toPersianDigits(rec.invoiceNumber)}
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-slate-800">{rec.customerName}</td>
+                        <td className="py-2.5 px-3 font-semibold text-slate-800">{rec.productName}</td>
+                        <td className="py-2.5 px-3 font-black text-slate-900">
+                          {toPersianDigits(rec.quantity)} <span className="font-normal text-slate-500">{rec.unit}</span>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-700">{formatPrice(rec.unitPrice, '')}</td>
+                        <td className="py-2.5 px-3 font-bold text-slate-900">
+                          {formatPrice(rec.netRevenue, '')}
+                        </td>
+                        <td
+                          className={`py-2.5 px-3 font-bold ${
+                            rec.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'
+                          }`}
+                        >
+                          {formatPrice(rec.netProfit, '')}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          {onViewInvoice && (
+                            <button
+                              type="button"
+                              onClick={() => onViewInvoice(rec.rawInvoice)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold transition-colors cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>مشاهده</span>
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              /* MODE 1 & MODE 2: Aggregated Product <-> Customer Matrix with Expandable Invoice Drill-down */
+              <div className="overflow-x-auto">
+                <table className="w-full text-right border-collapse text-xs tabular-nums">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-600 bg-slate-50">
+                      <th className="py-3 px-3 font-bold w-10">#</th>
+                      {matrixViewMode === 'by_product' ? (
+                        <>
+                          <th className="py-3 px-3 font-bold">کالا / محصول</th>
+                          <th className="py-3 px-3 font-bold">نام شخص / خریدار</th>
+                        </>
+                      ) : (
+                        <>
+                          <th className="py-3 px-3 font-bold">نام شخص / خریدار</th>
+                          <th className="py-3 px-3 font-bold">کالا / محصول خریداری‌شده</th>
+                        </>
+                      )}
+                      <th className="py-3 px-3 font-bold">مقدار کل خرید</th>
+                      <th className="py-3 px-3 font-bold w-36">
+                        {matrixViewMode === 'by_product' ? 'سهم از فروش این کالا' : 'سهم از خرید این شخص'}
+                      </th>
+                      <th className="py-3 px-3 font-bold">دفعات (فاکتور)</th>
+                      <th className="py-3 px-3 font-bold">میانگین فی ({settings.currency})</th>
+                      <th className="py-3 px-3 font-bold">مبلغ خالص ({settings.currency})</th>
+                      <th className="py-3 px-3 font-bold">سود خالص ({settings.currency})</th>
+                      <th className="py-3 px-3 font-bold">آخرین خرید</th>
+                      <th className="py-3 px-3 font-bold text-center">ریز فاکتورها</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {productCustomerMatrix.pairRows.map((row, idx) => {
+                      const isExpanded = expandedMatrixRowKey === row.pairKey;
+                      const sharePercent =
+                        matrixViewMode === 'by_product'
+                          ? row.shareOfProductQtyPercent
+                          : row.shareOfCustomerSpendPercent;
+
+                      return (
+                        <React.Fragment key={row.pairKey}>
+                          <tr
+                            onClick={() =>
+                              setExpandedMatrixRowKey(isExpanded ? null : row.pairKey)
+                            }
+                            className={`transition-colors cursor-pointer ${
+                              isExpanded ? 'bg-indigo-50/60' : 'hover:bg-slate-50/80'
+                            }`}
+                          >
+                            <td className="py-3 px-3 font-bold text-slate-400">
+                              {toPersianDigits(idx + 1)}
+                            </td>
+
+                            {matrixViewMode === 'by_product' ? (
+                              <>
+                                <td className="py-3 px-3">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedProductKey(
+                                        selectedProductKey === row.productKey ? 'ALL' : row.productKey
+                                      );
+                                    }}
+                                    className="font-bold text-slate-800 hover:text-indigo-700 text-right cursor-pointer"
+                                    title="فیلتر بر اساس این محصول"
+                                  >
+                                    {row.productName}
+                                  </button>
+                                  <div className="text-[11px] text-slate-400 mt-0.5">
+                                    کد: {row.productCode}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedCustomerKey(
+                                        selectedCustomerKey === row.customerId ? 'ALL' : row.customerId
+                                      );
+                                    }}
+                                    className="font-black text-indigo-900 hover:text-indigo-600 text-right cursor-pointer"
+                                    title="فیلتر بر اساس این شخص"
+                                  >
+                                    {row.customerName}
+                                  </button>
+                                  {row.customerPhone && (
+                                    <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                                      {toPersianDigits(row.customerPhone)}
+                                    </div>
+                                  )}
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                <td className="py-3 px-3">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedCustomerKey(
+                                        selectedCustomerKey === row.customerId ? 'ALL' : row.customerId
+                                      );
+                                    }}
+                                    className="font-black text-indigo-900 hover:text-indigo-600 text-right cursor-pointer"
+                                  >
+                                    {row.customerName}
+                                  </button>
+                                  {row.customerPhone && (
+                                    <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                                      {toPersianDigits(row.customerPhone)}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="py-3 px-3">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedProductKey(
+                                        selectedProductKey === row.productKey ? 'ALL' : row.productKey
+                                      );
+                                    }}
+                                    className="font-bold text-slate-800 hover:text-indigo-700 text-right cursor-pointer"
+                                  >
+                                    {row.productName}
+                                  </button>
+                                  <div className="text-[11px] text-slate-400 mt-0.5">
+                                    کد: {row.productCode}
+                                  </div>
+                                </td>
+                              </>
+                            )}
+
+                            <td className="py-3 px-3">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-900 font-black">
+                                {toPersianDigits(row.quantity)}{' '}
+                                <span className="font-semibold text-[11px] text-indigo-700">
+                                  {row.unit}
+                                </span>
+                              </span>
+                            </td>
+
+                            <td className="py-3 px-3">
+                              <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 mb-1">
+                                <span>{toPersianDigits(sharePercent)}٪</span>
+                              </div>
+                              <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-indigo-600 rounded-full"
+                                  style={{ width: `${Math.min(100, Math.max(4, sharePercent))}%` }}
+                                />
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-3 font-bold text-slate-700">
+                              {toPersianDigits(row.invoicesCount)} فاکتور
+                            </td>
+
+                            <td className="py-3 px-3 text-slate-700">
+                              <div className="font-bold">{formatPrice(row.avgUnitPrice, '')}</div>
+                              {row.minUnitPrice !== row.maxUnitPrice && (
+                                <div className="text-[10px] text-slate-400">
+                                  {formatPrice(row.minUnitPrice, '')} تا {formatPrice(row.maxUnitPrice, '')}
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-3 font-bold text-slate-900">
+                              {formatPrice(row.netRevenue, '')}
+                            </td>
+
+                            <td
+                              className={`py-3 px-3 font-black ${
+                                row.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'
+                              }`}
+                            >
+                              {formatPrice(row.netProfit, '')}
+                            </td>
+
+                            <td className="py-3 px-3 font-mono text-slate-600">
+                              {toPersianDigits(row.lastDate)}
+                            </td>
+
+                            <td className="py-3 px-3 text-center">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedMatrixRowKey(isExpanded ? null : row.pairKey);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-100 text-slate-700 hover:text-indigo-800 font-bold transition-colors cursor-pointer"
+                              >
+                                <span>جزئیات</span>
+                                {isExpanded ? (
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                ) : (
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </td>
+                          </tr>
+
+                          {/* Expandable Drill-down: Exact Invoices where this customer bought this product */}
+                          {isExpanded && (
+                            <tr className="bg-slate-50/90">
+                              <td colSpan={11} className="p-3 sm:p-4 border-b border-indigo-100">
+                                <div className="bg-white rounded-xl border border-indigo-200/80 p-3 space-y-2.5 shadow-2xs">
+                                  <div className="flex items-center justify-between text-xs font-bold text-indigo-950 pb-2 border-b border-slate-100">
+                                    <span>
+                                      ریز فاکتورهای خرید «{row.productName}» توسط «{row.customerName}» (
+                                      {toPersianDigits(row.records.length)} ردیف)
+                                    </span>
+                                    <span className="text-[11px] text-slate-500">
+                                      اولین خرید: {toPersianDigits(row.firstDate)} | آخرین خرید:{' '}
+                                      {toPersianDigits(row.lastDate)}
+                                    </span>
+                                  </div>
+
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-right text-[11px] border-collapse">
+                                      <thead>
+                                        <tr className="text-slate-500 border-b border-slate-100">
+                                          <th className="py-1.5 px-2">تاریخ</th>
+                                          <th className="py-1.5 px-2">شماره فاکتور</th>
+                                          <th className="py-1.5 px-2">مقدار</th>
+                                          <th className="py-1.5 px-2">فی واحد ({settings.currency})</th>
+                                          <th className="py-1.5 px-2">مبلغ خالص ردیف</th>
+                                          <th className="py-1.5 px-2">سود ردیف</th>
+                                          <th className="py-1.5 px-2 text-center">مشاهده سند</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100">
+                                        {row.records.map((rec, rIdx) => (
+                                          <tr key={`${rec.invoiceId}_${rIdx}`} className="hover:bg-slate-50">
+                                            <td className="py-1.5 px-2 font-mono font-bold text-slate-700">
+                                              {toPersianDigits(rec.date)}
+                                            </td>
+                                            <td className="py-1.5 px-2 font-mono font-bold text-indigo-700">
+                                              #{toPersianDigits(rec.invoiceNumber)}
+                                            </td>
+                                            <td className="py-1.5 px-2 font-black text-slate-900">
+                                              {toPersianDigits(rec.quantity)} {rec.unit}
+                                            </td>
+                                            <td className="py-1.5 px-2 text-slate-700">
+                                              {formatPrice(rec.unitPrice, '')}
+                                            </td>
+                                            <td className="py-1.5 px-2 font-bold text-slate-900">
+                                              {formatPrice(rec.netRevenue, '')}
+                                            </td>
+                                            <td
+                                              className={`py-1.5 px-2 font-bold ${
+                                                rec.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'
+                                              }`}
+                                            >
+                                              {formatPrice(rec.netProfit, '')}
+                                            </td>
+                                            <td className="py-1.5 px-2 text-center">
+                                              {onViewInvoice && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => onViewInvoice(rec.rawInvoice)}
+                                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold cursor-pointer"
+                                                >
+                                                  <Eye className="w-3 h-3" />
+                                                  <span>نمایش فاکتور</span>
+                                                </button>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================
+          SUB-TAB 3: ITEM PROFITABILITY (تحلیل سودآوری اقلام و خدمات)
          =================================================================== */}
       {activeSubTab === 'profitability' && (
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
@@ -1115,7 +2153,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                 جدول تحلیل سودآوری تفکیکی کالاها و خدمات فروخته‌شده
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                مبالغ فروش پس از کسر تخفیف ردیف و سهم تخفیف کلی فاکتور محاسبه شده‌اند
+                مبالغ فروش پس از کسر تخفیف ردیف و سهم تخفیف کلی فاکتور محاسبه شده‌اند (با کلیک روی «خریداران» لیست اشخاص خریدار هر کالا را ببینید)
               </p>
             </div>
 
@@ -1185,7 +2223,8 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                     <th className="py-3 px-3 font-bold">فروش خالص ({settings.currency})</th>
                     <th className="py-3 px-3 font-bold">بهای تمام‌شده ({settings.currency})</th>
                     <th className="py-3 px-3 font-bold">سود خالص ({settings.currency})</th>
-                    <th className="py-3 px-3 font-bold w-36">حاشیه سود</th>
+                    <th className="py-3 px-3 font-bold w-32">حاشیه سود</th>
+                    <th className="py-3 px-3 font-bold text-center">خریداران</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 tabular-nums">
@@ -1239,6 +2278,16 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                           />
                         </div>
                       </td>
+                      <td className="py-3 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleInspectProductBuyers(item.key)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold transition-colors cursor-pointer"
+                        >
+                          <Users className="w-3.5 h-3.5" />
+                          <span>{toPersianDigits(item.uniqueBuyersCount)} شخص</span>
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1249,7 +2298,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
       )}
 
       {/* ===================================================================
-          SUB-TAB 3: CASH FLOW & RECEIVABLES (جریان نقدینگی و مطالبات)
+          SUB-TAB 4: CASH FLOW & RECEIVABLES (جریان نقدینگی و مطالبات)
          =================================================================== */}
       {activeSubTab === 'cashflow' && (
         <div className="space-y-5">
@@ -1371,9 +2420,23 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                         <div className="font-bold text-slate-800 truncate">
                           {toPersianDigits(i + 1)}. {cust.name}
                         </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          {toPersianDigits(cust.invoicesCount)} فاکتور · دریافتی:{' '}
-                          {formatPrice(cust.totalPaid, settings.currency)}
+                        <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2">
+                          <span>
+                            {toPersianDigits(cust.invoicesCount)} فاکتور · دریافتی:{' '}
+                            {formatPrice(cust.totalPaid, settings.currency)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedCustomerKey(cust.id);
+                              setSelectedProductKey('ALL');
+                              setMatrixViewMode('by_customer');
+                              setActiveSubTab('product_customer');
+                            }}
+                            className="text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+                          >
+                            اقلام خریداری‌شده
+                          </button>
                         </div>
                       </div>
                       <div className="text-left shrink-0 mr-2">
@@ -1400,7 +2463,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
       )}
 
       {/* ===================================================================
-          SUB-TAB 4: WAREHOUSE VALUATION & HEALTH (ارزش‌گذاری و سلامت انبار)
+          SUB-TAB 5: WAREHOUSE VALUATION & HEALTH (ارزش‌گذاری و سلامت انبار)
          =================================================================== */}
       {activeSubTab === 'warehouse' && (
         <div className="space-y-5">
