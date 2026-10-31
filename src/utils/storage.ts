@@ -2,6 +2,7 @@ import {
   Product, 
   Customer, 
   Invoice, 
+  InvoiceItem,
   StockMovement, 
   StockMovementType,
   StoreSettings, 
@@ -552,6 +553,8 @@ const initialSettings: StoreSettings = {
   telegramBotEnabled: false,
   telegramBotToken: '',
   telegramChatId: '',
+  telegramApiUrl: 'https://api.telegram.org',
+  telegramProxyUrl: '',
   telegramSendMode: 'text_only',
   telegramAutoSendInvoice: false,
   telegramAutoSendProforma: false,
@@ -1942,14 +1945,45 @@ export const StorageService = {
         unpaidInvoicesCount++;
       }
 
+      const isPurItemService = (it: any) =>
+        Boolean(
+          it.isService ||
+          it.itemType === 'service' ||
+          it.id?.startsWith('service-') ||
+          it.id?.startsWith('pur-srv-') ||
+          (it.productCode || '').toUpperCase().startsWith('SRV-') ||
+          !it.productId ||
+          it.productId.startsWith('service-')
+        );
+
+      const purServiceItems = (pur.items || []).filter(isPurItemService);
+      const purProductItems = (pur.items || []).filter((it) => !isPurItemService(it));
+      const hasPurServices = purServiceItems.length > 0 || Boolean(pur.isServiceOnly);
+      const isOnlyPurServices = Boolean(pur.isServiceOnly) || (hasPurServices && purProductItems.length === 0);
+      const purServiceTitles = purServiceItems
+        .map((s) => (s.productName || '').trim())
+        .filter(Boolean)
+        .join('، ');
+
+      let purDocLabel = 'فاکتور خرید کالا';
+      let purDescription = `خرید کالا از طرف‌حساب طبق فاکتور خرید شماره ${pur.invoiceNumber} (${pur.items.length} قلم کالا)${pur.notes ? ` - ${pur.notes}` : ''}`;
+
+      if (isOnlyPurServices) {
+        purDocLabel = 'فاکتور خرید خدمات';
+        purDescription = `خرید خدمات / هزینه خدمات طبق فاکتور شماره ${pur.invoiceNumber} (${purServiceItems.length} مورد خدمات${purServiceTitles ? `: ${purServiceTitles}` : ''})${pur.notes ? ` - ${pur.notes}` : ''}`;
+      } else if (hasPurServices) {
+        purDocLabel = 'فاکتور خرید کالا و خدمات';
+        purDescription = `خرید کالا و خدمات طبق فاکتور شماره ${pur.invoiceNumber} (${purProductItems.length} قلم کالا و ${purServiceItems.length} مورد خدمات${purServiceTitles ? `: ${purServiceTitles}` : ''})${pur.notes ? ` - ${pur.notes}` : ''}`;
+      }
+
       // 2.5.1 Credit entry for the full purchase invoice amount (طرف‌حساب/تامین‌کننده بستانکار و طلبکار از ما می‌شود)
       rawEntries.push({
         id: `pur-cred-${pur.id}`,
         date: pur.date,
         documentNumber: pur.invoiceNumber,
         documentType: 'purchase_invoice',
-        documentTypeLabel: 'فاکتور خرید کالا',
-        description: `خرید کالا از طرف‌حساب طبق فاکتور خرید شماره ${pur.invoiceNumber} (${pur.items.length} قلم کالا)${pur.notes ? ` - ${pur.notes}` : ''}`,
+        documentTypeLabel: purDocLabel,
+        description: purDescription,
         debit: 0,
         credit: pur.finalTotal, // تامین‌کننده بستانکار (طلبکار از ما) می‌شود
         paymentMethod: pur.paymentMethod ? PAYMENT_METHOD_LABELS[pur.paymentMethod] || pur.paymentMethod : undefined,
@@ -1959,13 +1993,22 @@ export const StorageService = {
 
       // 2.5.2 Debit entry if payment occurred at invoice issuance (پرداخت وجه به تامین‌کننده که طلب ایشان را کاهش می‌دهد)
       if (pur.paidAmount && pur.paidAmount > 0) {
+        const payDocLabel = isOnlyPurServices
+          ? 'پرداخت هزینه خدمات'
+          : hasPurServices
+          ? 'پرداخت وجه خرید و خدمات'
+          : 'پرداخت وجه فاکتور خرید';
+        const payDescPrefix = isOnlyPurServices
+          ? `پرداخت هزینه خدمات بابت فاکتور شماره ${pur.invoiceNumber}${purServiceTitles ? ` (${purServiceTitles})` : ''}`
+          : `پرداخت وجه بابت فاکتور خرید شماره ${pur.invoiceNumber}`;
+
         rawEntries.push({
           id: `pur-pay-${pur.id}`,
           date: pur.date,
           documentNumber: pur.invoiceNumber,
           documentType: 'purchase_payment',
-          documentTypeLabel: 'پرداخت وجه فاکتور خرید',
-          description: `پرداخت وجه بابت فاکتور خرید شماره ${pur.invoiceNumber}${pur.paymentMethod ? ` [${PAYMENT_METHOD_LABELS[pur.paymentMethod] || pur.paymentMethod}]` : ''}${pur.transferDescription ? ` (${pur.transferDescription})` : ''}`,
+          documentTypeLabel: payDocLabel,
+          description: `${payDescPrefix}${pur.paymentMethod ? ` [${PAYMENT_METHOD_LABELS[pur.paymentMethod] || pur.paymentMethod}]` : ''}${pur.transferDescription ? ` (${pur.transferDescription})` : ''}`,
           debit: pur.paidAmount, // بدهکار کردن حساب طرف‌حساب (کاهش طلب ایشان)
           credit: 0,
           paymentMethod: pur.paymentMethod ? PAYMENT_METHOD_LABELS[pur.paymentMethod] || pur.paymentMethod : undefined,
@@ -2661,6 +2704,9 @@ export const StorageService = {
       }
       if (merged.autoApplyOfficialTax === undefined) {
         merged.autoApplyOfficialTax = true;
+      }
+      if (!merged.telegramApiUrl) {
+        merged.telegramApiUrl = 'https://api.telegram.org';
       }
       merged.printLayout = {
         ...DEFAULT_PRINT_LAYOUT,

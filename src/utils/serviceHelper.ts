@@ -1,11 +1,11 @@
-import { Invoice, InvoiceItem, Product } from '../types';
+import { Invoice, InvoiceItem, Product, PurchaseInvoice, PurchaseInvoiceItem } from '../types';
 
 /**
  * Helper to check whether a specific item in an invoice represents a service (خدمات)
  * or physical merchandise / goods (کالا / محصول).
  */
 export function isServiceItem(
-  item: InvoiceItem | { id?: string; productId?: string; productName?: string; productCode?: string; unit?: string; isService?: boolean; itemType?: string },
+  item: InvoiceItem | PurchaseInvoiceItem | { id?: string; productId?: string; productName?: string; productCode?: string; unit?: string; isService?: boolean; itemType?: string },
   products?: Product[]
 ): boolean {
   if (!item) return false;
@@ -15,7 +15,7 @@ export function isServiceItem(
   if ((item as any).itemType === 'service') return true;
 
   // 2. ID prefix from service modal
-  if (item.id && typeof item.id === 'string' && item.id.startsWith('service-')) {
+  if (item.id && typeof item.id === 'string' && (item.id.startsWith('service-') || item.id.startsWith('pur-srv-'))) {
     return true;
   }
 
@@ -27,8 +27,13 @@ export function isServiceItem(
     }
   }
 
-  // 4. Empty or missing productId indicates a custom non-inventory service/labor row
-  if (item.productId === '' || item.productId === undefined || item.productId === null) {
+  // 4. Empty or missing productId (or service-* productId) indicates a custom non-inventory service/labor row
+  if (
+    item.productId === '' ||
+    item.productId === undefined ||
+    item.productId === null ||
+    (typeof item.productId === 'string' && (item.productId.startsWith('service-') || item.productId.startsWith('srv-')))
+  ) {
     return true;
   }
 
@@ -100,3 +105,29 @@ export function getInvoiceServiceItems(
   if (!invoice || !invoice.items) return [];
   return invoice.items.filter((it) => isServiceItem(it, products));
 }
+
+/**
+ * Returns true if a purchase invoice contains only service/expense items (no physical warehouse items).
+ */
+export function isPureServicePurchaseInvoice(
+  invoice: PurchaseInvoice,
+  products?: Product[]
+): boolean {
+  if (!invoice) return false;
+  if (invoice.isServiceOnly) return true;
+  if (!invoice.items || invoice.items.length === 0) return false;
+  return invoice.items.every((it) => isServiceItem(it, products));
+}
+
+/**
+ * Returns true if a purchase invoice contains at least one service/expense item.
+ */
+export function hasServicePurchaseItems(
+  invoice: PurchaseInvoice,
+  products?: Product[]
+): boolean {
+  if (!invoice || !invoice.items || invoice.items.length === 0) return false;
+  if (invoice.isServiceOnly) return true;
+  return invoice.items.some((it) => isServiceItem(it, products));
+}
+

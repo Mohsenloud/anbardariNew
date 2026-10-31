@@ -38,6 +38,7 @@ import {
   Pencil, 
   Printer,
   Percent,
+  Tag,
   Layers,
   GraduationCap,
   RotateCcw,

@@ -45,7 +45,7 @@ import {
 } from 'lucide-react';
 import { PdfQualityPreset } from '../types';
 import { PDF_QUALITY_PRESETS } from '../utils/pdfHelper';
-import { testTelegramBotConnection, testTelegramMessage, testAiConnection } from '../utils/telegramService';
+import { testTelegramBotConnection, testTelegramMessage, testAiConnection, sanitizeTelegramToken } from '../utils/telegramService';
 
 interface SettingsModalProps {
   settings: StoreSettings;
@@ -110,14 +110,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleTestBotConnection = async () => {
-    if (!formData.telegramBotToken?.trim()) {
+    const rawToken = formData.telegramBotToken || '';
+    const cleanToken = sanitizeTelegramToken(rawToken);
+    if (!cleanToken) {
       setBotTestResult({ success: false, message: 'لطفاً ابتدا توکن ربات تلگرام را وارد فرمایید.' });
       return;
+    }
+    if (cleanToken !== rawToken) {
+      setFormData(prev => ({ ...prev, telegramBotToken: cleanToken }));
     }
     setIsTestingBot(true);
     setBotTestResult(null);
     try {
-      const res = await testTelegramBotConnection(formData.telegramBotToken);
+      const res = await testTelegramBotConnection(
+        cleanToken,
+        formData.telegramApiUrl,
+        formData.telegramProxyUrl
+      );
       if (res.success && res.bot) {
         setBotTestResult({
           success: true,
@@ -138,7 +147,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleTestTelegramMessage = async () => {
-    if (!formData.telegramBotToken?.trim()) {
+    const cleanToken = sanitizeTelegramToken(formData.telegramBotToken);
+    if (!cleanToken) {
       setMsgTestResult({ success: false, message: 'لطفاً توکن ربات را وارد نمایید.' });
       return;
     }
@@ -149,7 +159,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setIsTestingMsg(true);
     setMsgTestResult(null);
     try {
-      const res = await testTelegramMessage(formData.telegramBotToken, formData.telegramChatId);
+      const res = await testTelegramMessage(
+        cleanToken,
+        formData.telegramChatId,
+        undefined,
+        formData.telegramApiUrl,
+        formData.telegramProxyUrl
+      );
       if (res.success) {
         setMsgTestResult({ success: true, message: res.message || 'پیام آزمایشی به تلگرام ارسال گردید.' });
       } else {
@@ -1177,6 +1193,124 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span>{msgTestResult.message}</span>
                       </div>
                     )}
+                  </div>
+
+                  {/* Network & Anti-Filter Settings (Reverse Proxy & Local Proxy for Iran) */}
+                  <div className="p-4 bg-amber-50/80 rounded-2xl border border-amber-200/90 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <Globe className="w-4 h-4 text-amber-700" />
+                        <span className="text-xs font-black text-amber-950">تنظیمات شبکه و ضد فیلتر تلگرام (ویژه کاربران ایران)</span>
+                      </div>
+                      <span className="text-[10px] font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-md">
+                        رفع خطای fetch failed
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-amber-900/90 leading-relaxed">
+                      در صورتی که در هنگام ثبت توکن یا تست اتصال با خطای <code>fetch failed</code> مواجه می‌شوید، ارتباط سرور به دلیل فیلترینگ تلگرام در ایران مسدود است. با یکی از روش‌های زیر اتصال بدون مشکل برقرار می‌شود:
+                    </p>
+
+                    {/* 1. Local Proxy Port */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex items-center justify-between flex-wrap gap-1">
+                        <label className="text-[11px] font-bold text-slate-800">
+                          پروکسی محلی سیستم (Local HTTP / SOCKS5 Proxy):
+                        </label>
+                        <span className="text-[10px] text-slate-500 font-mono">در صورت روشن بودن فیلترشکن روی ویندوز / سرور</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          dir="ltr"
+                          placeholder="مثال: http://127.0.0.1:7890"
+                          value={formData.telegramProxyUrl || ''}
+                          onChange={(e) => setFormData(prev => ({ ...prev, telegramProxyUrl: e.target.value }))}
+                          className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left text-slate-800"
+                        />
+                        {formData.telegramProxyUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, telegramProxyUrl: '' }))}
+                            className="px-2.5 py-2 text-xs text-slate-500 hover:text-rose-600 bg-white border border-slate-200 rounded-xl font-bold cursor-pointer"
+                          >
+                            پاک کردن
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                        <span className="text-[10px] text-slate-500 font-bold">پورت‌های متداول VPN:</span>
+                        <button
+                          type="button"
+                          onClick={() => setFormData(prev => ({ ...prev, telegramProxyUrl: 'http://127.0.0.1:7890' }))}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
+                            formData.telegramProxyUrl === 'http://127.0.0.1:7890'
+                              ? 'bg-amber-600 text-white border-amber-600'
+                              : 'bg-white hover:bg-amber-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          کلاش (Clash: 7890)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormData(prev => ({ ...prev, telegramProxyUrl: 'http://127.0.0.1:10809' }))}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
+                            formData.telegramProxyUrl === 'http://127.0.0.1:10809'
+                              ? 'bg-amber-600 text-white border-amber-600'
+                              : 'bg-white hover:bg-amber-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          وی‌توری (v2ray: 10809)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormData(prev => ({ ...prev, telegramProxyUrl: 'http://127.0.0.1:2081' }))}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
+                            formData.telegramProxyUrl === 'http://127.0.0.1:2081'
+                              ? 'bg-amber-600 text-white border-amber-600'
+                              : 'bg-white hover:bg-amber-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          نکورِی (Nekoray: 2081)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormData(prev => ({ ...prev, telegramProxyUrl: '' }))}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
+                            !formData.telegramProxyUrl
+                              ? 'bg-slate-700 text-white border-slate-700'
+                              : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          بدون پروکسی (مستقیم)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 2. Custom Reverse Proxy / Base URL */}
+                    <div className="space-y-1.5 pt-2 border-t border-amber-200/60">
+                      <label className="block text-[11px] font-bold text-slate-800">
+                        آدرس سرور تلگرام یا ریورس پروکسی (Telegram API Base URL):
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          dir="ltr"
+                          placeholder="https://api.telegram.org یا ورکر کلودفلر https://xxx.workers.dev"
+                          value={formData.telegramApiUrl || 'https://api.telegram.org'}
+                          onChange={(e) => setFormData(prev => ({ ...prev, telegramApiUrl: e.target.value }))}
+                          className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left text-slate-800"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setFormData(prev => ({ ...prev, telegramApiUrl: 'https://api.telegram.org' }))}
+                          className="px-2.5 py-2 text-xs text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl font-bold cursor-pointer shrink-0"
+                          title="بازگردانی به آدرس رسمی تلگرام"
+                        >
+                          پیش‌فرض رسمی
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Telegram Send Mode Selector (فقط متنی، PDF، هر دو) */}

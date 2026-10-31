@@ -372,6 +372,8 @@ export interface StoreSettings {
   telegramBotEnabled?: boolean; // فعال بودن قابلیت ارسال مستقیم به تلگرام
   telegramBotToken?: string; // توکن ربات تلگرام (از @BotFather)
   telegramChatId?: string; // چت‌آیدی، شناسه گروه یا کانال پیش‌فرض تلگرام
+  telegramApiUrl?: string; // آدرس سرور تلگرام یا ریورس پروکسی (پیش‌فرض: https://api.telegram.org)
+  telegramProxyUrl?: string; // آدرس پروکسی محلی HTTP یا SOCKS5 (مثلاً: http://127.0.0.1:7890)
   telegramSendMode?: 'text_only' | 'pdf_with_caption' | 'both'; // حالت ارسال: فقط متن | PDF به همراه متن | هر دو
   telegramAutoSendInvoice?: boolean; // ارسال خودکار فاکتور فروش پس از ثبت و تایید قطعی
   telegramAutoSendProforma?: boolean; // ارسال خودکار پیش‌فاکتور به محض صدور
@@ -646,9 +648,15 @@ export interface PurchaseInvoiceItem {
   productCode: string;
   unit: string;
   quantity: number; // تعداد خریداری شده طبق فاکتور
-  buyPrice: number; // قیمت خرید واحد (فی)
+  buyPrice: number; // قیمت خرید واحد (فی) یا هزینه خدمت
+  sellPrice?: number; // قیمت فروش واحد
   discount: number; // تخفیف ردیف
   total: number; // (quantity * buyPrice) - discount
+  isService?: boolean; // آیا این ردیف مربوط به خرید خدمات / هزینه خدمات است؟
+  itemType?: 'product' | 'service';
+  variantId?: string;
+  variantName?: string;
+  description?: string; // توضیحات تکمیلی خدمت یا کالا
 }
 
 export type PurchaseStatus = 'pending_receipt' | 'has_discrepancy' | 'completed' | 'cancelled';
@@ -656,7 +664,7 @@ export type PurchaseStatus = 'pending_receipt' | 'has_discrepancy' | 'completed'
 export interface PurchaseInvoice {
   id: string;
   invoiceNumber: string; // شماره فاکتور خرید
-  supplierName: string; // نام تامین‌کننده / فروشنده
+  supplierName: string; // نام تامین‌کننده / فروشنده / مجری خدمات
   supplierPhone?: string;
   supplierAddress?: string;
   supplierEconomicCode?: string;
@@ -672,13 +680,15 @@ export interface PurchaseInvoice {
   paymentStatus: PaymentStatus;
   paymentMethod: PaymentMethod;
   paidAmount: number;
+  remainingAmount?: number;
   chequeNumber?: string;
   chequeDueDate?: string;
   chequeName?: string;
   transferDescription?: string;
   notes?: string;
   status: PurchaseStatus; // وضعیت تحویل و ورود به انبار
-  inboundReceiptId?: string; // شناسه حواله ورود کالا متناظر
+  inboundReceiptId?: string; // شناسه حواله ورود کالا متناظر (فقط برای فاکتورهای دارای کالای فیزیکی)
+  isServiceOnly?: boolean; // آیا فاکتور صرفاً مربوط به خرید خدمات و هزینه خدمات است؟
   createdAt: string;
   updatedAt?: string;
 }
@@ -694,6 +704,9 @@ export interface InboundReceiptItem {
   discrepancy: number; // receivedQuantity - expectedQuantity (منفی: کسری، مثبت: مازاد)
   discrepancyReason?: string; // علت مغایرت (کسری باربری، شکستگی، عدم تامین و ...)
   buyPrice: number;
+  sellPrice?: number;
+  variantId?: string;
+  variantName?: string;
 }
 
 export type InboundReceiptStatus = 'pending_verification' | 'confirmed' | 'has_discrepancy' | 'rejected';

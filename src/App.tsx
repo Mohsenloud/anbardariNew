@@ -1324,14 +1324,20 @@ export default function App() {
   // 7.5 PURCHASE INVOICES & WAREHOUSE INBOUND RECEIPTS
   const handleSavePurchaseInvoice = (
     newPurchaseInvoice: PurchaseInvoice,
-    newInboundReceipt: InboundReceipt,
+    newInboundReceipt: InboundReceipt | null,
     newProductsCreated: Product[]
   ) => {
     if (newProductsCreated && newProductsCreated.length > 0) {
       newProductsCreated.forEach((p) => StorageService.saveProduct(p));
     }
 
-    const isEdit = purchaseInvoices.some((p) => p.id === newPurchaseInvoice.id);
+    const existingPurchase = purchaseInvoices.find((p) => p.id === newPurchaseInvoice.id);
+    const isEdit = Boolean(existingPurchase);
+
+    // If edited to service-only and previously had an inbound receipt, remove old receipt
+    if (isEdit && existingPurchase?.inboundReceiptId && !newInboundReceipt) {
+      StorageService.deleteInboundReceipt(existingPurchase.inboundReceiptId);
+    }
 
     StorageService.savePurchaseInvoice(newPurchaseInvoice);
     if (newInboundReceipt) {
@@ -1339,19 +1345,29 @@ export default function App() {
     }
     loadData(true);
 
+    const isServiceOnly = Boolean(newPurchaseInvoice.isServiceOnly || !newInboundReceipt);
+
     StorageService.logActivity({
       category: 'purchase',
       actionType: isEdit ? 'edit_purchase_invoice' : 'create_purchase_invoice',
-      actionTitle: isEdit ? 'ویرایش فاکتور خرید' : 'ثبت فاکتور خرید و صدور حواله ورود',
-      details: isEdit 
+      actionTitle: isEdit
+        ? 'ویرایش فاکتور خرید'
+        : isServiceOnly
+        ? 'ثبت فاکتور خرید خدمات و هزینه'
+        : 'ثبت فاکتور خرید و صدور حواله ورود',
+      details: isEdit
         ? `ویرایش فاکتور خرید ${newPurchaseInvoice.invoiceNumber} از «${newPurchaseInvoice.supplierName}» به مبلغ ${newPurchaseInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency}`
-        : `ثبت فاکتور خرید ${newPurchaseInvoice.invoiceNumber} از «${newPurchaseInvoice.supplierName}» به مبلغ ${newPurchaseInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency} و صدور حواله ورود ${newInboundReceipt.receiptNumber}`,
+        : isServiceOnly
+        ? `ثبت فاکتور خرید خدمات ${newPurchaseInvoice.invoiceNumber} از «${newPurchaseInvoice.supplierName}» به مبلغ ${newPurchaseInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency}`
+        : `ثبت فاکتور خرید ${newPurchaseInvoice.invoiceNumber} از «${newPurchaseInvoice.supplierName}» به مبلغ ${newPurchaseInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency} و صدور حواله ورود ${newInboundReceipt?.receiptNumber || ''}`,
     });
 
     showToast(
       isEdit
         ? `تغییرات فاکتور خرید شماره ${newPurchaseInvoice.invoiceNumber} با موفقیت ذخیره شد.`
-        : `فاکتور خرید شماره ${newPurchaseInvoice.invoiceNumber} ثبت شد و حواله ورود ${newInboundReceipt.receiptNumber} به انبار ارسال گردید.`
+        : isServiceOnly
+        ? `فاکتور خرید خدمات شماره ${newPurchaseInvoice.invoiceNumber} و وضعیت پرداخت هزینه با موفقیت ثبت گردید.`
+        : `فاکتور خرید شماره ${newPurchaseInvoice.invoiceNumber} ثبت شد و حواله ورود ${newInboundReceipt?.receiptNumber || ''} به انبار ارسال گردید.`
     );
 
     // ارسال خودکار گزارش فاکتور خرید و حواله ورود کالا به تلگرام

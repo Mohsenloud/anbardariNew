@@ -44,8 +44,10 @@ import {
   ChevronLeft,
   Calendar,
   UserCheck,
-  Send
+  Send,
+  Wrench
 } from 'lucide-react';
+import { isServiceItem } from '../utils/serviceHelper';
 
 interface NewPurchaseInvoiceModalProps {
   products: Product[];
@@ -54,10 +56,11 @@ interface NewPurchaseInvoiceModalProps {
   lastInvoiceNumber?: string;
   previousSuppliers?: string[];
   editingInvoice?: PurchaseInvoice | null;
+  initialMode?: 'product' | 'service';
   onClose: () => void;
   onSavePurchase: (
     purchaseInvoice: PurchaseInvoice,
-    inboundReceipt: InboundReceipt,
+    inboundReceipt: InboundReceipt | null,
     newProductsCreated: Product[]
   ) => void;
 }
@@ -67,6 +70,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
   settings,
   editingInvoice,
   previousSuppliers = [],
+  initialMode = 'product',
   onClose,
   onSavePurchase,
 }) => {
@@ -224,7 +228,28 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
   // Items in purchase invoice
   const [items, setItems] = useState<PurchaseInvoiceItem[]>(() => {
     if (editingInvoice && editingInvoice.items && editingInvoice.items.length > 0) {
-      return editingInvoice.items;
+      return editingInvoice.items.map((it) => ({
+        ...it,
+        isService: isServiceItem(it, products),
+        itemType: isServiceItem(it, products) ? 'service' : 'product',
+      }));
+    }
+    if (initialMode === 'service') {
+      return [
+        {
+          id: `pur-srv-${Date.now()}-1`,
+          productId: `service-${Date.now()}-1`,
+          productName: '',
+          productCode: 'SRV-101',
+          unit: 'سرویس',
+          quantity: 1,
+          buyPrice: 0,
+          discount: 0,
+          total: 0,
+          isService: true,
+          itemType: 'service',
+        },
+      ];
     }
     const firstProd = products[0];
     return [
@@ -238,9 +263,19 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
         buyPrice: firstProd?.purchasePrice || firstProd?.buyPrice || 0,
         discount: 0,
         total: firstProd?.purchasePrice || firstProd?.buyPrice || 0,
+        isService: false,
+        itemType: 'product',
       },
     ];
   });
+
+  // Check if current items have services or are pure services
+  const serviceItemsCount = useMemo(
+    () => items.filter((it) => Boolean(it.isService || it.itemType === 'service' || isServiceItem(it, allAvailableProducts))).length,
+    [items, allAvailableProducts]
+  );
+  const physicalItemsCount = items.length - serviceItemsCount;
+  const isCurrentlyPureService = items.length > 0 && physicalItemsCount === 0;
 
   // Financials
   const [taxRate] = useState<number>(() => editingInvoice?.taxRate || 0);
@@ -284,8 +319,8 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
     setIsChequeDateModalOpen(true);
   };
 
-  const [chequeName] = useState(() => editingInvoice?.chequeName || '');
-  const [transferDescription] = useState(() => editingInvoice?.transferDescription || '');
+  const [chequeName, setChequeName] = useState(() => editingInvoice?.chequeName || '');
+  const [transferDescription, setTransferDescription] = useState(() => editingInvoice?.transferDescription || '');
   const [notes, setNotes] = useState(() => editingInvoice?.notes || '');
   const [showNotesField, setShowNotesField] = useState<boolean>(() => Boolean(editingInvoice?.notes));
 
@@ -296,6 +331,82 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
   const [newProductUnit, setNewProductUnit] = useState('عدد');
   const [newProductBuyPrice, setNewProductBuyPrice] = useState<number>(0);
   const [newProductSellPrice, setNewProductSellPrice] = useState<number>(0);
+
+  // Customizable Service Units (persisted in localStorage)
+  const DEFAULT_SERVICE_UNITS = ['سرویس', 'مورد', 'ساعت', 'روز', 'پروژه', 'دستگاه', 'دوره', 'عدد'];
+  const [serviceUnits, setServiceUnits] = useState<string[]>(() => {
+    const savedSet = new Set<string>(DEFAULT_SERVICE_UNITS);
+    try {
+      const raw = localStorage.getItem('custom_service_units');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((u) => {
+            if (typeof u === 'string' && u.trim()) savedSet.add(u.trim());
+          });
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    if (editingInvoice?.items) {
+      editingInvoice.items.forEach((it) => {
+        if (it.unit && it.unit.trim()) savedSet.add(it.unit.trim());
+      });
+    }
+    return Array.from(savedSet);
+  });
+
+  const [isServiceUnitCreatorOpen, setIsServiceUnitCreatorOpen] = useState(false);
+  const [newServiceUnitName, setNewServiceUnitName] = useState('');
+  const [targetRowForNewUnit, setTargetRowForNewUnit] = useState<number | null>(null);
+
+  const handleAddCustomServiceUnit = () => {
+    const trimmed = newServiceUnitName.trim();
+    if (!trimmed) return;
+
+    const updatedUnits = serviceUnits.includes(trimmed) ? serviceUnits : [...serviceUnits, trimmed];
+    setServiceUnits(updatedUnits);
+    try {
+      const customOnly = updatedUnits.filter((u) => !DEFAULT_SERVICE_UNITS.includes(u));
+      localStorage.setItem('custom_service_units', JSON.stringify(customOnly));
+    } catch (e) {
+      console.error(e);
+    }
+
+    // Apply the newly defined unit to the target service row (or the last service row)
+    setItems((prev) => {
+      const next = [...prev];
+      if (targetRowForNewUnit !== null && next[targetRowForNewUnit]) {
+        next[targetRowForNewUnit] = { ...next[targetRowForNewUnit], unit: trimmed };
+        return next;
+      }
+      // Otherwise apply to the last service row if one exists
+      for (let i = next.length - 1; i >= 0; i--) {
+        if (next[i].isService || next[i].itemType === 'service') {
+          next[i] = { ...next[i], unit: trimmed };
+          break;
+        }
+      }
+      return next;
+    });
+
+    setNewServiceUnitName('');
+    setTargetRowForNewUnit(null);
+    setIsServiceUnitCreatorOpen(false);
+  };
+
+  const handleRemoveCustomServiceUnit = (unitToRemove: string) => {
+    if (DEFAULT_SERVICE_UNITS.includes(unitToRemove)) return;
+    const updatedUnits = serviceUnits.filter((u) => u !== unitToRemove);
+    setServiceUnits(updatedUnits);
+    try {
+      const customOnly = updatedUnits.filter((u) => !DEFAULT_SERVICE_UNITS.includes(u));
+      localStorage.setItem('custom_service_units', JSON.stringify(customOnly));
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Calculations
   const subtotal = items.reduce((sum, item) => sum + item.total, 0);
@@ -311,6 +422,79 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
       setPaidAmount(finalTotal);
     } else if (status === 'unpaid') {
       setPaidAmount(0);
+    } else if (status === 'partial') {
+      if (paidAmount <= 0 || paidAmount >= finalTotal) {
+        setPaidAmount(Math.round(finalTotal / 2));
+      }
+    }
+    setValidationError(null);
+  };
+
+  // Switch between Product Mode and Service/Expense Mode cleanly from top header bar
+  const handleSwitchHeaderMode = (targetMode: 'product' | 'service') => {
+    setValidationError(null);
+    if (targetMode === 'service') {
+      if (isCurrentlyPureService) return;
+      if (items.length === 1) {
+        handleToggleRowType(0, 'service');
+        return;
+      }
+      const hasUntouchedProductRow = items.some((it) => !it.isService && (!it.productId || it.buyPrice === 0));
+      if (hasUntouchedProductRow) {
+        setItems(
+          items.map((it, idx) => {
+            if (!it.isService && (!it.productId || it.buyPrice === 0)) {
+              return {
+                ...it,
+                id: `pur-srv-${Date.now()}-${idx}`,
+                productId: `service-${Date.now()}-${idx}`,
+                productName: '',
+                productCode: `SRV-${101 + idx}`,
+                unit: 'سرویس',
+                buyPrice: 0,
+                total: 0,
+                isService: true,
+                itemType: 'service',
+              };
+            }
+            return it;
+          })
+        );
+      } else {
+        handleAddServiceItem();
+      }
+    } else {
+      if (!isCurrentlyPureService && serviceItemsCount === 0) return;
+      if (items.length === 1) {
+        handleToggleRowType(0, 'product');
+        return;
+      }
+      const hasEmptyServiceRow = items.some((it) => (it.isService || it.itemType === 'service') && !it.productName.trim());
+      if (hasEmptyServiceRow) {
+        const firstProd = allAvailableProducts[0];
+        const buyPrice = firstProd?.purchasePrice || firstProd?.buyPrice || 0;
+        setItems(
+          items.map((it, idx) => {
+            if ((it.isService || it.itemType === 'service') && !it.productName.trim()) {
+              return {
+                ...it,
+                id: `item-${Date.now()}-${idx}`,
+                productId: firstProd?.id || '',
+                productName: firstProd?.name || '',
+                productCode: firstProd?.code || '',
+                unit: firstProd?.unit || 'عدد',
+                buyPrice,
+                total: Math.max(0, (it.quantity || 1) * buyPrice - (it.discount || 0)),
+                isService: false,
+                itemType: 'product',
+              };
+            }
+            return it;
+          })
+        );
+      } else {
+        handleAddItem();
+      }
     }
   };
 
@@ -326,12 +510,124 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
       buyPrice: firstProd?.purchasePrice || firstProd?.buyPrice || 0,
       discount: 0,
       total: firstProd?.purchasePrice || firstProd?.buyPrice || 0,
+      isService: false,
+      itemType: 'product',
     };
     setItems([...items, newItem]);
+    setValidationError(null);
+  };
+
+  const handleAddServiceItem = (presetTitle = '', presetUnit = 'سرویس') => {
+    setValidationError(null);
+
+    if (presetTitle) {
+      const emptySrvIdx = items.findIndex(
+        (it) => Boolean(it.isService || it.itemType === 'service' || isServiceItem(it, allAvailableProducts)) && !it.productName.trim()
+      );
+      if (emptySrvIdx !== -1) {
+        const updated = [...items];
+        updated[emptySrvIdx] = {
+          ...updated[emptySrvIdx],
+          productName: presetTitle,
+          unit: presetUnit || updated[emptySrvIdx].unit || 'سرویس',
+          isService: true,
+          itemType: 'service',
+        };
+        setItems(updated);
+        return;
+      }
+    }
+
+    const nextSrvIndex = items.filter((i) => i.isService || i.itemType === 'service').length + 1;
+    const srvCode = `SRV-${100 + nextSrvIndex}`;
+    const newSrvItem: PurchaseInvoiceItem = {
+      id: `pur-srv-${Date.now()}-${items.length + 1}`,
+      productId: `service-${Date.now()}-${items.length + 1}`,
+      productName: presetTitle,
+      productCode: srvCode,
+      unit: presetUnit,
+      quantity: 1,
+      buyPrice: 0,
+      discount: 0,
+      total: 0,
+      isService: true,
+      itemType: 'service',
+    };
+
+    setItems([...items, newSrvItem]);
+  };
+
+  const handleToggleRowType = (index: number, targetType: 'product' | 'service') => {
+    const next = [...items];
+    const current = next[index];
+    if (targetType === 'service') {
+      const srvIdx = next.filter((i) => i.isService || i.itemType === 'service').length + 1;
+      next[index] = {
+        ...current,
+        id: current.id.startsWith('pur-srv-') ? current.id : `pur-srv-${Date.now()}-${index}`,
+        productId: `service-${Date.now()}-${index}`,
+        productName: current.isService ? current.productName : '',
+        productCode: `SRV-${100 + srvIdx}`,
+        unit: 'سرویس',
+        buyPrice: current.isService ? current.buyPrice : 0,
+        total: current.isService ? current.total : 0,
+        isService: true,
+        itemType: 'service',
+      };
+    } else {
+      const firstProd = allAvailableProducts[0];
+      const buyPrice = firstProd?.purchasePrice || firstProd?.buyPrice || 0;
+      next[index] = {
+        ...current,
+        id: `item-${Date.now()}-${index}`,
+        productId: firstProd?.id || '',
+        productName: firstProd?.name || '',
+        productCode: firstProd?.code || '',
+        unit: firstProd?.unit || 'عدد',
+        buyPrice,
+        total: Math.max(0, (current.quantity || 1) * buyPrice - (current.discount || 0)),
+        isService: false,
+        itemType: 'product',
+      };
+    }
+    setItems(next);
+    setValidationError(null);
   };
 
   const handleRemoveItem = (index: number) => {
-    if (items.length <= 1) return;
+    setValidationError(null);
+    if (items.length <= 1) {
+      const current = items[0];
+      const rowIsService = Boolean(current.isService || current.itemType === 'service' || isServiceItem(current, allAvailableProducts));
+      if (rowIsService) {
+        setItems([
+          {
+            ...current,
+            productName: '',
+            unit: 'سرویس',
+            quantity: 1,
+            buyPrice: 0,
+            discount: 0,
+            total: 0,
+          },
+        ]);
+      } else {
+        setItems([
+          {
+            ...current,
+            productId: '',
+            productName: '',
+            productCode: '',
+            unit: 'عدد',
+            quantity: 1,
+            buyPrice: 0,
+            discount: 0,
+            total: 0,
+          },
+        ]);
+      }
+      return;
+    }
     setItems(items.filter((_, i) => i !== index));
   };
 
@@ -362,6 +658,8 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
     item.unit = prod.unit;
     item.buyPrice = prod.purchasePrice || prod.buyPrice || 0;
     item.total = Math.max(0, item.quantity * item.buyPrice - item.discount);
+    item.isService = false;
+    item.itemType = 'product';
 
     next[index] = item;
     setItems(next);
@@ -374,7 +672,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
     const buyPrice = prod.purchasePrice || prod.buyPrice || 0;
     setItems((prev) => {
       // Check if product already exists in rows
-      const existingIdx = prev.findIndex((it) => it.productId === prod.id);
+      const existingIdx = prev.findIndex((it) => !it.isService && it.productId === prod.id);
       if (existingIdx !== -1) {
         const updated = [...prev];
         const current = updated[existingIdx];
@@ -387,8 +685,8 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
         return updated;
       }
 
-      // If there's a single row or last row without a selected product, replace it
-      if (prev.length === 1 && !prev[0].productId) {
+      // If there's a single row without a selected product (and not a filled service), replace it
+      if (prev.length === 1 && !prev[0].productId && !prev[0].productName.trim()) {
         return [
           {
             ...prev[0],
@@ -400,6 +698,8 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
             buyPrice,
             discount: 0,
             total: buyPrice,
+            isService: false,
+            itemType: 'product',
           },
         ];
       }
@@ -416,6 +716,8 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
           buyPrice,
           discount: 0,
           total: buyPrice,
+          isService: false,
+          itemType: 'product',
         },
       ];
     });
@@ -448,7 +750,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
     setItems((prev) => {
       const updated = [...prev];
       const lastIdx = updated.length - 1;
-      if (updated[lastIdx] && !updated[lastIdx].productName) {
+      if (updated[lastIdx] && !updated[lastIdx].productName && !updated[lastIdx].isService) {
         updated[lastIdx] = {
           ...updated[lastIdx],
           productId: newProd.id,
@@ -457,6 +759,8 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
           unit: newProd.unit,
           buyPrice: newProd.buyPrice,
           total: updated[lastIdx].quantity * newProd.buyPrice,
+          isService: false,
+          itemType: 'product',
         };
       } else {
         updated.push({
@@ -469,6 +773,8 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
           buyPrice: newProd.buyPrice,
           discount: 0,
           total: newProd.buyPrice,
+          isService: false,
+          itemType: 'product',
         });
       }
       return updated;
@@ -486,7 +792,11 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
 
     const finalSupplierName = supplierName.trim() || supplierSearchInput.trim();
     if (!finalSupplierName) {
-      setValidationError('لطفاً نام تامین‌کننده یا فروشنده را وارد و یا از لیست انتخاب نمایید.');
+      setValidationError(
+        isCurrentlyPureService
+          ? 'لطفاً نام مجری خدمات / طرف حساب (دریافت‌کننده وجه) را وارد و یا از لیست انتخاب نمایید.'
+          : 'لطفاً نام تامین‌کننده، فروشنده یا مجری خدمات را وارد و یا از لیست انتخاب نمایید.'
+      );
       return;
     }
 
@@ -495,73 +805,155 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
       return;
     }
 
-    if (items.length === 0 || items.some((it) => !it.productId || it.quantity <= 0)) {
-      setValidationError('لطفاً حداقل یک قلم کالا با تعداد معتبر در فاکتور ثبت نمایید.');
+    if (items.length === 0) {
+      setValidationError('لطفاً حداقل یک ردیف کالا یا خدمات در فاکتور ثبت نمایید.');
       return;
     }
 
-    const purchaseId = editingInvoice?.id || `pur-${Date.now()}`;
-    const receiptId = editingInvoice?.inboundReceiptId || `inb-${Date.now()}`;
-    const receiptNumber = StorageService.getNextInboundReceiptNumber();
-
-    let existingReceipt: InboundReceipt | undefined;
-    if (editingInvoice?.inboundReceiptId) {
-      try {
-        existingReceipt = StorageService.getInboundReceipts().find((r) => r.id === editingInvoice.inboundReceiptId);
-      } catch (err) {
-        console.error(err);
+    // Validate each row according to its type (Product vs Service)
+    for (let idx = 0; idx < items.length; idx++) {
+      const it = items[idx];
+      const rowIsService = Boolean(it.isService || it.itemType === 'service' || isServiceItem(it, allAvailableProducts));
+      if (rowIsService) {
+        if (!it.productName || !it.productName.trim()) {
+          setValidationError(`لطفاً شرح خدمات / عنوان هزینه را در ردیف ${toPersianDigits(idx + 1)} وارد نمایید.`);
+          return;
+        }
+        if (it.quantity <= 0) {
+          setValidationError(`تعداد/مقدار خدمت در ردیف ${toPersianDigits(idx + 1)} باید بیشتر از صفر باشد.`);
+          return;
+        }
+        if ((it.buyPrice || 0) <= 0) {
+          setValidationError(`لطفاً مبلغ / هزینه خدمت «${it.productName.trim()}» را در ردیف ${toPersianDigits(idx + 1)} وارد نمایید.`);
+          return;
+        }
+      } else {
+        if (!it.productId) {
+          setValidationError(`لطفاً کالای ردیف ${toPersianDigits(idx + 1)} را انتخاب کنید (یا نوع ردیف را به «خدمات» تغییر دهید).`);
+          return;
+        }
+        if (it.quantity <= 0) {
+          setValidationError(`تعداد کالای ردیف ${toPersianDigits(idx + 1)} باید بیشتر از صفر باشد.`);
+          return;
+        }
       }
     }
 
-    const inboundReceipt: InboundReceipt = existingReceipt ? {
-      ...existingReceipt,
-      purchaseInvoiceNumber: invoiceNumber.trim(),
-      supplierName: finalSupplierName,
-      date,
-      items: items.map((item, idx) => {
-        const existingItem = existingReceipt?.items.find((ri) => ri.productId === item.productId);
-        const received = existingItem ? existingItem.receivedQuantity : 0;
+    if (paymentStatus === 'partial') {
+      if (paidAmount <= 0) {
+        setValidationError('در حالت «بیعانه / بخشی»، مبلغ پرداختی باید بیشتر از صفر باشد (در صورت عدم پرداخت، وضعیت را روی «نسیه» قرار دهید).');
+        return;
+      }
+      if (paidAmount > finalTotal) {
+        setValidationError(`مبلغ پرداختی (${toPersianDigits(formatPrice(paidAmount))} تومان) نمی‌تواند بیشتر از مبلغ نهایی فاکتور (${toPersianDigits(formatPrice(finalTotal))} تومان) باشد.`);
+        return;
+      }
+    }
+
+    const normalizedItems: PurchaseInvoiceItem[] = items.map((it, idx) => {
+      const rowIsService = Boolean(it.isService || it.itemType === 'service' || isServiceItem(it, allAvailableProducts));
+      if (rowIsService) {
         return {
-          id: existingItem?.id || `rec-item-${Date.now()}-${idx}`,
-          productId: item.productId,
-          productName: item.productName,
-          productCode: item.productCode,
-          unit: item.unit,
-          expectedQuantity: item.quantity,
-          receivedQuantity: received,
-          discrepancy: received - item.quantity,
-          buyPrice: item.buyPrice,
+          ...it,
+          id: it.id.startsWith('pur-srv-') ? it.id : `pur-srv-${Date.now()}-${idx}`,
+          productId: it.productId && it.productId.startsWith('service-') ? it.productId : `service-${Date.now()}-${idx}`,
+          productName: it.productName.trim(),
+          productCode: it.productCode && it.productCode.startsWith('SRV') ? it.productCode : `SRV-${101 + idx}`,
+          unit: it.unit?.trim() || 'سرویس',
+          isService: true,
+          itemType: 'service',
         };
-      }),
-      totalExpectedQuantity: items.reduce((sum, i) => sum + i.quantity, 0),
-      totalDiscrepancy: existingReceipt.items ? (existingReceipt.totalReceivedQuantity - items.reduce((sum, i) => sum + i.quantity, 0)) : -items.reduce((sum, i) => sum + i.quantity, 0),
-      notes: notes.trim() || existingReceipt.notes || `رسید ورود انبار متناظر با فاکتور خرید ${invoiceNumber.trim()}`,
-      updatedAt: new Date().toISOString(),
-    } : {
-      id: receiptId,
-      receiptNumber,
-      purchaseInvoiceId: purchaseId,
-      purchaseInvoiceNumber: invoiceNumber.trim(),
-      supplierName: finalSupplierName,
-      date,
-      status: 'pending_verification',
-      items: items.map((item, idx) => ({
-        id: `rec-item-${Date.now()}-${idx}`,
-        productId: item.productId,
-        productName: item.productName,
-        productCode: item.productCode,
-        unit: item.unit,
-        expectedQuantity: item.quantity,
-        receivedQuantity: 0,
-        discrepancy: -item.quantity,
-        buyPrice: item.buyPrice,
-      })),
-      totalExpectedQuantity: items.reduce((sum, i) => sum + i.quantity, 0),
-      totalReceivedQuantity: 0,
-      totalDiscrepancy: -items.reduce((sum, i) => sum + i.quantity, 0),
-      notes: notes.trim() || `رسید ورود انبار متناظر با فاکتور خرید ${invoiceNumber.trim()}`,
-      createdAt: new Date().toISOString(),
-    };
+      }
+      return {
+        ...it,
+        isService: false,
+        itemType: 'product',
+      };
+    });
+
+    const physicalItems = normalizedItems.filter((it) => !it.isService);
+    const isServiceOnlyInvoice = physicalItems.length === 0;
+
+    const purchaseId = editingInvoice?.id || `pur-${Date.now()}`;
+    let inboundReceipt: InboundReceipt | null = null;
+    let receiptId: string | undefined = undefined;
+
+    if (!isServiceOnlyInvoice) {
+      receiptId = editingInvoice?.inboundReceiptId || `inb-${Date.now()}`;
+      const receiptNumber = StorageService.getNextInboundReceiptNumber();
+
+      let existingReceipt: InboundReceipt | undefined;
+      if (editingInvoice?.inboundReceiptId) {
+        try {
+          existingReceipt = StorageService.getInboundReceipts().find((r) => r.id === editingInvoice.inboundReceiptId);
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
+      inboundReceipt = existingReceipt
+        ? {
+            ...existingReceipt,
+            purchaseInvoiceNumber: invoiceNumber.trim(),
+            supplierName: finalSupplierName,
+            date,
+            items: physicalItems.map((item, idx) => {
+              const existingItem = existingReceipt?.items.find((ri) => ri.productId === item.productId);
+              const received = existingItem ? existingItem.receivedQuantity : 0;
+              return {
+                id: existingItem?.id || `rec-item-${Date.now()}-${idx}`,
+                productId: item.productId,
+                productName: item.productName,
+                productCode: item.productCode,
+                unit: item.unit,
+                expectedQuantity: item.quantity,
+                receivedQuantity: received,
+                discrepancy: received - item.quantity,
+                buyPrice: item.buyPrice,
+              };
+            }),
+            totalExpectedQuantity: physicalItems.reduce((sum, i) => sum + i.quantity, 0),
+            totalDiscrepancy: existingReceipt.items
+              ? existingReceipt.totalReceivedQuantity - physicalItems.reduce((sum, i) => sum + i.quantity, 0)
+              : -physicalItems.reduce((sum, i) => sum + i.quantity, 0),
+            notes: notes.trim() || existingReceipt.notes || `رسید ورود انبار متناظر با فاکتور خرید ${invoiceNumber.trim()}`,
+            updatedAt: new Date().toISOString(),
+          }
+        : {
+            id: receiptId,
+            receiptNumber,
+            purchaseInvoiceId: purchaseId,
+            purchaseInvoiceNumber: invoiceNumber.trim(),
+            supplierName: finalSupplierName,
+            date,
+            status: 'pending_verification',
+            items: physicalItems.map((item, idx) => ({
+              id: `rec-item-${Date.now()}-${idx}`,
+              productId: item.productId,
+              productName: item.productName,
+              productCode: item.productCode,
+              unit: item.unit,
+              expectedQuantity: item.quantity,
+              receivedQuantity: 0,
+              discrepancy: -item.quantity,
+              buyPrice: item.buyPrice,
+            })),
+            totalExpectedQuantity: physicalItems.reduce((sum, i) => sum + i.quantity, 0),
+            totalReceivedQuantity: 0,
+            totalDiscrepancy: -physicalItems.reduce((sum, i) => sum + i.quantity, 0),
+            notes: notes.trim() || `رسید ورود انبار متناظر با فاکتور خرید ${invoiceNumber.trim()}`,
+            createdAt: new Date().toISOString(),
+          };
+    }
+
+    const effectivePaidAmount =
+      paymentStatus === 'paid'
+        ? finalTotal
+        : paymentStatus === 'unpaid'
+        ? 0
+        : Math.min(finalTotal, Math.max(0, paidAmount));
+    const effectivePaymentStatus: PaymentStatus =
+      paymentStatus === 'partial' && effectivePaidAmount === finalTotal ? 'paid' : paymentStatus;
 
     const purchaseInvoice: PurchaseInvoice = {
       id: purchaseId,
@@ -572,23 +964,24 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
       supplierEconomicCode: supplierEconomicCode.trim() || undefined,
       date,
       dueDate: dueDate.trim() || undefined,
-      items,
+      items: normalizedItems,
       subtotal,
       totalDiscount,
       taxRate,
       taxAmount,
       shippingCost: shippingCost || undefined,
       finalTotal,
-      paymentStatus,
-      paymentMethod,
-      paidAmount: paymentStatus === 'paid' ? finalTotal : paidAmount,
-      chequeNumber: chequeNumber.trim() || undefined,
-      chequeDueDate: chequeDueDate.trim() || undefined,
-      chequeName: chequeName.trim() || undefined,
-      transferDescription: transferDescription.trim() || undefined,
+      paymentStatus: effectivePaymentStatus,
+      paymentMethod: effectivePaymentStatus === 'unpaid' ? 'credit' : paymentMethod,
+      paidAmount: effectivePaidAmount,
+      chequeNumber: effectivePaymentStatus !== 'unpaid' && paymentMethod === 'cheque' ? chequeNumber.trim() || undefined : undefined,
+      chequeDueDate: effectivePaymentStatus !== 'unpaid' && paymentMethod === 'cheque' ? chequeDueDate.trim() || undefined : undefined,
+      chequeName: effectivePaymentStatus !== 'unpaid' && paymentMethod === 'cheque' ? chequeName.trim() || undefined : undefined,
+      transferDescription: effectivePaymentStatus !== 'unpaid' && paymentMethod !== 'cheque' ? transferDescription.trim() || undefined : undefined,
       notes: notes.trim() || undefined,
-      status: editingInvoice?.status || 'pending_receipt',
-      inboundReceiptId: receiptId,
+      status: isServiceOnlyInvoice ? 'completed' : editingInvoice?.status || 'pending_receipt',
+      inboundReceiptId: isServiceOnlyInvoice ? undefined : receiptId,
+      isServiceOnly: isServiceOnlyInvoice,
       createdAt: editingInvoice?.createdAt || new Date().toISOString(),
       updatedAt: isEditing ? new Date().toISOString() : undefined,
     };
@@ -605,7 +998,9 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
           phone: supplierPhone.trim() || '',
           address: supplierAddress.trim() || undefined,
           nationalId: supplierEconomicCode.trim() || undefined,
-          notes: 'تامین‌کننده / فروشنده کالا (ثبت خودکار از فاکتور خرید)',
+          notes: isServiceOnlyInvoice
+            ? 'مجری خدمات / طرف‌حساب خدماتی (ثبت خودکار از فاکتور خرید خدمات)'
+            : 'تامین‌کننده / فروشنده کالا (ثبت خودکار از فاکتور خرید)',
           createdAt: new Date().toISOString(),
         };
         StorageService.saveCustomers([newCustomer, ...customers]);
@@ -633,31 +1028,85 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
       <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
         
         {/* Compact Header Bar */}
-        <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between shrink-0 border-b border-slate-800">
+        <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between gap-2 shrink-0 border-b border-slate-800 flex-wrap">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
-              <ShoppingBag className="w-4 h-4" />
+            <div
+              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
+                isCurrentlyPureService
+                  ? 'bg-violet-500/20 text-violet-300 border-violet-500/30'
+                  : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+              }`}
+            >
+              {isCurrentlyPureService ? <Wrench className="w-4 h-4" /> : <ShoppingBag className="w-4 h-4" />}
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-sm sm:text-base font-black text-white">
-                  {isEditing ? `ویرایش فاکتور خرید ${toPersianDigits(invoiceNumber)}` : 'ثبت فاکتور خرید کالا'}
+                  {isEditing
+                    ? isCurrentlyPureService
+                      ? `ویرایش فاکتور خرید خدمات ${toPersianDigits(invoiceNumber)}`
+                      : `ویرایش فاکتور خرید ${toPersianDigits(invoiceNumber)}`
+                    : isCurrentlyPureService
+                    ? 'ثبت فاکتور خرید خدمات و هزینه'
+                    : serviceItemsCount > 0
+                    ? 'ثبت فاکتور خرید کالا و خدمات'
+                    : 'ثبت فاکتور خرید کالا'}
                 </h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  {isEditing ? 'ویرایش' : 'صدور حواله انبار'}
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    isCurrentlyPureService
+                      ? 'bg-violet-500/20 text-violet-300 border-violet-500/30'
+                      : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                  }`}
+                >
+                  {isEditing
+                    ? 'در حال ویرایش'
+                    : isCurrentlyPureService
+                    ? 'ثبت آنی هزینه خدمات (بدون نیاز به انبار)'
+                    : 'صدور حواله انبار'}
                 </span>
               </div>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
-            title="بستن پنجره"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Quick Mode Switcher */}
+            <div className="flex items-center bg-slate-800 p-0.5 rounded-xl border border-slate-700 text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => handleSwitchHeaderMode('product')}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                  !isCurrentlyPureService
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                <ShoppingBag className="w-3 h-3" />
+                <span>خرید کالا</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchHeaderMode('service')}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                  isCurrentlyPureService
+                    ? 'bg-violet-600 text-white shadow-2xs'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                <Wrench className="w-3 h-3" />
+                <span>خرید خدمات / هزینه</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              title="بستن پنجره"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Form */}
@@ -674,32 +1123,62 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
             </div>
           )}
 
-          {/* SECTION 1: SUPPLIER & INVOICE DETAILS (COMPACT SINGLE STRIP) */}
-          <div className="bg-slate-50/90 rounded-xl border border-slate-200/90 p-3 space-y-2.5">
+          {/* SECTION 1: SUPPLIER / SERVICE PROVIDER & INVOICE DETAILS */}
+          <div
+            className={`rounded-xl border p-3 space-y-2.5 transition-colors ${
+              isCurrentlyPureService
+                ? 'bg-violet-50/40 border-violet-200/80'
+                : 'bg-slate-50/90 border-slate-200/90'
+            }`}
+          >
             <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-start">
               
-              {/* Supplier Selection Column (6 cols) */}
+              {/* Counterparty Selection Column (6 cols) */}
               <div className="md:col-span-6" ref={supplierDropdownRef}>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                    <Building2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>تامین‌کننده / فروشنده</span>
+                    {isCurrentlyPureService ? (
+                      <Wrench className="w-3.5 h-3.5 text-violet-600" />
+                    ) : (
+                      <Building2 className="w-3.5 h-3.5 text-emerald-600" />
+                    )}
+                    <span>
+                      {isCurrentlyPureService
+                        ? 'مجری خدمات / طرف حساب (دریافت‌کننده وجه)'
+                        : 'تامین‌کننده / فروشنده'}
+                    </span>
                     <span className="text-rose-600">*</span>
                   </label>
                   <button
                     type="button"
                     onClick={() => setShowOptionalDetails(!showOptionalDetails)}
-                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-0.5 cursor-pointer"
+                    className={`text-[11px] font-bold flex items-center gap-0.5 cursor-pointer ${
+                      isCurrentlyPureService
+                        ? 'text-violet-700 hover:text-violet-900'
+                        : 'text-emerald-700 hover:text-emerald-900'
+                    }`}
                   >
-                    <span>{showOptionalDetails ? 'بستن مشخصات تکمیلی' : '+ مشخصات تکمیلی'}</span>
+                    <span>
+                      {showOptionalDetails
+                        ? 'بستن مشخصات تکمیلی'
+                        : `+ مشخصات تکمیلی${supplierPhone || supplierAddress || supplierEconomicCode || dueDate ? ' (ثبت‌شده)' : ''}`}
+                    </span>
                     {showOptionalDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                   </button>
                 </div>
 
                 {supplierName ? (
-                  <div className="h-9 bg-white rounded-xl border border-emerald-500/50 px-2.5 flex items-center justify-between gap-2">
+                  <div
+                    className={`h-9 bg-white rounded-xl border px-2.5 flex items-center justify-between gap-2 ${
+                      isCurrentlyPureService ? 'border-violet-400' : 'border-emerald-500/50'
+                    }`}
+                  >
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <UserCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <UserCheck
+                        className={`w-3.5 h-3.5 shrink-0 ${
+                          isCurrentlyPureService ? 'text-violet-600' : 'text-emerald-600'
+                        }`}
+                      />
                       <span className="font-black text-slate-900 text-xs truncate">
                         {supplierName}
                       </span>
@@ -730,8 +1209,16 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                         setIsSupplierDropdownOpen(true);
                         setValidationError(null);
                       }}
-                      placeholder="جستجو یا تایپ نام فروشنده..."
-                      className="w-full h-9 bg-white border border-slate-300 rounded-xl pr-8 pl-7 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-medium"
+                      placeholder={
+                        isCurrentlyPureService
+                          ? 'جستجو یا تایپ نام مجری خدمات، تعمیرکار، باربری یا شرکت...'
+                          : 'جستجو یا تایپ نام فروشنده...'
+                      }
+                      className={`w-full h-9 bg-white border border-slate-300 rounded-xl pr-8 pl-7 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 font-medium ${
+                        isCurrentlyPureService
+                          ? 'focus:ring-violet-500/20 focus:border-violet-500'
+                          : 'focus:ring-emerald-500/20 focus:border-emerald-500'
+                      }`}
                     />
                     <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     {supplierSearchInput && (
@@ -753,19 +1240,35 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                               setIsSupplierDropdownOpen(false);
                               setValidationError(null);
                             }}
-                            className="p-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold flex items-center justify-between cursor-pointer mb-1 border border-emerald-200"
+                            className={`p-2 rounded-lg font-bold flex items-center justify-between cursor-pointer mb-1 border ${
+                              isCurrentlyPureService
+                                ? 'bg-violet-50 hover:bg-violet-100 text-violet-900 border-violet-200'
+                                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-200'
+                            }`}
                           >
                             <span className="flex items-center gap-1.5">
-                              <PlusCircle className="w-3.5 h-3.5 text-emerald-600" />
+                              <PlusCircle
+                                className={`w-3.5 h-3.5 ${
+                                  isCurrentlyPureService ? 'text-violet-600' : 'text-emerald-600'
+                                }`}
+                              />
                               <span>انتخاب نام جدید: «{supplierSearchInput.trim()}»</span>
                             </span>
-                            <span className="text-[10px] bg-emerald-200/80 px-1.5 py-0.5 rounded">ثبت</span>
+                            <span
+                              className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                isCurrentlyPureService ? 'bg-violet-200/80' : 'bg-emerald-200/80'
+                              }`}
+                            >
+                              ثبت
+                            </span>
                           </div>
                         )}
 
                         {filteredSuppliers.length === 0 ? (
                           <div className="py-3 text-center text-slate-400 text-[11px]">
-                            تامین‌کننده‌ای یافت نشد. نام دلخواه را تایپ کنید.
+                            {isCurrentlyPureService
+                              ? 'مجری خدمات یا طرف حسابی یافت نشد. نام دلخواه را تایپ کنید.'
+                              : 'تامین‌کننده‌ای یافت نشد. نام دلخواه را تایپ کنید.'}
                           </div>
                         ) : (
                           <div className="space-y-0.5">
@@ -796,9 +1299,15 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
                     <Hash className="w-3.5 h-3.5 text-slate-400" />
-                    <span>شماره فاکتور</span>
+                    <span>{isCurrentlyPureService ? 'شماره فاکتور / سند' : 'شماره فاکتور'}</span>
                   </label>
-                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 rounded border border-emerald-200">
+                  <span
+                    className={`text-[9px] font-bold px-1.5 rounded border ${
+                      isCurrentlyPureService
+                        ? 'text-violet-700 bg-violet-50 border-violet-200'
+                        : 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                    }`}
+                  >
                     خودکار
                   </span>
                 </div>
@@ -817,18 +1326,20 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                 <JalaliDatePicker
                   value={date}
                   onChange={setDate}
-                  label="تاریخ خرید"
+                  label={isCurrentlyPureService ? 'تاریخ انجام خدمت / ثبت' : 'تاریخ خرید'}
                   required
                   buttonClassName="!h-9"
                 />
               </div>
             </div>
 
-            {/* Optional Supplier Details Collapsible Panel */}
+            {/* Optional Supplier / Service Provider Details Collapsible Panel */}
             {showOptionalDetails && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-2.5 border-t border-slate-200/80 text-xs animate-in fade-in">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 mb-1">تلفن فروشنده:</label>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    {isCurrentlyPureService ? 'تلفن مجری / طرف حساب:' : 'تلفن فروشنده:'}
+                  </label>
                   <input
                     type="text"
                     value={supplierPhone}
@@ -860,7 +1371,9 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 mb-1">آدرس فروشنده:</label>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    {isCurrentlyPureService ? 'آدرس / محل انجام خدمت:' : 'آدرس فروشنده:'}
+                  </label>
                   <input
                     type="text"
                     value={supplierAddress}
@@ -873,135 +1386,293 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
             )}
           </div>
 
-          {/* SECTION 2: ITEMS TABLE (WITH LIVE PRODUCT SEARCH) */}
+          {/* SECTION 2: ITEMS TABLE (PRODUCTS & SERVICES) */}
           <div className="bg-white rounded-xl border border-slate-200/90">
             {/* Items Toolbar + Live Search Bar */}
             <div className="bg-slate-50/90 p-2.5 sm:px-3 border-b border-slate-200 rounded-t-xl space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                  <PackagePlus className="w-4 h-4 text-emerald-600" />
-                  <span className="font-bold text-slate-800 text-xs">اقلام فاکتور خرید</span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {isCurrentlyPureService ? (
+                    <Wrench className="w-4 h-4 text-violet-600" />
+                  ) : (
+                    <PackagePlus className="w-4 h-4 text-emerald-600" />
+                  )}
+                  <span className="font-bold text-slate-800 text-xs">
+                    {isCurrentlyPureService ? 'شرح خدمات و هزینه‌های فاکتور' : 'اقلام فاکتور خرید (کالا و خدمات)'}
+                  </span>
                   <span className="text-[10px] font-mono font-bold bg-white text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
                     {toPersianDigits(items.length)} ردیف
                   </span>
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setIsQuickProductModalOpen(true)}
-                    className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-bold transition-colors cursor-pointer"
-                  >
-                    <PlusCircle className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>تعریف کالای جدید</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleAddItem}
-                    className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 font-bold transition-all cursor-pointer active:scale-95"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>افزودن ردیف</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Live Product Search & Instant Add Bar */}
-              <div className="relative" ref={quickItemSearchRef}>
-                <div className="relative flex items-center">
-                  <Search className="w-4 h-4 text-emerald-600 absolute right-3 pointer-events-none" />
-                  <input
-                    type="text"
-                    value={quickItemSearch}
-                    onFocus={() => setIsQuickItemDropdownOpen(true)}
-                    onChange={(e) => {
-                      setQuickItemSearch(e.target.value);
-                      setIsQuickItemDropdownOpen(true);
-                    }}
-                    placeholder="جستجوی زنده کالا (نام، کد یا دسته‌بندی) برای افزودن سریع به فاکتور..."
-                    className="w-full h-9 pr-9 pl-8 rounded-xl border border-emerald-300 bg-white text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-2xs"
-                  />
-                  {quickItemSearch && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setQuickItemSearch('');
-                        setIsQuickItemDropdownOpen(false);
-                      }}
-                      className="absolute left-2.5 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                  {serviceItemsCount > 0 && !isCurrentlyPureService && (
+                    <span className="text-[10px] font-bold bg-violet-100 text-violet-800 px-2 py-0.5 rounded-full border border-violet-200">
+                      {toPersianDigits(serviceItemsCount)} ردیف خدمات
+                    </span>
                   )}
                 </div>
 
-                {isQuickItemDropdownOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 max-h-60 overflow-y-auto z-50 p-1.5 text-xs animate-in fade-in duration-100">
-                    {quickItemSearch.trim() && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {(isCurrentlyPureService || serviceItemsCount > 0) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsServiceUnitCreatorOpen((prev) => !prev);
+                        setTargetRowForNewUnit(null);
+                      }}
+                      className={`flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg border font-bold transition-all cursor-pointer active:scale-95 ${
+                        isServiceUnitCreatorOpen
+                          ? 'bg-violet-100 text-violet-900 border-violet-400 shadow-2xs'
+                          : 'bg-violet-50 text-violet-800 hover:bg-violet-100 border-violet-200'
+                      }`}
+                      title="تعریف و مدیریت واحدهای اندازه‌گیری خدمات (مانند نفر-ساعت، مترمربع، جلسه و...)"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5 text-violet-600" />
+                      <span>تعریف واحد خدمت</span>
+                    </button>
+                  )}
+
+                  {isCurrentlyPureService ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleAddServiceItem()}
+                        className="flex items-center gap-1 text-[11px] px-3 py-1.5 rounded-lg bg-violet-600 text-white hover:bg-violet-700 font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>افزودن ردیف خدمت / هزینه جدید</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleAddItem}
+                        className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg bg-white text-slate-700 hover:bg-slate-100 border border-slate-300 font-bold transition-all cursor-pointer active:scale-95"
+                        title="در صورتی که همراه با این خدمت، قطعه یا کالایی هم خریداری شده است کلیک کنید"
+                      >
+                        <ShoppingBag className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>+ افزودن کالا / قطعه به این فاکتور</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setIsQuickProductModalOpen(true)}
+                        className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-bold transition-colors cursor-pointer"
+                      >
+                        <PlusCircle className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>تعریف کالای جدید</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAddServiceItem()}
+                        className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-violet-600 text-white hover:bg-violet-700 font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
+                      >
+                        <Wrench className="w-3.5 h-3.5" />
+                        <span>+ افزودن خرید خدمات / هزینه</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleAddItem}
+                        className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 text-white hover:bg-slate-800 font-bold transition-all cursor-pointer active:scale-95"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ افزودن ردیف کالا</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Inline Service Unit Creator Bar */}
+              {isServiceUnitCreatorOpen && (
+                <div className="p-2.5 rounded-xl bg-violet-50/90 border border-violet-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-2 flex-wrap flex-1">
+                    <span className="text-[11px] font-black text-violet-900 flex items-center gap-1 shrink-0">
+                      <PlusCircle className="w-3.5 h-3.5 text-violet-600" />
+                      <span>
+                        {targetRowForNewUnit !== null
+                          ? `تعریف واحد خدمت جدید (برای ردیف ${toPersianDigits(targetRowForNewUnit + 1)}):`
+                          : 'تعریف واحد خدمت جدید:'}
+                      </span>
+                    </span>
+                    <input
+                      type="text"
+                      autoFocus
+                      value={newServiceUnitName}
+                      onChange={(e) => setNewServiceUnitName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddCustomServiceUnit();
+                        }
+                      }}
+                      placeholder="نام واحد (مثلاً: نفر-ساعت، مترمربع، جلسه، نوبت، کورس...)"
+                      className="flex-1 min-w-[200px] max-w-xs h-8 px-2.5 rounded-lg border border-violet-300 bg-white text-xs font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddCustomServiceUnit}
+                      disabled={!newServiceUnitName.trim()}
+                      className="h-8 px-3 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:bg-violet-300 text-white text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>ثبت واحد</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsServiceUnitCreatorOpen(false);
+                        setNewServiceUnitName('');
+                        setTargetRowForNewUnit(null);
+                      }}
+                      className="h-8 px-2 rounded-lg bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 text-[11px] font-bold transition-colors cursor-pointer shrink-0"
+                    >
+                      بستن
+                    </button>
+                  </div>
+
+                  {/* Display custom defined units with ability to remove */}
+                  {serviceUnits.some((u) => !DEFAULT_SERVICE_UNITS.includes(u)) && (
+                    <div className="flex items-center gap-1 flex-wrap pt-1.5 sm:pt-0 border-t sm:border-t-0 border-violet-200/70">
+                      <span className="text-[10px] font-bold text-violet-700">واحدهای سفارشی:</span>
+                      {serviceUnits
+                        .filter((u) => !DEFAULT_SERVICE_UNITS.includes(u))
+                        .map((customUnit) => (
+                          <span
+                            key={customUnit}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-violet-200 text-violet-900 text-[10px] font-bold"
+                          >
+                            <span>{customUnit}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveCustomServiceUnit(customUnit)}
+                              className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                              title="حذف این واحد سفارشی"
+                            >
+                              <X className="w-2.5 h-2.5" />
+                            </button>
+                          </span>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Live Product Search & Instant Add Bar (shown when not pure service) */}
+              {!isCurrentlyPureService && (
+                <div className="relative" ref={quickItemSearchRef}>
+                  <div className="relative flex items-center">
+                    <Search className="w-4 h-4 text-emerald-600 absolute right-3 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={quickItemSearch}
+                      onFocus={() => setIsQuickItemDropdownOpen(true)}
+                      onChange={(e) => {
+                        setQuickItemSearch(e.target.value);
+                        setIsQuickItemDropdownOpen(true);
+                      }}
+                      placeholder="جستجوی زنده کالا (نام، کد یا دسته‌بندی) برای افزودن سریع به فاکتور..."
+                      className="w-full h-9 pr-9 pl-8 rounded-xl border border-emerald-300 bg-white text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-2xs"
+                    />
+                    {quickItemSearch && (
                       <button
                         type="button"
                         onClick={() => {
-                          setNewProductName(quickItemSearch.trim());
-                          setIsQuickItemDropdownOpen(false);
                           setQuickItemSearch('');
-                          setIsQuickProductModalOpen(true);
+                          setIsQuickItemDropdownOpen(false);
                         }}
-                        className="w-full p-2 mb-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold flex items-center justify-between border border-emerald-200 cursor-pointer transition-colors"
+                        className="absolute left-2.5 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
                       >
-                        <span className="flex items-center gap-1.5">
-                          <PlusCircle className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>تعریف کالای جدید با نام «{quickItemSearch.trim()}»</span>
-                        </span>
-                        <span className="text-[10px] bg-emerald-200/80 px-1.5 py-0.5 rounded">ایجاد سریع</span>
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     )}
-
-                    {filteredQuickProducts.length === 0 ? (
-                      <div className="py-4 text-center text-slate-400 text-[11px]">
-                        کالایی با این مشخصات یافت نشد. می‌توانید آن را به عنوان کالای جدید تعریف کنید.
-                      </div>
-                    ) : (
-                      <div className="space-y-0.5">
-                        {filteredQuickProducts.map((p) => {
-                          const inInvoiceItem = items.find((it) => it.productId === p.id);
-                          return (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => handleQuickAddProductFromSearch(p)}
-                              className="w-full px-2.5 py-2 rounded-lg hover:bg-emerald-50/80 flex items-center justify-between gap-2 text-right transition-colors cursor-pointer group border border-transparent hover:border-emerald-200/70"
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
-                                  کد {toPersianDigits(p.code)}
-                                </span>
-                                <span className="font-bold text-slate-900 truncate group-hover:text-emerald-900">
-                                  {p.name}
-                                </span>
-                                {inInvoiceItem && (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 shrink-0">
-                                    در فاکتور ({toPersianDigits(inInvoiceItem.quantity)} {p.unit})
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="flex items-center gap-3 shrink-0 text-[11px]">
-                                <span className="text-slate-500">
-                                  موجودی: <strong className="font-mono text-slate-800">{toPersianDigits(p.stock)}</strong> {p.unit}
-                                </span>
-                                <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/60">
-                                  خرید: {toPersianDigits(formatPrice(p.purchasePrice || p.buyPrice || 0))} ت
-                                </span>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
-                )}
-              </div>
+
+                  {isQuickItemDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 max-h-60 overflow-y-auto z-50 p-1.5 text-xs animate-in fade-in duration-100">
+                      {quickItemSearch.trim() && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 mb-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewProductName(quickItemSearch.trim());
+                              setIsQuickItemDropdownOpen(false);
+                              setQuickItemSearch('');
+                              setIsQuickProductModalOpen(true);
+                            }}
+                            className="w-full p-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold flex items-center justify-between border border-emerald-200 cursor-pointer transition-colors"
+                          >
+                            <span className="flex items-center gap-1.5 truncate">
+                              <PlusCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span className="truncate">تعریف کالای جدید: «{quickItemSearch.trim()}»</span>
+                            </span>
+                            <span className="text-[10px] bg-emerald-200/80 px-1.5 py-0.5 rounded shrink-0">کالا</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleAddServiceItem(quickItemSearch.trim(), 'سرویس');
+                              setIsQuickItemDropdownOpen(false);
+                              setQuickItemSearch('');
+                            }}
+                            className="w-full p-2 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-900 font-bold flex items-center justify-between border border-violet-200 cursor-pointer transition-colors"
+                          >
+                            <span className="flex items-center gap-1.5 truncate">
+                              <Wrench className="w-3.5 h-3.5 text-violet-600 shrink-0" />
+                              <span className="truncate">ثبت به عنوان خدمت: «{quickItemSearch.trim()}»</span>
+                            </span>
+                            <span className="text-[10px] bg-violet-200/80 px-1.5 py-0.5 rounded shrink-0">خدمات</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {filteredQuickProducts.length === 0 ? (
+                        <div className="py-4 text-center text-slate-400 text-[11px]">
+                          کالایی با این مشخصات یافت نشد. می‌توانید آن را به عنوان کالای جدید یا خدمت ثبت کنید.
+                        </div>
+                      ) : (
+                        <div className="space-y-0.5">
+                          {filteredQuickProducts.map((p) => {
+                            const inInvoiceItem = items.find((it) => !it.isService && it.productId === p.id);
+                            return (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => handleQuickAddProductFromSearch(p)}
+                                className="w-full px-2.5 py-2 rounded-lg hover:bg-emerald-50/80 flex items-center justify-between gap-2 text-right transition-colors cursor-pointer group border border-transparent hover:border-emerald-200/70"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
+                                    کد {toPersianDigits(p.code)}
+                                  </span>
+                                  <span className="font-bold text-slate-900 truncate group-hover:text-emerald-900">
+                                    {p.name}
+                                  </span>
+                                  {inInvoiceItem && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 shrink-0">
+                                      در فاکتور ({toPersianDigits(inInvoiceItem.quantity)} {p.unit})
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-3 shrink-0 text-[11px]">
+                                  <span className="text-slate-500">
+                                    موجودی: <strong className="font-mono text-slate-800">{toPersianDigits(p.stock)}</strong> {p.unit}
+                                  </span>
+                                  <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/60">
+                                    خرید: {toPersianDigits(formatPrice(p.purchasePrice || p.buyPrice || 0))} ت
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Desktop Table View */}
@@ -1010,110 +1681,176 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                 <thead>
                   <tr className="bg-slate-100/70 text-slate-600 border-b border-slate-200 font-bold text-[11px]">
                     <th className="py-2 px-2 text-center w-9">#</th>
-                    <th className="py-2 px-2 min-w-[250px]">انتخاب / جستجوی زنده کالا</th>
-                    <th className="py-2 px-2 text-center w-24">تعداد خرید</th>
-                    <th className="py-2 px-2 text-center w-14">واحد</th>
-                    <th className="py-2 px-2 text-center w-36">قیمت واحد (تومان)</th>
+                    <th className="py-2 px-2 text-center w-24">نوع ردیف</th>
+                    <th className="py-2 px-2 min-w-[240px]">
+                      {isCurrentlyPureService ? 'شرح خدمات / عنوان هزینه' : 'انتخاب کالا / شرح خدمات و هزینه'}
+                    </th>
+                    <th className="py-2 px-2 text-center w-20">تعداد / مقدار</th>
+                    <th className="py-2 px-2 text-center w-22">
+                      {isCurrentlyPureService ? 'واحد خدمت' : 'واحد'}
+                    </th>
+                    <th className="py-2 px-2 text-center w-36">
+                      {isCurrentlyPureService ? 'مبلغ واحد / اجرت (تومان)' : 'قیمت واحد / هزینه (تومان)'}
+                    </th>
                     <th className="py-2 px-2 text-center w-32">جمع ردیف</th>
-                    <th className="py-2 px-2 text-center w-9">حذف</th>
+                    <th className="py-2 px-2 text-center w-9">{items.length <= 1 ? 'پاک' : 'حذف'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {items.map((item, index) => {
-                    const selectedProd = allAvailableProducts.find((p) => p.id === item.productId);
+                    const rowIsService = Boolean(
+                      item.isService || item.itemType === 'service' || isServiceItem(item, allAvailableProducts)
+                    );
+                    const selectedProd = !rowIsService
+                      ? allAvailableProducts.find((p) => p.id === item.productId)
+                      : undefined;
                     const isRowOpen = activeRowDropdownIndex === index;
 
                     return (
-                      <tr key={item.id} className={index % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'}>
+                      <tr
+                        key={item.id}
+                        className={
+                          rowIsService
+                            ? 'bg-violet-50/35 hover:bg-violet-50/60'
+                            : index % 2 === 1
+                            ? 'bg-slate-50/40'
+                            : 'bg-white'
+                        }
+                      >
                         <td className="p-1.5 text-center font-mono text-slate-400 font-bold text-[11px]">
                           {toPersianDigits(index + 1)}
                         </td>
-                        <td className="p-1.5 relative">
-                          <div className="relative" ref={isRowOpen ? rowDropdownRef : undefined}>
+                        <td className="p-1.5 text-center">
+                          <div className="inline-flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[10px] font-bold">
                             <button
                               type="button"
-                              onClick={() => {
-                                if (isRowOpen) {
-                                  setActiveRowDropdownIndex(null);
-                                } else {
-                                  setActiveRowDropdownIndex(index);
-                                  setRowSearchQuery('');
-                                }
-                              }}
-                              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 hover:border-emerald-500 bg-white font-bold text-slate-800 text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer text-right"
+                              onClick={() => handleToggleRowType(index, 'product')}
+                              className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer ${
+                                !rowIsService
+                                  ? 'bg-emerald-600 text-white shadow-2xs'
+                                  : 'text-slate-500 hover:text-slate-800'
+                              }`}
                             >
-                              <div className="flex items-center gap-1.5 min-w-0 truncate">
-                                <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                {selectedProd ? (
-                                  <span className="truncate">
-                                    {selectedProd.name}{' '}
-                                    <span className="text-[10px] font-mono text-slate-500 font-normal">
-                                      (کد: {toPersianDigits(selectedProd.code)} | موجودی: {toPersianDigits(selectedProd.stock)})
-                                    </span>
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-400 font-normal">-- جستجو و انتخاب کالا --</span>
-                                )}
-                              </div>
-                              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              کالا
                             </button>
-
-                            {isRowOpen && (
-                              <div className="absolute top-full right-0 left-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 p-1.5 min-w-[300px] animate-in fade-in duration-100">
-                                <div className="relative mb-1.5">
-                                  <Search className="w-3.5 h-3.5 text-emerald-600 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                                  <input
-                                    type="text"
-                                    autoFocus
-                                    value={rowSearchQuery}
-                                    onChange={(e) => setRowSearchQuery(e.target.value)}
-                                    placeholder="تایپ نام یا کد کالا..."
-                                    className="w-full h-8 pr-8 pl-7 rounded-lg border border-emerald-400 bg-slate-50 focus:bg-white text-xs text-slate-800 focus:outline-none"
-                                  />
-                                  {rowSearchQuery && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setRowSearchQuery('')}
-                                      className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                                    >
-                                      <X className="w-3 h-3" />
-                                    </button>
-                                  )}
-                                </div>
-
-                                <div className="max-h-48 overflow-y-auto space-y-0.5">
-                                  {filteredRowProducts.length === 0 ? (
-                                    <div className="py-3 text-center text-slate-400 text-[11px]">
-                                      کالایی یافت نشد
-                                    </div>
-                                  ) : (
-                                    filteredRowProducts.map((p) => (
-                                      <button
-                                        key={p.id}
-                                        type="button"
-                                        onClick={() => handleProductSelect(index, p.id)}
-                                        className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2 text-right text-xs transition-colors cursor-pointer ${
-                                          p.id === item.productId
-                                            ? 'bg-emerald-50 text-emerald-900 font-black border border-emerald-200'
-                                            : 'hover:bg-slate-100 text-slate-800 font-bold'
-                                        }`}
-                                      >
-                                        <span className="truncate">
-                                          {p.name}{' '}
-                                          <span className="text-[10px] font-mono text-slate-400 font-normal">
-                                            (کد {toPersianDigits(p.code)})
-                                          </span>
-                                        </span>
-                                        <span className="text-[10px] font-mono text-slate-500 shrink-0">
-                                          موجودی: {toPersianDigits(p.stock)} {p.unit}
-                                        </span>
-                                      </button>
-                                    ))
-                                  )}
-                                </div>
-                              </div>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleToggleRowType(index, 'service')}
+                              className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer ${
+                                rowIsService
+                                  ? 'bg-violet-600 text-white shadow-2xs'
+                                  : 'text-slate-500 hover:text-slate-800'
+                              }`}
+                            >
+                              خدمات
+                            </button>
                           </div>
+                        </td>
+                        <td className="p-1.5 relative">
+                          {rowIsService ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-violet-100 text-violet-800 border border-violet-200 text-[10px] font-bold shrink-0">
+                                <Wrench className="w-3 h-3 text-violet-600" />
+                                <span>خدمت</span>
+                              </span>
+                              <input
+                                type="text"
+                                value={item.productName}
+                                onChange={(e) => {
+                                  handleItemChange(index, 'productName', e.target.value);
+                                  setValidationError(null);
+                                }}
+                                placeholder="شرح خدمت یا هزینه (مثلاً: تعمیر دستگاه، حمل و نقل، خدمات فنی...)"
+                                className="w-full px-2.5 py-1.5 rounded-lg border border-violet-300 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 bg-white font-bold text-slate-900 text-xs outline-none"
+                              />
+                            </div>
+                          ) : (
+                            <div className="relative" ref={isRowOpen ? rowDropdownRef : undefined}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (isRowOpen) {
+                                    setActiveRowDropdownIndex(null);
+                                  } else {
+                                    setActiveRowDropdownIndex(index);
+                                    setRowSearchQuery('');
+                                  }
+                                }}
+                                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 hover:border-emerald-500 bg-white font-bold text-slate-800 text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer text-right"
+                              >
+                                <div className="flex items-center gap-1.5 min-w-0 truncate">
+                                  <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                  {selectedProd ? (
+                                    <span className="truncate">
+                                      {selectedProd.name}{' '}
+                                      <span className="text-[10px] font-mono text-slate-500 font-normal">
+                                        (کد: {toPersianDigits(selectedProd.code)} | موجودی: {toPersianDigits(selectedProd.stock)})
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 font-normal">-- جستجو و انتخاب کالا --</span>
+                                  )}
+                                </div>
+                                <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              </button>
+
+                              {isRowOpen && (
+                                <div className="absolute top-full right-0 left-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 p-1.5 min-w-[300px] animate-in fade-in duration-100">
+                                  <div className="relative mb-1.5">
+                                    <Search className="w-3.5 h-3.5 text-emerald-600 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                    <input
+                                      type="text"
+                                      autoFocus
+                                      value={rowSearchQuery}
+                                      onChange={(e) => setRowSearchQuery(e.target.value)}
+                                      placeholder="تایپ نام یا کد کالا..."
+                                      className="w-full h-8 pr-8 pl-7 rounded-lg border border-emerald-400 bg-slate-50 focus:bg-white text-xs text-slate-800 focus:outline-none"
+                                    />
+                                    {rowSearchQuery && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setRowSearchQuery('')}
+                                        className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  <div className="max-h-48 overflow-y-auto space-y-0.5">
+                                    {filteredRowProducts.length === 0 ? (
+                                      <div className="py-3 text-center text-slate-400 text-[11px]">
+                                        کالایی یافت نشد
+                                      </div>
+                                    ) : (
+                                      filteredRowProducts.map((p) => (
+                                        <button
+                                          key={p.id}
+                                          type="button"
+                                          onClick={() => handleProductSelect(index, p.id)}
+                                          className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2 text-right text-xs transition-colors cursor-pointer ${
+                                            p.id === item.productId
+                                              ? 'bg-emerald-50 text-emerald-900 font-black border border-emerald-200'
+                                              : 'hover:bg-slate-100 text-slate-800 font-bold'
+                                          }`}
+                                        >
+                                          <span className="truncate">
+                                            {p.name}{' '}
+                                            <span className="text-[10px] font-mono text-slate-400 font-normal">
+                                              (کد {toPersianDigits(p.code)})
+                                            </span>
+                                          </span>
+                                          <span className="text-[10px] font-mono text-slate-500 shrink-0">
+                                            موجودی: {toPersianDigits(p.stock)} {p.unit}
+                                          </span>
+                                        </button>
+                                      ))
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="p-1.5">
                           <NumericInput
@@ -1125,29 +1862,59 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                           />
                         </td>
                         <td className="p-1.5 text-center">
-                          <span className="text-slate-600 font-medium bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
-                            {item.unit || 'عدد'}
-                          </span>
+                          {rowIsService ? (
+                            <select
+                              value={item.unit || 'سرویس'}
+                              onChange={(e) => {
+                                if (e.target.value === '__custom__') {
+                                  setTargetRowForNewUnit(index);
+                                  setIsServiceUnitCreatorOpen(true);
+                                } else {
+                                  handleItemChange(index, 'unit', e.target.value);
+                                }
+                              }}
+                              className="w-full px-1 py-1 rounded-lg border border-violet-200 bg-white text-violet-900 font-bold text-[10px] focus:outline-none focus:border-violet-500 cursor-pointer"
+                            >
+                              {Array.from(new Set([...serviceUnits, item.unit || 'سرویس'])).map((u) => (
+                                <option key={u} value={u}>
+                                  {u}
+                                </option>
+                              ))}
+                              <option value="__custom__" className="font-black text-violet-700">
+                                + تعریف واحد جدید...
+                              </option>
+                            </select>
+                          ) : (
+                            <span className="text-slate-600 font-medium bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
+                              {item.unit || 'عدد'}
+                            </span>
+                          )}
                         </td>
                         <td className="p-1.5">
                           <NumericInput
                             min={0}
                             value={item.buyPrice}
-                            onChange={(num) => handleItemChange(index, 'buyPrice', num)}
+                            onChange={(num) => {
+                              handleItemChange(index, 'buyPrice', num);
+                              setValidationError(null);
+                            }}
                             textAlign="center"
-                            className="w-full px-2 py-1 text-center font-mono font-bold text-slate-800 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                            className={`w-full px-2 py-1 text-center font-mono font-bold rounded-lg border text-xs outline-none ${
+                              rowIsService
+                                ? 'border-violet-300 text-violet-900 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 bg-white'
+                                : 'border-slate-300 text-slate-800 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500'
+                            }`}
                           />
                         </td>
-                        <td className="p-1.5 text-center font-mono font-black text-emerald-900 text-xs">
+                        <td className={`p-1.5 text-center font-mono font-black text-xs ${rowIsService ? 'text-violet-900' : 'text-emerald-900'}`}>
                           {toPersianDigits(formatPrice(item.total, ''))}
                         </td>
                         <td className="p-1.5 text-center">
                           <button
                             type="button"
-                            disabled={items.length <= 1}
                             onClick={() => handleRemoveItem(index)}
-                            className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-20 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                            title="حذف ردیف"
+                            className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                            title={items.length <= 1 ? 'پاک کردن مقادیر این ردیف' : 'حذف ردیف'}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1162,16 +1929,103 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
             {/* Mobile Cards View */}
             <div className="md:hidden p-2.5 space-y-2">
               {items.map((item, index) => {
-                const selectedProd = allAvailableProducts.find((p) => p.id === item.productId);
+                const rowIsService = Boolean(
+                  item.isService || item.itemType === 'service' || isServiceItem(item, allAvailableProducts)
+                );
+                const selectedProd = !rowIsService
+                  ? allAvailableProducts.find((p) => p.id === item.productId)
+                  : undefined;
                 const isRowOpen = activeRowDropdownIndex === index;
 
                 return (
-                  <div key={item.id} className="p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/90 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-md bg-emerald-600 text-white font-mono font-bold text-[11px] flex items-center justify-center shrink-0">
-                        {toPersianDigits(index + 1)}
-                      </span>
-                      <div className="flex-1 min-w-0 relative" ref={isRowOpen ? rowDropdownRef : undefined}>
+                  <div
+                    key={item.id}
+                    className={`p-2.5 rounded-xl border space-y-2 ${
+                      rowIsService
+                        ? 'bg-violet-50/50 border-violet-200'
+                        : 'bg-slate-50/80 border-slate-200/90'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`w-5 h-5 rounded-md text-white font-mono font-bold text-[11px] flex items-center justify-center shrink-0 ${
+                            rowIsService ? 'bg-violet-600' : 'bg-emerald-600'
+                          }`}
+                        >
+                          {toPersianDigits(index + 1)}
+                        </span>
+                        <div className="inline-flex items-center bg-white p-0.5 rounded-lg border border-slate-200 text-[10px] font-bold">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRowType(index, 'product')}
+                            className={`px-2 py-0.5 rounded-md ${
+                              !rowIsService ? 'bg-emerald-600 text-white' : 'text-slate-500'
+                            }`}
+                          >
+                            کالا
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRowType(index, 'service')}
+                            className={`px-2 py-0.5 rounded-md ${
+                              rowIsService ? 'bg-violet-600 text-white' : 'text-slate-500'
+                            }`}
+                          >
+                            خدمات
+                          </button>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(index)}
+                        className="p-1 text-slate-400 hover:text-rose-600"
+                        title={items.length <= 1 ? 'پاک کردن ردیف' : 'حذف ردیف'}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {rowIsService ? (
+                      <div className="grid grid-cols-12 gap-1.5">
+                        <div className="col-span-8">
+                          <input
+                            type="text"
+                            value={item.productName}
+                            onChange={(e) => {
+                              handleItemChange(index, 'productName', e.target.value);
+                              setValidationError(null);
+                            }}
+                            placeholder="شرح خدمات / هزینه (مثلاً: تعمیر دستگاه...)"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-violet-300 bg-white font-bold text-slate-900 text-xs"
+                          />
+                        </div>
+                        <div className="col-span-4">
+                          <select
+                            value={item.unit || 'سرویس'}
+                            onChange={(e) => {
+                              if (e.target.value === '__custom__') {
+                                setTargetRowForNewUnit(index);
+                                setIsServiceUnitCreatorOpen(true);
+                              } else {
+                                handleItemChange(index, 'unit', e.target.value);
+                              }
+                            }}
+                            className="w-full h-full px-1.5 py-1.5 rounded-lg border border-violet-200 bg-white text-violet-900 font-bold text-[11px]"
+                          >
+                            {Array.from(new Set([...serviceUnits, item.unit || 'سرویس'])).map((u) => (
+                              <option key={u} value={u}>
+                                واحد: {u}
+                              </option>
+                            ))}
+                            <option value="__custom__" className="font-black text-violet-700">
+                              + تعریف واحد جدید...
+                            </option>
+                          </select>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="relative" ref={isRowOpen ? rowDropdownRef : undefined}>
                         <button
                           type="button"
                           onClick={() => {
@@ -1185,7 +2039,9 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                           className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs flex items-center justify-between gap-1 text-right"
                         >
                           <span className="truncate">
-                            {selectedProd ? `${selectedProd.name} (موجودی: ${toPersianDigits(selectedProd.stock)})` : '-- جستجو و انتخاب کالا --'}
+                            {selectedProd
+                              ? `${selectedProd.name} (موجودی: ${toPersianDigits(selectedProd.stock)})`
+                              : '-- جستجو و انتخاب کالا --'}
                           </span>
                           <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         </button>
@@ -1218,19 +2074,13 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                           </div>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        disabled={items.length <= 1}
-                        onClick={() => handleRemoveItem(index)}
-                        className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-20"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                    )}
 
                     <div className="grid grid-cols-3 gap-2 text-xs">
                       <div>
-                        <span className="text-[10px] text-slate-500 block mb-0.5">تعداد ({item.unit || 'عدد'}):</span>
+                        <span className="text-[10px] text-slate-500 block mb-0.5">
+                          تعداد ({item.unit || (rowIsService ? 'سرویس' : 'عدد')}):
+                        </span>
                         <NumericInput
                           min={1}
                           value={item.quantity}
@@ -1240,11 +2090,16 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                         />
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-500 block mb-0.5">قیمت خرید:</span>
+                        <span className="text-[10px] text-slate-500 block mb-0.5">
+                          {rowIsService ? 'هزینه واحد:' : 'قیمت خرید:'}
+                        </span>
                         <NumericInput
                           min={0}
                           value={item.buyPrice}
-                          onChange={(num) => handleItemChange(index, 'buyPrice', num)}
+                          onChange={(num) => {
+                            handleItemChange(index, 'buyPrice', num);
+                            setValidationError(null);
+                          }}
                           textAlign="center"
                           className="w-full p-1 text-center font-mono font-bold text-xs rounded-lg border border-slate-300 bg-white"
                         />
@@ -1270,7 +2125,11 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
               <div className="flex items-center justify-between">
                 <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <CreditCard className="w-3.5 h-3.5 text-blue-600" />
-                  <span>وضعیت و روش تسویه</span>
+                  <span>
+                    {isCurrentlyPureService
+                      ? 'وضعیت و روش پرداخت هزینه خدمات'
+                      : 'وضعیت و روش تسویه فاکتور خرید'}
+                  </span>
                 </div>
                 <button
                   type="button"
@@ -1278,7 +2137,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                   className="text-[11px] font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer"
                 >
                   <FileText className="w-3 h-3" />
-                  <span>{showNotesField ? 'بستن یادداشت' : '+ افزودن یادداشت'}</span>
+                  <span>{showNotesField ? 'بستن یادداشت' : `+ افزودن یادداشت${notes.trim() ? ' (دارای متن)' : ''}`}</span>
                 </button>
               </div>
 
@@ -1293,7 +2152,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  تسویه کامل
+                  تسویه کامل (پرداخت‌شده)
                 </button>
                 <button
                   type="button"
@@ -1304,7 +2163,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  بیعانه / قسطی
+                  بیعانه / بخشی
                 </button>
                 <button
                   type="button"
@@ -1315,7 +2174,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  نسیه / دفتری
+                  نسیه / طلبکار از ما
                 </button>
               </div>
 
@@ -1347,30 +2206,79 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                 </div>
               )}
 
-              {/* Conditional Partial Amount */}
+              {/* Conditional Partial Amount + Remaining Balance */}
               {paymentStatus === 'partial' && (
-                <div className="p-2 bg-amber-50 rounded-lg border border-amber-200 text-xs flex items-center justify-between gap-2">
-                  <span className="font-bold text-amber-900">مبلغ پرداختی (تومان):</span>
-                  <NumericInput
-                    min={0}
-                    max={finalTotal}
-                    value={paidAmount}
-                    onChange={(num) => setPaidAmount(num)}
-                    textAlign="center"
-                    className="w-36 p-1 font-mono font-bold rounded-lg border border-amber-300 bg-white text-xs"
+                <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-xs space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="font-bold text-amber-900">مبلغ پرداختی فعلی (تومان):</span>
+                    <NumericInput
+                      min={0}
+                      max={finalTotal}
+                      value={paidAmount}
+                      onChange={(num) => {
+                        setPaidAmount(num);
+                        setValidationError(null);
+                      }}
+                      textAlign="center"
+                      className="w-40 p-1.5 font-mono font-black rounded-lg border border-amber-300 bg-white text-xs text-amber-950"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between pt-1.5 border-t border-amber-200/70 text-[11px]">
+                    <span className="text-amber-800 font-medium">مانده بدهی به طرف حساب:</span>
+                    <span className="font-mono font-black text-rose-700">
+                      {toPersianDigits(formatPrice(Math.max(0, finalTotal - paidAmount)))} تومان
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Due Date selector right inside payment box when Unpaid or Partial */}
+              {(paymentStatus === 'unpaid' || paymentStatus === 'partial') && (
+                <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-2 p-2 rounded-xl bg-rose-50/60 border border-rose-200/80 text-xs">
+                  <div className="sm:col-span-6 flex items-center gap-1.5 font-bold text-rose-900">
+                    <Calendar className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                    <span>تاریخ سررسید تسویه بدهی (اختیاری):</span>
+                  </div>
+                  <div className="sm:col-span-6">
+                    <JalaliDatePicker
+                      value={dueDate}
+                      onChange={setDueDate}
+                      placeholder="انتخاب تاریخ سررسید پرداخت..."
+                      buttonClassName="!h-8 !bg-white"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Tracking / Reference Description (when paid or partial with transfer/pos/cash) */}
+              {paymentStatus !== 'unpaid' && paymentMethod !== 'cheque' && (
+                <div>
+                  <input
+                    type="text"
+                    value={transferDescription}
+                    onChange={(e) => setTransferDescription(e.target.value)}
+                    placeholder="شماره پیگیری پرداخت، چهار رقم کارت، نام بانک یا توضیحات پرداخت هزینه..."
+                    className="w-full h-8 bg-white border border-slate-300 rounded-lg px-2.5 text-xs placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
               )}
 
               {/* Conditional Cheque Details */}
               {paymentStatus !== 'unpaid' && paymentMethod === 'cheque' && (
-                <div className="p-2 bg-amber-50 rounded-lg border border-amber-200 text-xs grid grid-cols-2 gap-2">
+                <div className="p-2 bg-amber-50 rounded-lg border border-amber-200 text-xs grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <input
                     type="text"
                     placeholder="شماره صیاد / چک"
                     value={chequeNumber}
                     onChange={(e) => setChequeNumber(e.target.value)}
                     className="h-8 px-2.5 rounded-lg border border-amber-300 bg-white font-mono text-xs text-left focus:outline-none focus:border-amber-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="بانک / صاحب حساب چک"
+                    value={chequeName}
+                    onChange={(e) => setChequeName(e.target.value)}
+                    className="h-8 px-2.5 rounded-lg border border-amber-300 bg-white text-xs focus:outline-none focus:border-amber-500"
                   />
                   <div className="relative flex items-center">
                     <button
@@ -1387,7 +2295,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                           </span>
                         ) : (
                           <span className="text-slate-400 font-medium text-[11px]">
-                            انتخاب تاریخ سررسید چک
+                            سررسید چک
                           </span>
                         )}
                       </span>
@@ -1419,7 +2327,11 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                     type="text"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    placeholder="یادداشت، شماره بارنامه یا شرایط گارانتی..."
+                    placeholder={
+                      isCurrentlyPureService
+                        ? 'یادداشت، شماره فاکتور مجری خدمات، شرح تکمیلی هزینه یا شرایط گارانتی تعمیر...'
+                        : 'یادداشت، شماره بارنامه، شرح تکمیلی خدمات یا شرایط گارانتی...'
+                    }
                     className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
@@ -1430,21 +2342,48 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
             <div className="lg:col-span-5 bg-slate-50/90 rounded-xl border border-slate-200/90 p-3 space-y-2 text-xs flex flex-col justify-between">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-slate-700">
-                  <span>جمع اقلام ({toPersianDigits(items.length)} ردیف):</span>
+                  <span>
+                    {isCurrentlyPureService
+                      ? `جمع خدمات (${toPersianDigits(items.length)} ردیف):`
+                      : `جمع اقلام (${toPersianDigits(items.length)} ردیف):`}
+                  </span>
                   <span className="font-mono font-bold text-slate-900">
                     {toPersianDigits(formatPrice(subtotal))} تومان
                   </span>
                 </div>
 
+                {!showExtraFinancials && (overallDiscount > 0 || shippingCost > 0) && (
+                  <div className="space-y-1 text-[11px] pt-1 border-t border-slate-200/60">
+                    {overallDiscount > 0 && (
+                      <div className="flex items-center justify-between text-rose-600">
+                        <span>تخفیف کلی:</span>
+                        <span className="font-mono font-bold">-{toPersianDigits(formatPrice(overallDiscount))} تومان</span>
+                      </div>
+                    )}
+                    {shippingCost > 0 && (
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span>{isCurrentlyPureService ? 'هزینه ایاب و ذهاب / جانبی:' : 'کرایه حمل:'}</span>
+                        <span className="font-mono font-bold">+{toPersianDigits(formatPrice(shippingCost))} تومان</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="pt-1 border-t border-slate-200/80">
                   <button
                     type="button"
                     onClick={() => setShowExtraFinancials(!showExtraFinancials)}
-                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-0.5 cursor-pointer"
+                    className={`text-[11px] font-bold flex items-center gap-0.5 cursor-pointer ${
+                      isCurrentlyPureService
+                        ? 'text-violet-700 hover:text-violet-900'
+                        : 'text-emerald-700 hover:text-emerald-900'
+                    }`}
                   >
                     <span>
                       {showExtraFinancials
-                        ? 'بستن تخفیف و کرایه حمل'
+                        ? 'بستن تخفیف و هزینه جانبی'
+                        : isCurrentlyPureService
+                        ? `+ افزودن تخفیف یا هزینه ایاب و ذهاب${overallDiscount > 0 || shippingCost > 0 ? ' (دارای مقدار)' : ''}`
                         : `+ افزودن تخفیف یا کرایه حمل${overallDiscount > 0 || shippingCost > 0 ? ' (دارای مقدار)' : ''}`}
                     </span>
                     {showExtraFinancials ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
@@ -1464,7 +2403,9 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                       </div>
 
                       <div className="flex items-center justify-between">
-                        <span className="text-slate-600 text-[11px]">کرایه حمل (تومان):</span>
+                        <span className="text-slate-600 text-[11px]">
+                          {isCurrentlyPureService ? 'ایاب و ذهاب / حمل (تومان):' : 'کرایه حمل (تومان):'}
+                        </span>
                         <NumericInput
                           min={0}
                           value={shippingCost}
@@ -1478,12 +2419,48 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                 </div>
               </div>
 
-              {/* Final Total Box */}
-              <div className="bg-emerald-600 text-white rounded-xl px-3 py-2.5 flex items-center justify-between shadow-2xs">
-                <span className="font-bold text-xs">مبلغ نهایی فاکتور:</span>
-                <span className="font-black font-mono text-sm sm:text-base">
-                  {toPersianDigits(formatPrice(finalTotal))} تومان
-                </span>
+              <div className="space-y-1.5 pt-1">
+                {/* Payment vs Remaining Balance Summary Strip */}
+                {finalTotal > 0 && (
+                  <div
+                    className={`px-2.5 py-1.5 rounded-lg border text-[11px] flex items-center justify-between ${
+                      paymentStatus === 'paid'
+                        ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800'
+                        : paymentStatus === 'partial'
+                        ? 'bg-amber-50/80 border-amber-200 text-amber-900'
+                        : 'bg-rose-50/80 border-rose-200 text-rose-800'
+                    }`}
+                  >
+                    <span className="font-bold">
+                      {paymentStatus === 'paid'
+                        ? 'وضعیت: تسویه کامل'
+                        : paymentStatus === 'partial'
+                        ? `پرداختی: ${toPersianDigits(formatPrice(paidAmount))} ت`
+                        : 'وضعیت: نسیه (بدهکار به طرف حساب)'}
+                    </span>
+                    <span className="font-mono font-black">
+                      {paymentStatus === 'paid'
+                        ? 'مانده: ۰ تومان'
+                        : `مانده بدهی: ${toPersianDigits(
+                            formatPrice(paymentStatus === 'unpaid' ? finalTotal : Math.max(0, finalTotal - paidAmount))
+                          )} ت`}
+                    </span>
+                  </div>
+                )}
+
+                {/* Final Total Box */}
+                <div
+                  className={`text-white rounded-xl px-3 py-2.5 flex items-center justify-between shadow-2xs ${
+                    isCurrentlyPureService ? 'bg-violet-600' : 'bg-emerald-600'
+                  }`}
+                >
+                  <span className="font-bold text-xs">
+                    {isCurrentlyPureService ? 'مبلغ نهایی هزینه خدمات:' : 'مبلغ نهایی فاکتور:'}
+                  </span>
+                  <span className="font-black font-mono text-sm sm:text-base">
+                    {toPersianDigits(formatPrice(finalTotal))} تومان
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -1509,10 +2486,24 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
             <button
               type="submit"
               id="submit-purchase-invoice-btn"
-              className="flex items-center justify-center gap-1.5 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-xs sm:text-sm shadow-sm transition-all cursor-pointer"
+              className={`flex items-center justify-center gap-1.5 px-5 py-2 rounded-xl active:scale-98 text-white font-black text-xs sm:text-sm shadow-sm transition-all cursor-pointer ${
+                isCurrentlyPureService
+                  ? 'bg-violet-600 hover:bg-violet-700'
+                  : 'bg-emerald-600 hover:bg-emerald-700'
+              }`}
             >
               <Check className="w-4 h-4 stroke-[2.5]" />
-              <span>{isEditing ? 'ذخیره تغییرات فاکتور خرید' : 'ثبت فاکتور خرید و صدور حواله انبار'}</span>
+              <span>
+                {isEditing
+                  ? isCurrentlyPureService
+                    ? 'ذخیره تغییرات فاکتور خدمات و هزینه'
+                    : 'ذخیره تغییرات فاکتور خرید'
+                  : isCurrentlyPureService
+                  ? 'ثبت نهایی خرید خدمات و پرداخت هزینه'
+                  : serviceItemsCount > 0
+                  ? 'ثبت فاکتور خرید (کالا و خدمات) و صدور حواله انبار'
+                  : 'ثبت فاکتور خرید و صدور حواله انبار'}
+              </span>
             </button>
           </div>
         </form>
@@ -1650,8 +2641,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                     { label: '۲ ماهه', days: 60 },
                     { label: '۳ ماهه', days: 90 },
                   ].map((preset) => {
-                    const base = toEnglishDigits(date || getCurrentJalaliDate());
-                    const targetDate = preset.days === 0 ? getCurrentJalaliDate() : addDaysToJalali(base, preset.days);
+                    const targetDate = preset.days === 0 ? getCurrentJalaliDate() : addDaysToJalali(preset.days);
                     const isSelected = toEnglishDigits(chequeDueDate) === toEnglishDigits(targetDate);
                     return (
                       <button

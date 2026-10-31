@@ -4,11 +4,16 @@ import {
   Product, 
   InboundReceipt, 
   StoreSettings, 
-  AppUser 
+  AppUser,
+  PaymentStatus,
+  PaymentMethod
 } from '../types';
-import { toPersianDigits, toEnglishDigits, formatPrice } from '../utils/jalali';
+import { toPersianDigits, toEnglishDigits, formatPrice, getCurrentJalaliDate } from '../utils/jalali';
 import { NewPurchaseInvoiceModal } from './NewPurchaseInvoiceModal';
 import { PurchaseInvoiceViewModal } from './PurchaseInvoiceViewModal';
+import { NumericInput } from './NumericInput';
+import { isPureServicePurchaseInvoice, hasServicePurchaseItems, isServiceItem } from '../utils/serviceHelper';
+import { StorageService, PAYMENT_METHOD_LABELS } from '../utils/storage';
 import { 
   Plus, 
   Search, 
@@ -24,7 +29,10 @@ import {
   Package,
   ChevronDown,
   ChevronUp,
-  X
+  X,
+  Wrench,
+  CreditCard,
+  Check
 } from 'lucide-react';
 
 interface PurchaseInvoiceManagerProps {
@@ -35,7 +43,7 @@ interface PurchaseInvoiceManagerProps {
   currentUser?: AppUser;
   onSavePurchaseInvoice: (
     invoice: PurchaseInvoice,
-    receipt: InboundReceipt,
+    receipt: InboundReceipt | null,
     newProducts: Product[]
   ) => void;
   onDeletePurchaseInvoice: (invoiceId: string) => void;
@@ -52,7 +60,7 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
   onNavigateToWarehouseReceipt,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending_receipt' | 'completed' | 'has_discrepancy' | 'unpaid'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending_receipt' | 'completed' | 'has_discrepancy' | 'unpaid' | 'services'>('all');
   const [showStats, setShowStats] = useState(false);
   const [productStatsSearch, setProductStatsSearch] = useState('');
   const [productStatsSort, setProductStatsSort] = useState<'totalSpent' | 'totalQty' | 'invoiceCount' | 'lastDate'>('totalSpent');
@@ -60,9 +68,55 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
 
   // Modals
   const [isNewPurchaseModalOpen, setIsNewPurchaseModalOpen] = useState(false);
+  const [newModalInitialMode, setNewModalInitialMode] = useState<'product' | 'service'>('product');
   const [editingPurchaseInvoice, setEditingPurchaseInvoice] = useState<PurchaseInvoice | null>(null);
   const [viewingPurchaseInvoice, setViewingPurchaseInvoice] = useState<PurchaseInvoice | null>(null);
   const [invoiceToDelete, setInvoiceToDelete] = useState<PurchaseInvoice | null>(null);
+
+  // Quick Payment / Service Cost Settlement Modal State
+  const [settlingInvoice, setSettlingInvoice] = useState<PurchaseInvoice | null>(null);
+  const [settleStatus, setSettleStatus] = useState<PaymentStatus>('paid');
+  const [settleMethod, setSettleMethod] = useState<PaymentMethod>('transfer');
+  const [settlePaidAmount, setSettlePaidAmount] = useState<number>(0);
+  const [settleTrackingDesc, setSettleTrackingDesc] = useState<string>('');
+  const [settleChequeNumber, setSettleChequeNumber] = useState<string>('');
+  const [settleChequeDueDate, setSettleChequeDueDate] = useState<string>('');
+
+  const handleOpenSettleModal = (inv: PurchaseInvoice) => {
+    setSettlingInvoice(inv);
+    setSettleStatus(inv.paymentStatus === 'unpaid' ? 'paid' : inv.paymentStatus);
+    setSettleMethod(inv.paymentMethod || 'transfer');
+    setSettlePaidAmount(inv.paymentStatus === 'unpaid' ? inv.finalTotal : inv.paidAmount || inv.finalTotal);
+    setSettleTrackingDesc(inv.transferDescription || '');
+    setSettleChequeNumber(inv.chequeNumber || '');
+    setSettleChequeDueDate(inv.chequeDueDate || '');
+  };
+
+  const handleSaveQuickSettlement = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!settlingInvoice) return;
+    const finalPaid =
+      settleStatus === 'paid'
+        ? settlingInvoice.finalTotal
+        : settleStatus === 'unpaid'
+        ? 0
+        : Math.min(settlingInvoice.finalTotal, Math.max(0, settlePaidAmount));
+    const updatedInvoice: PurchaseInvoice = {
+      ...settlingInvoice,
+      paymentStatus: settleStatus,
+      paymentMethod: settleMethod,
+      paidAmount: finalPaid,
+      transferDescription: settleTrackingDesc.trim() || undefined,
+      chequeNumber: settleMethod === 'cheque' ? settleChequeNumber.trim() || undefined : settlingInvoice.chequeNumber,
+      chequeDueDate: settleMethod === 'cheque' ? settleChequeDueDate.trim() || undefined : settlingInvoice.chequeDueDate,
+      updatedAt: getCurrentJalaliDate(),
+    };
+    const existingReceipt = settlingInvoice.inboundReceiptId
+      ? StorageService.getInboundReceipts().find((r) => r.id === settlingInvoice.inboundReceiptId) || null
+      : null;
+    onSavePurchaseInvoice(updatedInvoice, existingReceipt, []);
+    setSettlingInvoice(null);
+  };
 
   const previousSuppliers = Array.from(
     new Set(purchaseInvoices.map((inv) => inv.supplierName).filter(Boolean))
@@ -84,12 +138,21 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
       matchesStatus = inv.status === 'has_discrepancy';
     } else if (statusFilter === 'unpaid') {
       matchesStatus = inv.paymentStatus === 'unpaid' || inv.paymentStatus === 'partial';
+    } else if (statusFilter === 'services') {
+      matchesStatus = hasServicePurchaseItems(inv, products);
     }
 
     return matchesSearch && matchesStatus;
   });
 
   const totalPurchasesAmount = purchaseInvoices.reduce((sum, inv) => sum + inv.finalTotal, 0);
+  const serviceInvoicesCount = purchaseInvoices.filter((inv) => hasServicePurchaseItems(inv, products)).length;
+  const totalServicesSpent = purchaseInvoices.reduce((sum, inv) => {
+    const srvSum = (inv.items || [])
+      .filter((it) => isServiceItem(it, products))
+      .reduce((s, it) => s + (it.total || 0), 0);
+    return sum + srvSum;
+  }, 0);
   const pendingReceiptCount = purchaseInvoices.filter((inv) => inv.status === 'pending_receipt').length;
   const discrepancyCount = purchaseInvoices.filter((inv) => inv.status === 'has_discrepancy').length;
   const unpaidCount = purchaseInvoices.filter((inv) => inv.paymentStatus !== 'paid').length;
@@ -225,14 +288,14 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
   return (
     <div className="space-y-4">
       {/* Compact Header Bar */}
-      <div className="flex items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200/60 flex items-center justify-center shrink-0">
             <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
           <div className="flex items-center gap-2 min-w-0">
             <h1 className="text-sm sm:text-lg font-black text-slate-900 truncate">
-              فاکتورهای خرید کالا
+              فاکتورهای خرید کالا و خدمات
             </h1>
             <span className="text-[11px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold shrink-0">
               {toPersianDigits(purchaseInvoices.length)} سند
@@ -240,7 +303,7 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={() => setShowStats(!showStats)}
@@ -257,11 +320,27 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
 
           <button
             type="button"
-            onClick={() => setIsNewPurchaseModalOpen(true)}
+            onClick={() => {
+              setNewModalInitialMode('service');
+              setIsNewPurchaseModalOpen(true);
+            }}
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-sm active:scale-95 transition-all cursor-pointer"
+            title="ثبت فاکتور خرید خدمات و پرداخت هزینه خدمات"
+          >
+            <Wrench className="w-3.5 h-3.5" />
+            <span>ثبت خرید خدمات / هزینه</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setNewModalInitialMode('product');
+              setIsNewPurchaseModalOpen(true);
+            }}
             className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm active:scale-95 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>ثبت فاکتور خرید</span>
+            <span>ثبت فاکتور خرید کالا</span>
           </button>
         </div>
       </div>
@@ -269,12 +348,19 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
       {/* Collapsible KPI Strip + Per-Product Purchase Report */}
       {showStats && (
         <div className="space-y-3 animate-in fade-in duration-150">
-          {/* 4 Summary KPI Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          {/* 5 Summary KPI Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
             <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
               <div className="text-[11px] text-slate-500">مجموع کل خریدها:</div>
               <div className="text-sm font-black text-slate-900 font-mono mt-0.5">
                 {toPersianDigits(formatPrice(totalPurchasesAmount))} <span className="text-[10px] font-normal">تومان</span>
+              </div>
+            </div>
+
+            <div className="bg-white p-3 rounded-2xl border border-amber-200 shadow-2xs">
+              <div className="text-[11px] text-amber-700">خرید خدمات و هزینه‌ها:</div>
+              <div className="text-sm font-black text-amber-900 font-mono mt-0.5">
+                {toPersianDigits(formatPrice(totalServicesSpent))} <span className="text-[10px] font-normal">تومان ({toPersianDigits(serviceInvoicesCount)} سند)</span>
               </div>
             </div>
 
@@ -285,9 +371,9 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
               </div>
             </div>
 
-            <div className="bg-white p-3 rounded-2xl border border-amber-200 shadow-2xs">
-              <div className="text-[11px] text-amber-700">دارای مغایرت شمارش:</div>
-              <div className="text-sm font-black text-amber-900 font-mono mt-0.5">
+            <div className="bg-white p-3 rounded-2xl border border-orange-200 shadow-2xs">
+              <div className="text-[11px] text-orange-700">دارای مغایرت شمارش:</div>
+              <div className="text-sm font-black text-orange-900 font-mono mt-0.5">
                 {toPersianDigits(discrepancyCount)} <span className="text-[10px] font-normal">مورد</span>
               </div>
             </div>
@@ -310,14 +396,14 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-xs sm:text-sm font-black text-slate-900">
-                      گزارش آمار خرید به تفکیک هر کالا / محصول
+                      گزارش آمار خرید به تفکیک هر کالا / خدمات
                     </h2>
                     <span className="text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full">
-                      {toPersianDigits(productPurchaseStats.length)} کالا
+                      {toPersianDigits(productPurchaseStats.length)} مورد
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    مجموع تعداد خریداری‌شده، میانگین و آخرین قیمت خرید هر کالا (برای مشاهده ریز فاکتورهای هر کالا روی آن کلیک کنید)
+                    مجموع تعداد خریداری‌شده، میانگین و آخرین قیمت خرید هر کالا یا خدمت (برای مشاهده ریز فاکتورها روی ردیف کلیک کنید)
                   </p>
                 </div>
               </div>
@@ -330,7 +416,7 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
                     type="text"
                     value={productStatsSearch}
                     onChange={(e) => setProductStatsSearch(e.target.value)}
-                    placeholder="جستجوی نام کالا، کد یا تامین‌کننده..."
+                    placeholder="جستجوی نام کالا، خدمات یا تامین‌کننده..."
                     className="w-full h-8 pr-8 pl-7 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none focus:border-emerald-500"
                   />
                   {productStatsSearch && (
@@ -360,7 +446,7 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
 
             {productPurchaseStats.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400">
-                هیچ سابقه خریدی برای کالاها یافت نشد.
+                هیچ سابقه خریدی یافت نشد.
               </div>
             ) : (
               <div className="overflow-x-auto max-h-96">
@@ -368,7 +454,7 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
                   <thead className="sticky top-0 z-10 bg-slate-100 text-slate-700 border-b border-slate-200">
                     <tr>
                       <th className="py-2.5 px-3 font-bold text-center w-9">#</th>
-                      <th className="py-2.5 px-3 font-bold">نام و کد کالا</th>
+                      <th className="py-2.5 px-3 font-bold">نام و کد کالا / خدمات</th>
                       <th className="py-2.5 px-3 font-bold text-center">دفعات خرید</th>
                       <th className="py-2.5 px-3 font-bold text-center">مجموع تعداد خرید</th>
                       <th className="py-2.5 px-3 font-bold text-center">میانگین قیمت واحد</th>
@@ -469,7 +555,7 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
                                 <div className="bg-white rounded-xl border border-emerald-200 p-2.5 space-y-2">
                                   <div className="flex items-center justify-between text-[11px] font-bold text-emerald-900 border-b border-slate-100 pb-1.5">
                                     <span>
-                                      ریز فاکتورهای خرید کالای «{stat.productName}» ({toPersianDigits(stat.records.length)} مورد)
+                                      ریز فاکتورهای خرید «{stat.productName}» ({toPersianDigits(stat.records.length)} مورد)
                                     </span>
                                     <span className="text-slate-500 font-normal">
                                       کمترین قیمت: <strong className="font-mono text-slate-800">{toPersianDigits(formatPrice(stat.minBuyPrice))}</strong> ت | بیشترین قیمت: <strong className="font-mono text-slate-800">{toPersianDigits(formatPrice(stat.maxBuyPrice))}</strong> ت
@@ -539,7 +625,7 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="جستجوی شماره فاکتور، تامین‌کننده، کالا..."
+              placeholder="جستجوی شماره فاکتور، تامین‌کننده، کالا یا خدمات..."
               className="w-full pr-9 pl-8 py-1.5 text-xs rounded-xl border border-slate-200/90 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-2xs"
             />
             {searchQuery && (
@@ -568,6 +654,18 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
             </button>
             <button
               type="button"
+              onClick={() => setStatusFilter('services')}
+              className={`px-2.5 py-1 rounded-lg whitespace-nowrap transition-all cursor-pointer flex items-center gap-1 ${
+                statusFilter === 'services'
+                  ? 'bg-amber-600 text-white shadow-2xs'
+                  : 'text-amber-800 hover:text-amber-950'
+              }`}
+            >
+              <Wrench className="w-3 h-3" />
+              <span>خدمات و هزینه‌ها ({toPersianDigits(serviceInvoicesCount)})</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setStatusFilter('pending_receipt')}
               className={`px-2.5 py-1 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
                 statusFilter === 'pending_receipt'
@@ -586,14 +684,14 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              تایید انبار
+              تایید شده
             </button>
             <button
               type="button"
               onClick={() => setStatusFilter('has_discrepancy')}
               className={`px-2.5 py-1 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
                 statusFilter === 'has_discrepancy'
-                  ? 'bg-amber-600 text-white shadow-2xs'
+                  ? 'bg-orange-600 text-white shadow-2xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -608,7 +706,7 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              نسیه ({toPersianDigits(unpaidCount)})
+              نسیه / تسویه نشده ({toPersianDigits(unpaidCount)})
             </button>
           </div>
         </div>
@@ -635,6 +733,8 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
               {filteredInvoices.map((inv, index) => {
                 const hasDiscrepancy = inv.status === 'has_discrepancy';
                 const isPending = inv.status === 'pending_receipt';
+                const isServiceOnly = isPureServicePurchaseInvoice(inv, products);
+                const hasServices = hasServicePurchaseItems(inv, products);
 
                 return (
                   <div
@@ -645,16 +745,30 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-mono font-black text-xs text-slate-900 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
                           {toPersianDigits(inv.invoiceNumber)}
                         </span>
                         <span className="text-[11px] text-slate-500 font-mono">
                           {toPersianDigits(inv.date)}
                         </span>
+                        {isServiceOnly ? (
+                          <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-0.5">
+                            <Wrench className="w-2.5 h-2.5" />
+                            <span>خرید خدمات</span>
+                          </span>
+                        ) : hasServices ? (
+                          <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            شامل خدمات
+                          </span>
+                        ) : null}
                       </div>
 
-                      {isPending ? (
+                      {isServiceOnly ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                          ثبت قطعی خدمات
+                        </span>
+                      ) : isPending ? (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
                           منتظر ورود انبار
                         </span>
@@ -680,7 +794,19 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                        {inv.inboundReceiptId && onNavigateToWarehouseReceipt && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSettleModal(inv)}
+                          className={`p-1.5 rounded-lg border ${
+                            inv.paymentStatus === 'paid'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-amber-50 text-amber-800 border-amber-200'
+                          }`}
+                          title="ثبت پرداخت / تسویه هزینه"
+                        >
+                          <CreditCard className="w-3.5 h-3.5" />
+                        </button>
+                        {inv.inboundReceiptId && !isServiceOnly && onNavigateToWarehouseReceipt && (
                           <button
                             type="button"
                             onClick={() => onNavigateToWarehouseReceipt(inv.inboundReceiptId!)}
@@ -719,12 +845,12 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
                   <tr className="bg-slate-100/70 text-slate-700 border-b border-slate-200 select-none">
                     <th className="py-3 px-3 font-bold text-center w-10">#</th>
                     <th className="py-3 px-3 font-bold">شماره فاکتور</th>
-                    <th className="py-3 px-3 font-bold">تامین‌کننده / فروشنده</th>
+                    <th className="py-3 px-3 font-bold">تامین‌کننده / مجری خدمات</th>
                     <th className="py-3 px-3 font-bold text-center">تاریخ خرید</th>
-                    <th className="py-3 px-3 font-bold text-center">اقلام</th>
+                    <th className="py-3 px-3 font-bold text-center">نوع و اقلام</th>
                     <th className="py-3 px-3 font-bold text-left">مبلغ کل و تسویه</th>
-                    <th className="py-3 px-3 font-bold text-center">وضعیت ورود انبار</th>
-                    <th className="py-3 px-3 font-bold text-center w-44">عملیات</th>
+                    <th className="py-3 px-3 font-bold text-center">وضعیت انبار / خدمات</th>
+                    <th className="py-3 px-3 font-bold text-center w-52">عملیات</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -732,6 +858,9 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
                     const hasDiscrepancy = inv.status === 'has_discrepancy';
                     const isPending = inv.status === 'pending_receipt';
                     const isPaid = inv.paymentStatus === 'paid';
+                    const isPartial = inv.paymentStatus === 'partial';
+                    const isServiceOnly = isPureServicePurchaseInvoice(inv, products);
+                    const hasServices = hasServicePurchaseItems(inv, products);
 
                     return (
                       <tr
@@ -762,9 +891,22 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
                         </td>
 
                         <td className="py-3 px-3 text-center whitespace-nowrap">
-                          <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
-                            {toPersianDigits(inv.items.length)} قلم
-                          </span>
+                          <div className="inline-flex items-center gap-1.5">
+                            <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
+                              {toPersianDigits(inv.items.length)} قلم
+                            </span>
+                            {isServiceOnly ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                <Wrench className="w-3 h-3" />
+                                <span>خرید خدمات</span>
+                              </span>
+                            ) : hasServices ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                <Wrench className="w-2.5 h-2.5" />
+                                <span>کالا + خدمات</span>
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
 
                         <td className="py-3 px-3 text-left whitespace-nowrap">
@@ -772,20 +914,33 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
                             <span className="font-black font-mono text-slate-900">
                               {toPersianDigits(formatPrice(inv.finalTotal))} <span className="text-[10px] font-normal text-slate-500">تومان</span>
                             </span>
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenSettleModal(inv);
+                              }}
+                              title="کلیک برای ثبت پرداخت یا تغییر وضعیت تسویه هزینه"
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition-transform hover:scale-105 cursor-pointer ${
                                 isPaid
                                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : isPartial
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
                                   : 'bg-rose-50 text-rose-800 border-rose-200'
                               }`}
                             >
-                              {isPaid ? 'تسویه' : 'نسیه'}
-                            </span>
+                              {isPaid ? 'تسویه شده' : isPartial ? 'بیعانه' : 'نسیه / پرداخت نشده'}
+                            </button>
                           </div>
                         </td>
 
                         <td className="py-3 px-3 text-center whitespace-nowrap">
-                          {isPending ? (
+                          {isServiceOnly ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                              <Wrench className="w-3 h-3 text-amber-600" />
+                              <span>ثبت قطعی خدمات</span>
+                            </span>
+                          ) : isPending ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
                               <Clock className="w-3 h-3 text-blue-600" />
                               <span>منتظر ورود</span>
@@ -805,7 +960,21 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
 
                         <td className="py-3 px-3 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-                            {inv.inboundReceiptId && onNavigateToWarehouseReceipt && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSettleModal(inv)}
+                              className={`px-2 py-1.5 rounded-xl border text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer ${
+                                isPaid
+                                  ? 'bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border-slate-200'
+                                  : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
+                              }`}
+                              title="ثبت پرداخت هزینه خدمات / تسویه فاکتور خرید"
+                            >
+                              <CreditCard className="w-3.5 h-3.5" />
+                              <span>{isPaid ? 'پرداختی' : 'ثبت پرداخت'}</span>
+                            </button>
+
+                            {inv.inboundReceiptId && !isServiceOnly && onNavigateToWarehouseReceipt && (
                               <button
                                 type="button"
                                 onClick={() => onNavigateToWarehouseReceipt(inv.inboundReceiptId!)}
@@ -862,6 +1031,7 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
           currentUser={currentUser}
           previousSuppliers={previousSuppliers}
           editingInvoice={editingPurchaseInvoice}
+          initialMode={newModalInitialMode}
           onClose={() => {
             setIsNewPurchaseModalOpen(false);
             setEditingPurchaseInvoice(null);
@@ -872,6 +1042,169 @@ export const PurchaseInvoiceManager: React.FC<PurchaseInvoiceManagerProps> = ({
             setEditingPurchaseInvoice(null);
           }}
         />
+      )}
+
+      {/* Quick Payment / Service Cost Settlement Modal */}
+      {settlingInvoice && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-sm">
+                    ثبت پرداخت و تسویه فاکتور {toPersianDigits(settlingInvoice.invoiceNumber)}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    {settlingInvoice.supplierName} • مبلغ کل: {toPersianDigits(formatPrice(settlingInvoice.finalTotal))} تومان
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSettlingInvoice(null)}
+                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveQuickSettlement} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">وضعیت پرداخت هزینه / فاکتور:</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettleStatus('paid');
+                      setSettlePaidAmount(settlingInvoice.finalTotal);
+                    }}
+                    className={`py-2 px-2 rounded-xl font-bold border text-center cursor-pointer transition-all ${
+                      settleStatus === 'paid'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    تسویه کامل
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSettleStatus('partial')}
+                    className={`py-2 px-2 rounded-xl font-bold border text-center cursor-pointer transition-all ${
+                      settleStatus === 'partial'
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    پرداخت بخشی
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettleStatus('unpaid');
+                      setSettlePaidAmount(0);
+                    }}
+                    className={`py-2 px-2 rounded-xl font-bold border text-center cursor-pointer transition-all ${
+                      settleStatus === 'unpaid'
+                        ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    نسیه (حساب دفتری)
+                  </button>
+                </div>
+              </div>
+
+              {settleStatus !== 'unpaid' && (
+                <>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">روش پرداخت وجه:</label>
+                      <select
+                        value={settleMethod}
+                        onChange={(e) => setSettleMethod(e.target.value as PaymentMethod)}
+                        className="w-full h-9 px-2.5 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 focus:outline-none focus:border-emerald-500"
+                      >
+                        {Object.entries(PAYMENT_METHOD_LABELS)
+                          .filter(([k]) => k !== 'credit')
+                          .map(([key, label]) => (
+                            <option key={key} value={key}>
+                              {label}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">مبلغ پرداختی (تومان):</label>
+                      <NumericInput
+                        value={settleStatus === 'paid' ? settlingInvoice.finalTotal : settlePaidAmount}
+                        disabled={settleStatus === 'paid'}
+                        onChange={(val) => setSettlePaidAmount(val)}
+                        className="w-full h-9 px-3 rounded-xl border border-slate-300 bg-white font-mono font-bold text-emerald-700 text-left disabled:bg-slate-100"
+                      />
+                    </div>
+                  </div>
+
+                  {settleMethod === 'cheque' && (
+                    <div className="grid grid-cols-2 gap-2 p-2.5 bg-amber-50/70 rounded-xl border border-amber-200">
+                      <div>
+                        <label className="block text-[11px] font-bold text-amber-900 mb-1">شماره چک:</label>
+                        <input
+                          type="text"
+                          value={settleChequeNumber}
+                          onChange={(e) => setSettleChequeNumber(e.target.value)}
+                          placeholder="شماره صیادی/چک..."
+                          className="w-full h-8 px-2.5 rounded-lg border border-amber-300 bg-white text-xs font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-amber-900 mb-1">تاریخ سررسید:</label>
+                        <input
+                          type="text"
+                          value={settleChequeDueDate}
+                          onChange={(e) => setSettleChequeDueDate(e.target.value)}
+                          placeholder="1404/02/15"
+                          className="w-full h-8 px-2.5 rounded-lg border border-amber-300 bg-white text-xs font-mono text-center"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">شماره پیگیری / شرح پرداخت هزینه:</label>
+                    <input
+                      type="text"
+                      value={settleTrackingDesc}
+                      onChange={(e) => setSettleTrackingDesc(e.target.value)}
+                      placeholder="شماره فیش، کارت به کارت، شبا یا توضیحات پرداخت..."
+                      className="w-full h-9 px-3 rounded-xl border border-slate-300 bg-white text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setSettlingInvoice(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
+                >
+                  انصراف
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>ذخیره اطلاعات پرداخت</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Viewing & Printing Modal */}

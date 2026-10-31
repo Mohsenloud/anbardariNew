@@ -26,17 +26,44 @@ export async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-export async function testTelegramBotConnection(botToken: string): Promise<{
+export function sanitizeTelegramToken(rawToken?: string): string {
+  if (!rawToken) return '';
+  let token = String(rawToken).trim();
+  token = token.replace(/[\u200B-\u200D\uFEFF\u0000-\u001F]/g, '').trim();
+  const persianDigits = '۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩';
+  token = token.replace(/[۰-۹٠-٩]/g, (ch) => {
+    const idx = persianDigits.indexOf(ch);
+    return idx !== -1 ? String(idx % 10) : ch;
+  });
+  token = token.replace(/^["'`]+|["'`]+$/g, '').trim();
+  token = token.replace(/^https?:\/\/[^/]+\/bot/i, '');
+  token = token.replace(/\/.*$/, '').trim();
+  if (/^bot\d+:/i.test(token)) {
+    token = token.replace(/^bot/i, '');
+  }
+  return token.trim();
+}
+
+export async function testTelegramBotConnection(
+  botToken: string,
+  apiUrl?: string,
+  proxyUrl?: string
+): Promise<{
   success: boolean;
   bot?: { id: number; first_name: string; username: string };
   message?: string;
   error?: string;
 }> {
   try {
+    const cleanToken = sanitizeTelegramToken(botToken);
     const res = await fetch('/api/telegram/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ botToken: botToken.trim() }),
+      body: JSON.stringify({
+        botToken: cleanToken,
+        apiUrl: apiUrl?.trim(),
+        proxyUrl: proxyUrl?.trim(),
+      }),
     });
     const data = await res.json();
     return data;
@@ -51,20 +78,25 @@ export async function testTelegramBotConnection(botToken: string): Promise<{
 export async function testTelegramMessage(
   botToken: string,
   chatId: string,
-  text?: string
+  text?: string,
+  apiUrl?: string,
+  proxyUrl?: string
 ): Promise<{
   success: boolean;
   message?: string;
   error?: string;
 }> {
   try {
+    const cleanToken = sanitizeTelegramToken(botToken);
     const res = await fetch('/api/telegram/test-message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        botToken: botToken.trim(),
+        botToken: cleanToken,
         chatId: chatId.trim(),
         text,
+        apiUrl: apiUrl?.trim(),
+        proxyUrl: proxyUrl?.trim(),
       }),
     });
     const data = await res.json();
@@ -82,20 +114,25 @@ export async function sendTelegramTextMessage(params: {
   chatId?: string;
   text: string;
   parseMode?: 'HTML' | 'Markdown';
+  apiUrl?: string;
+  proxyUrl?: string;
 }): Promise<{
   success: boolean;
   message?: string;
   error?: string;
 }> {
   try {
+    const cleanToken = sanitizeTelegramToken(params.botToken);
     const res = await fetch('/api/telegram/send-message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        botToken: params.botToken?.trim(),
+        botToken: cleanToken,
         chatId: params.chatId?.trim(),
         text: params.text,
         parse_mode: params.parseMode || 'HTML',
+        apiUrl: params.apiUrl?.trim(),
+        proxyUrl: params.proxyUrl?.trim(),
       }),
     });
     const data = await res.json();

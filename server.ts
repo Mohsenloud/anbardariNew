@@ -3,10 +3,12 @@ import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import dns from 'dns';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import { ProxyAgent } from 'undici';
 import {
   testAndInitPostgres,
   loadStateFromPostgres,
@@ -19,6 +21,13 @@ import {
   getLastPostgresSaveError,
   exportLiveDatabaseDump,
 } from './server/db';
+
+// Enforce IPv4-first DNS resolution to prevent undici / fetch hanging on Telegram IPv6 addresses
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch (e) {
+  // ignore
+}
 
 const app = express();
 const PORT = 3000;
@@ -1555,20 +1564,153 @@ app.get('/api/backup', (req, res) => {
 // TELEGRAM BOT API PROXY ENDPOINTS (DIRECT PDF & MESSAGE DISPATCH)
 // -------------------------------------------------------------
 
+export function sanitizeTelegramBotToken(rawToken?: string): string {
+  if (!rawToken) return '';
+  let token = String(rawToken).trim();
+  // Strip zero-width spaces, BOM, invisible control chars
+  token = token.replace(/[\u200B-\u200D\uFEFF\u0000-\u001F]/g, '').trim();
+  // Convert Persian and Arabic numbers to English digits
+  const persianDigits = '۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩';
+  token = token.replace(/[۰-۹٠-٩]/g, (ch) => {
+    const idx = persianDigits.indexOf(ch);
+    return idx !== -1 ? String(idx % 10) : ch;
+  });
+  // Strip surrounding quotes
+  token = token.replace(/^["'`]+|["'`]+$/g, '').trim();
+  // Strip full URL if user pasted something like https://api.telegram.org/bot<TOKEN>
+  token = token.replace(/^https?:\/\/[^/]+\/bot/i, '');
+  // Strip trailing slashes or path parts like /getMe
+  token = token.replace(/\/.*$/, '').trim();
+  // If user pasted 'bot123456:ABC...', strip the leading 'bot'
+  if (/^bot\d+:/i.test(token)) {
+    token = token.replace(/^bot/i, '');
+  }
+  return token.trim();
+}
+
+function getTelegramDispatcher(proxyUrl?: string) {
+  const proxy = (
+    proxyUrl ||
+    process.env.HTTPS_PROXY ||
+    process.env.HTTP_PROXY ||
+    process.env.ALL_PROXY ||
+    process.env.TELEGRAM_PROXY_URL ||
+    ''
+  ).trim();
+  if (!proxy) return undefined;
+  try {
+    return new ProxyAgent(proxy);
+  } catch (err) {
+    console.warn('[Telegram API] Failed to initialize ProxyAgent for proxy:', proxy, err);
+    return undefined;
+  }
+}
+
+interface TelegramCallOptions {
+  token?: string;
+  apiUrl?: string;
+  proxyUrl?: string;
+  method?: 'GET' | 'POST';
+  body?: any;
+  formData?: any;
+  timeoutMs?: number;
+}
+
+async function callTelegramApi(endpoint: string, options: TelegramCallOptions = {}) {
+  const dbData = readDatabase();
+  const serverSettings = dbData?.settings || {};
+
+  const cleanToken = sanitizeTelegramBotToken(
+    options.token || serverSettings?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN
+  );
+  if (!cleanToken) {
+    throw new Error('توکن ربات تلگرام وارد نشده است.');
+  }
+
+  // Base API URL (supports custom reverse proxies like Cloudflare Worker)
+  let baseUrl = (
+    options.apiUrl ||
+    serverSettings?.telegramApiUrl ||
+    process.env.TELEGRAM_API_URL ||
+    'https://api.telegram.org'
+  ).trim().replace(/\/+$/, '');
+
+  const proxyUrl = options.proxyUrl || serverSettings?.telegramProxyUrl;
+  const dispatcher = getTelegramDispatcher(proxyUrl);
+  const timeoutMs = options.timeoutMs || 15000;
+
+  const url = `${baseUrl}/bot${cleanToken}/${endpoint.replace(/^\/+/, '')}`;
+  const fetchOptions: any = {
+    method: options.method || (options.body || options.formData ? 'POST' : 'GET'),
+    signal: AbortSignal.timeout(timeoutMs),
+  };
+
+  if (dispatcher) {
+    fetchOptions.dispatcher = dispatcher;
+  }
+
+  if (options.formData) {
+    fetchOptions.body = options.formData;
+  } else if (options.body) {
+    fetchOptions.headers = { 'Content-Type': 'application/json' };
+    fetchOptions.body = JSON.stringify(options.body);
+  }
+
+  try {
+    const response = await fetch(url, fetchOptions);
+    const data = await response.json();
+    return { ok: response.ok, status: response.status, data };
+  } catch (err: any) {
+    const causeCode = err?.cause?.code || err?.cause?.message || '';
+    const isNetworkError =
+      err?.name === 'TimeoutError' ||
+      err?.message?.includes('timeout') ||
+      err?.message?.includes('fetch failed') ||
+      causeCode === 'ETIMEDOUT' ||
+      causeCode === 'ECONNREFUSED' ||
+      causeCode === 'ENOTFOUND' ||
+      causeCode === 'UND_ERR_CONNECT_TIMEOUT';
+
+    if (isNetworkError) {
+      const detailedMsg = [
+        'عدم برقراری ارتباط با سرور تلگرام (fetch failed).',
+        'دسترسی مستقیم به دامنه api.telegram.org به دلیل فیلترینگ اینترنت یا مسدود بودن پورت مسدود است.',
+        'راهکار پیشنهادی: در بخش «تنظیمات > تلگرام»، از «ریورس پروکسی» (مانند Cloudflare Worker) یا «پروکسی محلی سیستم» (مانند http://127.0.0.1:7890 یا v2ray) استفاده فرمایید.',
+      ].join(' ');
+      throw new Error(detailedMsg);
+    }
+    throw err;
+  }
+}
+
 // 12.1 Test Bot Connection (getMe)
 app.post('/api/telegram/test-connection', async (req, res) => {
   try {
-    const botToken = (req.body?.botToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    const rawBotToken = req.body?.botToken || process.env.TELEGRAM_BOT_TOKEN || '';
+    const botToken = sanitizeTelegramBotToken(rawBotToken);
     if (!botToken) {
       return res.status(400).json({ success: false, error: 'توکن ربات تلگرام وارد نشده است.' });
     }
 
-    const response = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
-    const data = await response.json();
-    if (!response.ok || !data.ok) {
+    const apiUrl = req.body?.apiUrl;
+    const proxyUrl = req.body?.proxyUrl;
+
+    const { ok, status, data } = await callTelegramApi('getMe', {
+      token: botToken,
+      apiUrl,
+      proxyUrl,
+    });
+
+    if (!ok || !data.ok) {
+      let desc = data.description || '';
+      if (status === 401 || desc.toLowerCase().includes('unauthorized')) {
+        desc = 'توکن ربات نامعتبر است (کد ۴۰۱). لطفاً توکن دریافتی از @BotFather را مجدداً بررسی فرمایید.';
+      } else if (status === 404 || desc.toLowerCase().includes('not found')) {
+        desc = 'آدرس یا ربات در تلگرام یافت نشد (کد ۴۰۴). لطفاً توکن را به شکل صحیح بدون کلمات اضافه وارد فرمایید.';
+      }
       return res.status(400).json({
         success: false,
-        error: data.description || 'توکن ربات نامعتبر است. لطفاً توکن دریافتی از BotFather را بررسی نمایید.',
+        error: desc || 'توکن ربات نامعتبر است. لطفاً توکن دریافتی از BotFather را بررسی نمایید.',
       });
     }
 
@@ -1581,7 +1723,7 @@ app.post('/api/telegram/test-connection', async (req, res) => {
     console.error('[Telegram API] test-connection error:', err);
     return res.status(500).json({
       success: false,
-      error: 'خطا در ارتباط با سرور تلگرام: ' + (err?.message || ''),
+      error: err?.message || 'خطا در ارتباط با سرور تلگرام',
     });
   }
 });
@@ -1589,9 +1731,12 @@ app.post('/api/telegram/test-connection', async (req, res) => {
 // 12.2 Test Message to Chat/Channel/Group (sendMessage)
 app.post('/api/telegram/test-message', async (req, res) => {
   try {
-    const botToken = (req.body?.botToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    const rawBotToken = req.body?.botToken || process.env.TELEGRAM_BOT_TOKEN || '';
+    const botToken = sanitizeTelegramBotToken(rawBotToken);
     const chatId = (req.body?.chatId || process.env.TELEGRAM_CHAT_ID || '').trim();
     const customText = req.body?.text;
+    const apiUrl = req.body?.apiUrl;
+    const proxyUrl = req.body?.proxyUrl;
 
     if (!botToken) {
       return res.status(400).json({ success: false, error: 'توکن ربات وارد نشده است.' });
@@ -1609,18 +1754,18 @@ app.post('/api/telegram/test-message', async (req, res) => {
       `🕒 زمان تست: ${new Date().toLocaleTimeString('fa-IR')}`,
     ].join('\n');
 
-    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const { ok, data } = await callTelegramApi('sendMessage', {
+      token: botToken,
+      apiUrl,
+      proxyUrl,
+      body: {
         chat_id: chatId,
         text,
         parse_mode: 'HTML',
-      }),
+      },
     });
 
-    const data = await response.json();
-    if (!response.ok || !data.ok) {
+    if (!ok || !data.ok) {
       return res.status(400).json({
         success: false,
         error: data.description || 'ارسال پیام با خطا مواجه شد. اطمینان حاصل فرمایید ربات در چت/کانال عضو و ادمین باشد یا دکمه Start را زده باشید.',
@@ -1636,7 +1781,7 @@ app.post('/api/telegram/test-message', async (req, res) => {
     console.error('[Telegram API] test-message error:', err);
     return res.status(500).json({
       success: false,
-      error: 'خطا در ارسال پیام به تلگرام: ' + (err?.message || ''),
+      error: err?.message || 'خطا در ارسال پیام به تلگرام',
     });
   }
 });
@@ -1647,12 +1792,11 @@ app.post('/api/telegram/send-message', async (req, res) => {
     const dbData = readDatabase();
     const serverSettings = dbData?.settings || {};
 
-    const botToken = (
+    const botToken = sanitizeTelegramBotToken(
       req.body?.botToken ||
       serverSettings?.telegramBotToken ||
-      process.env.TELEGRAM_BOT_TOKEN ||
-      ''
-    ).trim();
+      process.env.TELEGRAM_BOT_TOKEN
+    );
 
     const chatId = (
       req.body?.chatId ||
@@ -1663,6 +1807,8 @@ app.post('/api/telegram/send-message', async (req, res) => {
 
     const text = (req.body?.text || '').trim();
     const parseMode = req.body?.parse_mode || 'HTML';
+    const apiUrl = req.body?.apiUrl;
+    const proxyUrl = req.body?.proxyUrl;
 
     if (!botToken) {
       return res.status(400).json({ success: false, error: 'توکن ربات تلگرام مشخص نشده است.' });
@@ -1674,18 +1820,18 @@ app.post('/api/telegram/send-message', async (req, res) => {
       return res.status(400).json({ success: false, error: 'متن پیام خالی است.' });
     }
 
-    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const { ok, data } = await callTelegramApi('sendMessage', {
+      token: botToken,
+      apiUrl,
+      proxyUrl,
+      body: {
         chat_id: chatId,
         text,
         parse_mode: parseMode,
-      }),
+      },
     });
 
-    const data = await response.json();
-    if (!response.ok || !data.ok) {
+    if (!ok || !data.ok) {
       return res.status(400).json({
         success: false,
         error: data.description || 'ارسال پیام متنی به تلگرام ناموفق بود.',
@@ -1701,7 +1847,7 @@ app.post('/api/telegram/send-message', async (req, res) => {
     console.error('[Telegram API] send-message error:', err);
     return res.status(500).json({
       success: false,
-      error: 'خطا در ارسال پیام متنی به تلگرام: ' + (err?.message || ''),
+      error: err?.message || 'خطا در ارسال پیام متنی به تلگرام',
     });
   }
 });
@@ -1867,18 +2013,15 @@ async function checkAndSendServerProformaReminders(overrides?: {
           const messageText = messageLines.join('\n');
 
           try {
-            const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
+            const { ok, data } = await callTelegramApi('sendMessage', {
+              token: botToken,
+              body: {
                 chat_id: targetChatId,
                 text: messageText,
                 parse_mode: 'HTML',
-              }),
-              signal: AbortSignal.timeout(15000),
+              },
             });
-            const data = await response.json();
-            if (response.ok && data.ok) {
+            if (ok && data.ok) {
               inv.proformaReminderSentAt = new Date().toISOString();
               sentInvoiceNumbers.push(inv.invoiceNumber);
               modified = true;
@@ -2113,18 +2256,15 @@ async function checkAndSendCustomerFollowUpReminders(overrides?: {
       const messageText = messageLines.join('\n');
 
       try {
-        const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        const { ok, data } = await callTelegramApi('sendMessage', {
+          token: botToken,
+          body: {
             chat_id: targetChatId,
             text: messageText,
             parse_mode: 'HTML',
-          }),
-          signal: AbortSignal.timeout(15000),
+          },
         });
-        const data = await response.json();
-        if (response.ok && data.ok) {
+        if (ok && data.ok) {
           const nowIso = new Date().toISOString();
           if (targetNote) {
             targetNote.telegramReminderSentAt = nowIso;
@@ -2255,15 +2395,13 @@ app.post('/api/telegram/send-pdf', async (req, res) => {
       formData.append('parse_mode', 'HTML');
     }
 
-    let response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
-      method: 'POST',
-      body: formData,
+    let { ok, data } = await callTelegramApi('sendDocument', {
+      token: botToken,
+      formData,
     });
 
-    let data = await response.json();
-
     // Fallback: If Telegram rejected due to HTML parse entity syntax, retry without parse_mode
-    if (!response.ok && data?.description && data.description.includes('can\'t parse entities')) {
+    if (!ok && data?.description && data.description.includes('can\'t parse entities')) {
       console.warn('[Telegram API] HTML entity parse error, retrying without parse_mode...');
       const fallbackFd = new FormData();
       fallbackFd.append('chat_id', chatId);
@@ -2271,14 +2409,15 @@ app.post('/api/telegram/send-pdf', async (req, res) => {
       if (caption) {
         fallbackFd.append('caption', caption.replace(/<[^>]+>/g, ''));
       }
-      response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
-        method: 'POST',
-        body: fallbackFd,
+      const retryRes = await callTelegramApi('sendDocument', {
+        token: botToken,
+        formData: fallbackFd,
       });
-      data = await response.json();
+      ok = retryRes.ok;
+      data = retryRes.data;
     }
 
-    if (!response.ok || !data.ok) {
+    if (!ok || !data.ok) {
       console.error('[Telegram API] sendDocument failed:', data);
       return res.status(400).json({
         success: false,
@@ -2401,30 +2540,29 @@ app.post('/api/telegram/send-backup', async (req, res) => {
     formData.append('caption', caption);
     formData.append('parse_mode', 'HTML');
 
-    let response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
-      method: 'POST',
-      body: formData,
+    let { ok, data: teleData } = await callTelegramApi('sendDocument', {
+      token: botToken,
+      formData,
     });
 
-    let teleData: any = await response.json();
-
-    if (!response.ok && teleData?.description && teleData.description.includes("can't parse entities")) {
+    if (!ok && teleData?.description && teleData.description.includes("can't parse entities")) {
       const fallbackFd = new FormData();
       fallbackFd.append('chat_id', chatId);
       fallbackFd.append('document', fileBlob, safeFilename);
       fallbackFd.append('caption', caption.replace(/<[^>]+>/g, ''));
-      response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
-        method: 'POST',
-        body: fallbackFd,
+      const retryRes = await callTelegramApi('sendDocument', {
+        token: botToken,
+        formData: fallbackFd,
       });
-      teleData = await response.json();
+      ok = retryRes.ok;
+      teleData = retryRes.data;
     }
 
-    if (!response.ok || !teleData.ok) {
+    if (!ok || !teleData?.ok) {
       console.error('[Telegram API] send-backup SQL failed:', teleData);
       return res.status(400).json({
         success: false,
-        error: teleData.description || 'ارسال فایل SQL به تلگرام با خطا مواجه شد. لطفاً دسترسی ربات به این چت را بررسی فرمایید.',
+        error: teleData?.description || 'ارسال فایل SQL به تلگرام با خطا مواجه شد. لطفاً دسترسی ربات به این چت را بررسی فرمایید.',
       });
     }
 
@@ -2449,25 +2587,25 @@ app.post('/api/telegram/send-backup', async (req, res) => {
     jsonFormData.append('caption', jsonCaption);
     jsonFormData.append('parse_mode', 'HTML');
 
-    let jsonResponse = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
-      method: 'POST',
-      body: jsonFormData,
+    let { ok: jsonOk, data: jsonTeleData } = await callTelegramApi('sendDocument', {
+      token: botToken,
+      formData: jsonFormData,
     });
-    let jsonTeleData: any = await jsonResponse.json();
 
-    if (!jsonResponse.ok && jsonTeleData?.description && jsonTeleData.description.includes("can't parse entities")) {
+    if (!jsonOk && jsonTeleData?.description && jsonTeleData.description.includes("can't parse entities")) {
       const fallbackJsonFd = new FormData();
       fallbackJsonFd.append('chat_id', chatId);
       fallbackJsonFd.append('document', jsonBlob, jsonSafeFilename);
       fallbackJsonFd.append('caption', jsonCaption.replace(/<[^>]+>/g, ''));
-      jsonResponse = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
-        method: 'POST',
-        body: fallbackJsonFd,
+      const jsonRetryRes = await callTelegramApi('sendDocument', {
+        token: botToken,
+        formData: fallbackJsonFd,
       });
-      jsonTeleData = await jsonResponse.json();
+      jsonOk = jsonRetryRes.ok;
+      jsonTeleData = jsonRetryRes.data;
     }
 
-    if (!jsonResponse.ok || !jsonTeleData.ok) {
+    if (!jsonOk || !jsonTeleData?.ok) {
       console.warn('[Telegram API] send-backup JSON failed:', jsonTeleData);
     }
 
@@ -2817,10 +2955,9 @@ app.post('/api/telegram/webhook', async (req, res) => {
         '⚙️ سیستم با هوش مصنوعی صدا را تبدیل کرده و یک <b>حواله ورود به انبار در انتظار تایید مدیریت</b> ثبت می‌کند.',
       ].join('\n');
 
-      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text: welcomeText, parse_mode: 'HTML' }),
+      await callTelegramApi('sendMessage', {
+        token: botToken,
+        body: { chat_id: chatId, text: welcomeText, parse_mode: 'HTML' },
       });
       return;
     }
@@ -2841,42 +2978,44 @@ app.post('/api/telegram/webhook', async (req, res) => {
     if (!fileId) return;
 
     // Send acknowledgement to user
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    await callTelegramApi('sendMessage', {
+      token: botToken,
+      body: {
         chat_id: chatId,
         reply_to_message_id: message.message_id,
         text: '🎙️ <b>ویس شما دریافت شد.</b>\nدر حال پردازش هوشمند و استخراج اقلام ورودی به انبار با هوش مصنوعی...',
         parse_mode: 'HTML',
-      }),
+      },
     });
 
     // 1. Get file path from Telegram
-    const fileInfoRes = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`);
-    const fileInfo = await fileInfoRes.json();
-    if (!fileInfo.ok || !fileInfo.result?.file_path) {
+    const { ok: fileOk, data: fileInfo } = await callTelegramApi(`getFile?file_id=${fileId}`, {
+      token: botToken,
+    });
+    if (!fileOk || !fileInfo?.result?.file_path) {
       throw new Error('عدم امکان دریافت مشخصات فایل صوتی از سرور تلگرام');
     }
 
     // 2. Download the voice file
-    const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.result.file_path}`;
-    const audioRes = await fetch(downloadUrl);
+    const baseUrl = (settings.telegramApiUrl || process.env.TELEGRAM_API_URL || 'https://api.telegram.org').trim().replace(/\/+$/, '');
+    const downloadUrl = `${baseUrl}/file/bot${sanitizeTelegramBotToken(botToken)}/${fileInfo.result.file_path}`;
+    const proxyUrl = settings.telegramProxyUrl;
+    const dispatcher = getTelegramDispatcher(proxyUrl);
+    const audioRes = await fetch(downloadUrl, dispatcher ? { dispatcher } as any : undefined);
     const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
 
     // 3. Process voice using configured AI
     const aiResult = await processVoiceWithAI(audioBuffer, mimeType, settings, dbData?.products || []);
 
     if (!aiResult.items || aiResult.items.length === 0) {
-      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await callTelegramApi('sendMessage', {
+        token: botToken,
+        body: {
           chat_id: chatId,
           reply_to_message_id: message.message_id,
           text: `⚠️ <b>متن پیاده‌سازی شده:</b>\n<i>«${aiResult.transcript}»</i>\n\nهیچ قلم کالایی در این پیام صوتی تشخیص داده نشد. لطفاً مجدداً با ذکر دقیق نام و تعداد کالا پیام صوتی بفرستید.`,
           parse_mode: 'HTML',
-        }),
+        },
       });
       return;
     }
@@ -2962,15 +3101,14 @@ app.post('/api/telegram/webhook', async (req, res) => {
       `🏢 جهت نهایی‌سازی و افزایش موجودی انبار، مدیر می‌تواند این حواله را در بخش «انبارداری > حواله‌های ورود» تایید فرماید.`,
     ].join('\n');
 
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    await callTelegramApi('sendMessage', {
+      token: botToken,
+      body: {
         chat_id: chatId,
         reply_to_message_id: message.message_id,
         text: replyText,
         parse_mode: 'HTML',
-      }),
+      },
     });
 
   } catch (webhookErr: any) {
@@ -2983,7 +3121,7 @@ app.post('/api/telegram/set-webhook', async (req, res) => {
   try {
     const { data: dbData } = await getLatestConvergedDatabase();
     const settings = dbData?.settings || {};
-    const botToken = (req.body?.botToken || settings?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    const botToken = sanitizeTelegramBotToken(req.body?.botToken || settings?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN);
     const webhookUrl = (req.body?.webhookUrl || '').trim();
 
     if (!botToken) {
@@ -2993,17 +3131,15 @@ app.post('/api/telegram/set-webhook', async (req, res) => {
       return res.status(400).json({ success: false, error: 'آدرس وبهوک (URL) وارد نشده است.' });
     }
 
-    const setRes = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const { data } = await callTelegramApi('setWebhook', {
+      token: botToken,
+      body: {
         url: webhookUrl,
         allowed_updates: ['message', 'edited_message'],
         drop_pending_updates: true,
-      }),
+      },
     });
 
-    const data = await setRes.json();
     return res.json(data);
   } catch (err: any) {
     console.error('[Telegram Set Webhook] Error:', err);
@@ -3016,14 +3152,15 @@ app.get('/api/telegram/webhook-info', async (req, res) => {
   try {
     const { data: dbData } = await getLatestConvergedDatabase();
     const settings = dbData?.settings || {};
-    const botToken = (req.query?.botToken as string || settings?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    const botToken = sanitizeTelegramBotToken((req.query?.botToken as string) || settings?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN);
 
     if (!botToken) {
       return res.status(400).json({ success: false, error: 'توکن ربات تلگرام مشخص نیست.' });
     }
 
-    const infoRes = await fetch(`https://api.telegram.org/bot${botToken}/getWebhookInfo`);
-    const data = await infoRes.json();
+    const { data } = await callTelegramApi('getWebhookInfo', {
+      token: botToken,
+    });
     return res.json(data);
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err?.message });

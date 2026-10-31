@@ -3,6 +3,7 @@ import { PurchaseInvoice, StoreSettings, AppUser } from '../types';
 import { toPersianDigits, formatPrice } from '../utils/jalali';
 import { PAYMENT_METHOD_LABELS } from '../utils/storage';
 import { exportElementToPdf, printElementDirectly } from '../utils/pdfHelper';
+import { isPureServicePurchaseInvoice, hasServicePurchaseItems, isServiceItem } from '../utils/serviceHelper';
 import {
   autoSendPurchaseInvoiceReportToTelegram,
   autoSendSupplierPaymentReportToTelegram,
@@ -29,7 +30,8 @@ import {
   Calendar,
   Warehouse,
   Edit3,
-  Send
+  Send,
+  Wrench
 } from 'lucide-react';
 
 interface PurchaseInvoiceViewModalProps {
@@ -54,6 +56,9 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const isServiceOnly = isPureServicePurchaseInvoice(invoice);
+  const hasServices = hasServicePurchaseItems(invoice);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -123,7 +128,9 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
             chequeDueDate: invoice.chequeDueDate,
             invoiceNumber: invoice.invoiceNumber,
             date: invoice.date,
-            title: `پرداخت وجه فاکتور خرید ${invoice.invoiceNumber}`,
+            title: isServiceOnly
+              ? `پرداخت هزینه خدمات فاکتور ${invoice.invoiceNumber}`
+              : `پرداخت وجه فاکتور خرید ${invoice.invoiceNumber}`,
             notes: invoice.notes,
             recordedBy: currentUser?.fullName || currentUser?.username || 'مدیر سیستم',
           },
@@ -142,14 +149,19 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
 
   // Share text summary
   const handleCopyText = () => {
+    const docTitle = isServiceOnly
+      ? 'فاکتور خرید خدمات / هزینه'
+      : hasServices
+      ? 'فاکتور خرید کالا و خدمات'
+      : 'فاکتور خرید کالا';
     const lines = [
-      `🧾 *فاکتور خرید کالا*`,
+      `🧾 *${docTitle}*`,
       `شماره فاکتور: ${toPersianDigits(invoice.invoiceNumber)}`,
       `تاریخ: ${toPersianDigits(invoice.date)}`,
-      `تامین‌کننده / فروشنده: ${invoice.supplierName || 'ثبت‌نشده'}`,
-      invoice.supplierPhone ? `تلفن فروشنده: ${toPersianDigits(invoice.supplierPhone)}` : '',
+      `تامین‌کننده / مجری: ${invoice.supplierName || 'ثبت‌نشده'}`,
+      invoice.supplierPhone ? `تلفن تماس: ${toPersianDigits(invoice.supplierPhone)}` : '',
       `---------------------------------`,
-      `📋 *اقلام خریداری‌شده:*`,
+      `📋 *اقلام و خدمات:*`,
       ...invoice.items.map(
         (it, idx) =>
           `${toPersianDigits(idx + 1)}. ${it.productName} ➔ ${toPersianDigits(it.quantity)} ${it.unit || 'عدد'} × ${toPersianDigits(formatPrice(it.buyPrice))} = ${toPersianDigits(formatPrice(it.total))} تومان`
@@ -170,6 +182,14 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
   };
 
   const getStatusBadge = () => {
+    if (isServiceOnly) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+          <Wrench className="w-3.5 h-3.5" />
+          ثبت قطعی خدمات (بدون نیاز به انبار)
+        </span>
+      );
+    }
     switch (invoice.status) {
       case 'completed':
         return (
@@ -437,7 +457,11 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
                       {settings.storeName || 'سامانه بازرگانی و انبارداری'}
                     </h1>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      فاکتور رسمی خرید کالا و اقلام ورودی
+                      {isServiceOnly
+                        ? 'سند رسمی خرید خدمات و ثبت هزینه‌های اجرایی'
+                        : hasServices
+                        ? 'فاکتور رسمی خرید کالا و خدمات'
+                        : 'فاکتور رسمی خرید کالا و اقلام ورودی'}
                     </p>
                     {settings.phone && (
                       <p className="text-[10px] text-slate-400 font-mono mt-0.5">
@@ -450,10 +474,14 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
                 {/* Document Title Badge */}
                 <div className="text-center shrink-0">
                   <div className={`inline-block px-3.5 py-1 rounded-xl bg-slate-900 text-white font-black ${isA5 ? 'text-xs' : 'text-sm sm:text-base'} mb-0.5 shadow-2xs`}>
-                    فاکتور خرید کالا
+                    {isServiceOnly
+                      ? 'فاکتور خرید خدمات'
+                      : hasServices
+                      ? 'فاکتور خرید کالا و خدمات'
+                      : 'فاکتور خرید کالا'}
                   </div>
                   <div className="text-[10px] text-slate-400 font-mono font-bold tracking-wider">
-                    PURCHASE INVOICE
+                    {isServiceOnly ? 'SERVICE & EXPENSE INVOICE' : 'PURCHASE INVOICE'}
                   </div>
                 </div>
 
@@ -496,7 +524,9 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
                     <Building2 className="w-3.5 h-3.5 text-emerald-700" />
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-medium">فروشنده / تامین‌کننده کالا:</span>
+                    <span className="text-[10px] text-slate-400 block font-medium">
+                      {isServiceOnly ? 'مجری خدمات / طرف حساب:' : 'فروشنده / تامین‌کننده:'}
+                    </span>
                     <strong className="text-slate-900 text-xs sm:text-sm font-black truncate block">
                       {invoice.supplierName || 'تامین‌کننده متفرقه'}
                     </strong>
@@ -543,44 +573,59 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
                 <thead>
                   <tr className="bg-slate-100 text-slate-800 border-b border-slate-300 font-bold">
                     <th className={`${isA5 ? 'p-1.5' : 'p-2.5'} border-l border-slate-300 text-center w-8`}>#</th>
-                    <th className={`${isA5 ? 'p-1.5' : 'p-2.5'} border-l border-slate-300 w-20 text-center`}>کد کالا</th>
-                    <th className={`${isA5 ? 'p-1.5' : 'p-2.5'} border-l border-slate-300`}>شرح کالا / اقلام</th>
+                    <th className={`${isA5 ? 'p-1.5' : 'p-2.5'} border-l border-slate-300 w-20 text-center`}>کد</th>
+                    <th className={`${isA5 ? 'p-1.5' : 'p-2.5'} border-l border-slate-300`}>شرح کالا / خدمات</th>
                     <th className={`${isA5 ? 'p-1.5' : 'p-2.5'} border-l border-slate-300 text-center w-14`}>واحد</th>
                     <th className={`${isA5 ? 'p-1.5' : 'p-2.5'} border-l border-slate-300 text-center w-16`}>تعداد</th>
-                    <th className={`${isA5 ? 'p-1.5' : 'p-2.5'} border-l border-slate-300 text-left w-24 sm:w-28`}>قیمت خرید (فی)</th>
+                    <th className={`${isA5 ? 'p-1.5' : 'p-2.5'} border-l border-slate-300 text-left w-24 sm:w-28`}>مبلغ واحد (فی)</th>
                     <th className={`${isA5 ? 'p-1.5' : 'p-2.5'} border-l border-slate-300 text-left w-20`}>تخفیف</th>
                     <th className={`${isA5 ? 'p-1.5' : 'p-2.5'} text-left w-28 sm:w-32`}>مبلغ کل (تومان)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {invoice.items.map((item, index) => (
-                    <tr key={item.id || index} className={index % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'}>
-                      <td className={`${isA5 ? 'p-1.5' : 'p-2'} border-l border-slate-200 text-center font-mono text-slate-500`}>
-                        {toPersianDigits(index + 1)}
-                      </td>
-                      <td className={`${isA5 ? 'p-1.5' : 'p-2'} border-l border-slate-200 font-mono text-center text-slate-600`}>
-                        {toPersianDigits(item.productCode)}
-                      </td>
-                      <td className={`${isA5 ? 'p-1.5' : 'p-2'} border-l border-slate-200 font-bold text-slate-900`}>
-                        {item.productName}
-                      </td>
-                      <td className={`${isA5 ? 'p-1.5' : 'p-2'} border-l border-slate-200 text-center text-slate-600 text-[11px]`}>
-                        {item.unit || 'عدد'}
-                      </td>
-                      <td className={`${isA5 ? 'p-1.5' : 'p-2'} border-l border-slate-200 text-center font-black font-mono text-slate-900`}>
-                        {toPersianDigits(item.quantity)}
-                      </td>
-                      <td className={`${isA5 ? 'p-1.5' : 'p-2'} border-l border-slate-200 text-left font-mono font-medium text-slate-800`}>
-                        {toPersianDigits(formatPrice(item.buyPrice))}
-                      </td>
-                      <td className={`${isA5 ? 'p-1.5' : 'p-2'} border-l border-slate-200 text-left font-mono text-slate-600`}>
-                        {item.discount > 0 ? toPersianDigits(formatPrice(item.discount)) : '—'}
-                      </td>
-                      <td className={`${isA5 ? 'p-1.5' : 'p-2'} text-left font-black font-mono text-emerald-900`}>
-                        {toPersianDigits(formatPrice(item.total))}
-                      </td>
-                    </tr>
-                  ))}
+                  {invoice.items.map((item, index) => {
+                    const itemIsService = isServiceItem(item);
+                    return (
+                      <tr key={item.id || index} className={index % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'}>
+                        <td className={`${isA5 ? 'p-1.5' : 'p-2'} border-l border-slate-200 text-center font-mono text-slate-500`}>
+                          {toPersianDigits(index + 1)}
+                        </td>
+                        <td className={`${isA5 ? 'p-1.5' : 'p-2'} border-l border-slate-200 font-mono text-center text-slate-600`}>
+                          {toPersianDigits(item.productCode)}
+                        </td>
+                        <td className={`${isA5 ? 'p-1.5' : 'p-2'} border-l border-slate-200 font-bold text-slate-900`}>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{item.productName}</span>
+                            {itemIsService && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-200 print:border-slate-400">
+                                خدمات
+                              </span>
+                            )}
+                          </div>
+                          {item.description && (
+                            <div className="text-[10px] font-normal text-slate-500 mt-0.5">
+                              {item.description}
+                            </div>
+                          )}
+                        </td>
+                        <td className={`${isA5 ? 'p-1.5' : 'p-2'} border-l border-slate-200 text-center text-slate-600 text-[11px]`}>
+                          {item.unit || (itemIsService ? 'سرویس' : 'عدد')}
+                        </td>
+                        <td className={`${isA5 ? 'p-1.5' : 'p-2'} border-l border-slate-200 text-center font-black font-mono text-slate-900`}>
+                          {toPersianDigits(item.quantity)}
+                        </td>
+                        <td className={`${isA5 ? 'p-1.5' : 'p-2'} border-l border-slate-200 text-left font-mono font-medium text-slate-800`}>
+                          {toPersianDigits(formatPrice(item.buyPrice))}
+                        </td>
+                        <td className={`${isA5 ? 'p-1.5' : 'p-2'} border-l border-slate-200 text-left font-mono text-slate-600`}>
+                          {item.discount > 0 ? toPersianDigits(formatPrice(item.discount)) : '—'}
+                        </td>
+                        <td className={`${isA5 ? 'p-1.5' : 'p-2'} text-left font-black font-mono text-emerald-900`}>
+                          {toPersianDigits(formatPrice(item.total))}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
