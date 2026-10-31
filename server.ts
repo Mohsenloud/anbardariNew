@@ -6,9 +6,7 @@ import crypto from 'crypto';
 import dns from 'dns';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
-import { ProxyAgent } from 'undici';
 import {
   testAndInitPostgres,
   loadStateFromPostgres,
@@ -30,7 +28,7 @@ try {
 }
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Tell Express to trust the reverse proxy (nginx / Cloud Run) for accurate client IP resolution
 app.set('trust proxy', 1);
@@ -1588,7 +1586,7 @@ export function sanitizeTelegramBotToken(rawToken?: string): string {
   return token.trim();
 }
 
-function getTelegramDispatcher(proxyUrl?: string) {
+async function getTelegramDispatcher(proxyUrl?: string) {
   const proxy = (
     proxyUrl ||
     process.env.HTTPS_PROXY ||
@@ -1599,7 +1597,12 @@ function getTelegramDispatcher(proxyUrl?: string) {
   ).trim();
   if (!proxy) return undefined;
   try {
-    return new ProxyAgent(proxy);
+    const undiciMod = await import('undici');
+    const ProxyAgentClass = undiciMod.ProxyAgent || (undiciMod as any).default?.ProxyAgent;
+    if (ProxyAgentClass) {
+      return new ProxyAgentClass(proxy);
+    }
+    return undefined;
   } catch (err) {
     console.warn('[Telegram API] Failed to initialize ProxyAgent for proxy:', proxy, err);
     return undefined;
@@ -1636,7 +1639,7 @@ async function callTelegramApi(endpoint: string, options: TelegramCallOptions = 
   ).trim().replace(/\/+$/, '');
 
   const proxyUrl = (options.proxyUrl || serverSettings?.telegramProxyUrl || '').trim();
-  const dispatcher = getTelegramDispatcher(proxyUrl);
+  const dispatcher = await getTelegramDispatcher(proxyUrl);
   const timeoutMs = options.timeoutMs || 15000;
 
   const url = `${baseUrl}/bot${cleanToken}/${endpoint.replace(/^\/+/, '')}`;
@@ -1666,7 +1669,7 @@ async function callTelegramApi(endpoint: string, options: TelegramCallOptions = 
     if (proxyUrl && /(127\.0\.0\.1|localhost)/i.test(proxyUrl)) {
       try {
         const dockerHostProxy = proxyUrl.replace(/(127\.0\.0\.1|localhost)/i, 'host.docker.internal');
-        const dockerDispatcher = getTelegramDispatcher(dockerHostProxy);
+        const dockerDispatcher = await getTelegramDispatcher(dockerHostProxy);
         if (dockerDispatcher) {
           const retryRes = await fetch(url, buildFetchOptions(dockerDispatcher));
           const retryData = await retryRes.json();
@@ -3016,7 +3019,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
     const baseUrl = (settings.telegramApiUrl || process.env.TELEGRAM_API_URL || 'https://api.telegram.org').trim().replace(/\/+$/, '');
     const downloadUrl = `${baseUrl}/file/bot${sanitizeTelegramBotToken(botToken)}/${fileInfo.result.file_path}`;
     const proxyUrl = settings.telegramProxyUrl;
-    const dispatcher = getTelegramDispatcher(proxyUrl);
+    const dispatcher = await getTelegramDispatcher(proxyUrl);
     const audioRes = await fetch(downloadUrl, dispatcher ? { dispatcher } as any : undefined);
     const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
 
@@ -3710,6 +3713,7 @@ async function startServer() {
   const server = http.createServer(app);
 
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
