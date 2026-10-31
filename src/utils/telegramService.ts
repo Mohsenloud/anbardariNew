@@ -44,6 +44,57 @@ export function sanitizeTelegramToken(rawToken?: string): string {
   return token.trim();
 }
 
+/**
+ * ارسال مستقیم درخواست از مرورگر کاربر به سرور تلگرام (CORS در API رسمی تلگرام فعال است).
+ * زمانی که سرور VPS داخل ایران باشد و دسترسی مستقیم سرور به تلگرام مسدود باشد،
+ * مرورگر کاربر (که به اینترنت/فیلترشکن متصل است) به صورت خودکار و بدون خطا ارتباط را برقرار می‌کند.
+ */
+async function callTelegramDirectFromBrowser(
+  botToken: string,
+  method: string,
+  payload?: Record<string, any> | FormData,
+  customApiUrl?: string
+): Promise<{ ok: boolean; status: number; data: any }> {
+  const settings = StorageService.getSettings();
+  const cleanToken = sanitizeTelegramToken(botToken || settings?.telegramBotToken);
+  if (!cleanToken) {
+    throw new Error('توکن ربات تلگرام وارد نشده است.');
+  }
+
+  const baseUrl = (customApiUrl || settings?.telegramApiUrl || 'https://api.telegram.org')
+    .trim()
+    .replace(/\/+$/, '');
+  const url = `${baseUrl}/bot${cleanToken}/${method.replace(/^\/+/, '')}`;
+
+  const fetchOpts: RequestInit = {
+    method: payload ? 'POST' : 'GET',
+  };
+
+  if (payload instanceof FormData) {
+    fetchOpts.body = payload;
+  } else if (payload) {
+    fetchOpts.headers = { 'Content-Type': 'application/json' };
+    fetchOpts.body = JSON.stringify(payload);
+  }
+
+  const response = await fetch(url, fetchOpts);
+  const data = await response.json();
+  return { ok: response.ok && Boolean(data?.ok), status: response.status, data };
+}
+
+function isServerTelegramNetworkError(errorMsg?: string, status?: number): boolean {
+  if (status === 502 || status === 503 || status === 504) return true;
+  if (!errorMsg) return false;
+  return (
+    errorMsg.includes('fetch failed') ||
+    errorMsg.includes('عدم برقراری ارتباط') ||
+    errorMsg.includes('فیلترینگ') ||
+    errorMsg.includes('timeout') ||
+    errorMsg.includes('ETIMEDOUT') ||
+    errorMsg.includes('ECONNREFUSED')
+  );
+}
+
 export async function testTelegramBotConnection(
   botToken: string,
   apiUrl?: string,
@@ -54,8 +105,12 @@ export async function testTelegramBotConnection(
   message?: string;
   error?: string;
 }> {
+  const cleanToken = sanitizeTelegramToken(botToken);
+  if (!cleanToken) {
+    return { success: false, error: 'توکن ربات تلگرام وارد نشده است.' };
+  }
+
   try {
-    const cleanToken = sanitizeTelegramToken(botToken);
     const res = await fetch('/api/telegram/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -66,8 +121,47 @@ export async function testTelegramBotConnection(
       }),
     });
     const data = await res.json();
+    if (data?.success) {
+      return data;
+    }
+
+    // اگر سرور VPS به دلیل فیلترینگ دیتاسنتر نتوانست به تلگرام وصل شود، مستقیماً از طریق مرورگر کاربر متصل شو
+    if (isServerTelegramNetworkError(data?.error, res.status)) {
+      try {
+        const direct = await callTelegramDirectFromBrowser(cleanToken, 'getMe', undefined, apiUrl);
+        if (direct.ok && direct.data?.result) {
+          return {
+            success: true,
+            bot: direct.data.result,
+            message: `اتصال به ربات «${direct.data.result.first_name}» (@${direct.data.result.username}) با موفقیت برقرار شد.`,
+          };
+        }
+        if (direct.status === 401 || direct.data?.description?.toLowerCase()?.includes('unauthorized')) {
+          return {
+            success: false,
+            error: 'توکن ربات نامعتبر است (کد ۴۰۱). لطفاً توکن دریافتی از @BotFather را مجدداً بررسی فرمایید.',
+          };
+        }
+      } catch {
+        // اگر مرورگر هم بدون فیلترشکن بود، همان پیام راهنمای سرور نمایش داده شود
+      }
+    }
+
     return data;
   } catch (err: any) {
+    // تلاش مستقیم از مرورگر در صورت قطع بودن ارتباط با بک‌اند
+    try {
+      const direct = await callTelegramDirectFromBrowser(cleanToken, 'getMe', undefined, apiUrl);
+      if (direct.ok && direct.data?.result) {
+        return {
+          success: true,
+          bot: direct.data.result,
+          message: `اتصال به ربات «${direct.data.result.first_name}» (@${direct.data.result.username}) با موفقیت برقرار شد.`,
+        };
+      }
+    } catch {
+      // ignore
+    }
     return {
       success: false,
       error: 'عدم امکان برقراری ارتباط با سرور برنامه: ' + (err?.message || ''),
@@ -86,22 +180,79 @@ export async function testTelegramMessage(
   message?: string;
   error?: string;
 }> {
+  const cleanToken = sanitizeTelegramToken(botToken);
+  const cleanChatId = chatId?.trim();
+  const messageText =
+    text ||
+    `✅ <b>تست اتصال سامانه حسابداری و انبارداری</b>\n\nارتباط با ربات تلگرام با موفقیت برقرار گردید.\n🕒 زمان: ${getCurrentJalaliDate()} - ${getCurrentJalaliTime()}`;
+
   try {
-    const cleanToken = sanitizeTelegramToken(botToken);
     const res = await fetch('/api/telegram/test-message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         botToken: cleanToken,
-        chatId: chatId.trim(),
-        text,
+        chatId: cleanChatId,
+        text: messageText,
         apiUrl: apiUrl?.trim(),
         proxyUrl: proxyUrl?.trim(),
       }),
     });
     const data = await res.json();
+    if (data?.success) {
+      return data;
+    }
+
+    // Fallback: ارسال مستقیم از مرورگر در صورت فیلتر بودن سرور VPS
+    if (isServerTelegramNetworkError(data?.error, res.status)) {
+      try {
+        const direct = await callTelegramDirectFromBrowser(
+          cleanToken,
+          'sendMessage',
+          {
+            chat_id: cleanChatId,
+            text: messageText,
+            parse_mode: 'HTML',
+          },
+          apiUrl
+        );
+        if (direct.ok) {
+          return {
+            success: true,
+            message: 'پیام آزمایشی با موفقیت به تلگرام ارسال گردید.',
+          };
+        }
+        return {
+          success: false,
+          error: direct.data?.description || 'خطا در ارسال پیام به تلگرام (شناسه چت یا دسترسی ربات را بررسی کنید).',
+        };
+      } catch {
+        // fall through
+      }
+    }
+
     return data;
   } catch (err: any) {
+    try {
+      const direct = await callTelegramDirectFromBrowser(
+        cleanToken,
+        'sendMessage',
+        {
+          chat_id: cleanChatId,
+          text: messageText,
+          parse_mode: 'HTML',
+        },
+        apiUrl
+      );
+      if (direct.ok) {
+        return {
+          success: true,
+          message: 'پیام آزمایشی با موفقیت به تلگرام ارسال گردید.',
+        };
+      }
+    } catch {
+      // ignore
+    }
     return {
       success: false,
       error: 'خطا در ارسال پیام تستی: ' + (err?.message || ''),
@@ -121,23 +272,79 @@ export async function sendTelegramTextMessage(params: {
   message?: string;
   error?: string;
 }> {
+  const settings = StorageService.getSettings();
+  const cleanToken = sanitizeTelegramToken(params.botToken || settings?.telegramBotToken);
+  const cleanChatId = (params.chatId || settings?.telegramChatId || '').trim();
+  const parseMode = params.parseMode || 'HTML';
+
   try {
-    const cleanToken = sanitizeTelegramToken(params.botToken);
     const res = await fetch('/api/telegram/send-message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         botToken: cleanToken,
-        chatId: params.chatId?.trim(),
+        chatId: cleanChatId,
         text: params.text,
-        parse_mode: params.parseMode || 'HTML',
+        parse_mode: parseMode,
         apiUrl: params.apiUrl?.trim(),
         proxyUrl: params.proxyUrl?.trim(),
       }),
     });
     const data = await res.json();
+    if (data?.success) {
+      return data;
+    }
+
+    // Fallback: ارسال مستقیم از مرورگر در صورت مسدود بودن تلگرام روی سرور VPS
+    if (isServerTelegramNetworkError(data?.error, res.status)) {
+      try {
+        const direct = await callTelegramDirectFromBrowser(
+          cleanToken,
+          'sendMessage',
+          {
+            chat_id: cleanChatId,
+            text: params.text,
+            parse_mode: parseMode,
+          },
+          params.apiUrl
+        );
+        if (direct.ok) {
+          return {
+            success: true,
+            message: 'گزارش متنی با موفقیت به تلگرام ارسال شد.',
+          };
+        }
+        return {
+          success: false,
+          error: direct.data?.description || 'خطا در ارسال پیام به تلگرام.',
+        };
+      } catch {
+        // fall through
+      }
+    }
+
     return data;
   } catch (err: any) {
+    try {
+      const direct = await callTelegramDirectFromBrowser(
+        cleanToken,
+        'sendMessage',
+        {
+          chat_id: cleanChatId,
+          text: params.text,
+          parse_mode: parseMode,
+        },
+        params.apiUrl
+      );
+      if (direct.ok) {
+        return {
+          success: true,
+          message: 'گزارش متنی با موفقیت به تلگرام ارسال شد.',
+        };
+      }
+    } catch {
+      // ignore
+    }
     return {
       success: false,
       error: 'خطا در ارتباط با سرور: ' + (err?.message || ''),
@@ -156,26 +363,67 @@ export async function sendPdfToTelegram(params: {
   message?: string;
   error?: string;
 }> {
+  const settings = StorageService.getSettings();
+  const cleanToken = sanitizeTelegramToken(params.botToken || settings?.telegramBotToken);
+  const cleanChatId = (params.chatId || settings?.telegramChatId || '').trim();
+
+  const sendDirectFromBrowser = async () => {
+    const form = new FormData();
+    form.append('chat_id', cleanChatId);
+    form.append('document', params.pdfBlob, params.filename || 'document.pdf');
+    if (params.caption) {
+      form.append('caption', params.caption);
+      form.append('parse_mode', 'HTML');
+    }
+    const direct = await callTelegramDirectFromBrowser(cleanToken, 'sendDocument', form);
+    if (direct.ok) {
+      return {
+        success: true,
+        message: 'فایل PDF با موفقیت به تلگرام ارسال گردید.',
+      };
+    }
+    return {
+      success: false,
+      error: direct.data?.description || 'خطا در ارسال فایل PDF به تلگرام.',
+    };
+  };
+
   try {
     const pdfBase64 = await blobToBase64(params.pdfBlob);
     const res = await fetch('/api/telegram/send-pdf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        botToken: params.botToken?.trim(),
-        chatId: params.chatId?.trim(),
+        botToken: cleanToken,
+        chatId: cleanChatId,
         pdfBase64,
         filename: params.filename,
         caption: params.caption,
       }),
     });
     const data = await res.json();
+    if (data?.success) {
+      return data;
+    }
+
+    if (isServerTelegramNetworkError(data?.error, res.status)) {
+      try {
+        return await sendDirectFromBrowser();
+      } catch {
+        // fall through
+      }
+    }
+
     return data;
   } catch (err: any) {
-    return {
-      success: false,
-      error: 'خطا در ارتباط با سرور: ' + (err?.message || ''),
-    };
+    try {
+      return await sendDirectFromBrowser();
+    } catch {
+      return {
+        success: false,
+        error: 'خطا در ارتباط با سرور: ' + (err?.message || ''),
+      };
+    }
   }
 }
 
@@ -1751,15 +1999,28 @@ export async function setTelegramWebhook(botToken: string, webhookUrl: string): 
   description?: string;
   result?: boolean;
 }> {
+  const cleanToken = sanitizeTelegramToken(botToken);
   try {
     const res = await fetch('/api/telegram/set-webhook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ botToken, webhookUrl }),
+      body: JSON.stringify({ botToken: cleanToken, webhookUrl }),
     });
-    return await res.json();
+    const data = await res.json();
+    if (data?.ok) return data;
+
+    if (isServerTelegramNetworkError(data?.description || data?.error, res.status)) {
+      const direct = await callTelegramDirectFromBrowser(cleanToken, 'setWebhook', { url: webhookUrl });
+      return direct.data;
+    }
+    return data;
   } catch (err: any) {
-    return { ok: false, description: err?.message || 'خطا در اتصال به سرور' };
+    try {
+      const direct = await callTelegramDirectFromBrowser(cleanToken, 'setWebhook', { url: webhookUrl });
+      return direct.data;
+    } catch {
+      return { ok: false, description: err?.message || 'خطا در اتصال به سرور' };
+    }
   }
 }
 
@@ -1777,11 +2038,24 @@ export async function getTelegramWebhookInfo(botToken: string): Promise<{
   };
   description?: string;
 }> {
+  const cleanToken = sanitizeTelegramToken(botToken);
   try {
-    const res = await fetch(`/api/telegram/webhook-info?botToken=${encodeURIComponent(botToken)}`);
-    return await res.json();
+    const res = await fetch(`/api/telegram/webhook-info?botToken=${encodeURIComponent(cleanToken)}`);
+    const data = await res.json();
+    if (data?.ok) return data;
+
+    if (isServerTelegramNetworkError(data?.description || data?.error, res.status)) {
+      const direct = await callTelegramDirectFromBrowser(cleanToken, 'getWebhookInfo');
+      return direct.data;
+    }
+    return data;
   } catch (err: any) {
-    return { ok: false, description: err?.message || 'خطا در دریافت وضعیت وبهوک' };
+    try {
+      const direct = await callTelegramDirectFromBrowser(cleanToken, 'getWebhookInfo');
+      return direct.data;
+    } catch {
+      return { ok: false, description: err?.message || 'خطا در دریافت وضعیت وبهوک' };
+    }
   }
 }
 

@@ -1,5 +1,6 @@
 import express from 'express';
 import http from 'http';
+import https from 'https';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -30,8 +31,8 @@ try {
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-// Tell Express to trust the reverse proxy (nginx / Cloud Run) for accurate client IP resolution
-app.set('trust proxy', 1);
+// Tell Express to trust the reverse proxy chain (Cloudflare -> Nginx -> Express) for accurate client IP resolution
+app.set('trust proxy', true);
 
 // Hardening: Disable Express fingerprinting header
 app.disable('x-powered-by');
@@ -60,6 +61,11 @@ app.use((req, res, next) => {
     return res.sendStatus(200);
   }
   next();
+});
+
+// Lightweight healthcheck endpoint for Docker & Nginx Reverse Proxy
+app.get('/api/health', (_req, res) => {
+  res.status(200).json({ ok: true, status: 'healthy', timestamp: Date.now() });
 });
 
 // Hardening: Rate Limiting
@@ -1619,6 +1625,72 @@ interface TelegramCallOptions {
   timeoutMs?: number;
 }
 
+/**
+ * Fallback HTTPS request using Node's native `https` module with strict IPv4 (`family: 4`)
+ * and optional direct Telegram IPv4 (`149.154.167.220`) to bypass Docker Alpine `undici` IPv6 bugs and DNS poisoning.
+ */
+function httpsTelegramFallback(
+  urlStr: string,
+  options: { method: string; body?: any; timeoutMs: number; directIp?: string }
+): Promise<{ ok: boolean; status: number; data: any }> {
+  return new Promise((resolve, reject) => {
+    try {
+      const parsed = new URL(urlStr);
+      const payloadStr = options.body ? JSON.stringify(options.body) : undefined;
+      const headers: Record<string, string> = {
+        Host: parsed.host,
+        Accept: 'application/json',
+        Connection: 'close',
+      };
+      if (payloadStr) {
+        headers['Content-Type'] = 'application/json';
+        headers['Content-Length'] = String(Buffer.byteLength(payloadStr));
+      }
+
+      const reqOptions: https.RequestOptions = {
+        protocol: parsed.protocol,
+        hostname: options.directIp || parsed.hostname,
+        port: parsed.port || 443,
+        path: parsed.pathname + parsed.search,
+        method: options.method,
+        headers,
+        family: 4, // Force IPv4 socket (avoids Docker IPv6 blackhole)
+        servername: parsed.hostname, // Preserve TLS SNI even when connecting via direct IP
+        timeout: options.timeoutMs,
+      };
+
+      const req = https.request(reqOptions, (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+        res.on('end', () => {
+          try {
+            const rawText = Buffer.concat(chunks).toString('utf-8');
+            const data = JSON.parse(rawText);
+            const status = res.statusCode || 500;
+            resolve({ ok: status >= 200 && status < 300, status, data });
+          } catch (parseErr) {
+            reject(parseErr);
+          }
+        });
+      });
+
+      req.on('timeout', () => {
+        req.destroy(new Error('Telegram HTTPS fallback timeout'));
+      });
+      req.on('error', (err) => {
+        reject(err);
+      });
+
+      if (payloadStr) {
+        req.write(payloadStr);
+      }
+      req.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 async function callTelegramApi(endpoint: string, options: TelegramCallOptions = {}) {
   const dbData = readDatabase();
   const serverSettings = dbData?.settings || {};
@@ -1641,11 +1713,12 @@ async function callTelegramApi(endpoint: string, options: TelegramCallOptions = 
   const proxyUrl = (options.proxyUrl || serverSettings?.telegramProxyUrl || '').trim();
   const dispatcher = await getTelegramDispatcher(proxyUrl);
   const timeoutMs = options.timeoutMs || 15000;
+  const httpMethod = options.method || (options.body || options.formData ? 'POST' : 'GET');
 
   const url = `${baseUrl}/bot${cleanToken}/${endpoint.replace(/^\/+/, '')}`;
   const buildFetchOptions = (customDispatcher?: any) => {
     const opts: any = {
-      method: options.method || (options.body || options.formData ? 'POST' : 'GET'),
+      method: httpMethod,
       signal: AbortSignal.timeout(timeoutMs),
     };
     if (customDispatcher) {
@@ -1665,7 +1738,7 @@ async function callTelegramApi(endpoint: string, options: TelegramCallOptions = 
     const data = await response.json();
     return { ok: response.ok, status: response.status, data };
   } catch (err: any) {
-    // If running inside Docker and proxy points to 127.0.0.1 / localhost, automatically retry via host.docker.internal
+    // 1. If running inside Docker and proxy points to 127.0.0.1 / localhost, automatically retry via host.docker.internal
     if (proxyUrl && /(127\.0\.0\.1|localhost)/i.test(proxyUrl)) {
       try {
         const dockerHostProxy = proxyUrl.replace(/(127\.0\.0\.1|localhost)/i, 'host.docker.internal');
@@ -1676,7 +1749,33 @@ async function callTelegramApi(endpoint: string, options: TelegramCallOptions = 
           return { ok: retryRes.ok, status: retryRes.status, data: retryData };
         }
       } catch {
-        // Fall through to standard error reporting
+        // Continue to next fallback
+      }
+    }
+
+    // 2. For non-multipart requests, try Node native `https` with strict IPv4 (`family: 4`)
+    // This resolves the Alpine Linux Docker `undici` IPv6 Happy-Eyeballs `fetch failed` error
+    if (!options.formData && !proxyUrl && baseUrl.startsWith('https://')) {
+      try {
+        return await httpsTelegramFallback(url, {
+          method: httpMethod,
+          body: options.body,
+          timeoutMs: 10000,
+        });
+      } catch {
+        // 3. Try direct official Telegram Bot API IPv4 (149.154.167.220) to bypass poisoned DNS on VPS
+        if (baseUrl.includes('api.telegram.org')) {
+          try {
+            return await httpsTelegramFallback(url, {
+              method: httpMethod,
+              body: options.body,
+              timeoutMs: 10000,
+              directIp: '149.154.167.220',
+            });
+          } catch {
+            // Continue
+          }
+        }
       }
     }
 
@@ -1693,8 +1792,8 @@ async function callTelegramApi(endpoint: string, options: TelegramCallOptions = 
     if (isNetworkError) {
       const detailedMsg = [
         'عدم برقراری ارتباط با سرور تلگرام (fetch failed).',
-        'دسترسی مستقیم به دامنه api.telegram.org به دلیل فیلترینگ اینترنت یا مسدود بودن پورت مسدود است.',
-        'راهکار پیشنهادی: در بخش «تنظیمات > تلگرام»، از «ریورس پروکسی» (مانند Cloudflare Worker) یا «پروکسی محلی سیستم» (مانند http://127.0.0.1:7890 یا v2ray) استفاده فرمایید.',
+        'دسترسی مستقیم سرور به دامنه api.telegram.org به دلیل فیلترینگ دیتاسنتر مسدود است.',
+        'راهکار پیشنهادی: در بخش «تنظیمات > تلگرام»، از «ریورس پروکسی» (مانند Cloudflare Worker) یا «پروکسی محلی سیستم» استفاده فرمایید.',
       ].join(' ');
       throw new Error(detailedMsg);
     }
@@ -3711,6 +3810,9 @@ async function startServer() {
   }
 
   const server = http.createServer(app);
+  // Keep-Alive timeout must be higher than Nginx keepalive_timeout (60s) to prevent race-condition 502 errors
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 66000;
 
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');

@@ -1283,7 +1283,47 @@ export const StorageService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      return await res.json();
+      const data = await res.json();
+      if (data?.success) {
+        return data;
+      }
+
+      // در صورتی که سرور VPS داخل ایران باشد و دسترسی سرور به تلگرام مسدود باشد، فایل بکاپ را مستقیماً از مرورگر ارسال کن
+      const errMsg = String(data?.error || data?.message || '');
+      if (errMsg.includes('fetch failed') || errMsg.includes('عدم برقراری ارتباط') || res.status >= 500) {
+        const settings = this.getSettings();
+        const rawToken = payload.botToken || settings?.telegramBotToken || '';
+        const cleanToken = String(rawToken).trim().replace(/^bot/i, '');
+        const cleanChatId = String(payload.chatId || settings?.telegramChatId || '').trim();
+        const baseUrl = (settings?.telegramApiUrl || 'https://api.telegram.org').trim().replace(/\/+$/, '');
+
+        if (cleanToken && cleanChatId) {
+          const jsonBlob = new Blob([JSON.stringify(clientSnapshot, null, 2)], { type: 'application/json' });
+          const dateStr = new Date().toISOString().slice(0, 10);
+          const form = new FormData();
+          form.append('chat_id', cleanChatId);
+          form.append('document', jsonBlob, `mana_backup_${dateStr}.json`);
+          form.append(
+            'caption',
+            `🛡️ <b>نسخه پشتیبان کامل پایگاه‌داده</b>\n📦 تعداد کالاها: ${clientSnapshot.products?.length || 0}\n🧾 تعداد فاکتورها: ${clientSnapshot.invoices?.length || 0}\n👥 تعداد مشتریان: ${clientSnapshot.customers?.length || 0}`
+          );
+          form.append('parse_mode', 'HTML');
+
+          const directRes = await fetch(`${baseUrl}/bot${cleanToken}/sendDocument`, {
+            method: 'POST',
+            body: form,
+          });
+          const directJson = await directRes.json();
+          if (directRes.ok && directJson?.ok) {
+            return {
+              success: true,
+              message: 'نسخه پشتیبان پایگاه‌داده با موفقیت به تلگرام ارسال گردید.',
+            };
+          }
+        }
+      }
+
+      return data;
     } catch (e: any) {
       return {
         success: false,
