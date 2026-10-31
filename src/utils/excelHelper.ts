@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Product, ProductVariant, Customer, Invoice, ExitSlipData, CustomerTransaction, CustomerLedgerEntry, StoreSettings } from '../types';
+import { Product, ProductVariant, Customer, Invoice, ExitSlipData, CustomerTransaction, CustomerLedgerEntry, StoreSettings, DirectTransfer } from '../types';
 import { getCurrentJalaliDate } from './jalali';
 import { generateNextProductCode } from './codeGenerator';
 import { StorageService } from './storage';
@@ -1607,3 +1607,118 @@ export function exportAllCustomerStatementsToExcel(
   const filename = `گزارش_صورتحساب_مشتریان_${today.replace(/\//g, '-')}.xlsx`;
   XLSX.writeFile(wb, filename);
 }
+
+/**
+ * EXPORT DIRECT TRANSFERS (امانی و تعمیرات) TO EXCEL
+ */
+export function exportDirectTransfersToExcel(transfers: DirectTransfer[], currency = 'تومان'): void {
+  const today = getCurrentJalaliDate();
+  const wb = XLSX.utils.book_new();
+
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'repair': return 'تعمیرات و سرویس';
+      case 'temporary_loan': return 'امانی و تست';
+      case 'internal_use': return 'مصرف داخلی / کارگاه';
+      case 'sample': return 'نمونه کالا';
+      default: return 'خروج مستقیم';
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'dispatched': return 'بیرون از انبار (در جریان)';
+      case 'partially_returned': return 'بخشی بازگشته';
+      case 'returned': return 'کامل بازگشته به انبار';
+      case 'completed_no_return': return 'مختومه (بدون بازگشت)';
+      default: return status;
+    }
+  };
+
+  // Sheet 1: خلاصه برگه‌های خروج و ورود (امانی و تعمیرات)
+  const summaryRows = transfers.map((t, idx) => {
+    const totalOut = t.items.reduce((s, i) => s + (i.quantity || 0), 0);
+    const totalIn = t.items.reduce((s, i) => s + (i.returnedQuantity || 0), 0);
+    const totalRemaining = Math.max(0, totalOut - totalIn);
+    const latestReturn = t.returnRecords && t.returnRecords.length > 0
+      ? t.returnRecords[t.returnRecords.length - 1]
+      : null;
+    const totalRepairCost = (t.returnRecords || []).reduce((s, r) => s + (r.repairCost || 0), 0);
+
+    return {
+      'ردیف': idx + 1,
+      'شماره حواله': t.transferNumber,
+      'عنوان / موضوع': t.title,
+      'نوع خروج': getTypeLabel(t.type),
+      'وضعیت': getStatusLabel(t.status),
+      'تاریخ و ساعت خروج': t.dispatchedAt,
+      'موعد بازگشت': t.expectedReturnDate || '—',
+      'تحویل‌گیرنده / تعمیرگاه': t.receiverName,
+      'شماره تماس': t.receiverPhone || '—',
+      'خودرو و پلاک خروج': t.dispatchVehicleInfo || '—',
+      'مقصد': t.destination || '—',
+      'انباردار صادرکننده': t.dispatchedBy,
+      'تعداد کل اقلام خروجی': totalOut,
+      'تعداد بازگشته': totalIn,
+      'مانده بیرون انبار': totalRemaining,
+      [`برآورد هزینه / ودیعه (${currency})`]: t.estimatedCost || 0,
+      [`مجموع هزینه تعمیرات (${currency})`]: totalRepairCost,
+      'آخرین تاریخ بازگشت': latestReturn ? latestReturn.returnedAt : '—',
+      'آورنده بازگشت': latestReturn ? latestReturn.returnerName : '—',
+      'خودرو بازگشت': latestReturn?.returnVehicleInfo || '—',
+      'توضیحات': t.dispatchNotes || '—',
+    };
+  });
+
+  const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+  wsSummary['!cols'] = [
+    { wch: 7 }, { wch: 15 }, { wch: 30 }, { wch: 18 }, { wch: 22 },
+    { wch: 20 }, { wch: 14 }, { wch: 24 }, { wch: 15 }, { wch: 28 },
+    { wch: 24 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 16 },
+    { wch: 22 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 25 }, { wch: 30 },
+  ];
+  wsSummary['!views'] = [{ rightToLeft: true }];
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'لیست_امانی_و_تعمیرات');
+
+  // Sheet 2: ریز اقلام و دستگاه‌ها
+  const itemRows: any[] = [];
+  let rowNum = 1;
+  transfers.forEach((t) => {
+    t.items.forEach((item) => {
+      const rem = Math.max(0, item.quantity - (item.returnedQuantity || 0));
+      itemRows.push({
+        'ردیف': rowNum++,
+        'شماره حواله': t.transferNumber,
+        'عنوان حواله': t.title,
+        'نوع': getTypeLabel(t.type),
+        'وضعیت حواله': getStatusLabel(t.status),
+        'نام کالا / دستگاه': item.productName,
+        'نوع قلم': item.isCustomAsset ? 'تجهیز کارگاهی / خارج از لیست فروش' : 'کالای انبار',
+        'کد کالا': item.productCode || '—',
+        'مدل / تنوع': item.variantName || '—',
+        'شماره سریال / پلاک فنی': item.serialNumber || '—',
+        'تعداد خروج': item.quantity,
+        'تعداد بازگشته': item.returnedQuantity || 0,
+        'مانده بیرون انبار': rem,
+        'واحد': item.unit,
+        'گیرنده': t.receiverName,
+        'تاریخ خروج': t.dispatchedAt,
+        'موعد بازگشت': t.expectedReturnDate || '—',
+        'شرح عیب / توضیحات ردیف': item.notes || '—',
+      });
+    });
+  });
+
+  const wsItems = XLSX.utils.json_to_sheet(itemRows);
+  wsItems['!cols'] = [
+    { wch: 7 }, { wch: 15 }, { wch: 28 }, { wch: 18 }, { wch: 20 },
+    { wch: 28 }, { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 20 },
+    { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 22 },
+    { wch: 18 }, { wch: 14 }, { wch: 30 },
+  ];
+  wsItems['!views'] = [{ rightToLeft: true }];
+  XLSX.utils.book_append_sheet(wb, wsItems, 'ریز_اقلام_امانی_تعمیرات');
+
+  XLSX.writeFile(wb, `گزارش_امانی_و_تعمیرات_${today.replace(/\//g, '-')}.xlsx`);
+}
+

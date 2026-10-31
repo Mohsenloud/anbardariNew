@@ -809,6 +809,7 @@ export interface DirectTransferItem {
   returnedQuantity: number; // تعداد تا کنون بازگشته
   serialNumber?: string; // شماره سریال، کد پلاک دستگاه، مدل
   notes?: string; // توضیحات یا عیب ظاهری دستگاه
+  isCustomAsset?: boolean; // آیا دستگاه/اموال خارج از لیست کالاهای فروشی انبار است؟ (بدون کسر موجودی کالا)
 }
 
 export interface DirectTransferReturnRecord {
@@ -825,6 +826,7 @@ export interface DirectTransferReturnRecord {
     quantity: number;
   }[];
   healthStatus?: 'healthy' | 'repaired' | 'damaged' | 'unrepaired' | 'scrapped'; // وضعیت سلامت پس از بازگشت
+  repairCost?: number; // هزینه تعمیر یا سرویس انجام‌شده (اختیاری)
   notes?: string; // گزارش فنی یا توضیحات بازگشت
 }
 
@@ -847,11 +849,13 @@ export interface DirectTransfer {
   // ۱. اطلاعات خروج از انبار (Dispatch)
   dispatchedAt: string; // تاریخ و ساعت خروج
   dispatchedBy: string; // نام انباردار یا کاربر صادرکننده
+  customerId?: string; // شناسه طرف‌حساب یا مشتری (در صورت انتخاب از لیست مشتریان)
   receiverName: string; // نام شخص، تعمیرگاه، راننده یا تحویل‌گیرنده
   receiverPhone?: string; // شماره تماس
   dispatchVehicleInfo?: string; // مشخصات ماشین و پلاک خارج‌کننده (مثلاً وانت نیسان آبی - پلاک ۲۴ ع ۵۶۷ ایران ۶۸)
   destination?: string; // مقصد / نشانی تعمیرگاه یا مشتری
   dispatchNotes?: string; // توضیحات، علت خروج یا شرح خرابی اولیه
+  estimatedCost?: number; // برآورد هزینه تعمیر یا مبلغ ودیعه/تضمین امانی (اختیاری)
 
   // ۲. سوابق بازگشت و ورود مجدد به انبار (Returns)
   returnRecords: DirectTransferReturnRecord[];
@@ -859,6 +863,7 @@ export interface DirectTransfer {
   createdAt: string;
   updatedAt?: string;
 }
+
 
 
 

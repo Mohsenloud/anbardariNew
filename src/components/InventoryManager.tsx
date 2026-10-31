@@ -734,16 +734,36 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   const handleSaveDirectDispatch = (data: Omit<DirectTransfer, 'id' | 'createdAt'>) => {
     StorageService.createDirectTransferDispatch(data);
     setDirectTransfers(StorageService.getDirectTransfers());
+    onImportProducts?.(StorageService.getProducts(), 'replace');
+    notifyToast(`حواله خروج دستگاه / امانی (${data.transferNumber}) با موفقیت ثبت شد.`, 'success');
+  };
+
+  const handleUpdateDirectTransfer = (transferId: string, updates: Partial<DirectTransfer>) => {
+    StorageService.updateDirectTransfer(transferId, updates);
+    setDirectTransfers(StorageService.getDirectTransfers());
+    notifyToast('اطلاعات حواله امانی / تعمیرات با موفقیت ویرایش شد.', 'success');
+  };
+
+  const handleCompleteDirectTransferWithoutReturn = (transferId: string, reasonNote: string) => {
+    StorageService.completeDirectTransferWithoutReturn(transferId, reasonNote);
+    setDirectTransfers(StorageService.getDirectTransfers());
+    notifyToast('حواله به عنوان مختومه (بدون بازگشت به انبار) ثبت شد.', 'info');
   };
 
   const handleSaveDirectReturn = (transferId: string, returnData: any) => {
     StorageService.recordDirectTransferReturn(transferId, returnData);
     setDirectTransfers(StorageService.getDirectTransfers());
+    onImportProducts?.(StorageService.getProducts(), 'replace');
+    notifyToast('بازگشت کالا / دستگاه به انبار با موفقیت ثبت شد.', 'success');
   };
 
   const handleDeleteDirectTransfer = (transferId: string, returnStock: boolean) => {
     StorageService.deleteDirectTransfer(transferId, returnStock);
     setDirectTransfers(StorageService.getDirectTransfers());
+    if (returnStock) {
+      onImportProducts?.(StorageService.getProducts(), 'replace');
+    }
+    notifyToast('حواله امانی / تعمیرات حذف شد.', 'info');
   };
 
   const filteredExitSlips = regularInvoices.filter((inv) => {
@@ -2253,6 +2273,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           settings={settings}
           currentUserName={currentUser?.fullName || currentUser?.name || 'انباردار'}
           onSaveDispatch={handleSaveDirectDispatch}
+          onUpdateTransfer={handleUpdateDirectTransfer}
+          onCompleteWithoutReturn={handleCompleteDirectTransferWithoutReturn}
           onSaveReturn={handleSaveDirectReturn}
           onDeleteTransfer={handleDeleteDirectTransfer}
         />

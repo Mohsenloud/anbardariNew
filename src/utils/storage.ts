@@ -3618,7 +3618,7 @@ export const StorageService = {
 
   /**
    * ثبت خروج مستقیم از انبار بدون فاکتور (امانی/تعمیرات/مصرف)
-   * موجودی کالاها کسر شده و رکوردهای کاردکس ثبت می‌شوند
+   * موجودی کالاهای انباری کسر شده و رکوردهای کاردکس ثبت می‌شوند
    */
   createDirectTransferDispatch(transferData: Omit<DirectTransfer, 'id' | 'createdAt'>): DirectTransfer {
     const id = `trf-${Date.now()}`;
@@ -3628,23 +3628,24 @@ export const StorageService = {
       createdAt: getCurrentJalaliDate(),
     };
 
-    // 1. کسر موجودی کالاها و تنوع‌ها
+    // 1. کسر موجودی کالاها و تنوع‌ها (فقط برای کالاهای انباری، نه اموال/تجهیزات کارگاهی خارج از لیست فروش)
     const currentProducts = this.getProducts();
     const currentMovements = this.getMovements();
     const updatedProducts = [...currentProducts];
     const newMovements: StockMovement[] = [];
 
-    const typeLabel = 
+    const typeLabel =
       newTransfer.type === 'repair' ? 'تعمیرات و سرویس' :
       newTransfer.type === 'temporary_loan' ? 'امانی و تست' :
-      newTransfer.type === 'internal_use' ? 'مصرف داخلی' : 'خروج مستقیم';
+      newTransfer.type === 'internal_use' ? 'مصرف داخلی' :
+      newTransfer.type === 'sample' ? 'نمونه کالا' : 'خروج مستقیم';
 
     for (const item of newTransfer.items) {
+      if (item.isCustomAsset) continue;
       const pIdx = updatedProducts.findIndex((p) => p.id === item.productId);
       if (pIdx !== -1) {
         const prod = { ...updatedProducts[pIdx] };
-        
-        // اگر تنوع انتخاب شده بود
+
         if (item.variantId && prod.hasVariants && Array.isArray(prod.variants)) {
           prod.variants = prod.variants.map((v) => {
             if (v.id === item.variantId) {
@@ -3657,9 +3658,9 @@ export const StorageService = {
           prod.stock = Math.max(0, prod.stock - item.quantity);
         }
 
+        prod.updatedAt = getCurrentJalaliDate();
         updatedProducts[pIdx] = prod;
 
-        // ثبت کاردکس خروج مستقیم
         const vehicleTxt = newTransfer.dispatchVehicleInfo ? ` (خودرو: ${newTransfer.dispatchVehicleInfo})` : '';
         const receiverTxt = newTransfer.receiverName ? ` به ${newTransfer.receiverName}` : '';
         const serialTxt = item.serialNumber ? ` [سریال: ${item.serialNumber}]` : '';
@@ -3698,7 +3699,81 @@ export const StorageService = {
       details: `${typeLabel} - تحویل به: ${newTransfer.receiverName} | خودرو: ${newTransfer.dispatchVehicleInfo || 'نامشخص'} | اقلام: ${newTransfer.items.map((i) => `${i.productName} (${i.quantity} ${i.unit})`).join('، ')}`,
     });
 
+    this.notifyChange();
     return newTransfer;
+  },
+
+  /**
+   * ویرایش مشخصات برگه خروج مستقیم (عنوان، موعد بازگشت، گیرنده، خودرو، مقصد، هزینه و یادداشت‌ها)
+   */
+  updateDirectTransfer(
+    transferId: string,
+    updates: Partial<DirectTransfer>
+  ): { success: boolean; message?: string; transfer?: DirectTransfer } {
+    const transfers = this.getDirectTransfers();
+    const tIdx = transfers.findIndex((t) => t.id === transferId);
+    if (tIdx === -1) {
+      return { success: false, message: 'حواله مورد نظر یافت نشد.' };
+    }
+
+    const current = transfers[tIdx];
+    const updated: DirectTransfer = {
+      ...current,
+      ...updates,
+      id: current.id,
+      createdAt: current.createdAt,
+      updatedAt: getCurrentJalaliDate(),
+    };
+
+    transfers[tIdx] = updated;
+    this.saveDirectTransfers(transfers);
+
+    this.logActivity({
+      category: 'warehouse',
+      actionType: 'direct_transfer_update',
+      actionTitle: `ویرایش حواله امانی/تعمیرات: ${updated.transferNumber}`,
+      details: `عنوان: ${updated.title} | تحویل‌گیرنده: ${updated.receiverName} | موعد بازگشت: ${updated.expectedReturnDate || 'تعیین‌نشده'}`,
+    });
+
+    this.notifyChange();
+    return { success: true, transfer: updated };
+  },
+
+  /**
+   * مختومه کردن برگه در جریان بدون نیاز به بازگشت کالا (مصرف‌شده، تبدیل به فروش، یا اسقاط دستگاه)
+   */
+  completeDirectTransferWithoutReturn(
+    transferId: string,
+    reasonNote?: string
+  ): { success: boolean; message?: string; transfer?: DirectTransfer } {
+    const transfers = this.getDirectTransfers();
+    const tIdx = transfers.findIndex((t) => t.id === transferId);
+    if (tIdx === -1) {
+      return { success: false, message: 'حواله مورد نظر یافت نشد.' };
+    }
+
+    const target = { ...transfers[tIdx] };
+    target.status = 'completed_no_return';
+    target.isReturnable = false;
+    target.updatedAt = getCurrentJalaliDate();
+    if (reasonNote && reasonNote.trim()) {
+      target.dispatchNotes = target.dispatchNotes
+        ? `${target.dispatchNotes} | مختومه: ${reasonNote.trim()}`
+        : `مختومه: ${reasonNote.trim()}`;
+    }
+
+    transfers[tIdx] = target;
+    this.saveDirectTransfers(transfers);
+
+    this.logActivity({
+      category: 'warehouse',
+      actionType: 'direct_transfer_complete',
+      actionTitle: `مختومه‌سازی حواله ${target.transferNumber}`,
+      details: `حواله «${target.title}» به وضعیت مختومه (بدون بازگشت) تغییر یافت.${reasonNote ? ` علت: ${reasonNote}` : ''}`,
+    });
+
+    this.notifyChange();
+    return { success: true, transfer: target };
   },
 
   /**
@@ -3706,7 +3781,7 @@ export const StorageService = {
    * اقلام بازگشتی به موجودی انبار برگردانده شده و در کاردکس ثبت می‌شوند
    */
   recordDirectTransferReturn(
-    transferId: string, 
+    transferId: string,
     returnData: Omit<DirectTransferReturnRecord, 'id'>
   ): { success: boolean; message?: string; transfer?: DirectTransfer } {
     const transfers = this.getDirectTransfers();
@@ -3722,55 +3797,58 @@ export const StorageService = {
       id: returnRecordId,
     };
 
-    // 1. برگرداندن موجودی کالاها به انبار
+    // 1. برگرداندن موجودی کالاها به انبار (مگر اینکه قلم، تجهیز کارگاهی سفارشی یا اسقاط‌شده باشد)
     const currentProducts = this.getProducts();
     const currentMovements = this.getMovements();
     const updatedProducts = [...currentProducts];
     const newMovements: StockMovement[] = [];
+    const isScrapped = returnData.healthStatus === 'scrapped';
 
-    // به‌روزرسانی تعداد بازگشته در اقلام حواله
     const updatedItems = targetTransfer.items.map((item) => {
       const returnedItem = returnData.itemsReturned.find((r) => r.itemId === item.id || r.productId === item.productId);
       if (returnedItem && returnedItem.quantity > 0) {
         const newReturnedQty = (item.returnedQuantity || 0) + returnedItem.quantity;
 
-        // افزایش موجودی کالای مربوطه
-        const pIdx = updatedProducts.findIndex((p) => p.id === item.productId);
-        if (pIdx !== -1) {
-          const prod = { ...updatedProducts[pIdx] };
-          if (item.variantId && prod.hasVariants && Array.isArray(prod.variants)) {
-            prod.variants = prod.variants.map((v) => {
-              if (v.id === item.variantId) {
-                return { ...v, stock: v.stock + returnedItem.quantity };
-              }
-              return v;
+        if (!item.isCustomAsset && !isScrapped) {
+          const pIdx = updatedProducts.findIndex((p) => p.id === item.productId);
+          if (pIdx !== -1) {
+            const prod = { ...updatedProducts[pIdx] };
+            if (item.variantId && prod.hasVariants && Array.isArray(prod.variants)) {
+              prod.variants = prod.variants.map((v) => {
+                if (v.id === item.variantId) {
+                  return { ...v, stock: v.stock + returnedItem.quantity };
+                }
+                return v;
+              });
+              prod.stock = prod.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+            } else {
+              prod.stock = prod.stock + returnedItem.quantity;
+            }
+            prod.updatedAt = getCurrentJalaliDate();
+            updatedProducts[pIdx] = prod;
+
+            const vehicleTxt = returnData.returnVehicleInfo ? ` (با خودرو: ${returnData.returnVehicleInfo})` : '';
+            const returnerTxt = returnData.returnerName ? ` توسط ${returnData.returnerName}` : '';
+            const healthTxt =
+              returnData.healthStatus === 'repaired' ? ' [تعمیر شده و سالم]' :
+              returnData.healthStatus === 'healthy' ? ' [سالم و بدون عیب]' :
+              returnData.healthStatus === 'unrepaired' ? ' [تعمیر نشده]' :
+              returnData.healthStatus === 'damaged' ? ' [دارای عیب یا نقص]' : '';
+
+            newMovements.push({
+              id: `mov-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              productId: prod.id,
+              productName: prod.name,
+              variantId: item.variantId,
+              variantName: item.variantName,
+              type: 'direct_in',
+              quantity: returnedItem.quantity,
+              remainingStock: prod.stock,
+              invoiceNumber: targetTransfer.transferNumber,
+              date: getCurrentJalaliDate(),
+              note: `ورود/بازگشت به انبار (برگه ${targetTransfer.transferNumber})${returnerTxt}${vehicleTxt}${healthTxt}`,
             });
-            prod.stock = prod.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
-          } else {
-            prod.stock = prod.stock + returnedItem.quantity;
           }
-          updatedProducts[pIdx] = prod;
-
-          // ثبت کاردکس ورود/بازگشت
-          const vehicleTxt = returnData.returnVehicleInfo ? ` (با خودرو: ${returnData.returnVehicleInfo})` : '';
-          const returnerTxt = returnData.returnerName ? ` توسط ${returnData.returnerName}` : '';
-          const healthTxt = returnData.healthStatus === 'repaired' ? ' [تعمیر شده و سالم]' :
-                            returnData.healthStatus === 'healthy' ? ' [سالم و بدون عیب]' :
-                            returnData.healthStatus === 'damaged' ? ' [دارای عیب یا نقص]' : '';
-
-          newMovements.push({
-            id: `mov-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            productId: prod.id,
-            productName: prod.name,
-            variantId: item.variantId,
-            variantName: item.variantName,
-            type: 'direct_in',
-            quantity: returnedItem.quantity,
-            remainingStock: prod.stock,
-            invoiceNumber: targetTransfer.transferNumber,
-            date: getCurrentJalaliDate(),
-            note: `ورود/بازگشت به انبار (برگه ${targetTransfer.transferNumber})${returnerTxt}${vehicleTxt}${healthTxt}`,
-          });
         }
 
         return { ...item, returnedQuantity: newReturnedQty };
@@ -3785,7 +3863,7 @@ export const StorageService = {
     const anyReturned = updatedItems.some((i) => (i.returnedQuantity || 0) > 0);
 
     if (allReturned) {
-      targetTransfer.status = 'returned';
+      targetTransfer.status = isScrapped ? 'completed_no_return' : 'returned';
     } else if (anyReturned) {
       targetTransfer.status = 'partially_returned';
     }
@@ -3809,6 +3887,7 @@ export const StorageService = {
       details: `آورنده: ${returnData.returnerName} | خودرو: ${returnData.returnVehicleInfo || 'نامشخص'} | تحویل‌گیرنده در انبار: ${returnData.receivedByWarehouseUser} | وضعیت: ${targetTransfer.status === 'returned' ? 'تکمیل کامل برگشت' : 'بخشی از اقلام برگشت داده شد'}`,
     });
 
+    this.notifyChange();
     return { success: true, transfer: targetTransfer };
   },
 
@@ -3819,22 +3898,54 @@ export const StorageService = {
       return { success: false, message: 'حواله مورد نظر یافت نشد.' };
     }
 
-    // اگر حواله در وضعیت خارج شده بود و کاربر خواسته موجودی برگردد:
-    if (returnStockToWarehouse && target.status === 'dispatched') {
+    // اگر حواله در وضعیت خارج شده یا بخشی بازگشته بود و کاربر خواسته موجودی باقیمانده برگردد:
+    if (
+      returnStockToWarehouse &&
+      (target.status === 'dispatched' || target.status === 'partially_returned')
+    ) {
       const currentProducts = this.getProducts();
+      const currentMovements = this.getMovements();
       const updatedProducts = [...currentProducts];
+      const newMovements: StockMovement[] = [];
+
       for (const item of target.items) {
-        const remainingToRevert = item.quantity - (item.returnedQuantity || 0);
+        if (item.isCustomAsset) continue;
+        const remainingToRevert = Math.max(0, item.quantity - (item.returnedQuantity || 0));
         if (remainingToRevert > 0) {
           const pIdx = updatedProducts.findIndex((p) => p.id === item.productId);
           if (pIdx !== -1) {
             const p = { ...updatedProducts[pIdx] };
-            p.stock += remainingToRevert;
+            if (item.variantId && p.hasVariants && Array.isArray(p.variants)) {
+              p.variants = p.variants.map((v) =>
+                v.id === item.variantId ? { ...v, stock: v.stock + remainingToRevert } : v
+              );
+              p.stock = p.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+            } else {
+              p.stock += remainingToRevert;
+            }
+            p.updatedAt = getCurrentJalaliDate();
             updatedProducts[pIdx] = p;
+
+            newMovements.push({
+              id: `mov-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              productId: p.id,
+              productName: p.name,
+              variantId: item.variantId,
+              variantName: item.variantName,
+              type: 'direct_in',
+              quantity: remainingToRevert,
+              remainingStock: p.stock,
+              invoiceNumber: target.transferNumber,
+              date: getCurrentJalaliDate(),
+              note: `برگشت موجودی به انبار بابت حذف برگه خروج مستقیم (${target.transferNumber})`,
+            });
           }
         }
       }
       this.saveProducts(updatedProducts);
+      if (newMovements.length > 0) {
+        this.saveMovements([...newMovements, ...currentMovements]);
+      }
     }
 
     const cleanId = String(transferId).trim();
