@@ -3802,13 +3802,6 @@ app.delete('/api/invoices/:id/share-link', async (req, res) => {
 // VITE OR STATIC CLIENT SERVING
 // -------------------------------------------------------------
 async function startServer() {
-  // Test and initialize PostgreSQL if configured
-  try {
-    await testAndInitPostgres();
-  } catch (err: any) {
-    console.warn('[PostgreSQL Bootstrap Warning]:', err.message);
-  }
-
   const server = http.createServer(app);
   // Keep-Alive timeout must be higher than Nginx keepalive_timeout (60s) to prevent race-condition 502 errors
   server.keepAliveTimeout = 65000;
@@ -3826,25 +3819,49 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(
+      express.static(distPath, {
+        setHeaders: (res, filePath) => {
+          const base = path.basename(filePath);
+          if (
+            base === 'index.html' ||
+            base === 'sw.js' ||
+            base === 'registerSW.js' ||
+            base === 'manifest.webmanifest' ||
+            base.startsWith('workbox-')
+          ) {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+          }
+        },
+      })
+    );
     app.get('*', (req, res) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
+  // Listen immediately so Nginx / Docker healthchecks succeed in <200ms
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`[Factor Server] Centralized multi-user server running on http://0.0.0.0:${PORT}`);
     console.log(`[Factor Server] Persistent storage mounted at: ${DATA_DIR}`);
 
+    // Initialize PostgreSQL asynchronously right after port binding
+    testAndInitPostgres().catch((err: any) => {
+      console.warn('[PostgreSQL Bootstrap Warning]:', err.message);
+    });
+
     // Initial check: if no backup exists, create startup baseline
-    try {
-      const existingBackups = getBackupsList();
-      if (existingBackups.length === 0) {
-        createBackup('startup', 'نسخه اولیه راه‌اندازی سیستم و دیتابیس');
+    setTimeout(() => {
+      try {
+        const existingBackups = getBackupsList();
+        if (existingBackups.length === 0) {
+          createBackup('startup', 'نسخه اولیه راه‌اندازی سیستم و دیتابیس');
+        }
+      } catch (e) {
+        console.error('[Backup Engine] Failed initial startup backup:', e);
       }
-    } catch (e) {
-      console.error('[Backup Engine] Failed initial startup backup:', e);
-    }
+    }, 1000);
 
     // Schedule automated periodic backup check (every 4 hours)
     setInterval(() => {
@@ -3855,6 +3872,19 @@ async function startServer() {
       }
     }, 4 * 60 * 60 * 1000);
   });
+
+  // Fast & clean shutdown when running as PID 1 in Docker (prevents 15s-30s stop delay on docker compose down)
+  const handleShutdown = (signal: string) => {
+    console.log(`[Factor Server] Received ${signal}, shutting down immediately...`);
+    server.close(() => {
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(0), 500).unref();
+  };
+
+  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+  process.on('SIGINT', () => handleShutdown('SIGINT'));
 }
 
 startServer();
+

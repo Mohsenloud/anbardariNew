@@ -1,8 +1,12 @@
 node_modules
 dist
+data
+data/
+backups
 .git
 .gitignore
 .env
 *.log
 bun.lock
 README-DEPLOY-VPS.md
+nginx-vps-host.conf.example
