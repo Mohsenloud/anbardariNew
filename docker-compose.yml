@@ -1,4 +1,4 @@
-version: '3.8'
+name: mana-accounting
 
 services:
   # ۱. سرویس پایگاه‌داده PostgreSQL (mana_db)
@@ -6,55 +6,112 @@ services:
     image: postgres:16-alpine
     container_name: mana_postgres_db
     restart: unless-stopped
+    shm_size: 256mb
+    stop_grace_period: 30s
     environment:
-      POSTGRES_DB: mana_db
-      POSTGRES_USER: mana_user
-      POSTGRES_PASSWORD: ManaSecurePass_2026!
+      TZ: Asia/Tehran
+      PGTZ: Asia/Tehran
+      POSTGRES_DB: ${POSTGRES_DB:-mana_db}
+      POSTGRES_USER: ${POSTGRES_USER:-mana_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ManaSecurePass_2026!}
       PGDATA: /var/lib/postgresql/data/pgdata
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "shared_buffers=128MB"
+      - "-c"
+      - "effective_cache_size=384MB"
+      - "-c"
+      - "work_mem=8MB"
+      - "-c"
+      - "maintenance_work_mem=64MB"
+      - "-c"
+      - "timezone=Asia/Tehran"
     volumes:
       # ذخیره‌سازی همیشگی و دائمی داده‌های PostgreSQL روی سرور شما
       - postgres_data:/var/lib/postgresql/data
       # ساخت خودکار جداول mana_db در اولین اجرا
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     expose:
-      # پورت 5432 در شبکه داخلی داکر برای کانتینر app قابل دسترسی است و با هاست تداخل ایجاد نمی‌کند
+      # پورت 5432 فقط در شبکه داخلی داکر برای کانتینر app باز است و با هاست تداخل ایجاد نمی‌کند
       - "5432"
+    networks:
+      - mana_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mana_user -d mana_db"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-mana_user} -d $${POSTGRES_DB:-mana_db}"]
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  # ۲. سرویس وب‌اپلیکیشن (فرانت‌انت + بک‌اند Express)
+  # ۲. سرویس وب‌اپلیکیشن (فرانت‌اند + بک‌اند Express)
   app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: mana_factor_app
     restart: unless-stopped
+    stop_grace_period: 15s
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "${APP_PORT:-3000}:3000"
+    extra_hosts:
+      # امکان دسترسی کانتینر به پورت‌های پروکسی/فیلترشکن روی سیستم میزبان (Host)
+      - "host.docker.internal:host-gateway"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       # بکاپ‌ها و اسنپ‌شات‌های محلی
       - ./data:/app/data
     environment:
+      - TZ=Asia/Tehran
       - NODE_ENV=production
+      - NODE_OPTIONS=--dns-result-order=ipv4first --max-old-space-size=512
       - PORT=3000
       - DATA_DIR=/app/data
-      - DATABASE_URL=postgresql://mana_user:ManaSecurePass_2026!@postgres:5432/mana_db
-      - PGDATABASE=mana_db
-      - PGUSER=mana_user
-      - PGPASSWORD=ManaSecurePass_2026!
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-mana_user}:${POSTGRES_PASSWORD:-ManaSecurePass_2026!}@postgres:5432/${POSTGRES_DB:-mana_db}
+      - PGDATABASE=${POSTGRES_DB:-mana_db}
+      - PGUSER=${POSTGRES_USER:-mana_user}
+      - PGPASSWORD=${POSTGRES_PASSWORD:-ManaSecurePass_2026!}
       - PGHOST=postgres
       - PGPORT=5432
-      # تنظیمات اختیاری تلگرام و هوش مصنوعی (همچنین از طریق پنل مدیریت قابل تنظیم است)
+      # تنظیمات اختیاری تلگرام، پروکسی ضد فیلتر و هوش مصنوعی (از طریق پنل تنظیمات برنامه نیز قابل تغییر است)
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - TELEGRAM_API_URL=${TELEGRAM_API_URL:-https://api.telegram.org}
+      - TELEGRAM_PROXY_URL=${TELEGRAM_PROXY_URL:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - HTTP_PROXY=${HTTP_PROXY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    networks:
+      - mana_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  mana_network:
+    driver: bridge
 
 volumes:
   postgres_data:
     driver: local
+

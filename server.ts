@@ -1635,32 +1635,48 @@ async function callTelegramApi(endpoint: string, options: TelegramCallOptions = 
     'https://api.telegram.org'
   ).trim().replace(/\/+$/, '');
 
-  const proxyUrl = options.proxyUrl || serverSettings?.telegramProxyUrl;
+  const proxyUrl = (options.proxyUrl || serverSettings?.telegramProxyUrl || '').trim();
   const dispatcher = getTelegramDispatcher(proxyUrl);
   const timeoutMs = options.timeoutMs || 15000;
 
   const url = `${baseUrl}/bot${cleanToken}/${endpoint.replace(/^\/+/, '')}`;
-  const fetchOptions: any = {
-    method: options.method || (options.body || options.formData ? 'POST' : 'GET'),
-    signal: AbortSignal.timeout(timeoutMs),
+  const buildFetchOptions = (customDispatcher?: any) => {
+    const opts: any = {
+      method: options.method || (options.body || options.formData ? 'POST' : 'GET'),
+      signal: AbortSignal.timeout(timeoutMs),
+    };
+    if (customDispatcher) {
+      opts.dispatcher = customDispatcher;
+    }
+    if (options.formData) {
+      opts.body = options.formData;
+    } else if (options.body) {
+      opts.headers = { 'Content-Type': 'application/json' };
+      opts.body = JSON.stringify(options.body);
+    }
+    return opts;
   };
 
-  if (dispatcher) {
-    fetchOptions.dispatcher = dispatcher;
-  }
-
-  if (options.formData) {
-    fetchOptions.body = options.formData;
-  } else if (options.body) {
-    fetchOptions.headers = { 'Content-Type': 'application/json' };
-    fetchOptions.body = JSON.stringify(options.body);
-  }
-
   try {
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(url, buildFetchOptions(dispatcher));
     const data = await response.json();
     return { ok: response.ok, status: response.status, data };
   } catch (err: any) {
+    // If running inside Docker and proxy points to 127.0.0.1 / localhost, automatically retry via host.docker.internal
+    if (proxyUrl && /(127\.0\.0\.1|localhost)/i.test(proxyUrl)) {
+      try {
+        const dockerHostProxy = proxyUrl.replace(/(127\.0\.0\.1|localhost)/i, 'host.docker.internal');
+        const dockerDispatcher = getTelegramDispatcher(dockerHostProxy);
+        if (dockerDispatcher) {
+          const retryRes = await fetch(url, buildFetchOptions(dockerDispatcher));
+          const retryData = await retryRes.json();
+          return { ok: retryRes.ok, status: retryRes.status, data: retryData };
+        }
+      } catch {
+        // Fall through to standard error reporting
+      }
+    }
+
     const causeCode = err?.cause?.code || err?.cause?.message || '';
     const isNetworkError =
       err?.name === 'TimeoutError' ||
