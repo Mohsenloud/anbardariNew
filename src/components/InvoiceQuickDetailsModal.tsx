@@ -83,7 +83,15 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
 
   if (!isOpen || !invoice) return null;
 
-  const canDelete = !currentUser || currentUser.role === 'admin' || currentUser.role === 'supervisor' || Boolean(currentUser.permissions?.canDeleteInvoice);
+  const canCreate = !currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions?.canCreateInvoice);
+  const canSettle =
+    !currentUser ||
+    currentUser.role === 'admin' ||
+    Boolean(
+      currentUser.permissions?.canSettleInvoices ??
+        (currentUser.permissions?.canCreateInvoice || currentUser.permissions?.canViewReports)
+    );
+  const canDelete = !currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions?.canDeleteInvoice);
   const isPaid = invoice.paymentStatus === 'paid';
   const isPartial = invoice.paymentStatus === 'partial';
   const isUnpaid = invoice.paymentStatus === 'unpaid';
@@ -507,7 +515,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                   role="menu"
                 >
                   {/* Convert Proforma if proforma */}
-                  {isProformaInvoice && (
+                  {isProformaInvoice && canCreate && onConvertProforma && (
                     <button
                       type="button"
                       id="details-actions-convert-proforma-btn"
@@ -533,7 +541,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                   )}
 
                   {/* Register Payment (if unpaid/partial) */}
-                  {onOpenPaymentModal && !isPaid && (
+                  {onOpenPaymentModal && canSettle && !isPaid && (
                     <button
                       type="button"
                       onClick={() => {
@@ -555,7 +563,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                   )}
 
                   {/* Edit Invoice */}
-                  {onEditInvoice && (
+                  {onEditInvoice && canCreate && (
                     <button
                       type="button"
                       onClick={() => {

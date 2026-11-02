@@ -572,13 +572,16 @@ export type PdfQualityPreset = 'economy' | 'standard' | 'high' | 'ultra';
 export type UserRole = 'admin' | 'supervisor' | 'cashier' | 'warehouse' | 'accountant' | 'custom';
 
 export interface UserPermissions {
-  canCreateInvoice: boolean; // صدور فاکتور جدید
-  canViewInvoices: boolean; // مشاهده و جستجوی فاکتورها
-  canDeleteInvoice: boolean; // حذف و مرجوعی فاکتور
+  canCreateInvoice: boolean; // صدور و ویرایش فاکتور فروش و پیش‌فاکتور
+  canViewInvoices: boolean; // مشاهده و جستجوی فاکتورهای فروش
+  canCreatePurchaseInvoice?: boolean; // ثبت و ویرایش فاکتور خرید کالا و خدمات/هزینه
+  canViewPurchaseInvoices?: boolean; // مشاهده فاکتورهای خرید کالا و خدمات
+  canSettleInvoices?: boolean; // ثبت دریافت/پرداخت و تسویه فاکتورهای فروش و خرید
+  canDeleteInvoice: boolean; // حذف و مرجوعی فاکتورها
   canManageInventory: boolean; // مدیریت کالاها و انبارداری
-  canManageCustomers: boolean; // مدیریت مشتریان
+  canManageCustomers: boolean; // مدیریت مشتریان و طرف‌حساب‌ها
   canViewReports: boolean; // مشاهده گزارشات مالی و سود
-  canAccessAdmin: boolean; // دسترسی به پنل مدیریت
+  canAccessAdmin: boolean; // دسترسی به پنل مدیریت و تنظیمات
   canManageUsers: boolean; // تعریف و مدیریت کاربران
 }
 
@@ -689,6 +692,11 @@ export interface PurchaseInvoice {
   status: PurchaseStatus; // وضعیت تحویل و ورود به انبار
   inboundReceiptId?: string; // شناسه حواله ورود کالا متناظر (فقط برای فاکتورهای دارای کالای فیزیکی)
   isServiceOnly?: boolean; // آیا فاکتور صرفاً مربوط به خرید خدمات و هزینه خدمات است؟
+  createdById?: string; // شناسه کاربری ثبت‌کننده فاکتور خرید یا خدمات
+  createdByName?: string; // نام و نام خانوادگی کاربر ثبت‌کننده
+  createdByRole?: string; // نقش کاربری در زمان ثبت
+  updatedById?: string; // شناسه آخرین ویرایش‌کننده
+  updatedByName?: string; // نام آخرین ویرایش‌کننده
   createdAt: string;
   updatedAt?: string;
 }

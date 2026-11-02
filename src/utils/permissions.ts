@@ -22,8 +22,15 @@ export function isTabPermitted(
       return Boolean(user.permissions.canViewInvoices);
 
     case 'purchases':
+      if (user.role === 'admin') return true;
+      if (user.permissions.canViewPurchaseInvoices !== undefined || user.permissions.canCreatePurchaseInvoice !== undefined) {
+        return Boolean(
+          user.permissions.canViewPurchaseInvoices ||
+          user.permissions.canCreatePurchaseInvoice ||
+          user.permissions.canAccessAdmin
+        );
+      }
       return Boolean(
-        user.permissions.canCreateInvoice ||
         user.permissions.canManageInventory ||
         user.permissions.canAccessAdmin ||
         user.permissions.canViewInvoices
@@ -58,6 +65,75 @@ export function isTabPermitted(
 }
 
 /**
+ * Checks whether the user is allowed to create or edit purchase/service invoices.
+ * Note: 'accountant' role by default cannot create/edit purchase or service invoices.
+ */
+export function canUserCreatePurchase(user?: AppUser | null): boolean {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (user.role === 'accountant' && user.permissions.canCreatePurchaseInvoice !== true) {
+    return false;
+  }
+  if (user.permissions.canCreatePurchaseInvoice !== undefined) {
+    return Boolean(user.permissions.canCreatePurchaseInvoice);
+  }
+  return Boolean(user.permissions.canManageInventory || user.permissions.canAccessAdmin);
+}
+
+/**
+ * Checks whether the user is allowed to view purchase/service invoices.
+ */
+export function canUserViewPurchases(user?: AppUser | null): boolean {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (user.permissions.canViewPurchaseInvoices !== undefined) {
+    return Boolean(user.permissions.canViewPurchaseInvoices || user.permissions.canCreatePurchaseInvoice);
+  }
+  return Boolean(
+    user.permissions.canViewInvoices ||
+    user.permissions.canManageInventory ||
+    user.permissions.canAccessAdmin
+  );
+}
+
+/**
+ * Checks whether the user is allowed to register payments / settle sales & purchase invoices.
+ */
+export function canUserSettleInvoice(user?: AppUser | null): boolean {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (user.permissions.canSettleInvoices !== undefined) {
+    return Boolean(user.permissions.canSettleInvoices);
+  }
+  return Boolean(
+    user.permissions.canCreateInvoice ||
+    user.permissions.canViewReports ||
+    user.permissions.canManageCustomers
+  );
+}
+
+/**
+ * Checks whether the user is allowed to create or edit sales invoices / proformas.
+ */
+export function canUserCreateSalesInvoice(user?: AppUser | null): boolean {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (user.role === 'accountant' && user.permissions.canCreateInvoice !== true) {
+    return false;
+  }
+  return Boolean(user.permissions.canCreateInvoice);
+}
+
+/**
+ * Checks whether the user is allowed to delete invoices.
+ */
+export function canUserDeleteInvoice(user?: AppUser | null): boolean {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  return Boolean(user.permissions.canDeleteInvoice);
+}
+
+/**
  * Determines the optimal and most relevant landing tab for a user immediately upon login,
  * according to their role archetype and granted permissions.
  */
@@ -82,6 +158,7 @@ export function getDefaultTabForUser(
   if (isTabPermitted('new-invoice', user, settings)) return 'new-invoice';
   if (isTabPermitted('inventory', user, settings)) return 'inventory';
   if (isTabPermitted('invoices', user, settings)) return 'invoices';
+  if (isTabPermitted('purchases', user, settings)) return 'purchases';
   if (isTabPermitted('reports', user, settings)) return 'reports';
   if (isTabPermitted('customers', user, settings)) return 'customers';
   if (isTabPermitted('admin', user, settings)) return 'admin';

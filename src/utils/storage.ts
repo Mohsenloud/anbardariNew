@@ -116,6 +116,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
   admin: {
     canCreateInvoice: true,
     canViewInvoices: true,
+    canCreatePurchaseInvoice: true,
+    canViewPurchaseInvoices: true,
+    canSettleInvoices: true,
     canDeleteInvoice: true,
     canManageInventory: true,
     canManageCustomers: true,
@@ -126,6 +129,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
   supervisor: {
     canCreateInvoice: true,
     canViewInvoices: true,
+    canCreatePurchaseInvoice: true,
+    canViewPurchaseInvoices: true,
+    canSettleInvoices: true,
     canDeleteInvoice: true,
     canManageInventory: true,
     canManageCustomers: true,
@@ -136,6 +142,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
   cashier: {
     canCreateInvoice: true,
     canViewInvoices: true,
+    canCreatePurchaseInvoice: false,
+    canViewPurchaseInvoices: false,
+    canSettleInvoices: true,
     canDeleteInvoice: false,
     canManageInventory: false,
     canManageCustomers: true,
@@ -146,6 +155,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
   warehouse: {
     canCreateInvoice: false,
     canViewInvoices: true,
+    canCreatePurchaseInvoice: false,
+    canViewPurchaseInvoices: true,
+    canSettleInvoices: false,
     canDeleteInvoice: false,
     canManageInventory: true,
     canManageCustomers: false,
@@ -156,6 +168,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
   accountant: {
     canCreateInvoice: false,
     canViewInvoices: true,
+    canCreatePurchaseInvoice: false,
+    canViewPurchaseInvoices: true,
+    canSettleInvoices: true,
     canDeleteInvoice: false,
     canManageInventory: false,
     canManageCustomers: true,
@@ -166,6 +181,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
   custom: {
     canCreateInvoice: true,
     canViewInvoices: true,
+    canCreatePurchaseInvoice: false,
+    canViewPurchaseInvoices: true,
+    canSettleInvoices: true,
     canDeleteInvoice: false,
     canManageInventory: false,
     canManageCustomers: false,
@@ -175,12 +193,54 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
   },
 };
 
+export function normalizeUserPermissions(
+  role: UserRole,
+  perms?: Partial<UserPermissions>
+): UserPermissions {
+  const roleDefaults = DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.custom;
+  if (!perms) {
+    return { ...roleDefaults };
+  }
+
+  // در صورتی که نقش کاربر صراحتاً «حسابدار» (accountant) باشد، طبق قانون سیستم مجاز به ثبت/ویرایش فاکتور خرید، خدمات یا فروش نیست
+  const isStrictAccountant = role === 'accountant';
+  const isAdmin = role === 'admin';
+
+  if (isAdmin) {
+    return { ...DEFAULT_ROLE_PERMISSIONS.admin };
+  }
+
+  return {
+    canCreateInvoice: isStrictAccountant ? false : Boolean(perms.canCreateInvoice ?? roleDefaults.canCreateInvoice),
+    canViewInvoices: Boolean(perms.canViewInvoices ?? roleDefaults.canViewInvoices),
+    canCreatePurchaseInvoice: isStrictAccountant
+      ? false
+      : Boolean(perms.canCreatePurchaseInvoice ?? roleDefaults.canCreatePurchaseInvoice),
+    canViewPurchaseInvoices: Boolean(
+      perms.canViewPurchaseInvoices ??
+        roleDefaults.canViewPurchaseInvoices ??
+        (perms.canViewInvoices || perms.canManageInventory)
+    ),
+    canSettleInvoices: Boolean(
+      perms.canSettleInvoices ??
+        roleDefaults.canSettleInvoices ??
+        (perms.canCreateInvoice || perms.canViewReports)
+    ),
+    canDeleteInvoice: isStrictAccountant ? false : Boolean(perms.canDeleteInvoice ?? roleDefaults.canDeleteInvoice),
+    canManageInventory: Boolean(perms.canManageInventory ?? roleDefaults.canManageInventory),
+    canManageCustomers: Boolean(perms.canManageCustomers ?? roleDefaults.canManageCustomers),
+    canViewReports: Boolean(perms.canViewReports ?? roleDefaults.canViewReports),
+    canAccessAdmin: Boolean(perms.canAccessAdmin ?? roleDefaults.canAccessAdmin),
+    canManageUsers: Boolean(perms.canManageUsers ?? roleDefaults.canManageUsers),
+  };
+}
+
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'مدیر کل (دسترسی نامحدود)',
   supervisor: 'سرپرست (همه فعالیت‌ها بجز پنل و مدیریت کاربران)',
   cashier: 'صندوق‌دار و فروشنده',
   warehouse: 'مسئول انبار و موجودی',
-  accountant: 'حسابدار و تحلیلگر مالی',
+  accountant: 'حسابدار و تحلیلگر مالی (مشاهده، تسویه و گزارشات)',
   custom: 'سطح دسترسی سفارشی',
 };
 
@@ -2949,11 +3009,24 @@ export const StorageService = {
         if (!u.password || !u.pin) {
           needsSave = true;
         }
+        const normalizedPerms = normalizeUserPermissions(u.role, u.permissions);
+        if (
+          !u.permissions ||
+          u.permissions.canCreatePurchaseInvoice === undefined ||
+          u.permissions.canViewPurchaseInvoices === undefined ||
+          u.permissions.canSettleInvoices === undefined ||
+          (u.role === 'accountant' && (u.permissions.canCreatePurchaseInvoice || u.permissions.canCreateInvoice))
+        ) {
+          needsSave = true;
+        }
         return {
           ...u,
           id: validId,
+          fullName: u.fullName || u.name || u.username,
+          name: u.fullName || u.name || u.username,
           password: userPassword,
           pin: userPin,
+          permissions: normalizedPerms,
         };
       });
 
@@ -3034,6 +3107,8 @@ export const StorageService = {
     const newUser: AppUser = {
       ...userData,
       id: `user-${Date.now()}`,
+      name: userData.fullName || userData.name,
+      permissions: normalizeUserPermissions(userData.role, userData.permissions),
       createdAt: getCurrentJalaliDate(),
     };
     users.push(newUser);
@@ -3045,7 +3120,11 @@ export const StorageService = {
     const users = this.getUsers();
     const idx = users.findIndex((u) => u.id === updated.id);
     if (idx !== -1) {
-      users[idx] = updated;
+      users[idx] = {
+        ...updated,
+        name: updated.fullName || updated.name,
+        permissions: normalizeUserPermissions(updated.role, updated.permissions),
+      };
       this.saveUsers(users);
     }
   },

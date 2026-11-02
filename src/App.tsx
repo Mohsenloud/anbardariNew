@@ -410,6 +410,10 @@ export default function App() {
 
   // 1.0 EDIT INVOICE & PROFORMA (ویرایش فاکتور و پیش‌فاکتور)
   const handleStartEditInvoice = (invoice: Invoice) => {
+    if (currentUser && currentUser.role !== 'admin' && !currentUser.permissions.canCreateInvoice) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز ویرایش فاکتور فروش را ندارد.');
+      return;
+    }
     setEditingInvoice(invoice);
     setActiveTab('new-invoice');
   };
@@ -586,6 +590,10 @@ export default function App() {
 
   // 1.1 CONVERT PROFORMA TO OFFICIAL INVOICE (تبدیل پیش‌فاکتور به فاکتور قطعی و کسر از انبار)
   const handleConvertProforma = (proformaInvoice: Invoice, customInvoiceNumber?: string) => {
+    if (currentUser && currentUser.role !== 'admin' && !currentUser.permissions.canCreateInvoice) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز تبدیل پیش‌فاکتور به فاکتور فروش را ندارد.');
+      return false;
+    }
     const today = getCurrentJalaliDate();
     let convertedInvoice: Invoice;
     const finalNumber = customInvoiceNumber?.trim() || 
@@ -1327,19 +1335,62 @@ export default function App() {
     newInboundReceipt: InboundReceipt | null,
     newProductsCreated: Product[]
   ) => {
+    const existingPurchase = purchaseInvoices.find((p) => p.id === newPurchaseInvoice.id);
+    const isEdit = Boolean(existingPurchase);
+
+    // بررسی سطح دسترسی: ثبت فاکتور خرید جدید نیازمند canCreatePurchaseInvoice است.
+    // اگر صرفاً تغییر وضعیت تسویه فاکتور موجود باشد، دسترسی canSettleInvoices نیز مجاز است.
+    if (currentUser && currentUser.role !== 'admin') {
+      const canCreatePurchase =
+        currentUser.role !== 'accountant' &&
+        Boolean(currentUser.permissions.canCreatePurchaseInvoice);
+      const canSettle = Boolean(
+        currentUser.permissions.canSettleInvoices ??
+          (currentUser.permissions.canCreateInvoice || currentUser.permissions.canViewReports)
+      );
+
+      const isOnlySettlementUpdate =
+        isEdit &&
+        existingPurchase &&
+        existingPurchase.finalTotal === newPurchaseInvoice.finalTotal &&
+        existingPurchase.items.length === newPurchaseInvoice.items.length &&
+        newProductsCreated.length === 0;
+
+      if (!canCreatePurchase && !(isOnlySettlementUpdate && canSettle)) {
+        showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز ثبت یا ویرایش فاکتور خرید کالا و خدمات را ندارد.');
+        return;
+      }
+    }
+
     if (newProductsCreated && newProductsCreated.length > 0) {
       newProductsCreated.forEach((p) => StorageService.saveProduct(p));
     }
-
-    const existingPurchase = purchaseInvoices.find((p) => p.id === newPurchaseInvoice.id);
-    const isEdit = Boolean(existingPurchase);
 
     // If edited to service-only and previously had an inbound receipt, remove old receipt
     if (isEdit && existingPurchase?.inboundReceiptId && !newInboundReceipt) {
       StorageService.deleteInboundReceipt(existingPurchase.inboundReceiptId);
     }
 
-    StorageService.savePurchaseInvoice(newPurchaseInvoice);
+    const activeUser = currentUser || StorageService.getLoggedInUser();
+    const activeUserName = activeUser ? (activeUser.fullName || activeUser.name || activeUser.username) : 'مدیر سیستم';
+    const activeUserRole = activeUser ? (activeUser.roleTitle || activeUser.role) : 'مدیر کل سیستم';
+
+    const enrichedPurchaseInvoice: PurchaseInvoice = {
+      ...newPurchaseInvoice,
+      createdById: isEdit
+        ? existingPurchase?.createdById || newPurchaseInvoice.createdById || activeUser?.id
+        : newPurchaseInvoice.createdById || activeUser?.id,
+      createdByName: isEdit
+        ? existingPurchase?.createdByName || newPurchaseInvoice.createdByName || activeUserName
+        : newPurchaseInvoice.createdByName || activeUserName,
+      createdByRole: isEdit
+        ? existingPurchase?.createdByRole || newPurchaseInvoice.createdByRole || activeUserRole
+        : newPurchaseInvoice.createdByRole || activeUserRole,
+      updatedById: isEdit ? activeUser?.id : newPurchaseInvoice.updatedById,
+      updatedByName: isEdit ? activeUserName : newPurchaseInvoice.updatedByName,
+    };
+
+    StorageService.savePurchaseInvoice(enrichedPurchaseInvoice);
     if (newInboundReceipt) {
       StorageService.saveInboundReceipt(newInboundReceipt);
     }
@@ -1415,6 +1466,10 @@ export default function App() {
   };
 
   const handleDeletePurchaseInvoice = (invoiceId: string) => {
+    if (currentUser && currentUser.role !== 'admin' && !currentUser.permissions.canDeleteInvoice) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز حذف فاکتور خرید را ندارد.');
+      return;
+    }
     const inv = purchaseInvoices.find((p) => p.id === invoiceId);
     if (inv?.inboundReceiptId) {
       StorageService.deleteInboundReceipt(inv.inboundReceiptId);
@@ -1903,6 +1958,7 @@ export default function App() {
             invoices={invoices}
             purchaseInvoices={purchaseInvoices}
             customers={customers}
+            transactions={customerTransactions}
             settings={settings}
             currentUser={currentUser || undefined}
             onOpenNewInvoice={() => {
@@ -1972,13 +2028,21 @@ export default function App() {
           invoice={viewingInvoice}
           settings={settings}
           onClose={() => setViewingInvoice(null)}
-          onEditInvoice={handleStartEditInvoice}
-          onConvertProforma={(inv) => {
-            const success = handleConvertProforma(inv);
-            if (success !== false) {
-              setViewingInvoice(null);
-            }
-          }}
+          onEditInvoice={
+            currentUser?.role === 'admin' || currentUser?.permissions.canCreateInvoice
+              ? handleStartEditInvoice
+              : undefined
+          }
+          onConvertProforma={
+            currentUser?.role === 'admin' || currentUser?.permissions.canCreateInvoice
+              ? (inv) => {
+                  const success = handleConvertProforma(inv);
+                  if (success !== false) {
+                    setViewingInvoice(null);
+                  }
+                }
+              : undefined
+          }
         />
       )}
 

@@ -39,48 +39,64 @@ const PERMISSION_CONFIG: {
 }[] = [
   {
     key: 'canCreateInvoice',
-    title: 'صدور فاکتور جدید',
-    description: 'دسترسی به فرم صدور فاکتور فروش، محاسبه مالیات و تخفیف',
+    title: 'صدور و ویرایش فاکتور فروش',
+    description: 'دسترسی به فرم صدور فاکتور فروش، پیش‌فاکتور، محاسبه مالیات و تخفیف',
   },
   {
     key: 'canViewInvoices',
-    title: 'مشاهده و چاپ فاکتورها',
-    description: 'مشاهده لیست، جستجو، چاپ قالب‌ها و دانلود فاکتورها',
+    title: 'مشاهده و چاپ فاکتورهای فروش',
+    description: 'مشاهده لیست، جستجو، چاپ قالب‌ها و دانلود فاکتورهای فروش',
+  },
+  {
+    key: 'canCreatePurchaseInvoice',
+    title: 'ثبت فاکتور خرید کالا و خدمات/هزینه',
+    description: 'امکان ثبت و ویرایش فاکتور خرید کالا از تامین‌کننده و فاکتور خدمات/هزینه‌ها',
+  },
+  {
+    key: 'canViewPurchaseInvoices',
+    title: 'مشاهده فاکتورهای خرید و هزینه‌ها',
+    description: 'مشاهده لیست فاکتورهای خرید کالا، خدمات، آمار خرید و سوابق تامین‌کنندگان',
+  },
+  {
+    key: 'canSettleInvoices',
+    title: 'ثبت دریافت، پرداخت و تسویه حساب',
+    description: 'ثبت دریافت وجه از مشتری، ثبت پرداخت فاکتورهای خرید/هزینه و تسویه تجمیعی',
   },
   {
     key: 'canDeleteInvoice',
     title: 'حذف و مرجوعی فاکتورها',
-    description: 'امکان حذف کامل فاکتور یا مرجوع کردن اقلام به انبار',
+    description: 'امکان حذف کامل فاکتور فروش/خرید یا مرجوع کردن اقلام به انبار',
   },
   {
     key: 'canManageInventory',
     title: 'انبارداری و مدیریت کالا',
-    description: 'تعریف کالای جدید، ویرایش قیمت‌ها، اصلاح دستی موجودی و کاردکس',
+    description: 'تعریف کالای جدید، ویرایش قیمت‌ها، حواله‌ها، امانی/تعمیرات و کاردکس',
   },
   {
     key: 'canManageCustomers',
-    title: 'مدیریت دفتر مشتریان',
-    description: 'تعریف، ویرایش و ثبت اطلاعات هویتی و مالی مشتریان',
+    title: 'مدیریت دفتر مشتریان و طرف‌حساب‌ها',
+    description: 'تعریف، ویرایش و ثبت اطلاعات هویتی، صورتحساب و اسناد مالی مشتریان',
   },
   {
     key: 'canViewReports',
     title: 'گزارش‌های مالی و سود',
-    description: 'دسترسی به نمودارهای تحلیلی، سود ناخالص و کالاهای پرفروش',
+    description: 'دسترسی به نمودارهای تحلیلی، سود خالص و ناخالص و گزارش‌های جامع مالی',
   },
   {
     key: 'canAccessAdmin',
-    title: 'دسترسی به پنل مدیریت',
-    description: 'پیکربندی هویت فروشگاه، قوانین فاکتورساز و پشتیبان‌گیری',
+    title: 'دسترسی به پنل مدیریت و تنظیمات',
+    description: 'پیکربندی هویت فروشگاه، قوانین فاکتورساز، تلگرام و پشتیبان‌گیری',
   },
   {
     key: 'canManageUsers',
     title: 'مدیریت کاربران و دسترسی‌ها',
-    description: 'تعریف کاربر جدید، ویرایش نقش‌ها و تغییر سطوح دسترسی',
+    description: 'تعریف کاربر جدید، ویرایش نقش‌ها و تغییر سطوح دسترسی پرسنل',
   },
 ];
 
 const AVATAR_COLORS = [
   { id: 'emerald', label: 'سبز زمردی', bg: 'bg-emerald-600', lightBg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+  { id: 'teal', label: 'فیروزه‌ای', bg: 'bg-teal-600', lightBg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
   { id: 'blue', label: 'آبی اقیانوسی', bg: 'bg-blue-600', lightBg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
   { id: 'amber', label: 'کهربایی', bg: 'bg-amber-600', lightBg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
   { id: 'purple', label: 'بنفش', bg: 'bg-purple-600', lightBg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
@@ -185,22 +201,35 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
 
   // Handle Preset Role Selection in Form
   const handleRolePresetSelect = (role: UserRole) => {
-    setFormData((prev) => ({
-      ...prev,
-      role,
-      roleTitle: prev.roleTitle || ROLE_LABELS[role],
-      permissions: { ...DEFAULT_ROLE_PERMISSIONS[role] },
-      avatarColor:
-        role === 'admin'
-          ? 'emerald'
-          : role === 'supervisor'
-          ? 'teal'
-          : role === 'cashier'
-          ? 'blue'
-          : role === 'warehouse'
-          ? 'amber'
-          : 'purple',
-    }));
+    setFormData((prev) => {
+      const isDefaultTitle =
+        !prev.roleTitle.trim() ||
+        Object.values(ROLE_LABELS).includes(prev.roleTitle.trim()) ||
+        [
+          'مدیر کل سیستم',
+          'سرپرست فروش و عملیات',
+          'صندوق‌دار و فروشنده',
+          'مسئول انبار و موجودی',
+          'حسابدار و تحلیلگر مالی',
+        ].includes(prev.roleTitle.trim());
+
+      return {
+        ...prev,
+        role,
+        roleTitle: isDefaultTitle ? ROLE_LABELS[role] : prev.roleTitle,
+        permissions: { ...DEFAULT_ROLE_PERMISSIONS[role] },
+        avatarColor:
+          role === 'admin'
+            ? 'emerald'
+            : role === 'supervisor'
+            ? 'teal'
+            : role === 'cashier'
+            ? 'blue'
+            : role === 'warehouse'
+            ? 'amber'
+            : 'purple',
+      };
+    });
   };
 
   // Toggle specific permission
@@ -305,7 +334,7 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
   const activeCount = users.filter((u) => u.isActive).length;
   const adminCount = users.filter((u) => u.role === 'admin' && u.isActive).length;
 
-  if (currentUser.role !== 'admin') {
+  if (currentUser.role !== 'admin' && !currentUser.permissions?.canManageUsers) {
     return (
       <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center max-w-md mx-auto my-12 shadow-sm">
         <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-4 border border-rose-100">
@@ -419,6 +448,7 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
             >
               <option value="all">تمام نقش‌ها ({users.length})</option>
               <option value="admin">مدیران کل</option>
+              <option value="supervisor">سرپرستان</option>
               <option value="cashier">صندوق‌داران</option>
               <option value="warehouse">مسئولین انبار</option>
               <option value="accountant">حسابداران</option>
@@ -453,7 +483,7 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
           filteredUsers.map((user, userIndex) => {
             const avatarStyle = getAvatarStyle(user.avatarColor);
             const isSelf = user.id === currentUser.id;
-            const grantedCount = Object.values(user.permissions).filter(Boolean).length;
+            const grantedCount = PERMISSION_CONFIG.filter((p) => Boolean(user.permissions[p.key])).length;
             const cardKey = user.id ? `user-card-${user.id}` : `user-card-${userIndex}-${user.username}`;
 
             return (
@@ -547,13 +577,16 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                   <div className="space-y-2 mb-4">
                     <div className="flex items-center justify-between text-[11px] text-slate-500">
                       <span>سطوح دسترسی مجاز:</span>
-                      <span className="font-bold text-slate-700">{grantedCount} از ۸ دسترسی</span>
+                      <span className="font-bold text-slate-700">{grantedCount} از {PERMISSION_CONFIG.length} دسترسی</span>
                     </div>
 
                     <div className="flex flex-wrap gap-1">
-                      {PERMISSION_CONFIG.filter((p) => user.permissions[p.key]).map((p) => {
+                      {PERMISSION_CONFIG.filter((p) => Boolean(user.permissions[p.key])).map((p) => {
                         let colorClasses = 'bg-slate-100 text-slate-700 border-slate-200';
                         if (p.key === 'canCreateInvoice') colorClasses = 'bg-emerald-50 text-emerald-700 border-emerald-200/60';
+                        else if (p.key === 'canCreatePurchaseInvoice') colorClasses = 'bg-orange-50 text-orange-800 border-orange-200/70';
+                        else if (p.key === 'canViewPurchaseInvoices') colorClasses = 'bg-amber-50/70 text-amber-800 border-amber-200/60';
+                        else if (p.key === 'canSettleInvoices') colorClasses = 'bg-teal-50 text-teal-800 border-teal-200/70';
                         else if (p.key === 'canDeleteInvoice') colorClasses = 'bg-rose-50 text-rose-700 border-rose-200/60';
                         else if (p.key === 'canManageInventory') colorClasses = 'bg-amber-50 text-amber-800 border-amber-200/60';
                         else if (p.key === 'canManageCustomers') colorClasses = 'bg-blue-50 text-blue-700 border-blue-200/60';
@@ -922,7 +955,7 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                     }`}
                   >
                     <div className="text-xs font-bold text-slate-800">حسابدار</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">گزارشات و فاکتورها</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">گزارش و تسویه (بدون ثبت فاکتور)</div>
                   </button>
                 </div>
               </div>
@@ -958,6 +991,9 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                           permissions: {
                             canCreateInvoice: false,
                             canViewInvoices: false,
+                            canCreatePurchaseInvoice: false,
+                            canViewPurchaseInvoices: false,
+                            canSettleInvoices: false,
                             canDeleteInvoice: false,
                             canManageInventory: false,
                             canManageCustomers: false,

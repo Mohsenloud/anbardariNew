@@ -594,22 +594,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Consolidated Footer: Quick Tools Row + User Bar */}
         <div className="p-2.5 border-t border-slate-100 bg-slate-50/50 shrink-0 space-y-2">
-          {/* Compact 2-Column Utility Row (Settings + Update) */}
+          {/* Compact Utility Row (Settings + Update) */}
           <div
             className={`grid gap-1.5 ${
-              isCollapsedDesktop ? 'grid-cols-1' : 'grid-cols-2'
+              isCollapsedDesktop || !(currentUser?.role === 'admin' || currentUser?.permissions?.canAccessAdmin)
+                ? 'grid-cols-1'
+                : 'grid-cols-2'
             }`}
           >
-            <button
-              type="button"
-              id="sidebar-btn-settings"
-              onClick={onOpenSettings}
-              className="flex items-center justify-center gap-1.5 h-8 px-2 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80 text-[11px] font-bold transition-colors cursor-pointer"
-              title="تنظیمات سیستم"
-            >
-              <Settings className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-              {!isCollapsedDesktop && <span className="truncate">تنظیمات</span>}
-            </button>
+            {(currentUser?.role === 'admin' || currentUser?.permissions?.canAccessAdmin) && (
+              <button
+                type="button"
+                id="sidebar-btn-settings"
+                onClick={onOpenSettings}
+                className="flex items-center justify-center gap-1.5 h-8 px-2 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80 text-[11px] font-bold transition-colors cursor-pointer"
+                title="تنظیمات سیستم"
+              >
+                <Settings className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                {!isCollapsedDesktop && <span className="truncate">تنظیمات</span>}
+              </button>
+            )}
 
             <button
               type="button"
@@ -639,13 +643,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <div className="flex items-center gap-2 min-w-0">
                 <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs shrink-0">
-                  {currentUser.name ? currentUser.name.charAt(0) : <User className="w-3.5 h-3.5" />}
+                  {(currentUser.fullName || currentUser.name) ? (currentUser.fullName || currentUser.name)!.charAt(0) : <User className="w-3.5 h-3.5" />}
                 </div>
 
                 {!isCollapsedDesktop && (
                   <div className="min-w-0">
                     <span className="font-bold text-[11px] text-slate-800 block truncate leading-tight">
-                      {currentUser.name}
+                      {currentUser.fullName || currentUser.name}
                     </span>
                     {roleBadge && (
                       <span
@@ -914,18 +918,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {/* Mobile Drawer Footer */}
             <div className="p-3 border-t border-slate-100 bg-slate-50/70 space-y-2 shrink-0">
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onCloseMobile();
-                    onOpenSettings();
-                  }}
-                  className="flex items-center justify-center gap-1.5 py-2 px-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-pointer"
-                >
-                  <Settings className="w-3.5 h-3.5 text-slate-500" />
-                  <span>تنظیمات</span>
-                </button>
+              <div className={`grid gap-2 ${(currentUser?.role === 'admin' || currentUser?.permissions?.canAccessAdmin) ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                {(currentUser?.role === 'admin' || currentUser?.permissions?.canAccessAdmin) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onCloseMobile();
+                      onOpenSettings();
+                    }}
+                    className="flex items-center justify-center gap-1.5 py-2 px-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-pointer"
+                  >
+                    <Settings className="w-3.5 h-3.5 text-slate-500" />
+                    <span>تنظیمات</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -947,11 +953,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="p-2 bg-white rounded-xl border border-slate-200 flex items-center justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
-                      {currentUser.name ? currentUser.name.charAt(0) : <User className="w-3.5 h-3.5" />}
+                      {(currentUser.fullName || currentUser.name) ? (currentUser.fullName || currentUser.name)!.charAt(0) : <User className="w-3.5 h-3.5" />}
                     </div>
                     <div className="min-w-0">
                       <span className="text-xs font-bold text-slate-900 block truncate">
-                        {currentUser.name}
+                        {currentUser.fullName || currentUser.name}
                       </span>
                       {roleBadge && (
                         <span

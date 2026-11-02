@@ -68,6 +68,7 @@ interface NewPurchaseInvoiceModalProps {
 export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = ({
   products,
   settings,
+  currentUser,
   editingInvoice,
   previousSuppliers = [],
   initialMode = 'product',
@@ -192,10 +193,11 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
 
   useEffect(() => {
     const handleOutsideProductClick = (e: MouseEvent) => {
-      if (quickItemSearchRef.current && !quickItemSearchRef.current.contains(e.target as Node)) {
+      const target = e.target as HTMLElement | null;
+      if (quickItemSearchRef.current && target && !quickItemSearchRef.current.contains(target)) {
         setIsQuickItemDropdownOpen(false);
       }
-      if (rowDropdownRef.current && !rowDropdownRef.current.contains(e.target as Node)) {
+      if (target && !target.closest('[data-row-dropdown="true"]')) {
         setActiveRowDropdownIndex(null);
       }
     };
@@ -955,6 +957,10 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
     const effectivePaymentStatus: PaymentStatus =
       paymentStatus === 'partial' && effectivePaidAmount === finalTotal ? 'paid' : paymentStatus;
 
+    const activeUser = currentUser || StorageService.getLoggedInUser();
+    const activeUserName = activeUser ? (activeUser.fullName || activeUser.name || activeUser.username) : 'مدیر سیستم';
+    const activeUserRole = activeUser ? (activeUser.roleTitle || activeUser.role) : 'مدیر کل سیستم';
+
     const purchaseInvoice: PurchaseInvoice = {
       id: purchaseId,
       invoiceNumber: invoiceNumber.trim(),
@@ -982,6 +988,11 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
       status: isServiceOnlyInvoice ? 'completed' : editingInvoice?.status || 'pending_receipt',
       inboundReceiptId: isServiceOnlyInvoice ? undefined : receiptId,
       isServiceOnly: isServiceOnlyInvoice,
+      createdById: isEditing ? (editingInvoice?.createdById || activeUser?.id) : activeUser?.id,
+      createdByName: isEditing ? (editingInvoice?.createdByName || activeUserName) : activeUserName,
+      createdByRole: isEditing ? (editingInvoice?.createdByRole || activeUserRole) : activeUserRole,
+      updatedById: isEditing ? activeUser?.id : undefined,
+      updatedByName: isEditing ? activeUserName : undefined,
       createdAt: editingInvoice?.createdAt || new Date().toISOString(),
       updatedAt: isEditing ? new Date().toISOString() : undefined,
     };
@@ -1024,76 +1035,87 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
-      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-white w-full max-w-4xl rounded-none sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[100dvh] sm:h-auto max-h-[100dvh] sm:max-h-[95vh] border-0 sm:border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
         
-        {/* Compact Header Bar */}
-        <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between gap-2 shrink-0 border-b border-slate-800 flex-wrap">
-          <div className="flex items-center gap-2.5">
-            <div
-              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
-                isCurrentlyPureService
-                  ? 'bg-violet-500/20 text-violet-300 border-violet-500/30'
-                  : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-              }`}
-            >
-              {isCurrentlyPureService ? <Wrench className="w-4 h-4" /> : <ShoppingBag className="w-4 h-4" />}
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-sm sm:text-base font-black text-white">
-                  {isEditing
-                    ? isCurrentlyPureService
-                      ? `ویرایش فاکتور خرید خدمات ${toPersianDigits(invoiceNumber)}`
-                      : `ویرایش فاکتور خرید ${toPersianDigits(invoiceNumber)}`
-                    : isCurrentlyPureService
-                    ? 'ثبت فاکتور خرید خدمات و هزینه'
-                    : serviceItemsCount > 0
-                    ? 'ثبت فاکتور خرید کالا و خدمات'
-                    : 'ثبت فاکتور خرید کالا'}
-                </h2>
-                <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                    isCurrentlyPureService
-                      ? 'bg-violet-500/20 text-violet-300 border-violet-500/30'
-                      : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                  }`}
-                >
-                  {isEditing
-                    ? 'در حال ویرایش'
-                    : isCurrentlyPureService
-                    ? 'ثبت آنی هزینه خدمات (بدون نیاز به انبار)'
-                    : 'صدور حواله انبار'}
-                </span>
+        {/* Compact Header Bar (2 clean rows on mobile, 1 row on desktop) */}
+        <div className="bg-slate-900 text-white px-3.5 sm:px-4 py-2.5 sm:py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shrink-0 border-b border-slate-800">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div
+                className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0 border ${
+                  isCurrentlyPureService
+                    ? 'bg-violet-500/20 text-violet-300 border-violet-500/30'
+                    : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                }`}
+              >
+                {isCurrentlyPureService ? <Wrench className="w-4 h-4" /> : <ShoppingBag className="w-4 h-4" />}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <h2 className="text-xs sm:text-base font-black text-white truncate">
+                    {isEditing
+                      ? isCurrentlyPureService
+                        ? `ویرایش فاکتور خدمات ${toPersianDigits(invoiceNumber)}`
+                        : `ویرایش فاکتور خرید ${toPersianDigits(invoiceNumber)}`
+                      : isCurrentlyPureService
+                      ? 'ثبت فاکتور خرید خدمات و هزینه'
+                      : serviceItemsCount > 0
+                      ? 'ثبت فاکتور خرید کالا و خدمات'
+                      : 'ثبت فاکتور خرید کالا'}
+                  </h2>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border hidden sm:inline-block ${
+                      isCurrentlyPureService
+                        ? 'bg-violet-500/20 text-violet-300 border-violet-500/30'
+                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    }`}
+                  >
+                    {isEditing
+                      ? 'در حال ویرایش'
+                      : isCurrentlyPureService
+                      ? 'ثبت آنی هزینه خدمات (بدون نیاز به انبار)'
+                      : 'صدور حواله انبار'}
+                  </span>
+                </div>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="sm:hidden w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
+              title="بستن پنجره"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             {/* Quick Mode Switcher */}
-            <div className="flex items-center bg-slate-800 p-0.5 rounded-xl border border-slate-700 text-[11px] font-bold">
+            <div className="grid grid-cols-2 sm:flex sm:items-center w-full sm:w-auto bg-slate-800 p-0.5 rounded-xl border border-slate-700 text-[11px] font-bold">
               <button
                 type="button"
                 onClick={() => handleSwitchHeaderMode('product')}
-                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                className={`px-2.5 py-1.5 sm:py-1 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   !isCurrentlyPureService
                     ? 'bg-emerald-600 text-white shadow-2xs'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                <ShoppingBag className="w-3 h-3" />
+                <ShoppingBag className="w-3.5 h-3.5 sm:w-3 sm:h-3" />
                 <span>خرید کالا</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleSwitchHeaderMode('service')}
-                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                className={`px-2.5 py-1.5 sm:py-1 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   isCurrentlyPureService
                     ? 'bg-violet-600 text-white shadow-2xs'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                <Wrench className="w-3 h-3" />
+                <Wrench className="w-3.5 h-3.5 sm:w-3 sm:h-3" />
                 <span>خرید خدمات / هزینه</span>
               </button>
             </div>
@@ -1101,7 +1123,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
             <button
               type="button"
               onClick={onClose}
-              className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              className="hidden sm:flex w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white items-center justify-center transition-colors cursor-pointer shrink-0"
               title="بستن پنجره"
             >
               <X className="w-4 h-4" />
@@ -1110,7 +1132,8 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
         </div>
 
         {/* Modal Form */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
           {validationError && (
             <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center justify-between gap-2 animate-in fade-in">
               <div className="flex items-center gap-1.5">
@@ -1294,42 +1317,43 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                 )}
               </div>
 
-              {/* Invoice Number Column (3 cols) */}
-              <div className="md:col-span-3">
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                    <Hash className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{isCurrentlyPureService ? 'شماره فاکتور / سند' : 'شماره فاکتور'}</span>
-                  </label>
-                  <span
-                    className={`text-[9px] font-bold px-1.5 rounded border ${
-                      isCurrentlyPureService
-                        ? 'text-violet-700 bg-violet-50 border-violet-200'
-                        : 'text-emerald-700 bg-emerald-50 border-emerald-200'
-                    }`}
-                  >
-                    خودکار
-                  </span>
+              {/* Invoice Number & Date Columns (Side-by-side on mobile, 6 cols on desktop) */}
+              <div className="grid grid-cols-2 gap-2.5 md:col-span-6">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <Hash className="w-3.5 h-3.5 text-slate-400" />
+                      <span>{isCurrentlyPureService ? 'شماره فاکتور / سند' : 'شماره فاکتور'}</span>
+                    </label>
+                    <span
+                      className={`text-[9px] font-bold px-1.5 rounded border hidden sm:inline-block ${
+                        isCurrentlyPureService
+                          ? 'text-violet-700 bg-violet-50 border-violet-200'
+                          : 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                      }`}
+                    >
+                      خودکار
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                    placeholder="PUR-1002"
+                    className="w-full h-9 bg-white border border-slate-300 rounded-xl px-2.5 text-xs font-mono font-black text-slate-800 text-left focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
                 </div>
-                <input
-                  type="text"
-                  required
-                  value={invoiceNumber}
-                  onChange={(e) => setInvoiceNumber(e.target.value)}
-                  placeholder="PUR-1002"
-                  className="w-full h-9 bg-white border border-slate-300 rounded-xl px-2.5 text-xs font-mono font-black text-slate-800 text-left focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                />
-              </div>
 
-              {/* Invoice Date Column (3 cols) */}
-              <div className="md:col-span-3">
-                <JalaliDatePicker
-                  value={date}
-                  onChange={setDate}
-                  label={isCurrentlyPureService ? 'تاریخ انجام خدمت / ثبت' : 'تاریخ خرید'}
-                  required
-                  buttonClassName="!h-9"
-                />
+                <div>
+                  <JalaliDatePicker
+                    value={date}
+                    onChange={setDate}
+                    label={isCurrentlyPureService ? 'تاریخ خدمت' : 'تاریخ خرید'}
+                    required
+                    buttonClassName="!h-9"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1632,7 +1656,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                           کالایی با این مشخصات یافت نشد. می‌توانید آن را به عنوان کالای جدید یا خدمت ثبت کنید.
                         </div>
                       ) : (
-                        <div className="space-y-0.5">
+                        <div className="space-y-1">
                           {filteredQuickProducts.map((p) => {
                             const inInvoiceItem = items.find((it) => !it.isService && it.productId === p.id);
                             return (
@@ -1640,9 +1664,9 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                                 key={p.id}
                                 type="button"
                                 onClick={() => handleQuickAddProductFromSearch(p)}
-                                className="w-full px-2.5 py-2 rounded-lg hover:bg-emerald-50/80 flex items-center justify-between gap-2 text-right transition-colors cursor-pointer group border border-transparent hover:border-emerald-200/70"
+                                className="w-full px-2.5 py-2 rounded-lg hover:bg-emerald-50/80 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2 text-right transition-colors cursor-pointer group border border-slate-100 sm:border-transparent hover:border-emerald-200/70"
                               >
-                                <div className="flex items-center gap-2 min-w-0">
+                                <div className="flex items-center gap-1.5 min-w-0 w-full sm:w-auto">
                                   <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
                                     کد {toPersianDigits(p.code)}
                                   </span>
@@ -1656,7 +1680,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                                   )}
                                 </div>
 
-                                <div className="flex items-center gap-3 shrink-0 text-[11px]">
+                                <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 text-[11px] w-full sm:w-auto pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                                   <span className="text-slate-500">
                                     موجودی: <strong className="font-mono text-slate-800">{toPersianDigits(p.stock)}</strong> {p.unit}
                                   </span>
@@ -1765,7 +1789,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                               />
                             </div>
                           ) : (
-                            <div className="relative" ref={isRowOpen ? rowDropdownRef : undefined}>
+                            <div className="relative" data-row-dropdown="true">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1927,7 +1951,7 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
             </div>
 
             {/* Mobile Cards View */}
-            <div className="md:hidden p-2.5 space-y-2">
+            <div className="md:hidden p-2.5 space-y-2.5">
               {items.map((item, index) => {
                 const rowIsService = Boolean(
                   item.isService || item.itemType === 'service' || isServiceItem(item, allAvailableProducts)
@@ -1940,27 +1964,28 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                 return (
                   <div
                     key={item.id}
-                    className={`p-2.5 rounded-xl border space-y-2 ${
+                    className={`p-3 rounded-2xl border space-y-2.5 shadow-2xs ${
                       rowIsService
                         ? 'bg-violet-50/50 border-violet-200'
-                        : 'bg-slate-50/80 border-slate-200/90'
+                        : 'bg-slate-50/90 border-slate-200/90'
                     }`}
                   >
+                    {/* Card Header: Row Index + Type Switcher + Delete */}
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-2">
                         <span
-                          className={`w-5 h-5 rounded-md text-white font-mono font-bold text-[11px] flex items-center justify-center shrink-0 ${
+                          className={`w-6 h-6 rounded-lg text-white font-mono font-bold text-xs flex items-center justify-center shrink-0 ${
                             rowIsService ? 'bg-violet-600' : 'bg-emerald-600'
                           }`}
                         >
                           {toPersianDigits(index + 1)}
                         </span>
-                        <div className="inline-flex items-center bg-white p-0.5 rounded-lg border border-slate-200 text-[10px] font-bold">
+                        <div className="inline-flex items-center bg-white p-0.5 rounded-xl border border-slate-200 text-[11px] font-bold">
                           <button
                             type="button"
                             onClick={() => handleToggleRowType(index, 'product')}
-                            className={`px-2 py-0.5 rounded-md ${
-                              !rowIsService ? 'bg-emerald-600 text-white' : 'text-slate-500'
+                            className={`px-2.5 py-1 rounded-lg transition-all ${
+                              !rowIsService ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-500'
                             }`}
                           >
                             کالا
@@ -1968,8 +1993,8 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                           <button
                             type="button"
                             onClick={() => handleToggleRowType(index, 'service')}
-                            className={`px-2 py-0.5 rounded-md ${
-                              rowIsService ? 'bg-violet-600 text-white' : 'text-slate-500'
+                            className={`px-2.5 py-1 rounded-lg transition-all ${
+                              rowIsService ? 'bg-violet-600 text-white shadow-2xs' : 'text-slate-500'
                             }`}
                           >
                             خدمات
@@ -1979,16 +2004,20 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(index)}
-                        className="p-1 text-slate-400 hover:text-rose-600"
+                        className="p-1.5 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 active:scale-95 transition-all"
                         title={items.length <= 1 ? 'پاک کردن ردیف' : 'حذف ردیف'}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
 
+                    {/* Product Selector or Service Description */}
                     {rowIsService ? (
-                      <div className="grid grid-cols-12 gap-1.5">
+                      <div className="grid grid-cols-12 gap-2">
                         <div className="col-span-8">
+                          <label className="text-[10px] font-bold text-violet-800 block mb-1">
+                            شرح خدمات / عنوان هزینه:
+                          </label>
                           <input
                             type="text"
                             value={item.productName}
@@ -1996,11 +2025,14 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                               handleItemChange(index, 'productName', e.target.value);
                               setValidationError(null);
                             }}
-                            placeholder="شرح خدمات / هزینه (مثلاً: تعمیر دستگاه...)"
-                            className="w-full px-2.5 py-1.5 rounded-lg border border-violet-300 bg-white font-bold text-slate-900 text-xs"
+                            placeholder="مثلاً: تعمیر دستگاه، حمل بار..."
+                            className="w-full h-9 px-2.5 rounded-xl border border-violet-300 bg-white font-bold text-slate-900 text-xs focus:outline-none focus:border-violet-500"
                           />
                         </div>
                         <div className="col-span-4">
+                          <label className="text-[10px] font-bold text-violet-800 block mb-1">
+                            واحد خدمت:
+                          </label>
                           <select
                             value={item.unit || 'سرویس'}
                             onChange={(e) => {
@@ -2011,21 +2043,24 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                                 handleItemChange(index, 'unit', e.target.value);
                               }
                             }}
-                            className="w-full h-full px-1.5 py-1.5 rounded-lg border border-violet-200 bg-white text-violet-900 font-bold text-[11px]"
+                            className="w-full h-9 px-1.5 rounded-xl border border-violet-200 bg-white text-violet-900 font-bold text-[11px]"
                           >
                             {Array.from(new Set([...serviceUnits, item.unit || 'سرویس'])).map((u) => (
                               <option key={u} value={u}>
-                                واحد: {u}
+                                {u}
                               </option>
                             ))}
                             <option value="__custom__" className="font-black text-violet-700">
-                              + تعریف واحد جدید...
+                              + واحد جدید...
                             </option>
                           </select>
                         </div>
                       </div>
                     ) : (
-                      <div className="relative" ref={isRowOpen ? rowDropdownRef : undefined}>
+                      <div className="relative" data-row-dropdown="true">
+                        <label className="text-[10px] font-bold text-slate-600 block mb-1">
+                          انتخاب کالا از انبار:
+                        </label>
                         <button
                           type="button"
                           onClick={() => {
@@ -2036,62 +2071,95 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                               setRowSearchQuery('');
                             }
                           }}
-                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 text-xs flex items-center justify-between gap-1 text-right"
+                          className="w-full h-9 px-3 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 text-xs flex items-center justify-between gap-2 text-right"
                         >
                           <span className="truncate">
                             {selectedProd
-                              ? `${selectedProd.name} (موجودی: ${toPersianDigits(selectedProd.stock)})`
+                              ? `${selectedProd.name} (کد ${toPersianDigits(selectedProd.code)} | موجودی: ${toPersianDigits(selectedProd.stock)})`
                               : '-- جستجو و انتخاب کالا --'}
                           </span>
-                          <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
                         </button>
 
                         {isRowOpen && (
-                          <div className="absolute top-full right-0 left-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 p-1.5">
+                          <div className="absolute top-full right-0 left-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 p-2">
                             <input
                               type="text"
                               autoFocus
                               value={rowSearchQuery}
                               onChange={(e) => setRowSearchQuery(e.target.value)}
                               placeholder="جستجوی نام یا کد کالا..."
-                              className="w-full h-8 px-2.5 mb-1.5 rounded-lg border border-emerald-400 bg-slate-50 text-xs"
+                              className="w-full h-9 px-2.5 mb-1.5 rounded-lg border border-emerald-400 bg-slate-50 text-xs"
                             />
-                            <div className="max-h-44 overflow-y-auto space-y-0.5">
-                              {filteredRowProducts.map((p) => (
-                                <button
-                                  key={p.id}
-                                  type="button"
-                                  onClick={() => handleProductSelect(index, p.id)}
-                                  className="w-full px-2 py-1.5 rounded-lg hover:bg-slate-100 flex items-center justify-between text-right text-xs font-bold"
-                                >
-                                  <span className="truncate">{p.name}</span>
-                                  <span className="text-[10px] font-mono text-slate-500">
-                                    موجودی: {toPersianDigits(p.stock)}
-                                  </span>
-                                </button>
-                              ))}
+                            <div className="max-h-48 overflow-y-auto space-y-1">
+                              {filteredRowProducts.length === 0 ? (
+                                <div className="py-3 text-center text-slate-400 text-[11px]">
+                                  کالایی یافت نشد
+                                </div>
+                              ) : (
+                                filteredRowProducts.map((p) => (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() => handleProductSelect(index, p.id)}
+                                    className={`w-full px-2.5 py-2 rounded-lg flex items-center justify-between text-right text-xs font-bold ${
+                                      p.id === item.productId
+                                        ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                                        : 'hover:bg-slate-100 text-slate-800'
+                                    }`}
+                                  >
+                                    <span className="truncate">
+                                      {p.name}{' '}
+                                      <span className="text-[10px] font-mono text-slate-400 font-normal">
+                                        (کد {toPersianDigits(p.code)})
+                                      </span>
+                                    </span>
+                                    <span className="text-[10px] font-mono text-slate-500 shrink-0 mr-1">
+                                      موجودی: {toPersianDigits(p.stock)} {p.unit}
+                                    </span>
+                                  </button>
+                                ))
+                              )}
                             </div>
                           </div>
                         )}
                       </div>
                     )}
 
-                    <div className="grid grid-cols-3 gap-2 text-xs">
-                      <div>
-                        <span className="text-[10px] text-slate-500 block mb-0.5">
+                    {/* Quantity Stepper + Unit Price Row */}
+                    <div className="grid grid-cols-12 gap-2 items-end text-xs">
+                      <div className="col-span-5">
+                        <span className="text-[10px] font-bold text-slate-600 block mb-1">
                           تعداد ({item.unit || (rowIsService ? 'سرویس' : 'عدد')}):
                         </span>
-                        <NumericInput
-                          min={1}
-                          value={item.quantity}
-                          onChange={(num) => handleItemChange(index, 'quantity', num || 1)}
-                          textAlign="center"
-                          className="w-full p-1 text-center font-mono font-black text-xs rounded-lg border border-slate-300 bg-white"
-                        />
+                        <div className="flex items-center h-9 rounded-xl border border-slate-300 bg-white overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => handleItemChange(index, 'quantity', (item.quantity || 1) + 1)}
+                            className="w-8 h-full flex items-center justify-center bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 font-black text-sm active:bg-slate-200 transition-colors"
+                          >
+                            +
+                          </button>
+                          <NumericInput
+                            min={1}
+                            value={item.quantity}
+                            onChange={(num) => handleItemChange(index, 'quantity', num || 1)}
+                            textAlign="center"
+                            className="w-full h-full px-1 text-center font-mono font-black text-xs bg-white border-x border-slate-200 focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleItemChange(index, 'quantity', Math.max(1, (item.quantity || 1) - 1))}
+                            className="w-8 h-full flex items-center justify-center bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 font-black text-sm active:bg-slate-200 transition-colors"
+                          >
+                            -
+                          </button>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-[10px] text-slate-500 block mb-0.5">
-                          {rowIsService ? 'هزینه واحد:' : 'قیمت خرید:'}
+
+                      <div className="col-span-7">
+                        <span className="text-[10px] font-bold text-slate-600 block mb-1">
+                          {rowIsService ? 'مبلغ واحد / اجرت (تومان):' : 'قیمت خرید واحد (تومان):'}
                         </span>
                         <NumericInput
                           min={0}
@@ -2101,19 +2169,51 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                             setValidationError(null);
                           }}
                           textAlign="center"
-                          className="w-full p-1 text-center font-mono font-bold text-xs rounded-lg border border-slate-300 bg-white"
+                          className={`w-full h-9 px-2.5 text-center font-mono font-bold text-xs rounded-xl border bg-white focus:outline-none ${
+                            rowIsService
+                              ? 'border-violet-300 text-violet-900 focus:border-violet-500'
+                              : 'border-slate-300 text-slate-900 focus:border-emerald-500'
+                          }`}
                         />
                       </div>
-                      <div>
-                        <span className="text-[10px] text-slate-500 block mb-0.5">جمع ردیف:</span>
-                        <div className="p-1 text-center font-mono font-black text-emerald-900 bg-emerald-50 rounded-lg border border-emerald-200 text-xs">
-                          {toPersianDigits(formatPrice(item.total, ''))}
-                        </div>
-                      </div>
+                    </div>
+
+                    {/* Row Total Footer Strip */}
+                    <div
+                      className={`flex items-center justify-between px-3 py-1.5 rounded-xl border text-xs ${
+                        rowIsService
+                          ? 'bg-violet-100/70 border-violet-200 text-violet-900'
+                          : 'bg-emerald-50/90 border-emerald-200/80 text-emerald-900'
+                      }`}
+                    >
+                      <span className="text-[11px] font-bold">جمع کل این ردیف:</span>
+                      <span className="font-mono font-black text-sm">
+                        {toPersianDigits(formatPrice(item.total))} <span className="text-[10px] font-normal">تومان</span>
+                      </span>
                     </div>
                   </div>
                 );
               })}
+
+              {/* Quick Add Row Buttons at the bottom of Mobile Cards List */}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleAddItem}
+                  className="py-2 px-3 rounded-xl border border-dashed border-emerald-400 bg-emerald-50/60 hover:bg-emerald-50 text-emerald-800 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-98 transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4 text-emerald-600" />
+                  <span>افزودن ردیف کالا</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddServiceItem()}
+                  className="py-2 px-3 rounded-xl border border-dashed border-violet-400 bg-violet-50/60 hover:bg-violet-50 text-violet-800 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-98 transition-all cursor-pointer"
+                >
+                  <Wrench className="w-3.5 h-3.5 text-violet-600" />
+                  <span>افزودن ردیف خدمات</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -2142,22 +2242,23 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
               </div>
 
               {/* Status Segmented Pills */}
-              <div className="grid grid-cols-3 gap-1 bg-slate-200/70 p-1 rounded-xl text-xs font-bold">
+              <div className="grid grid-cols-3 gap-1 bg-slate-200/70 p-1 rounded-xl text-[11px] sm:text-xs font-bold">
                 <button
                   type="button"
                   onClick={() => handlePaymentStatusChange('paid')}
-                  className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                  className={`py-1.5 px-1 rounded-lg transition-all cursor-pointer ${
                     paymentStatus === 'paid'
                       ? 'bg-emerald-600 text-white shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  تسویه کامل (پرداخت‌شده)
+                  <span className="sm:hidden">تسویه کامل</span>
+                  <span className="hidden sm:inline">تسویه کامل (پرداخت‌شده)</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handlePaymentStatusChange('partial')}
-                  className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                  className={`py-1.5 px-1 rounded-lg transition-all cursor-pointer ${
                     paymentStatus === 'partial'
                       ? 'bg-amber-600 text-white shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
@@ -2168,13 +2269,14 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
                 <button
                   type="button"
                   onClick={() => handlePaymentStatusChange('unpaid')}
-                  className={`py-1.5 rounded-lg transition-all cursor-pointer ${
+                  className={`py-1.5 px-1 rounded-lg transition-all cursor-pointer ${
                     paymentStatus === 'unpaid'
                       ? 'bg-rose-600 text-white shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  نسیه / طلبکار از ما
+                  <span className="sm:hidden">نسیه / دفتری</span>
+                  <span className="hidden sm:inline">نسیه / طلبکار از ما</span>
                 </button>
               </div>
 
@@ -2465,13 +2567,15 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
             </div>
           </div>
 
-          {/* Modal Action Buttons */}
-          <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-slate-200">
+          </div>
+
+          {/* Sticky Modal Action Footer Bar */}
+          <div className="shrink-0 bg-white border-t border-slate-200 px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2 shadow-[0_-4px_12px_rgba(0,0,0,0.04)]">
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3.5 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold text-xs transition-colors cursor-pointer"
+                className="px-3 sm:px-3.5 py-2 rounded-xl border border-slate-200 sm:border-transparent text-slate-600 hover:bg-slate-100 font-bold text-xs transition-colors cursor-pointer"
               >
                 انصراف
               </button>
@@ -2486,24 +2590,29 @@ export const NewPurchaseInvoiceModal: React.FC<NewPurchaseInvoiceModalProps> = (
             <button
               type="submit"
               id="submit-purchase-invoice-btn"
-              className={`flex items-center justify-center gap-1.5 px-5 py-2 rounded-xl active:scale-98 text-white font-black text-xs sm:text-sm shadow-sm transition-all cursor-pointer ${
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 sm:px-5 py-2.5 sm:py-2 rounded-xl active:scale-98 text-white font-black text-xs sm:text-sm shadow-sm transition-all cursor-pointer ${
                 isCurrentlyPureService
                   ? 'bg-violet-600 hover:bg-violet-700'
                   : 'bg-emerald-600 hover:bg-emerald-700'
               }`}
             >
-              <Check className="w-4 h-4 stroke-[2.5]" />
-              <span>
+              <Check className="w-4 h-4 stroke-[2.5] shrink-0" />
+              <span className="truncate">
                 {isEditing
                   ? isCurrentlyPureService
-                    ? 'ذخیره تغییرات فاکتور خدمات و هزینه'
+                    ? 'ذخیره تغییرات فاکتور خدمات'
                     : 'ذخیره تغییرات فاکتور خرید'
                   : isCurrentlyPureService
-                  ? 'ثبت نهایی خرید خدمات و پرداخت هزینه'
+                  ? 'ثبت نهایی خرید خدمات و هزینه'
                   : serviceItemsCount > 0
-                  ? 'ثبت فاکتور خرید (کالا و خدمات) و صدور حواله انبار'
-                  : 'ثبت فاکتور خرید و صدور حواله انبار'}
+                  ? 'ثبت فاکتور (کالا و خدمات)'
+                  : 'ثبت فاکتور خرید و صدور حواله'}
               </span>
+              {finalTotal > 0 && (
+                <span className="sm:hidden font-mono text-[11px] bg-black/20 px-2 py-0.5 rounded-lg mr-1 shrink-0">
+                  {toPersianDigits(formatPrice(finalTotal))} ت
+                </span>
+              )}
             </button>
           </div>
         </form>

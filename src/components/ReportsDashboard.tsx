@@ -1,6 +1,16 @@
 import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { Product, Invoice, InvoiceItem, PurchaseInvoice, Customer, StoreSettings, AppUser } from '../types';
+import {
+  Product,
+  Invoice,
+  InvoiceItem,
+  PurchaseInvoice,
+  Customer,
+  CustomerTransaction,
+  CustomerLedgerEntry,
+  StoreSettings,
+  AppUser,
+} from '../types';
 import {
   formatPrice,
   toPersianDigits,
@@ -10,7 +20,9 @@ import {
   getInvoiceDaysAge,
 } from '../utils/jalali';
 import { isServiceItem } from '../utils/serviceHelper';
+import { StorageService } from '../utils/storage';
 import { JalaliDatePicker } from './JalaliDatePicker';
+import { PurchaseInvoiceViewModal } from './PurchaseInvoiceViewModal';
 import {
   TrendingUp,
   DollarSign,
@@ -19,6 +31,7 @@ import {
   AlertTriangle,
   Award,
   ArrowUpRight,
+  ArrowDownLeft,
   PieChart,
   Wallet,
   FileSpreadsheet,
@@ -37,6 +50,10 @@ import {
   Eye,
   X,
   Filter,
+  Scale,
+  Phone,
+  Building2,
+  ReceiptText,
 } from 'lucide-react';
 
 interface ReportsDashboardProps {
@@ -44,6 +61,7 @@ interface ReportsDashboardProps {
   invoices: Invoice[];
   purchaseInvoices?: PurchaseInvoice[];
   customers?: Customer[];
+  transactions?: CustomerTransaction[];
   settings: StoreSettings;
   currentUser?: AppUser;
   onOpenNewInvoice: () => void;
@@ -52,12 +70,22 @@ interface ReportsDashboardProps {
 }
 
 type DatePeriodFilter = 'all' | 'today' | '7days' | '30days' | 'year' | 'custom';
-type ReportSubTab = 'overview' | 'product_customer' | 'profitability' | 'cashflow' | 'warehouse';
+type ReportSubTab =
+  | 'overview'
+  | 'debtors_creditors'
+  | 'product_customer'
+  | 'profitability'
+  | 'cashflow'
+  | 'warehouse';
 type ItemSortMode = 'profit' | 'revenue' | 'quantity' | 'margin';
 type ItemTypeFilter = 'all' | 'goods' | 'services';
 type WarehouseHealthFilter = 'low_stock' | 'out_of_stock' | 'stagnant';
 type MatrixViewMode = 'by_product' | 'by_customer' | 'flat_log';
 type MatrixSortMode = 'quantity' | 'revenue' | 'profit' | 'invoices';
+type DcStatusFilter = 'all_active' | 'debtors' | 'creditors' | 'settled' | 'all';
+type DcRoleFilter = 'all' | 'customer' | 'supplier';
+type DcSortMode = 'balance_abs' | 'debt_desc' | 'credit_desc' | 'turnover_desc' | 'name_asc';
+type DcViewLayout = 'split' | 'table';
 
 /**
  * Normalizes any Jalali date string (e.g. "۱۴۰۳/۷/۵") to standard comparable "1403/07/05"
@@ -164,6 +192,8 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
   products,
   invoices,
   purchaseInvoices = [],
+  customers = [],
+  transactions = [],
   settings,
   currentUser,
   onOpenInventory,
@@ -187,6 +217,15 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
   const [matrixProductSearch, setMatrixProductSearch] = useState<string>('');
   const [matrixCustomerSearch, setMatrixCustomerSearch] = useState<string>('');
   const [expandedMatrixRowKey, setExpandedMatrixRowKey] = useState<string | null>(null);
+
+  // States for Debtors & Creditors (لیست بدهکاران و بستانکاران) Report Tab
+  const [dcViewLayout, setDcViewLayout] = useState<DcViewLayout>('split');
+  const [dcStatusFilter, setDcStatusFilter] = useState<DcStatusFilter>('all_active');
+  const [dcRoleFilter, setDcRoleFilter] = useState<DcRoleFilter>('all');
+  const [dcSearchQuery, setDcSearchQuery] = useState<string>('');
+  const [dcSortMode, setDcSortMode] = useState<DcSortMode>('balance_abs');
+  const [expandedDcPartyKey, setExpandedDcPartyKey] = useState<string | null>(null);
+  const [viewingPurchaseInvoice, setViewingPurchaseInvoice] = useState<PurchaseInvoice | null>(null);
 
   const currentJalaliYear = useMemo(() => {
     const today = toEnglishDigits(getCurrentJalaliDate());
@@ -218,19 +257,22 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
   };
 
   // Separate confirmed sales invoices from proforma quotes within the selected period
-  const { confirmedInvoices, proformaInvoices, periodPurchaseInvoices } = useMemo(() => {
+  const { confirmedInvoices, proformaInvoices, periodPurchaseInvoices, periodTransactions } = useMemo(() => {
     const filteredInvs = invoices.filter((inv) => matchesPeriod(inv.date, inv.createdAt));
     const confirmed = filteredInvs.filter((inv) => !inv.isProforma);
     const proformas = filteredInvs.filter((inv) => Boolean(inv.isProforma));
     const purchases = purchaseInvoices.filter(
       (pi) => pi.status !== 'cancelled' && matchesPeriod(pi.date, pi.createdAt)
     );
+    const allTxns = transactions.length > 0 ? transactions : StorageService.getCustomerTransactions();
+    const txns = allTxns.filter((t) => matchesPeriod(t.date, t.createdAt));
     return {
       confirmedInvoices: confirmed,
       proformaInvoices: proformas,
       periodPurchaseInvoices: purchases,
+      periodTransactions: txns,
     };
-  }, [invoices, purchaseInvoices, periodFilter, customFromDate, customToDate, currentJalaliYear]);
+  }, [invoices, purchaseInvoices, transactions, periodFilter, customFromDate, customToDate, currentJalaliYear]);
 
   // Comprehensive Financial, COGS, Profit, Item-Level & Product-to-Customer Matrix Analytics
   const financialAnalytics = useMemo(() => {
@@ -857,6 +899,237 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
     };
   }, [products, invoices]);
 
+  // Comprehensive Debtors & Creditors (لیست بدهکاران و بستانکاران) Analytics
+  const debtorsCreditorsAnalytics = useMemo(() => {
+    interface PartyBalanceRecord {
+      key: string;
+      customerObj: Customer;
+      name: string;
+      phone: string;
+      nationalId: string;
+      address: string;
+      hasSales: boolean;
+      hasPurchases: boolean;
+      salesCount: number;
+      purchasesCount: number;
+      roleType: 'customer' | 'supplier' | 'both';
+      roleLabel: string;
+      totalDebit: number; // بدهکار شده (خرید از ما / دریافت وجه از ما)
+      totalCredit: number; // بستانکار شده (واریز به ما / فروش کالا یا خدمات به ما)
+      netBalance: number; // مثبت = بدهکار به ما (طلب ما) | منفی = بستانکار از ما (بدهی ما)
+      absBalance: number;
+      status: 'debtor' | 'creditor' | 'settled';
+      unpaidDocsCount: number;
+      lastActivityDate: string;
+      entries: CustomerLedgerEntry[];
+    }
+
+    const partyMap = new Map<string, Customer>();
+    const allRegisteredCustomers = customers.length > 0 ? customers : StorageService.getCustomers();
+
+    allRegisteredCustomers.forEach((c) => {
+      const cleanName = (c.name || '').trim();
+      if (!cleanName) return;
+      const key = cleanName.toLowerCase();
+      if (!partyMap.has(key)) {
+        partyMap.set(key, c);
+      }
+    });
+
+    // Also include any ad-hoc customers from sales invoices
+    confirmedInvoices.forEach((inv) => {
+      const cleanName = (inv.customerName || '').trim();
+      if (!cleanName) return;
+      const key = cleanName.toLowerCase();
+      if (!partyMap.has(key)) {
+        partyMap.set(key, {
+          id: inv.customerId || `adhoc-cust-${key}`,
+          name: cleanName,
+          phone: inv.customerPhone || '',
+          address: inv.customerAddress || '',
+          nationalId: inv.customerNationalId || '',
+          createdAt: inv.date || '',
+        });
+      }
+    });
+
+    // Also include any ad-hoc suppliers / service providers from purchase invoices
+    periodPurchaseInvoices.forEach((pi) => {
+      const cleanName = (pi.supplierName || '').trim();
+      if (!cleanName) return;
+      const key = cleanName.toLowerCase();
+      if (!partyMap.has(key)) {
+        partyMap.set(key, {
+          id: `adhoc-supp-${key}`,
+          name: cleanName,
+          phone: pi.supplierPhone || '',
+          address: pi.supplierAddress || '',
+          nationalId: pi.supplierEconomicCode || '',
+          createdAt: pi.date || '',
+        });
+      } else {
+        const existing = partyMap.get(key)!;
+        if (!existing.phone && pi.supplierPhone) existing.phone = pi.supplierPhone;
+        if (!existing.address && pi.supplierAddress) existing.address = pi.supplierAddress;
+      }
+    });
+
+    // Also include any ad-hoc parties from standalone transactions
+    periodTransactions.forEach((tx) => {
+      const cleanName = (tx.customerName || '').trim();
+      if (!cleanName) return;
+      const key = cleanName.toLowerCase();
+      if (!partyMap.has(key)) {
+        partyMap.set(key, {
+          id: tx.customerId || `adhoc-txn-${key}`,
+          name: cleanName,
+          phone: '',
+          createdAt: tx.date || '',
+        });
+      }
+    });
+
+    const allParties: PartyBalanceRecord[] = [];
+    let totalReceivablesFromDebtors = 0; // مجموع طلب ما از بدهکاران
+    let totalPayablesToCreditors = 0; // مجموع بدهی ما به بستانکاران
+    let debtorsCount = 0;
+    let creditorsCount = 0;
+    let settledCount = 0;
+
+    partyMap.forEach((custObj, key) => {
+      const ledger = StorageService.buildCustomerLedger(
+        custObj,
+        confirmedInvoices,
+        periodTransactions,
+        periodPurchaseInvoices
+      );
+
+      // Skip registered parties that have zero activity and zero balance in the selected period
+      if (ledger.entries.length === 0 && ledger.netBalance === 0) {
+        return;
+      }
+
+      const salesCount = ledger.entries.filter((e) => e.documentType === 'invoice').length;
+      const purchasesCount = ledger.entries.filter((e) => e.documentType === 'purchase_invoice').length;
+      const hasSales = salesCount > 0 || ledger.entries.some((e) => e.documentType === 'deposit' || e.documentType === 'debt');
+      const hasPurchases = purchasesCount > 0;
+
+      const roleType: 'customer' | 'supplier' | 'both' =
+        hasSales && hasPurchases ? 'both' : hasPurchases ? 'supplier' : 'customer';
+
+      const roleLabel =
+        roleType === 'both'
+          ? 'مشتری و تامین‌کننده'
+          : roleType === 'supplier'
+          ? 'تامین‌کننده / مجری خدمات'
+          : 'مشتری / خریدار';
+
+      const lastEntry = ledger.entries[ledger.entries.length - 1];
+      const lastActivityDate = lastEntry?.date || custObj.createdAt || '—';
+
+      if (ledger.balanceStatus === 'debtor') {
+        totalReceivablesFromDebtors += ledger.netBalance;
+        debtorsCount++;
+      } else if (ledger.balanceStatus === 'creditor') {
+        totalPayablesToCreditors += Math.abs(ledger.netBalance);
+        creditorsCount++;
+      } else {
+        settledCount++;
+      }
+
+      allParties.push({
+        key,
+        customerObj: custObj,
+        name: custObj.name,
+        phone: custObj.phone || '',
+        nationalId: custObj.nationalId || '',
+        address: custObj.address || '',
+        hasSales,
+        hasPurchases,
+        salesCount,
+        purchasesCount,
+        roleType,
+        roleLabel,
+        totalDebit: ledger.totalDebit,
+        totalCredit: ledger.totalCredit,
+        netBalance: ledger.netBalance,
+        absBalance: Math.abs(ledger.netBalance),
+        status: ledger.balanceStatus,
+        unpaidDocsCount: ledger.unpaidInvoicesCount,
+        lastActivityDate,
+        entries: ledger.entries,
+      });
+    });
+
+    const debtorsList = allParties
+      .filter((p) => p.status === 'debtor')
+      .sort((a, b) => b.netBalance - a.netBalance);
+
+    const creditorsList = allParties
+      .filter((p) => p.status === 'creditor')
+      .sort((a, b) => b.absBalance - a.absBalance);
+
+    const q = dcSearchQuery.trim().toLowerCase();
+    const filteredParties = allParties
+      .filter((p) => {
+        if (dcStatusFilter === 'all_active' && p.status === 'settled') return false;
+        if (dcStatusFilter === 'debtors' && p.status !== 'debtor') return false;
+        if (dcStatusFilter === 'creditors' && p.status !== 'creditor') return false;
+        if (dcStatusFilter === 'settled' && p.status !== 'settled') return false;
+
+        if (dcRoleFilter === 'customer' && p.roleType === 'supplier') return false;
+        if (dcRoleFilter === 'supplier' && p.roleType === 'customer') return false;
+
+        if (q) {
+          const matchName = p.name.toLowerCase().includes(q);
+          const matchPhone = p.phone.toLowerCase().includes(q);
+          const matchNid = p.nationalId.toLowerCase().includes(q);
+          const matchAddr = p.address.toLowerCase().includes(q);
+          if (!matchName && !matchPhone && !matchNid && !matchAddr) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        if (dcSortMode === 'debt_desc') return b.netBalance - a.netBalance;
+        if (dcSortMode === 'credit_desc') return a.netBalance - b.netBalance;
+        if (dcSortMode === 'turnover_desc') return b.totalDebit + b.totalCredit - (a.totalDebit + a.totalCredit);
+        if (dcSortMode === 'name_asc') return a.name.localeCompare(b.name, 'fa');
+        return b.absBalance - a.absBalance;
+      });
+
+    const filteredDebtors = filteredParties
+      .filter((p) => p.status === 'debtor')
+      .sort((a, b) => b.netBalance - a.netBalance);
+
+    const filteredCreditors = filteredParties
+      .filter((p) => p.status === 'creditor')
+      .sort((a, b) => b.absBalance - a.absBalance);
+
+    return {
+      allParties,
+      debtorsList,
+      creditorsList,
+      filteredParties,
+      filteredDebtors,
+      filteredCreditors,
+      totalReceivablesFromDebtors,
+      totalPayablesToCreditors,
+      netOverallBalance: totalReceivablesFromDebtors - totalPayablesToCreditors,
+      debtorsCount,
+      creditorsCount,
+      settledCount,
+    };
+  }, [
+    customers,
+    confirmedInvoices,
+    periodPurchaseInvoices,
+    periodTransactions,
+    dcStatusFilter,
+    dcRoleFilter,
+    dcSearchQuery,
+    dcSortMode,
+  ]);
+
   // Filtered & sorted items for Profitability tab and Overview top list
   const sortedItems = useMemo(() => {
     const q = itemSearchQuery.trim().toLowerCase();
@@ -1029,8 +1302,95 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
       XLSX.utils.book_append_sheet(wb, wsLow, 'کسری موجودی انبار');
     }
 
+    // 5. Debtors & Creditors Sheet
+    if (debtorsCreditorsAnalytics.allParties.length > 0) {
+      const dcRows = debtorsCreditorsAnalytics.allParties.map((p, idx) => ({
+        'ردیف': idx + 1,
+        'نام شخص / طرف‌حساب': p.name,
+        'شماره تماس': p.phone || '-',
+        'نوع طرف‌حساب': p.roleLabel,
+        'کل بدهکار (خرید از ما / دریافت وجه)': Math.round(p.totalDebit),
+        'کل بستانکار (واریزی / فروش به ما)': Math.round(p.totalCredit),
+        'مانده نهایی حساب': Math.round(p.absBalance),
+        'وضعیت حساب':
+          p.status === 'debtor'
+            ? 'بدهکار (طلب ما)'
+            : p.status === 'creditor'
+            ? 'بستانکار (طلب از ما)'
+            : 'تسویه شده',
+        'آخرین فعالیت': p.lastActivityDate,
+      }));
+      const wsDc = XLSX.utils.json_to_sheet(dcRows);
+      XLSX.utils.book_append_sheet(wb, wsDc, 'لیست بدهکاران و بستانکاران');
+    }
+
     const dateStamp = toEnglishDigits(getCurrentJalaliDate()).replace(/\//g, '-');
     XLSX.writeFile(wb, `گزارش_مالی_و_تحلیل_انبار_${dateStamp}.xlsx`);
+  };
+
+  // Dedicated Excel export for Debtors & Creditors
+  const handleExportDebtorsCreditorsExcel = () => {
+    const wb = XLSX.utils.book_new();
+
+    const debtorRows = debtorsCreditorsAnalytics.debtorsList.map((p, idx) => ({
+      'رتبه': idx + 1,
+      'نام بدهکار (مشتری / طرف‌حساب)': p.name,
+      'تلفن تماس': p.phone || '-',
+      'نقش': p.roleLabel,
+      'کل مبلغ بدهکار (خرید / بدهی)': Math.round(p.totalDebit),
+      'کل مبلغ پرداختی / بستانکار': Math.round(p.totalCredit),
+      'مانده بدهی به ما (طلب ما)': Math.round(p.netBalance),
+      'تعداد فاکتور فروش': p.salesCount,
+      'آخرین فعالیت': p.lastActivityDate,
+    }));
+    const wsDebtors = XLSX.utils.json_to_sheet(
+      debtorRows.length > 0
+        ? debtorRows
+        : [{ پیام: 'هیچ شخص بدهکاری در این بازه زمانی وجود ندارد.' }]
+    );
+    XLSX.utils.book_append_sheet(wb, wsDebtors, 'لیست بدهکاران (طلب ما)');
+
+    const creditorRows = debtorsCreditorsAnalytics.creditorsList.map((p, idx) => ({
+      'رتبه': idx + 1,
+      'نام بستانکار (تامین‌کننده / شخص)': p.name,
+      'تلفن تماس': p.phone || '-',
+      'نقش': p.roleLabel,
+      'کل مبلغ بستانکاری (فروش کالا یا خدمات به ما / واریزی)': Math.round(p.totalCredit),
+      'کل مبلغ تسویه‌شده توسط ما': Math.round(p.totalDebit),
+      'مانده طلب از ما (بدهی ما)': Math.round(p.absBalance),
+      'تعداد فاکتور خرید/خدمات': p.purchasesCount,
+      'آخرین فعالیت': p.lastActivityDate,
+    }));
+    const wsCreditors = XLSX.utils.json_to_sheet(
+      creditorRows.length > 0
+        ? creditorRows
+        : [{ پیام: 'هیچ شخص یا تامین‌کننده بستانکاری در این بازه زمانی وجود ندارد.' }]
+    );
+    XLSX.utils.book_append_sheet(wb, wsCreditors, 'لیست بستانکاران (بدهی ما)');
+
+    const allRows = debtorsCreditorsAnalytics.allParties.map((p, idx) => ({
+      'ردیف': idx + 1,
+      'نام طرف‌حساب': p.name,
+      'تلفن': p.phone || '-',
+      'نوع ارتباط': p.roleLabel,
+      'جمع بدهکار': Math.round(p.totalDebit),
+      'جمع بستانکار': Math.round(p.totalCredit),
+      'مانده خالص': Math.round(p.absBalance),
+      'وضعیت نهایی':
+        p.status === 'debtor'
+          ? 'بدهکار به ما'
+          : p.status === 'creditor'
+          ? 'بستانکار از ما'
+          : 'تسویه کامل',
+      'آخرین تراکنش': p.lastActivityDate,
+    }));
+    if (allRows.length > 0) {
+      const wsAll = XLSX.utils.json_to_sheet(allRows);
+      XLSX.utils.book_append_sheet(wb, wsAll, 'تراز کل طرف‌حساب‌ها');
+    }
+
+    const dateStamp = toEnglishDigits(getCurrentJalaliDate()).replace(/\//g, '-');
+    XLSX.writeFile(wb, `لیست_بدهکاران_و_بستانکاران_${dateStamp}.xlsx`);
   };
 
   const collectionRatePercent =
@@ -1158,6 +1518,13 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
           {(
             [
               { id: 'overview', label: 'نمای کلی و شاخص‌ها', icon: BarChart3 },
+              {
+                id: 'debtors_creditors',
+                label: `لیست بدهکاران و بستانکاران (${toPersianDigits(
+                  debtorsCreditorsAnalytics.debtorsCount + debtorsCreditorsAnalytics.creditorsCount
+                )})`,
+                icon: Scale,
+              },
               {
                 id: 'product_customer',
                 label: 'فروش کالا به اشخاص (محصول ⇄ مشتری)',
@@ -1543,6 +1910,923 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
               )}
             </div>
           </div>
+
+          {/* Quick Summary Card for Debtors & Creditors in Overview */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
+                  <Scale className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-800">وضعیت کلی بدهکاران و بستانکاران (کل دوره فعالیت)</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    تراز لحظه‌ای مطالبات از مشتریان بدهکار و بدهی به تامین‌کنندگان و اشخاص بستانکار
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveSubTab('debtors_creditors')}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200/60 transition-colors cursor-pointer self-start sm:self-auto"
+              >
+                <Scale className="w-3.5 h-3.5" />
+                <span>مشاهده لیست کامل بدهکاران و بستانکاران ←</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+              <div
+                onClick={() => {
+                  setDcStatusFilter('debtors');
+                  setActiveSubTab('debtors_creditors');
+                }}
+                className="p-4 rounded-xl bg-rose-50/60 border border-rose-200/70 hover:bg-rose-50 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-rose-800">مجموع مطالبات از بدهکاران (طلب ما)</span>
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-rose-100 text-rose-700">
+                    {toPersianDigits(debtorsCreditorsAnalytics.debtorsCount)} نفر
+                  </span>
+                </div>
+                <div className="text-lg font-black text-rose-700">
+                  {formatPrice(debtorsCreditorsAnalytics.totalReceivablesFromDebtors, settings.currency)}
+                </div>
+              </div>
+
+              <div
+                onClick={() => {
+                  setDcStatusFilter('creditors');
+                  setActiveSubTab('debtors_creditors');
+                }}
+                className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200/70 hover:bg-emerald-50 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-emerald-800">مجموع بدهی به بستانکاران (بدهی ما)</span>
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-100 text-emerald-700">
+                    {toPersianDigits(debtorsCreditorsAnalytics.creditorsCount)} نفر
+                  </span>
+                </div>
+                <div className="text-lg font-black text-emerald-700">
+                  {formatPrice(debtorsCreditorsAnalytics.totalPayablesToCreditors, settings.currency)}
+                </div>
+              </div>
+
+              <div
+                onClick={() => {
+                  setDcStatusFilter('all_active');
+                  setActiveSubTab('debtors_creditors');
+                }}
+                className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 hover:bg-slate-100/70 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-slate-700">تراز خالص (مطالبات منهای بدهی‌ها)</span>
+                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
+                    debtorsCreditorsAnalytics.netOverallBalance >= 0
+                      ? 'bg-indigo-100 text-indigo-700'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {debtorsCreditorsAnalytics.netOverallBalance > 0
+                      ? 'تراز مثبت (طلبکاریم)'
+                      : debtorsCreditorsAnalytics.netOverallBalance < 0
+                      ? 'تراز منفی (بدهکاریم)'
+                      : 'تراز صفر'}
+                  </span>
+                </div>
+                <div className={`text-lg font-black ${
+                  debtorsCreditorsAnalytics.netOverallBalance >= 0 ? 'text-indigo-700' : 'text-amber-700'
+                }`}>
+                  {formatPrice(Math.abs(debtorsCreditorsAnalytics.netOverallBalance), settings.currency)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================
+          SUB-TAB: DEBTORS & CREDITORS LIST (لیست بدهکاران و بستانکاران)
+         =================================================================== */}
+      {activeSubTab === 'debtors_creditors' && (
+        <div className="space-y-5">
+          {/* 4 Top KPI Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 1. Total Receivables from Debtors */}
+            <div
+              onClick={() => setDcStatusFilter('debtors')}
+              className={`p-5 rounded-2xl border transition-all cursor-pointer ${
+                dcStatusFilter === 'debtors'
+                  ? 'bg-rose-50/80 border-rose-300 ring-2 ring-rose-500/20 shadow-sm'
+                  : 'bg-white border-slate-200/80 shadow-xs hover:border-rose-200'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-slate-500">مجموع مطالبات از بدهکاران (طلب ما)</span>
+                <div className="p-2 bg-rose-100/80 text-rose-600 rounded-xl">
+                  <ArrowUpRight className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-xl font-black text-rose-600">
+                {formatPrice(debtorsCreditorsAnalytics.totalReceivablesFromDebtors, settings.currency)}
+              </div>
+              <div className="mt-2.5 flex items-center justify-between text-[11px]">
+                <span className="font-bold text-rose-700 bg-rose-100/80 px-2 py-0.5 rounded-md">
+                  {toPersianDigits(debtorsCreditorsAnalytics.debtorsCount)} طرف‌حساب بدهکار
+                </span>
+                <span className="text-slate-400">اشخاص بدهکار به مجموعه</span>
+              </div>
+            </div>
+
+            {/* 2. Total Payables to Creditors */}
+            <div
+              onClick={() => setDcStatusFilter('creditors')}
+              className={`p-5 rounded-2xl border transition-all cursor-pointer ${
+                dcStatusFilter === 'creditors'
+                  ? 'bg-emerald-50/80 border-emerald-300 ring-2 ring-emerald-500/20 shadow-sm'
+                  : 'bg-white border-slate-200/80 shadow-xs hover:border-emerald-200'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-slate-500">مجموع بدهی به بستانکاران (طلب از ما)</span>
+                <div className="p-2 bg-emerald-100/80 text-emerald-600 rounded-xl">
+                  <ArrowDownLeft className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-xl font-black text-emerald-600">
+                {formatPrice(debtorsCreditorsAnalytics.totalPayablesToCreditors, settings.currency)}
+              </div>
+              <div className="mt-2.5 flex items-center justify-between text-[11px]">
+                <span className="font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
+                  {toPersianDigits(debtorsCreditorsAnalytics.creditorsCount)} طرف‌حساب بستانکار
+                </span>
+                <span className="text-slate-400">تامین‌کنندگان و بستانکاران</span>
+              </div>
+            </div>
+
+            {/* 3. Net Overall Balance */}
+            <div
+              onClick={() => setDcStatusFilter('all_active')}
+              className={`p-5 rounded-2xl border transition-all cursor-pointer ${
+                dcStatusFilter === 'all_active'
+                  ? 'bg-indigo-50/70 border-indigo-300 ring-2 ring-indigo-500/20 shadow-sm'
+                  : 'bg-white border-slate-200/80 shadow-xs hover:border-indigo-200'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-slate-500">تراز خالص مطالبات و بدهی‌ها</span>
+                <div className="p-2 bg-indigo-100/80 text-indigo-600 rounded-xl">
+                  <Scale className="w-4 h-4" />
+                </div>
+              </div>
+              <div className={`text-xl font-black ${
+                debtorsCreditorsAnalytics.netOverallBalance >= 0 ? 'text-indigo-700' : 'text-amber-600'
+              }`}>
+                {formatPrice(Math.abs(debtorsCreditorsAnalytics.netOverallBalance), settings.currency)}
+              </div>
+              <div className="mt-2.5 flex items-center justify-between text-[11px]">
+                <span className={`font-bold px-2 py-0.5 rounded-md ${
+                  debtorsCreditorsAnalytics.netOverallBalance > 0
+                    ? 'bg-indigo-100 text-indigo-700'
+                    : debtorsCreditorsAnalytics.netOverallBalance < 0
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {debtorsCreditorsAnalytics.netOverallBalance > 0
+                    ? 'طلب خالص مجموعه'
+                    : debtorsCreditorsAnalytics.netOverallBalance < 0
+                    ? 'بدهی خالص مجموعه'
+                    : 'تراز خالص صفر'}
+                </span>
+                <span className="text-slate-400">مطالبات منهای بدهی‌ها</span>
+              </div>
+            </div>
+
+            {/* 4. Settled Accounts */}
+            <div
+              onClick={() => setDcStatusFilter('settled')}
+              className={`p-5 rounded-2xl border transition-all cursor-pointer ${
+                dcStatusFilter === 'settled'
+                  ? 'bg-slate-100 border-slate-300 ring-2 ring-slate-400/20 shadow-sm'
+                  : 'bg-white border-slate-200/80 shadow-xs hover:border-slate-300'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-slate-500">طرف‌حساب‌های تسویه شده</span>
+                <div className="p-2 bg-slate-100 text-slate-600 rounded-xl">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-xl font-black text-slate-700">
+                {toPersianDigits(debtorsCreditorsAnalytics.settledCount)} <span className="text-xs font-bold text-slate-400">نفر</span>
+              </div>
+              <div className="mt-2.5 flex items-center justify-between text-[11px]">
+                <span className="font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                  مانده حساب صفر
+                </span>
+                <span className="text-slate-400">
+                  از کل {toPersianDigits(debtorsCreditorsAnalytics.allParties.length)} طرف‌حساب
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Filter & Action Toolbar */}
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-sm sm:text-base font-black text-slate-800 flex items-center gap-2">
+                  <Scale className="w-4 h-4 text-indigo-600" />
+                  <span>گزارش جامع بدهکاران و بستانکاران (تراز حساب اشخاص، مشتریان و تامین‌کنندگان)</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  محاسبه خودکار بر اساس کلیه فاکتورهای فروش، فاکتورهای خرید و خدمات، پرداخت‌ها، پیش‌پرداخت‌ها و ثبت‌های بدهکاری/بستانکاری
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Layout Toggle */}
+                <div className="inline-flex bg-slate-100 p-1 rounded-xl border border-slate-200/60">
+                  <button
+                    type="button"
+                    onClick={() => setDcViewLayout('split')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      dcViewLayout === 'split'
+                        ? 'bg-white text-indigo-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-800'
+                    }`}
+                  >
+                    نمای تفکیکی (بدهکاران | بستانکاران)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDcViewLayout('table')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      dcViewLayout === 'table'
+                        ? 'bg-white text-indigo-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-800'
+                    }`}
+                  >
+                    جدول یکپارچه تراز حساب‌ها
+                  </button>
+                </div>
+
+                {/* Excel Export Button */}
+                <button
+                  type="button"
+                  onClick={handleExportDebtorsCreditorsExcel}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors shadow-xs cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>خروجی اکسل بدهکاران و بستانکاران</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Filters Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
+              {/* Search Box */}
+              <div className="lg:col-span-4 relative">
+                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={dcSearchQuery}
+                  onChange={(e) => setDcSearchQuery(e.target.value)}
+                  placeholder="جستجوی نام مشتری، تامین‌کننده، شماره تماس یا کد ملی..."
+                  className="w-full pr-9 pl-3 py-2 text-xs rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                />
+              </div>
+
+              {/* Status Filter Pills */}
+              <div className="lg:col-span-4 flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto">
+                {[
+                  { id: 'all_active', label: 'بدهکاران و بستانکاران' },
+                  { id: 'debtors', label: `فقط بدهکاران (${toPersianDigits(debtorsCreditorsAnalytics.debtorsCount)})` },
+                  { id: 'creditors', label: `فقط بستانکاران (${toPersianDigits(debtorsCreditorsAnalytics.creditorsCount)})` },
+                  { id: 'settled', label: 'تسویه‌شده' },
+                  { id: 'all', label: 'همه' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setDcStatusFilter(tab.id as DcStatusFilter)}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      dcStatusFilter === tab.id
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Role Filter */}
+              <div className="lg:col-span-2">
+                <select
+                  value={dcRoleFilter}
+                  onChange={(e) => setDcRoleFilter(e.target.value as DcRoleFilter)}
+                  className="w-full px-3 py-2 text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500"
+                >
+                  <option value="all">همه نقش‌ها (مشتری و تامین‌کننده)</option>
+                  <option value="customer">فقط مشتریان (خریدار)</option>
+                  <option value="supplier">فقط تامین‌کنندگان / خدماتی</option>
+                </select>
+              </div>
+
+              {/* Sort Mode */}
+              <div className="lg:col-span-2">
+                <select
+                  value={dcSortMode}
+                  onChange={(e) => setDcSortMode(e.target.value as DcSortMode)}
+                  className="w-full px-3 py-2 text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500"
+                >
+                  <option value="balance_abs">بیشترین مبلغ مانده</option>
+                  <option value="debt_desc">بیشترین بدهکاری به ما</option>
+                  <option value="credit_desc">بیشترین بستانکاری از ما</option>
+                  <option value="turnover_desc">بیشترین حجم گردش مالی</option>
+                  <option value="name_asc">حروف الفبا (نام)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* VIEW LAYOUT 1: SPLIT SIDE-BY-SIDE (DEBTORS vs CREDITORS) */}
+          {dcViewLayout === 'split' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {/* Right Column: DEBTORS (بدهکاران به مجموعه - طلب ما) */}
+              {(dcStatusFilter === 'all_active' || dcStatusFilter === 'debtors' || dcStatusFilter === 'all') && (
+                <div className="bg-white rounded-2xl border border-rose-200/80 shadow-xs overflow-hidden flex flex-col">
+                  <div className="p-4 sm:p-5 bg-gradient-to-l from-rose-50/90 to-white border-b border-rose-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl">
+                        <ArrowUpRight className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-rose-950 flex items-center gap-2">
+                          <span>لیست بدهکاران (مطالبات ما از اشخاص)</span>
+                          <span className="px-2 py-0.5 text-[11px] font-black rounded-full bg-rose-100 text-rose-700">
+                            {toPersianDigits(debtorsCreditorsAnalytics.filteredDebtors.length)} نفر
+                          </span>
+                        </h4>
+                        <p className="text-[11px] text-rose-700/80 mt-0.5">
+                          اشخاص و مشتریانی که بابت فاکتورهای فروش یا بدهی ثبت‌شده به مجموعه بدهکارند
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-left">
+                      <div className="text-[10px] font-bold text-rose-600/80">جمع کل مطالبات نمایش داده شده</div>
+                      <div className="text-sm sm:text-base font-black text-rose-700">
+                        {formatPrice(
+                          debtorsCreditorsAnalytics.filteredDebtors.reduce((s, p) => s + p.netBalance, 0),
+                          settings.currency
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="divide-y divide-slate-100 max-h-[680px] overflow-y-auto">
+                    {debtorsCreditorsAnalytics.filteredDebtors.length === 0 ? (
+                      <div className="p-10 text-center text-slate-400">
+                        <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                        <p className="text-xs font-bold">هیچ طرف‌حساب بدهکاری با فیلترهای فعلی یافت نشد.</p>
+                      </div>
+                    ) : (
+                      debtorsCreditorsAnalytics.filteredDebtors.map((party, idx) => {
+                        const isExpanded = expandedDcPartyKey === party.key;
+                        const sharePercent =
+                          debtorsCreditorsAnalytics.totalReceivablesFromDebtors > 0
+                            ? Math.round((party.netBalance / debtorsCreditorsAnalytics.totalReceivablesFromDebtors) * 100)
+                            : 0;
+
+                        return (
+                          <div key={party.key} className="transition-colors hover:bg-rose-50/20">
+                            <div
+                              onClick={() => setExpandedDcPartyKey(isExpanded ? null : party.key)}
+                              className="p-4 flex items-center justify-between gap-3 cursor-pointer"
+                            >
+                              <div className="flex items-start gap-3 min-w-0">
+                                <span className="w-6 h-6 rounded-lg bg-rose-100 text-rose-700 text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
+                                  {toPersianDigits(idx + 1)}
+                                </span>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-sm font-black text-slate-800 truncate">{party.name}</span>
+                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600">
+                                      {party.roleLabel}
+                                    </span>
+                                    {party.nationalId && (
+                                      <span className="text-[10px] font-mono text-slate-400">کد: {toPersianDigits(party.nationalId)}</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500 flex-wrap">
+                                    {party.phone && (
+                                      <span className="inline-flex items-center gap-1">
+                                        <Phone className="w-3 h-3 text-slate-400" />
+                                        <span dir="ltr">{toPersianDigits(party.phone)}</span>
+                                      </span>
+                                    )}
+                                    {party.salesCount > 0 && (
+                                      <span>{toPersianDigits(party.salesCount)} فاکتور فروش</span>
+                                    )}
+                                    {party.lastActivityDate && (
+                                      <span>آخرین گردش: {toPersianDigits(party.lastActivityDate)}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3 shrink-0">
+                                <div className="text-left">
+                                  <div className="text-sm font-black text-rose-600">
+                                    {formatPrice(party.netBalance, settings.currency)}
+                                  </div>
+                                  <div className="text-[10px] font-bold text-slate-400 flex items-center justify-end gap-1.5">
+                                    <span>بدهکار ({toPersianDigits(sharePercent)}٪ از کل طلب)</span>
+                                  </div>
+                                </div>
+                                <div className="p-1.5 rounded-lg bg-slate-100 text-slate-500">
+                                  {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Expandable Ledger Entries */}
+                            {isExpanded && (
+                              <div className="px-4 pb-4 pt-2 bg-slate-50/80 border-t border-slate-100 space-y-3">
+                                <div className="grid grid-cols-3 gap-2 text-center bg-white p-2.5 rounded-xl border border-slate-200/70 text-xs">
+                                  <div>
+                                    <div className="text-[10px] text-slate-400 font-bold">جمع بدهکار (فاکتور فروش/بدهی)</div>
+                                    <div className="font-black text-rose-600 mt-0.5">
+                                      {formatPrice(party.totalDebit, settings.currency)}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] text-slate-400 font-bold">جمع بستانکار (پرداختی/خرید)</div>
+                                    <div className="font-black text-emerald-600 mt-0.5">
+                                      {formatPrice(party.totalCredit, settings.currency)}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] text-slate-400 font-bold">مانده نهایی بدهکاری</div>
+                                    <div className="font-black text-rose-700 mt-0.5">
+                                      {formatPrice(party.netBalance, settings.currency)}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="text-[11px] font-bold text-slate-600 flex items-center justify-between">
+                                  <span>ریز گردش حساب ({toPersianDigits(party.entries.length)} ردیف)</span>
+                                  <span className="text-[10px] text-slate-400">نمایش گردش حساب طرف‌حساب</span>
+                                </div>
+
+                                <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+                                  {[...party.entries].reverse().slice(0, 25).map((entry) => (
+                                    <div
+                                      key={entry.id}
+                                      className="p-2.5 text-xs flex items-center justify-between gap-2 hover:bg-slate-50"
+                                    >
+                                      <div className="min-w-0">
+                                        <div className="font-bold text-slate-700 truncate">{entry.description}</div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
+                                          <span>{toPersianDigits(entry.date)}</span>
+                                          {entry.paymentMethod && <span>• {entry.paymentMethod}</span>}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <div className="text-left">
+                                          {entry.debit > 0 ? (
+                                            <span className="font-black text-rose-600">
+                                              +{formatPrice(entry.debit, settings.currency)} (بدهکار)
+                                            </span>
+                                          ) : (
+                                            <span className="font-black text-emerald-600">
+                                              -{formatPrice(entry.credit, settings.currency)} (بستانکار)
+                                            </span>
+                                          )}
+                                          <div className="text-[10px] text-slate-400">
+                                            مانده: {formatPrice(Math.abs(entry.balance), settings.currency)}{' '}
+                                            {entry.balance > 0 ? 'بد' : entry.balance < 0 ? 'بس' : 'تسویه'}
+                                          </div>
+                                        </div>
+                                        {entry.rawInvoice && onViewInvoice && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              onViewInvoice(entry.rawInvoice!);
+                                            }}
+                                            className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 cursor-pointer"
+                                            title="مشاهده فاکتور فروش"
+                                          >
+                                            <Eye className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                        {entry.rawPurchaseInvoice && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setViewingPurchaseInvoice(entry.rawPurchaseInvoice!);
+                                            }}
+                                            className="p-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 cursor-pointer"
+                                            title="مشاهده فاکتور خرید / خدمات"
+                                          >
+                                            <ReceiptText className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Left Column: CREDITORS (بستانکاران از مجموعه - بدهی ما) */}
+              {(dcStatusFilter === 'all_active' || dcStatusFilter === 'creditors' || dcStatusFilter === 'all') && (
+                <div className="bg-white rounded-2xl border border-emerald-200/80 shadow-xs overflow-hidden flex flex-col">
+                  <div className="p-4 sm:p-5 bg-gradient-to-l from-emerald-50/90 to-white border-b border-emerald-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2.5 bg-emerald-100 text-emerald-600 rounded-xl">
+                        <ArrowDownLeft className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-emerald-950 flex items-center gap-2">
+                          <span>لیست بستانکاران (بدهی ما به اشخاص و تامین‌کنندگان)</span>
+                          <span className="px-2 py-0.5 text-[11px] font-black rounded-full bg-emerald-100 text-emerald-700">
+                            {toPersianDigits(debtorsCreditorsAnalytics.filteredCreditors.length)} نفر
+                          </span>
+                        </h4>
+                        <p className="text-[11px] text-emerald-700/80 mt-0.5">
+                          تامین‌کنندگان کالا/خدمات یا مشتریانی که دارای پیش‌پرداخت و طلب از مجموعه هستند
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-left">
+                      <div className="text-[10px] font-bold text-emerald-600/80">جمع کل بدهی نمایش داده شده</div>
+                      <div className="text-sm sm:text-base font-black text-emerald-700">
+                        {formatPrice(
+                          debtorsCreditorsAnalytics.filteredCreditors.reduce((s, p) => s + p.absBalance, 0),
+                          settings.currency
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="divide-y divide-slate-100 max-h-[680px] overflow-y-auto">
+                    {debtorsCreditorsAnalytics.filteredCreditors.length === 0 ? (
+                      <div className="p-10 text-center text-slate-400">
+                        <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                        <p className="text-xs font-bold">هیچ طرف‌حساب بستانکاری با فیلترهای فعلی یافت نشد.</p>
+                      </div>
+                    ) : (
+                      debtorsCreditorsAnalytics.filteredCreditors.map((party, idx) => {
+                        const isExpanded = expandedDcPartyKey === party.key;
+                        const absBalance = party.absBalance;
+                        const sharePercent =
+                          debtorsCreditorsAnalytics.totalPayablesToCreditors > 0
+                            ? Math.round((absBalance / debtorsCreditorsAnalytics.totalPayablesToCreditors) * 100)
+                            : 0;
+
+                        return (
+                          <div key={party.key} className="transition-colors hover:bg-emerald-50/20">
+                            <div
+                              onClick={() => setExpandedDcPartyKey(isExpanded ? null : party.key)}
+                              className="p-4 flex items-center justify-between gap-3 cursor-pointer"
+                            >
+                              <div className="flex items-start gap-3 min-w-0">
+                                <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
+                                  {toPersianDigits(idx + 1)}
+                                </span>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-sm font-black text-slate-800 truncate">{party.name}</span>
+                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600">
+                                      {party.roleLabel}
+                                    </span>
+                                    {party.nationalId && (
+                                      <span className="text-[10px] font-mono text-slate-400">کد: {toPersianDigits(party.nationalId)}</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500 flex-wrap">
+                                    {party.phone && (
+                                      <span className="inline-flex items-center gap-1">
+                                        <Phone className="w-3 h-3 text-slate-400" />
+                                        <span dir="ltr">{toPersianDigits(party.phone)}</span>
+                                      </span>
+                                    )}
+                                    {party.purchasesCount > 0 && (
+                                      <span>{toPersianDigits(party.purchasesCount)} فاکتور خرید/خدمات</span>
+                                    )}
+                                    {party.lastActivityDate && (
+                                      <span>آخرین گردش: {toPersianDigits(party.lastActivityDate)}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3 shrink-0">
+                                <div className="text-left">
+                                  <div className="text-sm font-black text-emerald-600">
+                                    {formatPrice(absBalance, settings.currency)}
+                                  </div>
+                                  <div className="text-[10px] font-bold text-slate-400 flex items-center justify-end gap-1.5">
+                                    <span>بستانکار ({toPersianDigits(sharePercent)}٪ از کل بدهی)</span>
+                                  </div>
+                                </div>
+                                <div className="p-1.5 rounded-lg bg-slate-100 text-slate-500">
+                                  {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Expandable Ledger Entries */}
+                            {isExpanded && (
+                              <div className="px-4 pb-4 pt-2 bg-slate-50/80 border-t border-slate-100 space-y-3">
+                                <div className="grid grid-cols-3 gap-2 text-center bg-white p-2.5 rounded-xl border border-slate-200/70 text-xs">
+                                  <div>
+                                    <div className="text-[10px] text-slate-400 font-bold">جمع بستانکار (فاکتور خرید/واریزی)</div>
+                                    <div className="font-black text-emerald-600 mt-0.5">
+                                      {formatPrice(party.totalCredit, settings.currency)}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] text-slate-400 font-bold">جمع بدهکار (پرداختی ما/فروش)</div>
+                                    <div className="font-black text-rose-600 mt-0.5">
+                                      {formatPrice(party.totalDebit, settings.currency)}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] text-slate-400 font-bold">مانده نهایی بستانکاری</div>
+                                    <div className="font-black text-emerald-700 mt-0.5">
+                                      {formatPrice(absBalance, settings.currency)}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="text-[11px] font-bold text-slate-600 flex items-center justify-between">
+                                  <span>ریز گردش حساب ({toPersianDigits(party.entries.length)} ردیف)</span>
+                                  <span className="text-[10px] text-slate-400">نمایش گردش حساب طرف‌حساب</span>
+                                </div>
+
+                                <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+                                  {[...party.entries].reverse().slice(0, 25).map((entry) => (
+                                    <div
+                                      key={entry.id}
+                                      className="p-2.5 text-xs flex items-center justify-between gap-2 hover:bg-slate-50"
+                                    >
+                                      <div className="min-w-0">
+                                        <div className="font-bold text-slate-700 truncate">{entry.description}</div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
+                                          <span>{toPersianDigits(entry.date)}</span>
+                                          {entry.paymentMethod && <span>• {entry.paymentMethod}</span>}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <div className="text-left">
+                                          {entry.credit > 0 ? (
+                                            <span className="font-black text-emerald-600">
+                                              +{formatPrice(entry.credit, settings.currency)} (بستانکار)
+                                            </span>
+                                          ) : (
+                                            <span className="font-black text-rose-600">
+                                              -{formatPrice(entry.debit, settings.currency)} (بدهکار)
+                                            </span>
+                                          )}
+                                          <div className="text-[10px] text-slate-400">
+                                            مانده: {formatPrice(Math.abs(entry.balance), settings.currency)}{' '}
+                                            {entry.balance > 0 ? 'بد' : entry.balance < 0 ? 'بس' : 'تسویه'}
+                                          </div>
+                                        </div>
+                                        {entry.rawInvoice && onViewInvoice && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              onViewInvoice(entry.rawInvoice!);
+                                            }}
+                                            className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 cursor-pointer"
+                                            title="مشاهده فاکتور فروش"
+                                          >
+                                            <Eye className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                        {entry.rawPurchaseInvoice && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setViewingPurchaseInvoice(entry.rawPurchaseInvoice!);
+                                            }}
+                                            className="p-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 cursor-pointer"
+                                            title="مشاهده فاکتور خرید / خدمات"
+                                          >
+                                            <ReceiptText className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* VIEW LAYOUT 2: UNIFIED TABLE VIEW (جدول یکپارچه تراز حساب‌ها) OR SETTLED FILTER */}
+          {(dcViewLayout === 'table' || dcStatusFilter === 'settled') && (
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+              <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-black text-slate-800">
+                    جدول جامع تراز حساب اشخاص ({toPersianDigits(debtorsCreditorsAnalytics.filteredParties.length)} طرف‌حساب)
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    برای مشاهده ریز فاکتورها و گردش حساب هر شخص، روی ردیف مربوطه کلیک کنید
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-right border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200/80 text-[11px] font-black text-slate-500">
+                      <th className="py-3 px-4 w-12">#</th>
+                      <th className="py-3 px-4">نام طرف‌حساب</th>
+                      <th className="py-3 px-4">نقش / ارتباط</th>
+                      <th className="py-3 px-4">شماره تماس</th>
+                      <th className="py-3 px-4">جمع بدهکار</th>
+                      <th className="py-3 px-4">جمع بستانکار</th>
+                      <th className="py-3 px-4">مانده نهایی</th>
+                      <th className="py-3 px-4">وضعیت حساب</th>
+                      <th className="py-3 px-4">آخرین تراکنش</th>
+                      <th className="py-3 px-4 text-center">ریز گردش</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs">
+                    {debtorsCreditorsAnalytics.filteredParties.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} className="py-12 text-center text-slate-400 font-bold">
+                          هیچ طرف‌حسابی با فیلترهای انتخابی یافت نشد.
+                        </td>
+                      </tr>
+                    ) : (
+                      debtorsCreditorsAnalytics.filteredParties.map((party, idx) => {
+                        const isExpanded = expandedDcPartyKey === party.key;
+                        return (
+                          <React.Fragment key={party.key}>
+                            <tr
+                              onClick={() => setExpandedDcPartyKey(isExpanded ? null : party.key)}
+                              className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                            >
+                              <td className="py-3.5 px-4 font-bold text-slate-400">{toPersianDigits(idx + 1)}</td>
+                              <td className="py-3.5 px-4">
+                                <div className="font-black text-slate-800">{party.name}</div>
+                                {party.address && <div className="text-[10px] text-slate-400 truncate max-w-[180px]">{party.address}</div>}
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600">
+                                  {party.roleLabel}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 font-mono text-slate-600" dir="ltr">
+                                {party.phone ? toPersianDigits(party.phone) : '—'}
+                              </td>
+                              <td className="py-3.5 px-4 font-bold text-rose-600">
+                                {formatPrice(party.totalDebit, settings.currency)}
+                              </td>
+                              <td className="py-3.5 px-4 font-bold text-emerald-600">
+                                {formatPrice(party.totalCredit, settings.currency)}
+                              </td>
+                              <td className="py-3.5 px-4 font-black">
+                                <span
+                                  className={
+                                    party.status === 'debtor'
+                                      ? 'text-rose-600'
+                                      : party.status === 'creditor'
+                                      ? 'text-emerald-600'
+                                      : 'text-slate-500'
+                                  }
+                                >
+                                  {formatPrice(party.absBalance, settings.currency)}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                {party.status === 'debtor' ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-100 text-rose-700">
+                                    بدهکار (طلب ما)
+                                  </span>
+                                ) : party.status === 'creditor' ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-700">
+                                    بستانکار (بدهی ما)
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+                                    تسویه شده
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3.5 px-4 text-slate-500">
+                                {party.lastActivityDate ? toPersianDigits(party.lastActivityDate) : '—'}
+                              </td>
+                              <td className="py-3.5 px-4 text-center">
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 text-[11px] font-bold transition-colors cursor-pointer"
+                                >
+                                  <span>{toPersianDigits(party.entries.length)} گردش</span>
+                                  {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                </button>
+                              </td>
+                            </tr>
+
+                            {isExpanded && (
+                              <tr className="bg-slate-50/90">
+                                <td colSpan={10} className="p-4">
+                                  <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                                    <div className="px-4 py-2.5 bg-slate-100/80 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-700">
+                                      <span>ریز گردش حساب و فاکتورهای «{party.name}»</span>
+                                      <span>تعداد کل تراکنش‌ها: {toPersianDigits(party.entries.length)}</span>
+                                    </div>
+                                    <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+                                      {[...party.entries].reverse().map((entry) => (
+                                        <div
+                                          key={entry.id}
+                                          className="px-4 py-2.5 flex items-center justify-between gap-4 text-xs hover:bg-slate-50"
+                                        >
+                                          <div>
+                                            <div className="font-bold text-slate-800">{entry.description}</div>
+                                            <div className="text-[10px] text-slate-400 mt-0.5">
+                                              تاریخ: {toPersianDigits(entry.date)}
+                                              {entry.paymentMethod ? ` • روش: ${entry.paymentMethod}` : ''}
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center gap-3">
+                                            <div className="text-left">
+                                              {entry.debit > 0 ? (
+                                                <span className="font-black text-rose-600">
+                                                  بدهکار: {formatPrice(entry.debit, settings.currency)}
+                                                </span>
+                                              ) : (
+                                                <span className="font-black text-emerald-600">
+                                                  بستانکار: {formatPrice(entry.credit, settings.currency)}
+                                                </span>
+                                              )}
+                                              <div className="text-[10px] text-slate-400">
+                                                مانده خطی: {formatPrice(Math.abs(entry.balance), settings.currency)}{' '}
+                                                ({entry.balance > 0 ? 'بد' : entry.balance < 0 ? 'بس' : 'تسویه'})
+                                              </div>
+                                            </div>
+                                            {entry.rawInvoice && onViewInvoice && (
+                                              <button
+                                                type="button"
+                                                onClick={() => onViewInvoice(entry.rawInvoice!)}
+                                                className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                              >
+                                                <Eye className="w-3.5 h-3.5" />
+                                                <span>فاکتور فروش</span>
+                                              </button>
+                                            )}
+                                            {entry.rawPurchaseInvoice && (
+                                              <button
+                                                type="button"
+                                                onClick={() => setViewingPurchaseInvoice(entry.rawPurchaseInvoice!)}
+                                                className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                              >
+                                                <ReceiptText className="w-3.5 h-3.5" />
+                                                <span>فاکتور خرید/خدمات</span>
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2645,6 +3929,17 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal for viewing purchase/service invoice directly from Debtors/Creditors ledger */}
+      {viewingPurchaseInvoice && (
+        <PurchaseInvoiceViewModal
+          invoice={viewingPurchaseInvoice}
+          settings={settings}
+          currentUser={currentUser}
+          onClose={() => setViewingPurchaseInvoice(null)}
+        />
+      )}
     </div>
   );
 };
+

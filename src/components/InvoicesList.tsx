@@ -390,9 +390,16 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   }, [invoices, customersList]);
 
   // Permission checks
-  const canCreate = !currentUser || currentUser.permissions.canCreateInvoice;
-  const canDelete = !currentUser || currentUser.permissions.canDeleteInvoice;
-  const canAccessAdmin = !currentUser || currentUser.role === 'admin' || currentUser.permissions.canAccessAdmin;
+  const canCreate = !currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions.canCreateInvoice);
+  const canDelete = !currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions.canDeleteInvoice);
+  const canSettle =
+    !currentUser ||
+    currentUser.role === 'admin' ||
+    Boolean(
+      currentUser.permissions.canSettleInvoices ??
+        (currentUser.permissions.canCreateInvoice || currentUser.permissions.canViewReports)
+    );
+  const canAccessAdmin = !currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions.canAccessAdmin);
 
   // Conversion Handlers
   const handleOpenConvertModal = (inv: Invoice) => {
@@ -537,25 +544,27 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                 </button>
 
                 {/* 4. تسویه تجمیعی مشتری */}
-                <button
-                  type="button"
-                  id="invoices-bulk-payment-btn"
-                  onClick={() => {
-                    setIsActionsDropdownOpen(false);
-                    setIsBulkPickerOpen(true);
-                  }}
-                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:text-amber-900 hover:bg-amber-50/70 transition-colors cursor-pointer text-right"
-                >
-                  <div className="flex items-center gap-2">
-                    <CreditCard className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span>تسویه تجمیعی مشتری</span>
-                  </div>
-                  {debtorCustomers.length > 0 && (
-                    <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
-                      {toPersianDigits(debtorCustomers.length)} بدهکار
-                    </span>
-                  )}
-                </button>
+                {canSettle && (
+                  <button
+                    type="button"
+                    id="invoices-bulk-payment-btn"
+                    onClick={() => {
+                      setIsActionsDropdownOpen(false);
+                      setIsBulkPickerOpen(true);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:text-amber-900 hover:bg-amber-50/70 transition-colors cursor-pointer text-right"
+                  >
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>تسویه تجمیعی مشتری</span>
+                    </div>
+                    {debtorCustomers.length > 0 && (
+                      <span className="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
+                        {toPersianDigits(debtorCustomers.length)} بدهکار
+                      </span>
+                    )}
+                  </button>
+                )}
 
                 {canAccessAdmin && (
                   <>
@@ -1831,27 +1840,27 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           setQuickDetailsInvoice(null);
           onViewInvoice(inv);
         }}
-        onEditInvoice={onEditInvoice ? (inv) => {
+        onEditInvoice={canCreate && onEditInvoice ? (inv) => {
           setQuickDetailsInvoice(null);
           onEditInvoice(inv);
         } : undefined}
-        onOpenPaymentModal={(inv) => {
+        onOpenPaymentModal={canSettle ? (inv) => {
           setQuickDetailsInvoice(null);
           handleOpenPaymentModal(inv);
-        }}
+        } : undefined}
         onOpenShareLinkModal={(inv) => {
           setQuickDetailsInvoice(null);
           handleOpenShareModal(inv);
         }}
-        onConvertProforma={(inv) => {
+        onConvertProforma={canCreate ? (inv) => {
           setQuickDetailsInvoice(null);
           handleOpenConvertModal(inv);
-        }}
-        onReturnInvoiceToStock={onReturnInvoiceToStock ? (inv) => {
+        } : undefined}
+        onReturnInvoiceToStock={canDelete && onReturnInvoiceToStock ? (inv) => {
           setQuickDetailsInvoice(null);
           setInvoiceToReturn(inv);
         } : undefined}
-        onDeleteInvoice={onDeleteInvoice ? (invId) => {
+        onDeleteInvoice={canDelete && onDeleteInvoice ? (invId) => {
           const inv = invoices.find((i) => i.id === invId);
           setQuickDetailsInvoice(null);
           if (inv) setInvoiceToDelete(inv);

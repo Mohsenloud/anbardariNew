@@ -129,6 +129,9 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
     return currentUser?.permissions || {
       canCreateInvoice: true,
       canViewInvoices: true,
+      canCreatePurchaseInvoice: true,
+      canViewPurchaseInvoices: true,
+      canSettleInvoices: true,
       canDeleteInvoice: true,
       canManageInventory: true,
       canManageCustomers: true,
@@ -144,9 +147,13 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
   const canInventory = Boolean(userPerms.canManageInventory && settings.enableInventory !== false);
   const canCustomers = Boolean(userPerms.canManageCustomers && settings.enableCustomers !== false);
   const canAdmin = Boolean(userPerms.canAccessAdmin || userPerms.canManageUsers);
+  const canCreatePurchase = Boolean(
+    currentUser?.role === 'admin' ||
+    (currentUser?.role !== 'accountant' && userPerms.canCreatePurchaseInvoice)
+  );
   const canPurchases = Boolean(
     isTabPermitted('purchases', currentUser, settings) ||
-    canInvoice || canInventory || canAdmin
+    canCreatePurchase || canInventory || canAdmin
   );
 
   const roleConfig = useMemo(() => {
@@ -514,12 +521,14 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
     if (canPurchases) {
       items.push({
         id: 'feat-purchases',
-        title: 'فاکتور خرید و ورود کالا',
-        subtitle: 'ثبت ورود اقلام از تامین‌کنندگان و افزایش موجودی انبار',
+        title: canCreatePurchase ? 'فاکتور خرید و ورود کالا' : 'مشاهده و تسویه فاکتورهای خرید',
+        subtitle: canCreatePurchase
+          ? 'ثبت ورود اقلام از تامین‌کنندگان و افزایش موجودی انبار'
+          : 'مشاهده اسناد خرید کالا و خدمات، آمار خرید و ثبت پرداخت‌ها',
         icon: ShoppingCart,
         colorClass: 'text-orange-600',
         bgClass: 'bg-orange-50/80 border-orange-200 hover:bg-orange-100/90',
-        badgeText: 'تامین و انبار',
+        badgeText: canCreatePurchase ? 'تامین و انبار' : 'مالی و حسابداری',
         onClick: () => {
           setIsMoreFeaturesModalOpen(false);
           onNavigate('purchases');
