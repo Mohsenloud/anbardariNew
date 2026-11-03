@@ -3304,17 +3304,44 @@ app.get('/api/public/invoice/:token', async (req, res) => {
 
     const { data: dbData } = await getLatestConvergedDatabase();
     const invoices = Array.isArray(dbData?.invoices) ? dbData.invoices : [];
+    const customers = Array.isArray(dbData?.customers) ? dbData.customers : [];
     const invoiceIndex = invoices.findIndex((inv: any) => inv?.shareLink?.token === token);
+    const customerIndex = invoiceIndex === -1 ? customers.findIndex((c: any) => c?.shareLink?.token === token) : -1;
 
-    if (invoiceIndex === -1) {
+    if (invoiceIndex === -1 && customerIndex === -1) {
       return res.status(404).json({
         success: false,
         code: 'NOT_FOUND',
-        message: 'فاکتور مورد نظر یافت نشد یا دسترسی به این پیوند توسط فروشگاه باطل گردیده است.',
+        message: 'فاکتور یا صورتحساب مورد نظر یافت نشد یا دسترسی به این پیوند توسط فروشگاه باطل گردیده است.',
       });
     }
 
-    const invoice = invoices[invoiceIndex];
+    const matchedCustomer = customerIndex !== -1 ? customers[customerIndex] : null;
+    const invoice = invoiceIndex !== -1
+      ? invoices[invoiceIndex]
+      : {
+          id: `cust-portal-${matchedCustomer.id}`,
+          invoiceNumber: 'صورتحساب',
+          type: 'standard',
+          customerId: matchedCustomer.id,
+          customerName: matchedCustomer.name,
+          customerPhone: matchedCustomer.phone || '',
+          customerAddress: matchedCustomer.address || '',
+          customerNationalId: matchedCustomer.nationalId || '',
+          date: matchedCustomer.createdAt || '',
+          items: [],
+          subtotal: 0,
+          totalDiscount: 0,
+          taxRate: 0,
+          taxAmount: 0,
+          finalTotal: 0,
+          paidAmount: 0,
+          paymentStatus: 'paid',
+          paymentMethod: 'cash',
+          notes: matchedCustomer.notes || '',
+          createdAt: matchedCustomer.createdAt || new Date().toISOString(),
+          shareLink: matchedCustomer.shareLink,
+        };
     const shareLink = invoice.shareLink;
 
     // Check if link is enabled
@@ -3389,15 +3416,28 @@ app.get('/api/public/invoice/:token', async (req, res) => {
       enabled: shareLink.isOneTime ? false : shareLink.enabled,
     };
 
-    invoices[invoiceIndex] = invoice;
+    if (invoiceIndex !== -1) {
+      invoices[invoiceIndex] = invoice;
+    } else if (customerIndex !== -1) {
+      customers[customerIndex].shareLink = invoice.shareLink;
+    }
 
     // Asynchronous non-blocking write to avoid delaying response
     enqueueDbWrite(async () => {
       const current = readDatabase();
-      if (Array.isArray(current.invoices)) {
+      if (invoiceIndex !== -1 && Array.isArray(current.invoices)) {
         const idx = current.invoices.findIndex((i: any) => i.id === invoice.id);
         if (idx !== -1) {
           current.invoices[idx] = invoice;
+          writeDatabase(current, false);
+          if (getPostgresStatus().connected) {
+            saveStateToPostgres(current).catch(() => {});
+          }
+        }
+      } else if (customerIndex !== -1 && Array.isArray(current.customers)) {
+        const cIdx = current.customers.findIndex((c: any) => c.id === matchedCustomer.id);
+        if (cIdx !== -1) {
+          current.customers[cIdx].shareLink = invoice.shareLink;
           writeDatabase(current, false);
           if (getPostgresStatus().connected) {
             saveStateToPostgres(current).catch(() => {});
@@ -3895,14 +3935,20 @@ app.post('/api/invoices/:id/share-link', async (req, res) => {
 
     const { data: dbData } = await getLatestConvergedDatabase();
     const invoices = Array.isArray(dbData?.invoices) ? dbData.invoices : [];
-    const invoiceIndex = invoices.findIndex((inv: any) => inv?.id === invoiceId);
+    const customers = Array.isArray(dbData?.customers) ? dbData.customers : [];
+    const isCustomerPortalId = invoiceId.startsWith('cust-portal-');
+    const rawCustomerId = isCustomerPortalId ? invoiceId.replace('cust-portal-', '') : invoiceId;
 
-    if (invoiceIndex === -1) {
-      return res.status(404).json({ success: false, message: 'فاکتور مورد نظر یافت نشد.' });
+    const invoiceIndex = invoices.findIndex((inv: any) => inv?.id === invoiceId);
+    const customerIndex = invoiceIndex === -1 ? customers.findIndex((c: any) => c?.id === rawCustomerId) : -1;
+
+    if (invoiceIndex === -1 && customerIndex === -1) {
+      return res.status(404).json({ success: false, message: 'فاکتور یا مشتری مورد نظر یافت نشد.' });
     }
 
-    const currentInvoice = invoices[invoiceIndex];
-    const existingShareLink = currentInvoice.shareLink;
+    const existingShareLink = invoiceIndex !== -1
+      ? invoices[invoiceIndex].shareLink
+      : customers[customerIndex].shareLink;
 
     let token = existingShareLink?.token;
     if (!token || regenerateToken) {
@@ -3924,15 +3970,29 @@ app.post('/api/invoices/:id/share-link', async (req, res) => {
       includeCustomerStatement: includeCustomerStatement !== false,
     };
 
-    currentInvoice.shareLink = updatedShareLink;
-    invoices[invoiceIndex] = currentInvoice;
+    if (invoiceIndex !== -1) {
+      const currentInvoice = invoices[invoiceIndex];
+      currentInvoice.shareLink = updatedShareLink;
+      invoices[invoiceIndex] = currentInvoice;
+    } else if (customerIndex !== -1) {
+      customers[customerIndex].shareLink = updatedShareLink;
+    }
 
     await enqueueDbWrite(async () => {
       const current = readDatabase();
-      if (Array.isArray(current.invoices)) {
+      if (invoiceIndex !== -1 && Array.isArray(current.invoices)) {
         const idx = current.invoices.findIndex((i: any) => i.id === invoiceId);
         if (idx !== -1) {
-          current.invoices[idx] = currentInvoice;
+          current.invoices[idx].shareLink = updatedShareLink;
+          writeDatabase(current, false);
+          if (getPostgresStatus().connected) {
+            saveStateToPostgres(current).catch(() => {});
+          }
+        }
+      } else if (customerIndex !== -1 && Array.isArray(current.customers)) {
+        const cIdx = current.customers.findIndex((c: any) => c.id === rawCustomerId);
+        if (cIdx !== -1) {
+          current.customers[cIdx].shareLink = updatedShareLink;
           writeDatabase(current, false);
           if (getPostgresStatus().connected) {
             saveStateToPostgres(current).catch(() => {});

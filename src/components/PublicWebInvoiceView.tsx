@@ -130,11 +130,16 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
         setSelectedInvoice(res.invoice);
         setSettings(res.settings || null);
         setShareLink(res.shareLink || null);
-        setCustomerInvoices(res.customerInvoices || [res.invoice]);
+        const isCustomerPortalOnly = String(res.invoice.id || '').startsWith('cust-portal-');
+        const loadedInvoices = res.customerInvoices || (isCustomerPortalOnly ? [] : [res.invoice]);
+        setCustomerInvoices(loadedInvoices);
         setDeposits(res.deposits || []);
         setRemittances(res.remittances || []);
         setCustomerLedger(res.customerLedger || null);
         setPinRequired(false);
+        if (isCustomerPortalOnly && loadedInvoices.length === 0) {
+          setActiveTab('ledger');
+        }
       } else if (res.pinRequired) {
         setPinRequired(true);
         setStoreMeta({

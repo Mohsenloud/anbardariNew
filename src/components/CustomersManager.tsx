@@ -10,10 +10,12 @@ import { CustomerBulkPaymentModal } from './CustomerBulkPaymentModal';
 import { CustomerStatementModal } from './CustomerStatementModal';
 import { CustomerStatementsReportModal } from './CustomerStatementsReportModal';
 import { CustomerTransactionModal } from './CustomerTransactionModal';
+import { InvoiceShareLinkModal } from './InvoiceShareLinkModal';
 import { JalaliDatePicker } from './JalaliDatePicker';
 import { NumericInput } from './NumericInput';
 import { 
   Users, 
+  Globe, 
   Search, 
   UserPlus, 
   Phone, 
@@ -120,6 +122,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   const [transactionCustomer, setTransactionCustomer] = useState<Customer | null>(null);
   const [transactionInitialType, setTransactionInitialType] = useState<'deposit' | 'debt'>('deposit');
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
+  const [shareLinkInvoice, setShareLinkInvoice] = useState<Invoice | null>(null);
   const [isDetailActionsOpen, setIsDetailActionsOpen] = useState(false);
   const detailActionsDropdownRef = useRef<HTMLDivElement>(null);
   const [isStatementsReportOpen, setIsStatementsReportOpen] = useState(false);
@@ -168,6 +171,49 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   const handleOpenStatement = (cust: Customer, initialForm: 'none' | 'deposit' | 'debt' = 'none') => {
     setStatementCustomer(cust);
     setStatementInitialForm(initialForm);
+  };
+
+  // Helper to open Public Web Link Modal (پیوند عمومی نسخه تحت وب) for a customer or specific invoice
+  const handleOpenCustomerWebLink = (cust: Customer, specificInvoice?: Invoice) => {
+    if (specificInvoice) {
+      setShareLinkInvoice(specificInvoice);
+      return;
+    }
+
+    const custInvoices = (customerMetrics.get(cust.id)?.invoices || []).slice().sort((a, b) =>
+      String(b.date || '').localeCompare(String(a.date || ''))
+    );
+    const invoiceWithActiveLink = custInvoices.find((inv) => inv.shareLink?.token && inv.shareLink.enabled !== false);
+    const targetInvoice = invoiceWithActiveLink || custInvoices[0];
+
+    if (targetInvoice) {
+      setShareLinkInvoice(targetInvoice);
+    } else {
+      // Customer has no sales invoices yet — open customer portal share link
+      setShareLinkInvoice({
+        id: `cust-portal-${cust.id}`,
+        invoiceNumber: 'صورتحساب',
+        type: 'standard',
+        customerId: cust.id,
+        customerName: cust.name,
+        customerPhone: cust.phone || '',
+        customerAddress: cust.address || '',
+        customerNationalId: cust.nationalId || '',
+        date: cust.createdAt || getCurrentJalaliDate(),
+        items: [],
+        subtotal: 0,
+        totalDiscount: 0,
+        taxRate: 0,
+        taxAmount: 0,
+        finalTotal: 0,
+        paidAmount: 0,
+        paymentStatus: 'paid',
+        paymentMethod: 'cash',
+        notes: cust.notes || '',
+        createdAt: cust.createdAt || getCurrentJalaliDate(),
+        shareLink: cust.shareLink,
+      });
+    }
   };
 
   // View Mode: 'table' (ردیفی) is default, with 'grid' (کارتی) option
@@ -1477,6 +1523,18 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                               <span className="hidden xl:inline">صورتحساب</span>
                             </button>
 
+                            {/* Public Web Link Button (پیوند عمومی نسخه تحت وب) */}
+                            <button
+                              type="button"
+                              id={`customer-web-link-btn-${cust.id}`}
+                              onClick={() => handleOpenCustomerWebLink(cust)}
+                              title="پیوند عمومی نسخه تحت وب (ارسال لینک آنلاین فاکتور و صورتحساب مشتری)"
+                              className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 transition-all cursor-pointer"
+                            >
+                              <Globe className="w-3.5 h-3.5 text-sky-600" />
+                              <span className="hidden xl:inline">پیوند وب</span>
+                            </button>
+
                             {/* Settle Debt Button if has debt */}
                             {hasDebt && (
                               <button
@@ -1743,6 +1801,18 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                         <span>صورتحساب مالی</span>
                       </button>
 
+                      {/* Public Web Link Button (پیوند عمومی نسخه تحت وب) */}
+                      <button
+                        type="button"
+                        id={`customer-grid-web-link-btn-${cust.id}`}
+                        onClick={() => handleOpenCustomerWebLink(cust)}
+                        title="پیوند عمومی نسخه تحت وب (مشاهده آنلاین فاکتور و صورتحساب مشتری)"
+                        className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 shadow-2xs transition-all cursor-pointer"
+                      >
+                        <Globe className="w-3.5 h-3.5 text-sky-600" />
+                        <span>پیوند عمومی نسخه تحت وب</span>
+                      </button>
+
                       {/* Settle Debt / Deposit Button */}
                       {hasDebt && (
                         <button
@@ -1894,9 +1964,19 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                     </div>
                   </div>
 
-                  {/* Phone action */}
-                  {detailCustomer.phone && (
-                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                  {/* Phone & Public Web Link actions */}
+                  <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+                    <button
+                      type="button"
+                      id="detail-modal-top-web-link-btn"
+                      onClick={() => handleOpenCustomerWebLink(detailCustomer)}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-xl font-bold text-xs shadow-xs transition-all cursor-pointer"
+                      title="دریافت و ارسال پیوند عمومی نسخه تحت وب فاکتور و صورتحساب مشتری"
+                    >
+                      <Globe className="w-3.5 h-3.5" />
+                      <span>پیوند عمومی نسخه تحت وب</span>
+                    </button>
+                    {detailCustomer.phone && (
                       <a
                         href={`tel:${detailCustomer.phone}`}
                         className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors"
@@ -1904,8 +1984,8 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                         <Phone className="w-3.5 h-3.5" />
                         <span className="font-mono">{toPersianDigits(detailCustomer.phone)}</span>
                       </a>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
                 {/* 3 Metric Summary Boxes */}
@@ -2052,7 +2132,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                             <th className="p-2.5 font-bold text-center">تاریخ</th>
                             <th className="p-2.5 font-bold text-left">مبلغ کل</th>
                             <th className="p-2.5 font-bold text-center">وضعیت تسویه</th>
-                            {onViewInvoice && <th className="p-2.5 font-bold text-center w-16">مشاهده</th>}
+                            <th className="p-2.5 font-bold text-center w-24">عملیات</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -2078,21 +2158,31 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                                   {inv.paymentStatus === 'paid' ? 'تسویه' : inv.paymentStatus === 'partial' ? 'بیعانه' : 'نسیه'}
                                 </span>
                               </td>
-                              {onViewInvoice && (
-                                <td className="p-2.5 text-center">
+                              <td className="p-2.5 text-center">
+                                <div className="flex items-center justify-center gap-1">
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      setDetailCustomer(null);
-                                      onViewInvoice(inv);
-                                    }}
-                                    className="p-1 text-slate-400 hover:text-purple-700 rounded-lg cursor-pointer"
-                                    title="مشاهده فاکتور"
+                                    onClick={() => handleOpenCustomerWebLink(detailCustomer, inv)}
+                                    className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg cursor-pointer transition-colors"
+                                    title="پیوند عمومی نسخه تحت وب این فاکتور"
                                   >
-                                    <Eye className="w-3.5 h-3.5" />
+                                    <Globe className="w-3.5 h-3.5" />
                                   </button>
-                                </td>
-                              )}
+                                  {onViewInvoice && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setDetailCustomer(null);
+                                        onViewInvoice(inv);
+                                      }}
+                                      className="p-1.5 text-slate-400 hover:text-purple-700 hover:bg-purple-50 rounded-lg cursor-pointer transition-colors"
+                                      title="مشاهده فاکتور"
+                                    >
+                                      <Eye className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -2103,9 +2193,9 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
               </div>
 
               {/* Footer Actions - بهینه‌سازی و خلوت‌سازی با منوی دراپ‌دان عملیات */}
-              <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2.5 shrink-0">
-                {/* Primary Action Button (سمت راست - صورتحساب مالی مشتری) */}
-                <div className="flex-1 sm:flex-initial">
+              <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+                {/* Primary Action Buttons (سمت راست - صورتحساب مالی + پیوند عمومی نسخه تحت وب) */}
+                <div className="flex items-center gap-2 flex-1 sm:flex-initial flex-wrap">
                   <button
                     type="button"
                     onClick={() => {
@@ -2113,10 +2203,20 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                       setDetailCustomer(null);
                       setStatementCustomer(target);
                     }}
-                    className="w-full sm:w-auto min-h-[40px] px-4 py-2 bg-purple-600 hover:bg-purple-700 active:scale-98 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md shadow-purple-200/70 cursor-pointer"
+                    className="flex-1 sm:flex-initial min-h-[40px] px-3.5 py-2 bg-purple-600 hover:bg-purple-700 active:scale-98 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-purple-200/70 cursor-pointer"
                   >
                     <ReceiptText className="w-4 h-4 shrink-0" />
                     <span>مشاهده صورتحساب مالی</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="customer-details-footer-web-link-btn"
+                    onClick={() => handleOpenCustomerWebLink(detailCustomer)}
+                    className="flex-1 sm:flex-initial min-h-[40px] px-3.5 py-2 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-sky-200/70 cursor-pointer"
+                  >
+                    <Globe className="w-4 h-4 shrink-0" />
+                    <span>پیوند عمومی نسخه تحت وب</span>
                   </button>
                 </div>
 
@@ -2150,6 +2250,21 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                         className="absolute bottom-full left-0 mb-2 w-56 sm:w-60 bg-white rounded-2xl border border-slate-200/90 shadow-2xl z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100 text-right"
                         role="menu"
                       >
+                        {/* Public Web Link */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const target = detailCustomer;
+                            setIsDetailActionsOpen(false);
+                            handleOpenCustomerWebLink(target);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-sky-800 bg-sky-50 hover:bg-sky-100 transition-colors cursor-pointer"
+                          role="menuitem"
+                        >
+                          <Globe className="w-4 h-4 text-sky-600 shrink-0" />
+                          <span>پیوند عمومی نسخه تحت وب</span>
+                        </button>
+
                         {/* New Invoice */}
                         {(!currentUser || currentUser.permissions.canCreateInvoice) && (
                           <button
@@ -3017,6 +3132,32 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* PUBLIC WEB SHARE LINK MODAL FOR CUSTOMER / INVOICE */}
+      {shareLinkInvoice && (
+        <InvoiceShareLinkModal
+          isOpen={!!shareLinkInvoice}
+          invoice={shareLinkInvoice}
+          settings={settings}
+          onClose={() => setShareLinkInvoice(null)}
+          onUpdateInvoice={(updatedInv) => {
+            setShareLinkInvoice(updatedInv);
+            if (String(updatedInv.id || '').startsWith('cust-portal-') && updatedInv.customerId) {
+              const targetCust = customers.find((c) => c.id === updatedInv.customerId);
+              if (targetCust) {
+                const updatedCust: Customer = {
+                  ...targetCust,
+                  shareLink: updatedInv.shareLink,
+                };
+                onSaveCustomer(updatedCust);
+                if (detailCustomer?.id === updatedCust.id) {
+                  setDetailCustomer(updatedCust);
+                }
+              }
+            }
+          }}
+        />
       )}
     </div>
   );

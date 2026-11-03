@@ -175,12 +175,28 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
     });
   };
 
+  const isCustomerPortalOnly = String(invoice?.id || '').startsWith('cust-portal-');
+
   // Formatted message text for SMS / Messengers
   const getShareMessageText = (): string => {
-    const docTitle = invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور فروش';
     const storeTitle = settings.storeName || 'فروشگاه سپهر';
+    const pinPart = pinRequired && pinCode ? `\n🔑 رمز عبور: ${toPersianDigits(pinCode)}` : '';
+
+    if (isCustomerPortalOnly) {
+      return [
+        `مشتری گرامی ${invoice.customerName}،`,
+        `صورتحساب آنلاین و گردش حساب شما در «${storeTitle}» آماده مشاهده است.`,
+        '',
+        'مشاهده آنلاین صورتحساب کامل شما (با قابلیت جستجو و فیلتر گردش حساب):',
+        publicUrl,
+        pinPart,
+        '',
+        `با تشکر، ${storeTitle}`,
+      ].filter(Boolean).join('\n');
+    }
+
+    const docTitle = invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور فروش';
     const totalFormatted = formatPrice(invoice.finalTotal, settings.currency);
-    const pinPart = pinRequired && pinCode ? `\n🔑 رمز عبور فاکتور: ${toPersianDigits(pinCode)}` : '';
     const statementPart = includeCustomerStatement
       ? 'مشاهده آنلاین فاکتور و صورتحساب کامل شما (با قابلیت جستجو و فیلتر گردش حساب):'
       : 'مشاهده آنلاین فاکتور در مرورگر (بدون نیاز به دانلود):';
@@ -270,11 +286,15 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-extrabold text-sm sm:text-base">
-                  ارسال نسخه تحت وب فاکتور برای مشتری
+                  {isCustomerPortalOnly
+                    ? 'پیوند عمومی نسخه تحت وب صورتحساب مشتری'
+                    : 'پیوند عمومی نسخه تحت وب فاکتور و صورتحساب مشتری'}
                 </h3>
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                فاکتور #{toPersianDigits(invoice.invoiceNumber)} • {invoice.customerName}
+                {isCustomerPortalOnly
+                  ? `پورتال آنلاین و گردش حساب • ${invoice.customerName}`
+                  : `فاکتور #${toPersianDigits(invoice.invoiceNumber)} • ${invoice.customerName}`}
               </p>
             </div>
           </div>

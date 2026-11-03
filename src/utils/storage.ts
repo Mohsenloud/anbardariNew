@@ -2253,13 +2253,18 @@ export const StorageService = {
     }
   ): Promise<{ success: boolean; invoice?: Invoice; shareLink?: InvoiceShareLink; fullUrl?: string; message?: string }> {
     const invoices = this.getInvoices();
+    const customers = this.getCustomers();
+    const isCustomerPortalId = invoiceId.startsWith('cust-portal-');
+    const rawCustomerId = isCustomerPortalId ? invoiceId.replace('cust-portal-', '') : invoiceId;
+
     const targetIdx = invoices.findIndex((i) => i.id === invoiceId);
-    if (targetIdx === -1) {
-      return { success: false, message: 'فاکتور مورد نظر یافت نشد.' };
+    const custIdx = targetIdx === -1 ? customers.findIndex((c) => c.id === rawCustomerId) : -1;
+
+    if (targetIdx === -1 && custIdx === -1) {
+      return { success: false, message: 'فاکتور یا مشتری مورد نظر یافت نشد.' };
     }
 
-    const currentInvoice = invoices[targetIdx];
-    const prevLink = currentInvoice.shareLink;
+    const prevLink = targetIdx !== -1 ? invoices[targetIdx].shareLink : customers[custIdx].shareLink;
     let token = prevLink?.token;
 
     if (!token || options?.regenerateToken) {
@@ -2281,14 +2286,48 @@ export const StorageService = {
       includeCustomerStatement: options?.includeCustomerStatement !== undefined ? options.includeCustomerStatement : (prevLink?.includeCustomerStatement !== false),
     };
 
-    const updatedInvoice: Invoice = {
-      ...currentInvoice,
-      shareLink,
-      updatedAt: getCurrentJalaliDate(),
-    };
-
-    invoices[targetIdx] = updatedInvoice;
-    this.saveInvoices(invoices);
+    let updatedInvoice: Invoice;
+    if (targetIdx !== -1) {
+      const currentInvoice = invoices[targetIdx];
+      updatedInvoice = {
+        ...currentInvoice,
+        shareLink,
+        updatedAt: getCurrentJalaliDate(),
+      };
+      invoices[targetIdx] = updatedInvoice;
+      this.saveInvoices(invoices);
+    } else {
+      const cust = customers[custIdx];
+      const updatedCustomer: Customer = {
+        ...cust,
+        shareLink,
+      };
+      customers[custIdx] = updatedCustomer;
+      this.saveCustomers(customers);
+      updatedInvoice = {
+        id: `cust-portal-${cust.id}`,
+        invoiceNumber: 'صورتحساب',
+        type: 'standard',
+        customerId: cust.id,
+        customerName: cust.name,
+        customerPhone: cust.phone || '',
+        customerAddress: cust.address || '',
+        customerNationalId: cust.nationalId || '',
+        date: cust.createdAt || getCurrentJalaliDate(),
+        items: [],
+        subtotal: 0,
+        totalDiscount: 0,
+        taxRate: 0,
+        taxAmount: 0,
+        finalTotal: 0,
+        paidAmount: 0,
+        paymentStatus: 'paid',
+        paymentMethod: 'cash',
+        notes: cust.notes || '',
+        createdAt: cust.createdAt || getCurrentJalaliDate(),
+        shareLink,
+      };
+    }
     this.notifyChange();
 
     // Call server API for centralized backend sync
@@ -2305,8 +2344,13 @@ export const StorageService = {
         const json = await res.json();
         if (json.success && json.shareLink) {
           updatedInvoice.shareLink = json.shareLink;
-          invoices[targetIdx] = updatedInvoice;
-          this.saveInvoices(invoices);
+          if (targetIdx !== -1) {
+            invoices[targetIdx] = updatedInvoice;
+            this.saveInvoices(invoices);
+          } else if (custIdx !== -1) {
+            customers[custIdx] = { ...customers[custIdx], shareLink: json.shareLink };
+            this.saveCustomers(customers);
+          }
         }
       }
     } catch {
@@ -2376,7 +2420,32 @@ export const StorageService = {
     } catch (err: any) {
       // Local fallback if running completely offline/client-only
       const localInvoices = this.getInvoices();
-      const match = localInvoices.find((i) => i?.shareLink?.token === token);
+      const localCustomers = this.getCustomers();
+      const foundInv = localInvoices.find((i) => i?.shareLink?.token === token);
+      const foundCust = !foundInv ? localCustomers.find((c) => c?.shareLink?.token === token) : undefined;
+      const match: Invoice | undefined = foundInv || (foundCust ? {
+        id: `cust-portal-${foundCust.id}`,
+        invoiceNumber: 'صورتحساب',
+        type: 'standard',
+        customerId: foundCust.id,
+        customerName: foundCust.name,
+        customerPhone: foundCust.phone || '',
+        customerAddress: foundCust.address || '',
+        customerNationalId: foundCust.nationalId || '',
+        date: foundCust.createdAt || getCurrentJalaliDate(),
+        items: [],
+        subtotal: 0,
+        totalDiscount: 0,
+        taxRate: 0,
+        taxAmount: 0,
+        finalTotal: 0,
+        paidAmount: 0,
+        paymentStatus: 'paid',
+        paymentMethod: 'cash',
+        notes: foundCust.notes || '',
+        createdAt: foundCust.createdAt || getCurrentJalaliDate(),
+        shareLink: foundCust.shareLink,
+      } : undefined);
       if (match && match.shareLink && match.shareLink.enabled) {
         if (match.shareLink.pinRequired && match.shareLink.pinCode) {
           if (!pin || pin.trim() !== match.shareLink.pinCode.trim()) {

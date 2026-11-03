@@ -68,6 +68,7 @@ export interface Customer {
   nextFollowUpDate?: string; // تاریخ یادآوری تماس بعدی (شمسی)
   lastTelegramReminderForDate?: string; // آخرین تاریخ یادآوری که پیام تلگرام آن ارسال شده است
   followUps?: CustomerFollowUpNote[]; // سوابق مذاکرات و یادآوری‌های تماس
+  shareLink?: InvoiceShareLink; // پیوند عمومی نسخه تحت وب پورتال و صورتحساب مشتری
   createdAt: string;
 }
 
