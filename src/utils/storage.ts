@@ -2248,6 +2248,7 @@ export const StorageService = {
       pinRequired?: boolean;
       pinCode?: string;
       allowPdfDownload?: boolean;
+      includeCustomerStatement?: boolean;
       regenerateToken?: boolean;
     }
   ): Promise<{ success: boolean; invoice?: Invoice; shareLink?: InvoiceShareLink; fullUrl?: string; message?: string }> {
@@ -2277,6 +2278,7 @@ export const StorageService = {
       pinRequired: options?.pinRequired !== undefined ? options.pinRequired : (prevLink?.pinRequired || false),
       pinCode: options?.pinCode !== undefined ? (options.pinCode ? options.pinCode.trim() : undefined) : prevLink?.pinCode,
       allowPdfDownload: options?.allowPdfDownload !== undefined ? options.allowPdfDownload : (prevLink?.allowPdfDownload !== false),
+      includeCustomerStatement: options?.includeCustomerStatement !== undefined ? options.includeCustomerStatement : (prevLink?.includeCustomerStatement !== false),
     };
 
     const updatedInvoice: Invoice = {
@@ -2494,25 +2496,54 @@ export const StorageService = {
 
         const allRemittances = [...exitSlipRemittances, ...directTransferRemittances].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
+        const builtLedger = this.buildCustomerLedger(
+          {
+            id: match.customerId || 'cust-public',
+            name: match.customerName,
+            phone: match.customerPhone || '',
+            address: match.customerAddress || '',
+            nationalId: match.customerNationalId || '',
+            createdAt: match.date,
+          },
+          localInvoices,
+          localTxns,
+          this.getPurchaseInvoices()
+        );
+
         const nonProformas = customerInvoices.filter((inv) => !inv.isProforma);
         const totalPurchases = nonProformas.reduce((sum, inv) => sum + (inv.finalTotal || 0), 0);
-        const totalPaidOnInvoices = nonProformas.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
-        const standaloneDepositsSum = directDeposits.filter((t) => t.type === 'deposit').reduce((sum, t) => sum + (t.amount || 0), 0);
-        const standaloneDebtsSum = directDeposits.filter((t) => t.type === 'debt').reduce((sum, t) => sum + (t.amount || 0), 0);
-
-        const totalDebit = totalPurchases + standaloneDebtsSum;
-        const totalCredit = totalPaidOnInvoices + standaloneDepositsSum;
-        const netBalance = totalDebit - totalCredit;
 
         const customerLedger: PublicCustomerLedger = {
           customerName: match.customerName,
           customerPhone: match.customerPhone,
           customerAddress: match.customerAddress,
+          customerNationalId: match.customerNationalId,
           totalInvoicesCount: customerInvoices.length,
+          unpaidInvoicesCount: builtLedger.unpaidInvoicesCount,
           totalPurchases,
-          totalPaid: totalCredit,
-          balance: netBalance,
-          balanceStatus: netBalance > 0 ? 'debtor' : netBalance < 0 ? 'creditor' : 'settled',
+          totalDebit: builtLedger.totalDebit,
+          totalPaid: builtLedger.totalCredit,
+          totalCredit: builtLedger.totalCredit,
+          balance: builtLedger.netBalance,
+          balanceStatus: builtLedger.balanceStatus,
+          entries: match.shareLink.includeCustomerStatement !== false
+            ? builtLedger.entries.map((e) => ({
+                id: e.id,
+                date: e.date,
+                documentNumber: e.documentNumber,
+                documentType: e.documentType,
+                documentTypeLabel: e.documentTypeLabel,
+                description: e.description,
+                debit: e.debit,
+                credit: e.credit,
+                balance: e.balance,
+                balanceStatus: e.balanceStatus,
+                paymentMethod: e.paymentMethod,
+                trackingNumber: e.trackingNumber,
+                notes: e.notes,
+                invoiceId: e.rawInvoice?.id,
+              }))
+            : [],
         };
 
         return {

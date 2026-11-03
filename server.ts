@@ -3611,26 +3611,224 @@ app.get('/api/public/invoice/:token', async (req, res) => {
       (b.date || '').localeCompare(a.date || '')
     );
 
-    // 4. Customer Financial Ledger Summary
-    const nonProformas = customerInvoices.filter((inv: any) => !inv.isProforma);
-    const totalPurchases = nonProformas.reduce((sum: number, inv: any) => sum + (inv.finalTotal || 0), 0);
-    const totalPaidOnInvoices = nonProformas.reduce((sum: number, inv: any) => sum + (inv.paidAmount || 0), 0);
-    const standaloneDepositsSum = directDeposits.filter((t: any) => t.type === 'deposit').reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
-    const standaloneDebtsSum = directDeposits.filter((t: any) => t.type === 'debt').reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
+    // 4. Customer Financial Ledger Summary & Complete Chronological Statement Entries
+    const paymentMethodLabels: Record<string, string> = {
+      cash: 'نقدی',
+      transfer: 'واریز به حساب / کارت به کارت',
+      pos: 'کارتخوان (POS)',
+      cheque: 'چک بانکی',
+      card: 'کارت به کارت',
+      credit: 'نسیه / اعتباری',
+      other: 'سایر',
+    };
 
-    const totalDebit = totalPurchases + standaloneDebtsSum;
-    const totalCredit = totalPaidOnInvoices + standaloneDepositsSum;
+    const nonProformas = customerInvoices.filter((inv: any) => !inv.isProforma);
+    let unpaidInvoicesCount = 0;
+    const rawLedgerEntries: any[] = [];
+
+    nonProformas.forEach((inv: any) => {
+      const rem = Math.max(0, (Number(inv.finalTotal) || 0) - (Number(inv.paidAmount) || 0));
+      if (rem > 0) unpaidInvoicesCount++;
+
+      const itemsList = Array.isArray(inv.items) ? inv.items : [];
+      const isItemSrv = (it: any) =>
+        Boolean(
+          it.isService ||
+          it.itemType === 'service' ||
+          String(it.id || '').startsWith('service-') ||
+          String(it.productCode || it.code || '').toUpperCase().startsWith('SRV-') ||
+          !it.productId
+        );
+      const srvItems = itemsList.filter(isItemSrv);
+      const prodItems = itemsList.filter((it: any) => !isItemSrv(it));
+      const hasServices = srvItems.length > 0;
+      const isOnlyServices = hasServices && prodItems.length === 0;
+      const itemsSummary = itemsList
+        .map((it: any) => `${it.productName || it.name || ''} (${it.quantity || 1} ${it.unit || 'عدد'})`)
+        .filter(Boolean)
+        .join(' ، ');
+
+      let docLabel = inv.type === 'official' ? 'فاکتور رسمی فروش' : 'فاکتور فروش';
+      let invDesc = `خرید کالا طبق فاکتور شماره ${inv.invoiceNumber} (${itemsList.length} ردیف)${itemsSummary ? `: ${itemsSummary}` : ''}${inv.notes ? ` - ${inv.notes}` : ''}`;
+
+      if (isOnlyServices) {
+        docLabel = inv.type === 'official' ? 'فاکتور رسمی خدماتی' : 'فاکتور خدماتی';
+        invDesc = `فاکتور خدماتی شماره ${inv.invoiceNumber} (${srvItems.length} مورد خدمات)${itemsSummary ? `: ${itemsSummary}` : ''}${inv.notes ? ` - ${inv.notes}` : ''}`;
+      } else if (hasServices) {
+        docLabel = inv.type === 'official' ? 'فاکتور رسمی فروش و خدمات' : 'فاکتور فروش و خدمات';
+        invDesc = `فاکتور فروش و خدمات شماره ${inv.invoiceNumber} (${prodItems.length} قلم کالا و ${srvItems.length} خدمت)${itemsSummary ? `: ${itemsSummary}` : ''}${inv.notes ? ` - ${inv.notes}` : ''}`;
+      }
+
+      rawLedgerEntries.push({
+        id: `inv-deb-${inv.id}`,
+        date: inv.date || '',
+        documentNumber: String(inv.invoiceNumber || ''),
+        documentType: 'invoice',
+        documentTypeLabel: docLabel,
+        description: invDesc,
+        debit: Number(inv.finalTotal) || 0,
+        credit: 0,
+        paymentMethod: inv.paymentMethod ? paymentMethodLabels[inv.paymentMethod] || inv.paymentMethod : undefined,
+        paymentMethodKey: inv.paymentMethod || undefined,
+        notes: inv.notes || '',
+        invoiceId: inv.id,
+        itemsSummary,
+        hasService: hasServices,
+        isOnlyService: isOnlyServices,
+      });
+
+      if (Number(inv.paidAmount) > 0) {
+        const payMethodTxt = inv.paymentMethod ? paymentMethodLabels[inv.paymentMethod] || inv.paymentMethod : 'نقدی';
+        rawLedgerEntries.push({
+          id: `inv-pay-${inv.id}`,
+          date: inv.date || '',
+          documentNumber: String(inv.invoiceNumber || ''),
+          documentType: 'invoice_payment',
+          documentTypeLabel: 'واریز همزمان با فاکتور',
+          description: `پرداخت وجه همزمان با صدور فاکتور شماره ${inv.invoiceNumber} [${payMethodTxt}]${inv.transferDescription ? ` (${inv.transferDescription})` : ''}`,
+          debit: 0,
+          credit: Number(inv.paidAmount) || 0,
+          paymentMethod: payMethodTxt,
+          paymentMethodKey: inv.paymentMethod || 'cash',
+          trackingNumber: inv.chequeNumber || '',
+          chequeDueDate: inv.chequeDueDate || '',
+          bankName: inv.chequeName || '',
+          notes: inv.transferDescription || inv.notes || '',
+          invoiceId: inv.id,
+        });
+      }
+    });
+
+    // Standalone customer transactions (deposits & debts)
+    directDeposits.forEach((tx: any) => {
+      const payMethodTxt = tx.paymentMethod ? paymentMethodLabels[tx.paymentMethod] || tx.paymentMethod : 'واریز به حساب';
+      if (tx.type === 'deposit') {
+        rawLedgerEntries.push({
+          id: `txn-${tx.id}`,
+          date: tx.date || '',
+          documentNumber: String(tx.trackingNumber || String(tx.id || '').substring(0, 8)),
+          documentType: 'deposit',
+          documentTypeLabel: 'واریز',
+          description: `${tx.title || 'واریز وجه مشتری'}${tx.bankName ? ` - بانک ${tx.bankName}` : ''}${tx.invoiceNumber ? ` (بابت فاکتور ${tx.invoiceNumber})` : ''}${tx.notes ? ` - ${tx.notes}` : ''}`,
+          debit: 0,
+          credit: Number(tx.amount) || 0,
+          paymentMethod: payMethodTxt,
+          paymentMethodKey: tx.paymentMethod || 'transfer',
+          trackingNumber: tx.trackingNumber || '',
+          bankName: tx.bankName || '',
+          chequeDueDate: tx.chequeDueDate || '',
+          notes: tx.notes || '',
+        });
+      } else {
+        rawLedgerEntries.push({
+          id: `txn-${tx.id}`,
+          date: tx.date || '',
+          documentNumber: String(tx.trackingNumber || String(tx.id || '').substring(0, 8)),
+          documentType: 'debt',
+          documentTypeLabel: 'ثبت بدهی دستی / مانده',
+          description: `${tx.title || 'سند افزایش بدهی'}${tx.notes ? ` - ${tx.notes}` : ''}`,
+          debit: Number(tx.amount) || 0,
+          credit: 0,
+          trackingNumber: tx.trackingNumber || '',
+          notes: tx.notes || '',
+        });
+      }
+    });
+
+    // Purchase invoices where this customer/party is also a supplier
+    const allPurchases = Array.isArray(dbData?.purchaseInvoices) ? dbData.purchaseInvoices : [];
+    const customerPurchases = allPurchases.filter((pur: any) =>
+      isMatchCustomer(undefined, pur.supplierName, pur.supplierPhone)
+    );
+    customerPurchases.forEach((pur: any) => {
+      const remPur = Math.max(0, (Number(pur.finalTotal) || 0) - (Number(pur.paidAmount) || 0));
+      if (remPur > 0) unpaidInvoicesCount++;
+      const purItems = Array.isArray(pur.items) ? pur.items : [];
+      const itemsSummary = purItems
+        .map((it: any) => `${it.productName || ''} (${it.quantity || 1} ${it.unit || 'عدد'})`)
+        .filter(Boolean)
+        .join(' ، ');
+
+      rawLedgerEntries.push({
+        id: `pur-cred-${pur.id}`,
+        date: pur.date || '',
+        documentNumber: String(pur.invoiceNumber || ''),
+        documentType: 'purchase_invoice',
+        documentTypeLabel: pur.isServiceOnly ? 'فاکتور خرید خدمات' : 'فاکتور خرید کالا',
+        description: `خرید از طرف‌حساب طبق فاکتور شماره ${pur.invoiceNumber} (${purItems.length} ردیف)${itemsSummary ? `: ${itemsSummary}` : ''}${pur.notes ? ` - ${pur.notes}` : ''}`,
+        debit: 0,
+        credit: Number(pur.finalTotal) || 0,
+        paymentMethod: pur.paymentMethod ? paymentMethodLabels[pur.paymentMethod] || pur.paymentMethod : undefined,
+        paymentMethodKey: pur.paymentMethod || undefined,
+        notes: pur.notes || '',
+        itemsSummary,
+      });
+
+      if (Number(pur.paidAmount) > 0) {
+        const payMethodTxt = pur.paymentMethod ? paymentMethodLabels[pur.paymentMethod] || pur.paymentMethod : 'نقدی';
+        rawLedgerEntries.push({
+          id: `pur-pay-${pur.id}`,
+          date: pur.date || '',
+          documentNumber: String(pur.invoiceNumber || ''),
+          documentType: 'purchase_payment',
+          documentTypeLabel: 'پرداخت وجه خرید',
+          description: `پرداخت وجه بابت فاکتور خرید شماره ${pur.invoiceNumber} [${payMethodTxt}]${pur.transferDescription ? ` (${pur.transferDescription})` : ''}`,
+          debit: Number(pur.paidAmount) || 0,
+          credit: 0,
+          paymentMethod: payMethodTxt,
+          paymentMethodKey: pur.paymentMethod || undefined,
+          trackingNumber: pur.chequeNumber || '',
+          notes: pur.transferDescription || pur.notes || '',
+        });
+      }
+    });
+
+    // Chronological sort (oldest to newest for running balance)
+    rawLedgerEntries.sort((a, b) => {
+      const cmp = String(a.date || '').localeCompare(String(b.date || ''));
+      if (cmp !== 0) return cmp;
+      const isBaseA = a.documentType === 'invoice' || a.documentType === 'purchase_invoice';
+      const isBaseB = b.documentType === 'invoice' || b.documentType === 'purchase_invoice';
+      if (isBaseA && !isBaseB) return -1;
+      if (!isBaseA && isBaseB) return 1;
+      if (a.debit > 0 && b.credit > 0) return -1;
+      if (a.credit > 0 && b.debit > 0) return 1;
+      return 0;
+    });
+
+    let runningBalance = 0;
+    let totalDebit = 0;
+    let totalCredit = 0;
+
+    const ledgerEntries = rawLedgerEntries.map((entry) => {
+      totalDebit += entry.debit;
+      totalCredit += entry.credit;
+      runningBalance += entry.debit - entry.credit;
+      const balanceStatus = runningBalance > 0 ? 'debtor' : runningBalance < 0 ? 'creditor' : 'settled';
+      return {
+        ...entry,
+        balance: runningBalance,
+        balanceStatus,
+      };
+    });
+
+    const totalPurchases = nonProformas.reduce((sum: number, inv: any) => sum + (inv.finalTotal || 0), 0);
     const netBalance = totalDebit - totalCredit;
 
     const customerLedger = {
       customerName: invoice.customerName,
       customerPhone: invoice.customerPhone || '',
       customerAddress: invoice.customerAddress || '',
+      customerNationalId: invoice.customerNationalId || '',
       totalInvoicesCount: customerInvoices.length,
+      unpaidInvoicesCount,
       totalPurchases,
+      totalDebit,
       totalPaid: totalCredit,
+      totalCredit,
       balance: netBalance,
       balanceStatus: netBalance > 0 ? 'debtor' : netBalance < 0 ? 'creditor' : 'settled',
+      entries: shareLink.includeCustomerStatement !== false ? ledgerEntries : [],
     };
 
     const publicSettings = {
@@ -3653,6 +3851,7 @@ app.get('/api/public/invoice/:token', async (req, res) => {
     const publicShareMeta = {
       token: shareLink.token,
       allowPdfDownload: shareLink.allowPdfDownload !== false,
+      includeCustomerStatement: shareLink.includeCustomerStatement !== false,
       isOneTime: !!shareLink.isOneTime,
       expiresAt: shareLink.expiresAt || null,
       viewCount: newViewCount,
@@ -3690,6 +3889,7 @@ app.post('/api/invoices/:id/share-link', async (req, res) => {
       pinRequired = false,
       pinCode = '',
       allowPdfDownload = true,
+      includeCustomerStatement = true,
       regenerateToken = false,
     } = req.body || {};
 
@@ -3721,6 +3921,7 @@ app.post('/api/invoices/:id/share-link', async (req, res) => {
       pinRequired: !!pinRequired,
       pinCode: pinCode ? String(pinCode).trim() : undefined,
       allowPdfDownload: allowPdfDownload !== false,
+      includeCustomerStatement: includeCustomerStatement !== false,
     };
 
     currentInvoice.shareLink = updatedShareLink;

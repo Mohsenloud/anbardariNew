@@ -158,6 +158,7 @@ export interface InvoiceShareLink {
   pinRequired?: boolean; // آیا برای باز شدن نیاز به وارد کردن پین کد دارد؟
   pinCode?: string; // پین کد امنیتی (مثلاً ۴ رقم آخر موبایل مشتری یا رمز دلخواه)
   allowPdfDownload?: boolean; // آیا به مشتری اجازه دانلود مستقیم فایل PDF و چاپ داده شود؟
+  includeCustomerStatement?: boolean; // آیا صورتحساب کامل مشتری (گردش حساب و مانده) در نسخه وب گنجانده شود؟ (پیش‌فرض: true)
 }
 
 export interface PublicCustomerRemittanceItem {
@@ -197,15 +198,43 @@ export interface PublicCustomerDeposit {
   notes?: string;
 }
 
+export interface PublicCustomerLedgerEntry {
+  id: string;
+  date: string;
+  documentNumber: string;
+  documentType: 'invoice' | 'deposit' | 'debt' | 'invoice_payment' | 'purchase_invoice' | 'purchase_payment';
+  documentTypeLabel: string;
+  description: string;
+  debit: number; // بدهکار
+  credit: number; // بستانکار
+  balance: number; // مانده پس از ردیف
+  balanceStatus: 'debtor' | 'settled' | 'creditor';
+  paymentMethod?: string;
+  paymentMethodKey?: string;
+  trackingNumber?: string;
+  bankName?: string;
+  chequeDueDate?: string;
+  notes?: string;
+  invoiceId?: string;
+  itemsSummary?: string;
+  hasService?: boolean;
+  isOnlyService?: boolean;
+}
+
 export interface PublicCustomerLedger {
   customerName: string;
   customerPhone?: string;
   customerAddress?: string;
+  customerNationalId?: string;
   totalInvoicesCount: number;
+  unpaidInvoicesCount?: number;
   totalPurchases: number;
+  totalDebit?: number;
   totalPaid: number;
+  totalCredit?: number;
   balance: number;
   balanceStatus: 'debtor' | 'settled' | 'creditor';
+  entries?: PublicCustomerLedgerEntry[];
 }
 
 export interface Invoice {

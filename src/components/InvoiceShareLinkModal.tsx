@@ -45,6 +45,9 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
   const [pinRequired, setPinRequired] = useState<boolean>(existingLink?.pinRequired || false);
   const [pinCode, setPinCode] = useState<string>(existingLink?.pinCode || '');
   const [allowPdfDownload, setAllowPdfDownload] = useState<boolean>(existingLink ? existingLink.allowPdfDownload !== false : true);
+  const [includeCustomerStatement, setIncludeCustomerStatement] = useState<boolean>(
+    existingLink ? existingLink.includeCustomerStatement !== false : true
+  );
   const [expiryPreset, setExpiryPreset] = useState<'never' | '24h' | '3d' | '7d' | '30d'>(() => {
     if (!existingLink?.expiresAt) return 'never';
     const diffHours = (new Date(existingLink.expiresAt).getTime() - Date.now()) / (1000 * 3600);
@@ -76,6 +79,7 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
       setPinRequired(!!invoice.shareLink.pinRequired);
       setPinCode(invoice.shareLink.pinCode || '');
       setAllowPdfDownload(invoice.shareLink.allowPdfDownload !== false);
+      setIncludeCustomerStatement(invoice.shareLink.includeCustomerStatement !== false);
     }
   }, [isOpen, invoice?.id]);
 
@@ -99,6 +103,7 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
         pinRequired,
         pinCode: pinCode.trim(),
         allowPdfDownload,
+        includeCustomerStatement,
         regenerateToken: regenerate,
       });
 
@@ -133,6 +138,7 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
         pinRequired,
         pinCode: pinCode.trim(),
         allowPdfDownload,
+        includeCustomerStatement,
       });
       if (res.success && res.invoice && onUpdateInvoice) {
         onUpdateInvoice(res.invoice);
@@ -175,13 +181,16 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
     const storeTitle = settings.storeName || 'فروشگاه سپهر';
     const totalFormatted = formatPrice(invoice.finalTotal, settings.currency);
     const pinPart = pinRequired && pinCode ? `\n🔑 رمز عبور فاکتور: ${toPersianDigits(pinCode)}` : '';
+    const statementPart = includeCustomerStatement
+      ? 'مشاهده آنلاین فاکتور و صورتحساب کامل شما (با قابلیت جستجو و فیلتر گردش حساب):'
+      : 'مشاهده آنلاین فاکتور در مرورگر (بدون نیاز به دانلود):';
 
     return [
       `مشتری گرامی ${invoice.customerName}،`,
       `${docTitle} شماره ${toPersianDigits(invoice.invoiceNumber)} شما در «${storeTitle}» صادر شد.`,
       `مبلغ کل: ${totalFormatted}`,
       '',
-      `مشاهده آنلاین فاکتور در مرورگر (بدون نیاز به دانلود):`,
+      statementPart,
       publicUrl,
       pinPart,
       '',
@@ -231,6 +240,12 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
   const handleOpenPreview = () => {
     if (!publicUrl) return;
     window.open(publicUrl, '_blank');
+  };
+
+  const handleOpenStatementPreview = () => {
+    if (!publicUrl) return;
+    const sep = publicUrl.includes('?') ? '&' : '?';
+    window.open(`${publicUrl}${sep}tab=ledger`, '_blank');
   };
 
   const currentViewCount = Number(existingLink?.viewCount) || 0;
@@ -329,11 +344,22 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
                 type="button"
                 onClick={handleOpenPreview}
                 className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer shrink-0"
-                title="مشاهده پیش‌نمایش صفحه مشتری در برگه جدید"
+                title="مشاهده پیش‌نمایش فاکتور مشتری در برگه جدید"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">پیش‌نمایش</span>
+                <span className="hidden sm:inline">پیش‌نمایش فاکتور</span>
               </button>
+              {includeCustomerStatement && (
+                <button
+                  type="button"
+                  onClick={handleOpenStatementPreview}
+                  className="flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer shrink-0"
+                  title="مشاهده مستقیم صورتحساب و گردش حساب مشتری در نسخه وب"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="hidden sm:inline">صورتحساب</span>
+                </button>
+              )}
             </div>
 
             {/* Statistics pill */}
@@ -431,11 +457,25 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
                 )}
               </div>
 
+              {/* Include Customer Statement & Ledger in Web View */}
+              <div className="sm:col-span-2 flex items-center justify-between p-2.5 bg-emerald-50/60 rounded-xl border border-emerald-200">
+                <div>
+                  <span className="font-bold text-emerald-950 block">گنجاندن صورتحساب کامل مشتری (گردش حساب و مانده)</span>
+                  <span className="text-[11px] text-emerald-700">نمایش ریز بدهکار، بستانکار، مانده پس از هر تراکنش به همراه قابلیت جستجو، فیلترگذاری و دانلود PDF صورتحساب</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={includeCustomerStatement}
+                  onChange={(e) => setIncludeCustomerStatement(e.target.checked)}
+                  className="w-4 h-4 text-emerald-600 rounded cursor-pointer shrink-0 mr-2"
+                />
+              </div>
+
               {/* Allow PDF Download on Web View */}
               <div className="sm:col-span-2 flex items-center justify-between p-2.5 bg-white rounded-xl border border-slate-200">
                 <div>
                   <span className="font-bold text-slate-800 block">اجازه دانلود فایل PDF و چاپ توسط مشتری</span>
-                  <span className="text-[11px] text-slate-400">دکمه‌های دانلود PDF و چاپ فاکتور در صفحه وب مشتری نمایش داده شوند</span>
+                  <span className="text-[11px] text-slate-400">دکمه‌های دانلود PDF و چاپ فاکتور و صورتحساب در صفحه وب مشتری نمایش داده شوند</span>
                 </div>
                 <input
                   type="checkbox"
