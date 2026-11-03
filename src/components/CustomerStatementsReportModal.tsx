@@ -18,12 +18,15 @@ import {
   ArrowUpDown,
   PhoneCall,
   LayoutGrid,
-  LayoutList
+  LayoutList,
+  FileDown,
+  Loader2
 } from 'lucide-react';
 import { Customer, Invoice, StoreSettings, CustomerTransaction } from '../types';
 import { StorageService } from '../utils/storage';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
 import { exportAllCustomerStatementsToExcel } from '../utils/excelHelper';
+import { exportElementToPdf } from '../utils/pdfHelper';
 
 interface CustomerStatementsReportModalProps {
   isOpen: boolean;
@@ -48,6 +51,8 @@ export const CustomerStatementsReportModal: React.FC<CustomerStatementsReportMod
   const [statusFilter, setStatusFilter] = useState<'all' | 'debtor' | 'settled' | 'creditor'>('all');
   const [sortBy, setSortBy] = useState<'debt_desc' | 'name' | 'activity'>('debt_desc');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
+  const [pdfSuccessMessage, setPdfSuccessMessage] = useState<string | null>(null);
 
   // Compute ledger info for each customer
   const customerLedgers = useMemo(() => {
@@ -60,43 +65,7 @@ export const CustomerStatementsReportModal: React.FC<CustomerStatementsReportMod
     });
   }, [customers, invoices, transactions]);
 
-  // High-level KPIs across all customers
-  const overallStats = useMemo(() => {
-    let totalReceivables = 0; // بدهی مشتریان به فروشگاه (طلب‌های ما)
-    let totalPayables = 0;    // بستانکاری مشتریان از ما
-    let totalAllDebits = 0;
-    let totalAllCredits = 0;
-    let debtorCount = 0;
-    let settledCount = 0;
-    let creditorCount = 0;
-
-    customerLedgers.forEach(({ ledger }) => {
-      totalAllDebits += ledger.totalDebit;
-      totalAllCredits += ledger.totalCredit;
-
-      if (ledger.netBalance > 0) {
-        totalReceivables += ledger.netBalance;
-        debtorCount++;
-      } else if (ledger.netBalance < 0) {
-        totalPayables += Math.abs(ledger.netBalance);
-        creditorCount++;
-      } else {
-        settledCount++;
-      }
-    });
-
-    return {
-      totalReceivables,
-      totalPayables,
-      totalAllDebits,
-      totalAllCredits,
-      debtorCount,
-      settledCount,
-      creditorCount,
-    };
-  }, [customerLedgers]);
-
-  // Filtered & Sorted Customer list
+  // Filtered & Sorted Customer list based on search and status
   const filteredList = useMemo(() => {
     let list = customerLedgers.filter(({ customer, ledger }) => {
       // Status filter
@@ -131,12 +100,90 @@ export const CustomerStatementsReportModal: React.FC<CustomerStatementsReportMod
     return list;
   }, [customerLedgers, statusFilter, searchQuery, sortBy]);
 
+  const isFiltered = Boolean(searchQuery.trim() || statusFilter !== 'all');
+
+  // Dynamic calculations computed strictly from filteredList
+  const overallStats = useMemo(() => {
+    let totalReceivables = 0; // بدهی مشتریان به فروشگاه (طلب‌های ما)
+    let totalPayables = 0;    // بستانکاری مشتریان از ما
+    let totalAllDebits = 0;
+    let totalAllCredits = 0;
+    let debtorCount = 0;
+    let settledCount = 0;
+    let creditorCount = 0;
+
+    filteredList.forEach(({ ledger }) => {
+      totalAllDebits += ledger.totalDebit;
+      totalAllCredits += ledger.totalCredit;
+
+      if (ledger.netBalance > 0) {
+        totalReceivables += ledger.netBalance;
+        debtorCount++;
+      } else if (ledger.netBalance < 0) {
+        totalPayables += Math.abs(ledger.netBalance);
+        creditorCount++;
+      } else {
+        settledCount++;
+      }
+    });
+
+    return {
+      totalReceivables,
+      totalPayables,
+      totalAllDebits,
+      totalAllCredits,
+      debtorCount,
+      settledCount,
+      creditorCount,
+      filteredCount: filteredList.length,
+      allCount: customerLedgers.length,
+      isFiltered,
+    };
+  }, [filteredList, customerLedgers.length, isFiltered]);
+
   const handlePrint = () => {
     window.print();
   };
 
   const handleExportExcel = () => {
-    exportAllCustomerStatementsToExcel(customers, invoices, transactions, settings);
+    const listToExport = filteredList.map((item) => item.customer);
+    exportAllCustomerStatementsToExcel(listToExport, invoices, transactions, settings);
+  };
+
+  const handleExportPdf = async () => {
+    if (isExportingPdf) return;
+    try {
+      setIsExportingPdf(true);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const safeDate = getCurrentJalaliDate().replace(/\//g, '-');
+      const searchSuffix = searchQuery.trim()
+        ? `_جستجو_${searchQuery.trim().replace(/[/\\:*?"<>|]/g, '_')}`
+        : statusFilter !== 'all'
+        ? `_${statusFilter}`
+        : '';
+      const filename = `گزارش_مانده_حساب_مشتریان${searchSuffix}_${safeDate}.pdf`;
+
+      const result = await exportElementToPdf('printable-customer-statements-report-pdf', filename, {
+        pageSize: 'a4',
+        orientation: 'landscape',
+        quality: 'high',
+        documentType: 'generic',
+      });
+
+      if (result.success) {
+        setPdfSuccessMessage('فایل PDF گزارش مانده حساب مشتریان با موفقیت دانلود شد.');
+        setTimeout(() => setPdfSuccessMessage(null), 5000);
+      } else {
+        setPdfSuccessMessage(result.error || 'خطا در صدور فایل PDF گزارش');
+        setTimeout(() => setPdfSuccessMessage(null), 5000);
+      }
+    } catch (err: any) {
+      console.error('PDF export error:', err);
+      setPdfSuccessMessage('خطا در تولید فایل PDF گزارش');
+      setTimeout(() => setPdfSuccessMessage(null), 5000);
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -167,10 +214,26 @@ export const CustomerStatementsReportModal: React.FC<CustomerStatementsReportMod
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
+              id="export-all-statements-pdf-btn"
+              onClick={handleExportPdf}
+              disabled={isExportingPdf}
+              className="flex items-center gap-1 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white p-2 sm:px-3 sm:py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-60"
+              title="خروجی PDF گزارش مانده حساب مشتریان"
+            >
+              {isExportingPdf ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <FileDown className="w-3.5 h-3.5" />
+              )}
+              <span className="hidden sm:inline">{isExportingPdf ? 'در حال صدور...' : 'خروجی PDF'}</span>
+            </button>
+
+            <button
+              type="button"
               id="export-all-statements-excel-btn"
               onClick={handleExportExcel}
               className="flex items-center gap-1 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white p-2 sm:px-3 sm:py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-              title="خروجی اکسل کامل"
+              title={isFiltered ? 'خروجی اکسل نتایج فیلتر و جستجو' : 'خروجی اکسل کامل'}
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">خروجی اکسل</span>
@@ -199,12 +262,29 @@ export const CustomerStatementsReportModal: React.FC<CustomerStatementsReportMod
           </div>
         </div>
 
-        {/* OVERALL FINANCIAL STATS CARDS */}
+        {/* PDF Success Toast Banner */}
+        {pdfSuccessMessage && (
+          <div className="no-print bg-emerald-600 text-white text-xs font-bold py-2 px-4 flex items-center justify-between gap-2 shadow-sm animate-in fade-in shrink-0">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-100" />
+              <span>{pdfSuccessMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPdfSuccessMessage(null)}
+              className="text-white/80 hover:text-white p-1 rounded-lg cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* OVERALL FINANCIAL STATS CARDS (DYNAMICALLY COMPUTED FROM SEARCH & FILTERS) */}
         <div className="no-print p-2.5 sm:p-4 bg-slate-50/80 border-b border-slate-200/80 grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 shrink-0">
           {/* 1. Total Receivables (کل طلب‌های وصول نشده) */}
           <div className="bg-white p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl border border-rose-200 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-[11px] sm:text-xs text-rose-700 font-bold mb-1">
-              <span>کل طلب‌های وصول‌نشده</span>
+              <span>{isFiltered ? 'طلب‌های نتایج جستجو' : 'کل طلب‌های وصول‌نشده'}</span>
               <span className="p-1 bg-rose-50 rounded-lg">
                 <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
               </span>
@@ -213,14 +293,14 @@ export const CustomerStatementsReportModal: React.FC<CustomerStatementsReportMod
               {formatPrice(overallStats.totalReceivables, settings.currency)}
             </div>
             <div className="text-[9px] sm:text-[10px] text-slate-500 mt-0.5 truncate">
-              {toPersianDigits(overallStats.debtorCount)} طرف‌حساب بدهکار
+              {toPersianDigits(overallStats.debtorCount)} طرف‌حساب بدهکار {isFiltered ? '(در جستجو)' : ''}
             </div>
           </div>
 
           {/* 2. Total Invoiced (کل بدهکاری‌های ثبت‌شده) */}
           <div className="bg-white p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-[11px] sm:text-xs text-slate-600 font-bold mb-1">
-              <span>مجموع کل خریدها</span>
+              <span>{isFiltered ? 'خریدها (نتایج جستجو)' : 'مجموع کل خریدها'}</span>
               <span className="p-1 bg-slate-100 rounded-lg text-slate-600">
                 <ArrowUpRight className="w-3.5 h-3.5" />
               </span>
@@ -229,14 +309,14 @@ export const CustomerStatementsReportModal: React.FC<CustomerStatementsReportMod
               {formatPrice(overallStats.totalAllDebits, settings.currency)}
             </div>
             <div className="text-[9px] sm:text-[10px] text-slate-400 mt-0.5 truncate">
-              فروش‌ها و بدهی‌های تجمیعی
+              {isFiltered ? `محاسبه از ${toPersianDigits(filteredList.length)} مشتری فیلترشده` : 'فروش‌ها و بدهی‌های تجمیعی'}
             </div>
           </div>
 
           {/* 3. Total Payments (مجموع کل دریافتی‌ها) */}
           <div className="bg-white p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl border border-emerald-200 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-[11px] sm:text-xs text-emerald-700 font-bold mb-1">
-              <span>مجموع کل دریافتی‌ها</span>
+              <span>{isFiltered ? 'دریافتی‌ها (نتایج جستجو)' : 'مجموع کل دریافتی‌ها'}</span>
               <span className="p-1 bg-emerald-50 rounded-lg text-emerald-600">
                 <ArrowDownLeft className="w-3.5 h-3.5" />
               </span>
@@ -249,19 +329,21 @@ export const CustomerStatementsReportModal: React.FC<CustomerStatementsReportMod
             </div>
           </div>
 
-          {/* 4. Settled Customers Count */}
+          {/* 4. Filtered / Settled Customers Count */}
           <div className="bg-white p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-[11px] sm:text-xs text-slate-600 font-bold mb-1">
-              <span>کل طرف‌حساب‌ها</span>
+              <span>{isFiltered ? 'طرف‌حساب‌های یافت‌شده' : 'کل طرف‌حساب‌ها'}</span>
               <span className="p-1 bg-slate-100 rounded-lg text-slate-600">
                 <Users className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="text-sm sm:text-lg font-black text-slate-800 font-mono truncate">
-              {toPersianDigits(customers.length)} مشتری
+              {toPersianDigits(filteredList.length)} مشتری
             </div>
             <div className="text-[9px] sm:text-[10px] text-emerald-700 font-bold mt-0.5 truncate">
-              {toPersianDigits(overallStats.settledCount)} مشتری کاملاً تسویه
+              {isFiltered
+                ? `از کل ${toPersianDigits(customerLedgers.length)} طرف‌حساب (${toPersianDigits(overallStats.settledCount)} تسویه)`
+                : `${toPersianDigits(overallStats.settledCount)} مشتری کاملاً تسویه`}
             </div>
           </div>
         </div>
@@ -573,7 +655,7 @@ export const CustomerStatementsReportModal: React.FC<CustomerStatementsReportMod
           </button>
         </div>
 
-        {/* PRINTABLE REPORT */}
+        {/* PRINTABLE REPORT FOR BROWSER PRINT */}
         <div className="print-only hidden p-8 text-black bg-white">
           <div className="border-b-2 border-slate-800 pb-4 mb-6">
             <div className="flex items-center justify-between">
@@ -583,9 +665,14 @@ export const CustomerStatementsReportModal: React.FC<CustomerStatementsReportMod
                 <p className="text-xs text-slate-600 mt-0.5">نشانی: {settings.address} | تلفن: {settings.phone || settings.mobile}</p>
               </div>
               <div className="text-left font-mono text-xs space-y-1">
-                <div className="text-base font-bold text-slate-900 font-sans">گزارش وضعیت بدهی و صورتحساب مشتریان</div>
+                <div className="text-base font-bold text-slate-900 font-sans">
+                  گزارش وضعیت بدهی و مانده حساب مشتریان {isFiltered ? '(نتایج فیلتر و جستجو)' : ''}
+                </div>
                 <div>تاریخ گزارش: {toPersianDigits(getCurrentJalaliDate())}</div>
-                <div>تعداد کل طرف‌حساب‌ها: {toPersianDigits(customers.length)}</div>
+                <div>
+                  تعداد طرف‌حساب‌ها: {toPersianDigits(filteredList.length)} {isFiltered ? `(از کل ${toPersianDigits(customerLedgers.length)})` : ''}
+                </div>
+                {searchQuery.trim() && <div>عبارت جستجو: «{searchQuery.trim()}»</div>}
               </div>
             </div>
           </div>
@@ -641,9 +728,257 @@ export const CustomerStatementsReportModal: React.FC<CustomerStatementsReportMod
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-400">
+                <td colSpan={4} className="py-2 px-2 text-left">
+                  جمع کل ({settings.currency}):
+                </td>
+                <td className="py-2 px-2 border-l border-slate-300 font-mono">
+                  {toPersianDigits(overallStats.totalAllDebits.toLocaleString('en-US'))}
+                </td>
+                <td className="py-2 px-2 border-l border-slate-300 font-mono">
+                  {toPersianDigits(overallStats.totalAllCredits.toLocaleString('en-US'))}
+                </td>
+                <td className="py-2 px-2 border-l border-slate-300 font-mono">
+                  {toPersianDigits(overallStats.totalReceivables.toLocaleString('en-US'))} (طلب)
+                </td>
+                <td className="py-2 px-2 text-center text-rose-700">
+                  {toPersianDigits(overallStats.debtorCount)} بدهکار
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
 
+      </div>
+
+      {/* OFFSCREEN FULL-FIDELITY PDF REPORT CONTAINER FOR HTML2CANVAS */}
+      <div style={{ position: 'absolute', left: '-9999px', top: '0', zIndex: -100 }}>
+        <div
+          id="printable-customer-statements-report-pdf"
+          dir="rtl"
+          style={{
+            width: '1100px',
+            backgroundColor: '#ffffff',
+            padding: '24px',
+            fontFamily: "'Vazirmatn', -apple-system, BlinkMacSystemFont, sans-serif",
+            color: '#0f172a',
+            boxSizing: 'border-box',
+          }}
+        >
+          {/* Header */}
+          <div
+            style={{
+              borderBottom: '2px solid #1e293b',
+              paddingBottom: '12px',
+              marginBottom: '16px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <div>
+              <div style={{ fontSize: '18px', fontWeight: '900', color: '#0f172a' }}>
+                {settings.storeName || 'سامانه یکپارچه فروش و حسابداری'}
+              </div>
+              <div style={{ fontSize: '11px', color: '#475569', marginTop: '3px' }}>
+                گزارش تجمیعی مانده حساب و وضعیت مالی مشتریان
+              </div>
+              <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                {settings.address ? `نشانی: ${settings.address}` : ''}
+                {settings.phone ? ` | تلفن: ${toPersianDigits(settings.phone)}` : ''}
+              </div>
+            </div>
+
+            <div
+              style={{
+                border: '1px solid #94a3b8',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: '10px',
+                lineHeight: '1.7',
+                textAlign: 'left',
+              }}
+            >
+              <div><strong>تاریخ تنظیم: </strong>{toPersianDigits(getCurrentJalaliDate())}</div>
+              <div>
+                <strong>تعداد مشتریان: </strong>
+                {toPersianDigits(filteredList.length)} نفر
+                {isFiltered ? ` (از کل ${toPersianDigits(customerLedgers.length)})` : ''}
+              </div>
+              {searchQuery.trim() && (
+                <div style={{ color: '#0369a1' }}>
+                  <strong>جستجو: </strong>«{searchQuery.trim()}»
+                </div>
+              )}
+              {statusFilter !== 'all' && (
+                <div style={{ color: '#0369a1' }}>
+                  <strong>فیلتر وضعیت: </strong>
+                  {statusFilter === 'debtor' ? 'بدهکاران' : statusFilter === 'creditor' ? 'بستانکاران' : 'تسویه شده'}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* KPI Strip */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: '10px',
+              marginBottom: '16px',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ border: '1px solid #fecdd3', backgroundColor: '#fff1f2', padding: '10px', borderRadius: '8px' }}>
+              <div style={{ fontSize: '10px', color: '#9f1239', fontWeight: 'bold' }}>
+                {isFiltered ? 'طلب‌های نتایج جستجو' : 'کل طلب‌های وصول‌نشده'}
+              </div>
+              <div style={{ fontSize: '14px', fontWeight: '900', color: '#881337', fontFamily: 'monospace', marginTop: '4px' }}>
+                {formatPrice(overallStats.totalReceivables, settings.currency)}
+              </div>
+              <div style={{ fontSize: '9px', color: '#9f1239', marginTop: '2px' }}>
+                {toPersianDigits(overallStats.debtorCount)} مشتری بدهکار
+              </div>
+            </div>
+
+            <div style={{ border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', padding: '10px', borderRadius: '8px' }}>
+              <div style={{ fontSize: '10px', color: '#475569', fontWeight: 'bold' }}>
+                {isFiltered ? 'خریدها (نتایج جستجو)' : 'مجموع کل خریدها'}
+              </div>
+              <div style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', fontFamily: 'monospace', marginTop: '4px' }}>
+                {formatPrice(overallStats.totalAllDebits, settings.currency)}
+              </div>
+              <div style={{ fontSize: '9px', color: '#64748b', marginTop: '2px' }}>
+                فروش‌ها و بدهی‌های ثبت‌شده
+              </div>
+            </div>
+
+            <div style={{ border: '1px solid #a7f3d0', backgroundColor: '#ecfdf5', padding: '10px', borderRadius: '8px' }}>
+              <div style={{ fontSize: '10px', color: '#065f46', fontWeight: 'bold' }}>
+                {isFiltered ? 'دریافتی‌ها (نتایج جستجو)' : 'مجموع کل دریافتی‌ها'}
+              </div>
+              <div style={{ fontSize: '14px', fontWeight: '900', color: '#064e3b', fontFamily: 'monospace', marginTop: '4px' }}>
+                {formatPrice(overallStats.totalAllCredits, settings.currency)}
+              </div>
+              <div style={{ fontSize: '9px', color: '#065f46', marginTop: '2px' }}>
+                واریزی‌های نقدی، کارت و چک
+              </div>
+            </div>
+
+            <div style={{ border: '1px solid #cbd5e1', backgroundColor: '#f1f5f9', padding: '10px', borderRadius: '8px' }}>
+              <div style={{ fontSize: '10px', color: '#334155', fontWeight: 'bold' }}>
+                {isFiltered ? 'مشتریان یافت‌شده' : 'کل مشتریان'}
+              </div>
+              <div style={{ fontSize: '14px', fontWeight: '900', color: '#0f172a', fontFamily: 'monospace', marginTop: '4px' }}>
+                {toPersianDigits(filteredList.length)} مشتری
+              </div>
+              <div style={{ fontSize: '9px', color: '#475569', marginTop: '2px' }}>
+                {toPersianDigits(overallStats.settledCount)} تسویه | {toPersianDigits(overallStats.debtorCount)} بدهکار
+              </div>
+            </div>
+          </div>
+
+          {/* Table */}
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px', border: '1px solid #64748b' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#e2e8f0', color: '#0f172a', fontWeight: '900' }}>
+                <th style={{ padding: '8px 4px', border: '1px solid #64748b', textAlign: 'center', width: '35px' }}>#</th>
+                <th style={{ padding: '8px 8px', border: '1px solid #64748b', textAlign: 'right' }}>نام مشتری / شرکت</th>
+                <th style={{ padding: '8px 8px', border: '1px solid #64748b', textAlign: 'center', width: '95px' }}>شماره تماس</th>
+                <th style={{ padding: '8px 8px', border: '1px solid #64748b', textAlign: 'right' }}>نشانی</th>
+                <th style={{ padding: '8px 4px', border: '1px solid #64748b', textAlign: 'center', width: '45px' }}>اسناد</th>
+                <th style={{ padding: '8px 6px', border: '1px solid #64748b', textAlign: 'center', width: '100px', color: '#991b1b' }}>جمع بدهکار ({settings.currency})</th>
+                <th style={{ padding: '8px 6px', border: '1px solid #64748b', textAlign: 'center', width: '100px', color: '#065f46' }}>جمع بستانکار ({settings.currency})</th>
+                <th style={{ padding: '8px 6px', border: '1px solid #64748b', textAlign: 'center', width: '105px' }}>مانده حساب</th>
+                <th style={{ padding: '8px 4px', border: '1px solid #64748b', textAlign: 'center', width: '55px' }}>وضعیت</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredList.length === 0 ? (
+                <tr>
+                  <td colSpan={9} style={{ padding: '24px', textAlign: 'center', color: '#64748b', border: '1px solid #94a3b8' }}>
+                    مشتری با این مشخصات یافت نشد.
+                  </td>
+                </tr>
+              ) : (
+                filteredList.map(({ customer, ledger }, idx) => (
+                  <tr key={`pdf-rpt-${customer.id}`} style={{ backgroundColor: idx % 2 === 1 ? '#f8fafc' : '#ffffff' }}>
+                    <td style={{ padding: '6px 4px', border: '1px solid #94a3b8', textAlign: 'center', fontFamily: 'monospace' }}>
+                      {toPersianDigits(idx + 1)}
+                    </td>
+                    <td style={{ padding: '6px 8px', border: '1px solid #94a3b8', fontWeight: 'bold' }}>
+                      {customer.name}
+                      {customer.nationalId && (
+                        <span style={{ fontSize: '8.5px', color: '#64748b', display: 'block', fontFamily: 'monospace' }}>
+                          کد ملی: {toPersianDigits(customer.nationalId)}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: '6px 8px', border: '1px solid #94a3b8', textAlign: 'center', fontFamily: 'monospace' }}>
+                      {customer.phone ? toPersianDigits(customer.phone) : '—'}
+                    </td>
+                    <td style={{ padding: '6px 8px', border: '1px solid #94a3b8', color: '#475569', fontSize: '9px' }}>
+                      {customer.address || '—'}
+                    </td>
+                    <td style={{ padding: '6px 4px', border: '1px solid #94a3b8', textAlign: 'center', fontFamily: 'monospace' }}>
+                      {toPersianDigits(ledger.entries.length)}
+                    </td>
+                    <td style={{ padding: '6px 6px', border: '1px solid #94a3b8', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#991b1b' }}>
+                      {toPersianDigits(ledger.totalDebit.toLocaleString('en-US'))}
+                    </td>
+                    <td style={{ padding: '6px 6px', border: '1px solid #94a3b8', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#065f46' }}>
+                      {toPersianDigits(ledger.totalCredit.toLocaleString('en-US'))}
+                    </td>
+                    <td style={{ padding: '6px 6px', border: '1px solid #94a3b8', textAlign: 'center', fontFamily: 'monospace', fontWeight: '800' }}>
+                      {toPersianDigits(Math.abs(ledger.netBalance).toLocaleString('en-US'))}
+                    </td>
+                    <td
+                      style={{
+                        padding: '6px 4px',
+                        border: '1px solid #94a3b8',
+                        textAlign: 'center',
+                        fontWeight: 'bold',
+                        color: ledger.balanceStatus === 'debtor' ? '#991b1b' : ledger.balanceStatus === 'creditor' ? '#1e40af' : '#065f46',
+                      }}
+                    >
+                      {ledger.balanceStatus === 'debtor' ? 'بدهکار' : ledger.balanceStatus === 'creditor' ? 'طلبکار' : 'تسویه'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+            <tfoot>
+              <tr style={{ backgroundColor: '#e2e8f0', fontWeight: '900', color: '#0f172a' }}>
+                <td colSpan={5} style={{ padding: '8px 10px', border: '1px solid #64748b', textAlign: 'left' }}>
+                  {isFiltered ? `جمع نتایج جستجو (${toPersianDigits(filteredList.length)} مشتری):` : 'جمع کل همه طرف‌حساب‌ها:'}
+                </td>
+                <td style={{ padding: '8px 6px', border: '1px solid #64748b', textAlign: 'center', fontFamily: 'monospace', color: '#991b1b' }}>
+                  {toPersianDigits(overallStats.totalAllDebits.toLocaleString('en-US'))}
+                </td>
+                <td style={{ padding: '8px 6px', border: '1px solid #64748b', textAlign: 'center', fontFamily: 'monospace', color: '#065f46' }}>
+                  {toPersianDigits(overallStats.totalAllCredits.toLocaleString('en-US'))}
+                </td>
+                <td style={{ padding: '8px 6px', border: '1px solid #64748b', textAlign: 'center', fontFamily: 'monospace' }}>
+                  {toPersianDigits(overallStats.totalReceivables.toLocaleString('en-US'))} (طلب)
+                </td>
+                <td style={{ padding: '8px 4px', border: '1px solid #64748b', textAlign: 'center' }}>
+                  {toPersianDigits(overallStats.debtorCount)} بدهکار
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+
+          {/* Signature / Certification Footer */}
+          <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#475569' }}>
+            <div>
+              <span>تهیه و تنظیم گزارش: حسابداری</span>
+            </div>
+            <div>
+              <span>تایید مدیریت مالی / فروشگاه: ................................</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

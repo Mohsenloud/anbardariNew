@@ -1105,6 +1105,15 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
       .filter((p) => p.status === 'creditor')
       .sort((a, b) => b.absBalance - a.absBalance);
 
+    const filteredReceivables = filteredDebtors.reduce((s, p) => s + p.netBalance, 0);
+    const filteredPayables = filteredCreditors.reduce((s, p) => s + p.absBalance, 0);
+    const filteredSettledCount = filteredParties.filter((p) => p.status === 'settled').length;
+    const isFiltered = Boolean(
+      dcSearchQuery.trim() ||
+      dcRoleFilter !== 'all' ||
+      (dcStatusFilter !== 'all_active' && dcStatusFilter !== 'all')
+    );
+
     return {
       allParties,
       debtorsList,
@@ -1118,6 +1127,10 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
       debtorsCount,
       creditorsCount,
       settledCount,
+      filteredReceivables,
+      filteredPayables,
+      filteredSettledCount,
+      isFiltered,
     };
   }, [
     customers,
@@ -2021,19 +2034,32 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
               }`}
             >
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-bold text-slate-500">مجموع مطالبات از بدهکاران (طلب ما)</span>
+                <span className="text-xs font-bold text-slate-500">
+                  {debtorsCreditorsAnalytics.isFiltered ? 'مطالبات فیلتر شده (طلب ما)' : 'مجموع مطالبات از بدهکاران (طلب ما)'}
+                </span>
                 <div className="p-2 bg-rose-100/80 text-rose-600 rounded-xl">
                   <ArrowUpRight className="w-4 h-4" />
                 </div>
               </div>
               <div className="text-xl font-black text-rose-600">
-                {formatPrice(debtorsCreditorsAnalytics.totalReceivablesFromDebtors, settings.currency)}
+                {formatPrice(
+                  debtorsCreditorsAnalytics.isFiltered
+                    ? debtorsCreditorsAnalytics.filteredReceivables
+                    : debtorsCreditorsAnalytics.totalReceivablesFromDebtors,
+                  settings.currency
+                )}
               </div>
               <div className="mt-2.5 flex items-center justify-between text-[11px]">
                 <span className="font-bold text-rose-700 bg-rose-100/80 px-2 py-0.5 rounded-md">
-                  {toPersianDigits(debtorsCreditorsAnalytics.debtorsCount)} طرف‌حساب بدهکار
+                  {toPersianDigits(
+                    debtorsCreditorsAnalytics.isFiltered
+                      ? debtorsCreditorsAnalytics.filteredDebtors.length
+                      : debtorsCreditorsAnalytics.debtorsCount
+                  )} طرف‌حساب بدهکار
                 </span>
-                <span className="text-slate-400">اشخاص بدهکار به مجموعه</span>
+                <span className="text-slate-400">
+                  {debtorsCreditorsAnalytics.isFiltered ? 'براساس جستجو' : 'اشخاص بدهکار به مجموعه'}
+                </span>
               </div>
             </div>
 
@@ -2047,59 +2073,83 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
               }`}
             >
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-bold text-slate-500">مجموع بدهی به بستانکاران (طلب از ما)</span>
+                <span className="text-xs font-bold text-slate-500">
+                  {debtorsCreditorsAnalytics.isFiltered ? 'بدهی‌های فیلتر شده (طلب از ما)' : 'مجموع بدهی به بستانکاران (طلب از ما)'}
+                </span>
                 <div className="p-2 bg-emerald-100/80 text-emerald-600 rounded-xl">
                   <ArrowDownLeft className="w-4 h-4" />
                 </div>
               </div>
               <div className="text-xl font-black text-emerald-600">
-                {formatPrice(debtorsCreditorsAnalytics.totalPayablesToCreditors, settings.currency)}
+                {formatPrice(
+                  debtorsCreditorsAnalytics.isFiltered
+                    ? debtorsCreditorsAnalytics.filteredPayables
+                    : debtorsCreditorsAnalytics.totalPayablesToCreditors,
+                  settings.currency
+                )}
               </div>
               <div className="mt-2.5 flex items-center justify-between text-[11px]">
                 <span className="font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
-                  {toPersianDigits(debtorsCreditorsAnalytics.creditorsCount)} طرف‌حساب بستانکار
+                  {toPersianDigits(
+                    debtorsCreditorsAnalytics.isFiltered
+                      ? debtorsCreditorsAnalytics.filteredCreditors.length
+                      : debtorsCreditorsAnalytics.creditorsCount
+                  )} طرف‌حساب بستانکار
                 </span>
-                <span className="text-slate-400">تامین‌کنندگان و بستانکاران</span>
+                <span className="text-slate-400">
+                  {debtorsCreditorsAnalytics.isFiltered ? 'براساس جستجو' : 'تامین‌کنندگان و بستانکاران'}
+                </span>
               </div>
             </div>
 
             {/* 3. Net Overall Balance */}
-            <div
-              onClick={() => setDcStatusFilter('all_active')}
-              className={`p-5 rounded-2xl border transition-all cursor-pointer ${
-                dcStatusFilter === 'all_active'
-                  ? 'bg-indigo-50/70 border-indigo-300 ring-2 ring-indigo-500/20 shadow-sm'
-                  : 'bg-white border-slate-200/80 shadow-xs hover:border-indigo-200'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-bold text-slate-500">تراز خالص مطالبات و بدهی‌ها</span>
-                <div className="p-2 bg-indigo-100/80 text-indigo-600 rounded-xl">
-                  <Scale className="w-4 h-4" />
+            {(() => {
+              const currentNetBalance = debtorsCreditorsAnalytics.isFiltered
+                ? debtorsCreditorsAnalytics.filteredReceivables - debtorsCreditorsAnalytics.filteredPayables
+                : debtorsCreditorsAnalytics.netOverallBalance;
+              return (
+                <div
+                  onClick={() => setDcStatusFilter('all_active')}
+                  className={`p-5 rounded-2xl border transition-all cursor-pointer ${
+                    dcStatusFilter === 'all_active'
+                      ? 'bg-indigo-50/70 border-indigo-300 ring-2 ring-indigo-500/20 shadow-sm'
+                      : 'bg-white border-slate-200/80 shadow-xs hover:border-indigo-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold text-slate-500">
+                      {debtorsCreditorsAnalytics.isFiltered ? 'تراز خالص نتایج جستجو' : 'تراز خالص مطالبات و بدهی‌ها'}
+                    </span>
+                    <div className="p-2 bg-indigo-100/80 text-indigo-600 rounded-xl">
+                      <Scale className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <div className={`text-xl font-black ${
+                    currentNetBalance >= 0 ? 'text-indigo-700' : 'text-amber-600'
+                  }`}>
+                    {formatPrice(Math.abs(currentNetBalance), settings.currency)}
+                  </div>
+                  <div className="mt-2.5 flex items-center justify-between text-[11px]">
+                    <span className={`font-bold px-2 py-0.5 rounded-md ${
+                      currentNetBalance > 0
+                        ? 'bg-indigo-100 text-indigo-700'
+                        : currentNetBalance < 0
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      {currentNetBalance > 0
+                        ? 'طلب خالص مجموعه'
+                        : currentNetBalance < 0
+                        ? 'بدهی خالص مجموعه'
+                        : 'تراز خالص صفر'}
+                    </span>
+                    <span className="text-slate-400">
+                      {debtorsCreditorsAnalytics.isFiltered ? 'بر اساس فیلتر جاری' : 'مطالبات منهای بدهی‌ها'}
+                    </span>
+                  </div>
                 </div>
-              </div>
-              <div className={`text-xl font-black ${
-                debtorsCreditorsAnalytics.netOverallBalance >= 0 ? 'text-indigo-700' : 'text-amber-600'
-              }`}>
-                {formatPrice(Math.abs(debtorsCreditorsAnalytics.netOverallBalance), settings.currency)}
-              </div>
-              <div className="mt-2.5 flex items-center justify-between text-[11px]">
-                <span className={`font-bold px-2 py-0.5 rounded-md ${
-                  debtorsCreditorsAnalytics.netOverallBalance > 0
-                    ? 'bg-indigo-100 text-indigo-700'
-                    : debtorsCreditorsAnalytics.netOverallBalance < 0
-                    ? 'bg-amber-100 text-amber-700'
-                    : 'bg-slate-100 text-slate-600'
-                }`}>
-                  {debtorsCreditorsAnalytics.netOverallBalance > 0
-                    ? 'طلب خالص مجموعه'
-                    : debtorsCreditorsAnalytics.netOverallBalance < 0
-                    ? 'بدهی خالص مجموعه'
-                    : 'تراز خالص صفر'}
-                </span>
-                <span className="text-slate-400">مطالبات منهای بدهی‌ها</span>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* 4. Settled Accounts */}
             <div
@@ -2117,14 +2167,20 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                 </div>
               </div>
               <div className="text-xl font-black text-slate-700">
-                {toPersianDigits(debtorsCreditorsAnalytics.settledCount)} <span className="text-xs font-bold text-slate-400">نفر</span>
+                {toPersianDigits(
+                  debtorsCreditorsAnalytics.isFiltered
+                    ? debtorsCreditorsAnalytics.filteredSettledCount
+                    : debtorsCreditorsAnalytics.settledCount
+                )} <span className="text-xs font-bold text-slate-400">نفر</span>
               </div>
               <div className="mt-2.5 flex items-center justify-between text-[11px]">
                 <span className="font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
                   مانده حساب صفر
                 </span>
                 <span className="text-slate-400">
-                  از کل {toPersianDigits(debtorsCreditorsAnalytics.allParties.length)} طرف‌حساب
+                  {debtorsCreditorsAnalytics.isFiltered
+                    ? `از ${toPersianDigits(debtorsCreditorsAnalytics.filteredParties.length)} طرف‌حساب فیلتر شده`
+                    : `از کل ${toPersianDigits(debtorsCreditorsAnalytics.allParties.length)} طرف‌حساب`}
                 </span>
               </div>
             </div>

@@ -323,6 +323,29 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
     });
   }, [fullLedger.entries, filterType, dateFilter, searchQuery]);
 
+  // Is search or filter active?
+  const isSearchOrFilterActive = Boolean(
+    searchQuery.trim() || filterType !== 'all' || dateFilter !== 'all'
+  );
+
+  // Active totals calculated dynamically based on searched / filtered entries
+  const activeTotals = useMemo(() => {
+    let totalDebit = 0;
+    let totalCredit = 0;
+    filteredEntries.forEach((entry) => {
+      totalDebit += entry.debit;
+      totalCredit += entry.credit;
+    });
+    const netBalance = totalDebit - totalCredit;
+    return {
+      totalDebit,
+      totalCredit,
+      netBalance,
+      entriesCount: filteredEntries.length,
+      isFiltered: isSearchOrFilterActive,
+    };
+  }, [filteredEntries, isSearchOrFilterActive]);
+
   // Copy helper
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard?.writeText(text);
@@ -337,7 +360,19 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
   // Export to Excel
   const handleExportExcel = () => {
-    exportCustomerStatementToExcel(customer, fullLedger, settings);
+    // If search or filter is active, export the filtered ledger
+    const ledgerToExport = isSearchOrFilterActive
+      ? {
+          ...fullLedger,
+          entries: filteredEntries,
+          totalDebit: activeTotals.totalDebit,
+          totalCredit: activeTotals.totalCredit,
+          netBalance: activeTotals.netBalance,
+          balanceStatus:
+            activeTotals.netBalance > 0 ? ('debtor' as const) : activeTotals.netBalance < 0 ? ('creditor' as const) : ('settled' as const),
+        }
+      : fullLedger;
+    exportCustomerStatementToExcel(customer, ledgerToExport, settings);
   };
 
   // Export to PDF
@@ -348,7 +383,12 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
       await new Promise((resolve) => setTimeout(resolve, 25));
       const safeCustomerName = customer.name.replace(/[/\\:*?"<>|]/g, '_');
       const safeDate = getCurrentJalaliDate().replace(/\//g, '-');
-      const filename = `صورتحساب_مالی_${safeCustomerName}_${safeDate}.pdf`;
+      const searchSuffix = searchQuery.trim()
+        ? `_جستجو_${searchQuery.trim().replace(/[/\\:*?"<>|]/g, '_')}`
+        : isSearchOrFilterActive
+        ? '_فیلترشده'
+        : '';
+      const filename = `صورتحساب_مالی_${safeCustomerName}${searchSuffix}_${safeDate}.pdf`;
 
       const result = await exportElementToPdf('printable-customer-statement-pdf', filename, {
         pageSize: 'a4',
@@ -531,28 +571,29 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs text-slate-300 font-medium flex items-center gap-1.5">
                 <Wallet className="w-3.5 h-3.5 text-emerald-400" />
-                مانده حساب جاری مشتری:
+                {isSearchOrFilterActive ? 'مانده نتایج جستجو:' : 'مانده حساب جاری مشتری:'}
               </span>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                fullLedger.netBalance > 0
+                activeTotals.netBalance > 0
                   ? 'bg-rose-500 text-white'
-                  : fullLedger.netBalance < 0
+                  : activeTotals.netBalance < 0
                     ? 'bg-blue-500 text-white'
                     : 'bg-emerald-500 text-white'
               }`}>
-                {fullLedger.netBalance > 0
+                {activeTotals.netBalance > 0
                   ? 'مشتری بدهکار است'
-                  : fullLedger.netBalance < 0
+                  : activeTotals.netBalance < 0
                     ? 'مشتری طلبکار است'
                     : 'کاملاً بی‌حساب / تسویه'}
+                {isSearchOrFilterActive && ` (${toPersianDigits(activeTotals.entriesCount)} سند)`}
               </span>
             </div>
 
             <div className="flex items-baseline justify-between gap-2 mt-1">
               <div className="text-xl font-black font-mono tracking-tight">
-                {formatPrice(Math.abs(fullLedger.netBalance), settings.currency)}
+                {formatPrice(Math.abs(activeTotals.netBalance), settings.currency)}
               </div>
-              {fullLedger.netBalance > 0 && (
+              {activeTotals.netBalance > 0 && (
                 <button
                   type="button"
                   onClick={() => handleOpenTransactionModal('deposit')}
@@ -567,21 +608,27 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
             {/* Compact 3-metrics breakdown bar */}
             <div className="grid grid-cols-3 gap-1.5 mt-2.5 pt-2 border-t border-white/10 text-center">
               <div className="bg-white/5 rounded-xl py-1 px-1">
-                <span className="text-[9px] text-rose-300 block">کل بدهی (خرید)</span>
+                <span className="text-[9px] text-rose-300 block">
+                  {isSearchOrFilterActive ? 'بدهی جستجو' : 'کل بدهی (خرید)'}
+                </span>
                 <span className="text-[11px] font-bold font-mono text-rose-200">
-                  {formatPrice(fullLedger.totalDebit, '')}
+                  {formatPrice(activeTotals.totalDebit, '')}
                 </span>
               </div>
               <div className="bg-white/5 rounded-xl py-1 px-1">
-                <span className="text-[9px] text-emerald-300 block">کل واریزی‌ها</span>
+                <span className="text-[9px] text-emerald-300 block">
+                  {isSearchOrFilterActive ? 'واریزی جستجو' : 'کل واریزی‌ها'}
+                </span>
                 <span className="text-[11px] font-bold font-mono text-emerald-200">
-                  {formatPrice(fullLedger.totalCredit, '')}
+                  {formatPrice(activeTotals.totalCredit, '')}
                 </span>
               </div>
               <div className="bg-white/5 rounded-xl py-1 px-1">
-                <span className="text-[9px] text-slate-300 block">تراکنش‌ها</span>
+                <span className="text-[9px] text-slate-300 block">
+                  {isSearchOrFilterActive ? 'اسناد یافت‌شده' : 'تراکنش‌ها'}
+                </span>
                 <span className="text-[11px] font-bold font-mono text-slate-100">
-                  {toPersianDigits(fullLedger.entries.length)} سند
+                  {toPersianDigits(activeTotals.entriesCount)} سند
                 </span>
               </div>
             </div>
@@ -593,74 +640,81 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
           {/* 1. Total Debits (بدهکار) */}
           <div className="bg-white p-3 rounded-2xl border border-rose-100 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-xs text-rose-600 font-bold mb-1">
-              <span>جمع کل بدهی‌ها</span>
+              <span>{isSearchOrFilterActive ? 'جمع بدهی‌های جستجو' : 'جمع کل بدهی‌ها'}</span>
               <span className="p-1 bg-rose-50 rounded-lg">
                 <ArrowUpRight className="w-3.5 h-3.5 text-rose-600" />
               </span>
             </div>
             <div className="text-sm sm:text-base font-black text-rose-700 font-mono truncate">
-              {formatPrice(fullLedger.totalDebit, settings.currency)}
+              {formatPrice(activeTotals.totalDebit, settings.currency)}
             </div>
             <div className="text-[10px] text-slate-400 mt-0.5 truncate">
-              فاکتورها و اسناد بدهکاری
+              {isSearchOrFilterActive
+                ? `محاسبه از ${toPersianDigits(activeTotals.entriesCount)} سند فیلترشده`
+                : 'فاکتورها و اسناد بدهکاری'}
             </div>
           </div>
 
           {/* 2. Total Credits (بستانکار) */}
           <div className="bg-white p-3 rounded-2xl border border-emerald-100 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-xs text-emerald-600 font-bold mb-1">
-              <span>جمع کل واریزی‌ها</span>
+              <span>{isSearchOrFilterActive ? 'جمع واریزی‌های جستجو' : 'جمع کل واریزی‌ها'}</span>
               <span className="p-1 bg-emerald-50 rounded-lg">
                 <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-600" />
               </span>
             </div>
             <div className="text-sm sm:text-base font-black text-emerald-700 font-mono truncate">
-              {formatPrice(fullLedger.totalCredit, settings.currency)}
+              {formatPrice(activeTotals.totalCredit, settings.currency)}
             </div>
             <div className="text-[10px] text-slate-400 mt-0.5 truncate">
-              نقدی، کارت و واریزی‌ها
+              {isSearchOrFilterActive
+                ? `واریزی‌های منطبق با جستجو`
+                : 'نقدی، کارت و واریزی‌ها'}
             </div>
           </div>
 
           {/* 3. Net Balance (مانده حساب) */}
           <div className={`p-3 rounded-2xl border shadow-xs flex flex-col justify-between ${
-            fullLedger.netBalance > 0
+            activeTotals.netBalance > 0
               ? 'bg-rose-50/80 border-rose-200 text-rose-800'
-              : fullLedger.netBalance < 0
+              : activeTotals.netBalance < 0
                 ? 'bg-blue-50/80 border-blue-200 text-blue-800'
                 : 'bg-emerald-50/80 border-emerald-200 text-emerald-800'
           }`}>
             <div className="flex items-center justify-between text-xs font-bold mb-1">
-              <span>مانده حساب جاری</span>
+              <span>{isSearchOrFilterActive ? 'مانده نتایج جستجو' : 'مانده حساب جاری'}</span>
               <span className="p-1 bg-white/80 rounded-lg">
                 <Wallet className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="text-sm sm:text-base font-black font-mono truncate">
-              {formatPrice(Math.abs(fullLedger.netBalance), settings.currency)}
+              {formatPrice(Math.abs(activeTotals.netBalance), settings.currency)}
             </div>
             <div className="text-[10px] font-bold mt-0.5 truncate">
-              {fullLedger.netBalance > 0
+              {activeTotals.netBalance > 0
                 ? 'مشتری بدهکار است'
-                : fullLedger.netBalance < 0
+                : activeTotals.netBalance < 0
                   ? 'مشتری طلبکار است'
                   : 'حساب کاملاً تسویه است'}
+              {isSearchOrFilterActive && ' (بر اساس جستجو)'}
             </div>
           </div>
 
           {/* 4. Total Entries & Invoices */}
           <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-xs text-slate-600 font-bold mb-1">
-              <span>تعداد کل اسناد</span>
+              <span>{isSearchOrFilterActive ? 'اسناد یافت‌شده' : 'تعداد کل اسناد'}</span>
               <span className="p-1 bg-slate-100 rounded-lg text-slate-600">
                 <FileText className="w-3.5 h-3.5" />
               </span>
             </div>
             <div className="text-sm sm:text-base font-black text-slate-800 font-mono truncate">
-              {toPersianDigits(fullLedger.entries.length)} تراکنش
+              {toPersianDigits(activeTotals.entriesCount)} تراکنش
             </div>
             <div className="text-[10px] text-slate-500 mt-0.5 truncate">
-              {toPersianDigits(unpaidInvoices.length)} فاکتور تسویه‌نشده
+              {isSearchOrFilterActive
+                ? `از کل ${toPersianDigits(fullLedger.entries.length)} تراکنش پرونده`
+                : `${toPersianDigits(unpaidInvoices.length)} فاکتور تسویه‌نشده`}
             </div>
           </div>
         </div>
@@ -1369,18 +1423,20 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                     <tfoot className="sticky bottom-0 z-10 bg-slate-100 shadow-2xs">
                       <tr className="bg-slate-100 font-bold text-slate-800 border-t-2 border-slate-300">
                         <td colSpan={5} className="py-2.5 px-4 text-left font-bold text-xs">
-                          مجموع گردش و مانده نهایی ({settings.currency}):
+                          {isSearchOrFilterActive
+                            ? `مجموع گردش و مانده نتایج جستجو (${toPersianDigits(activeTotals.entriesCount)} سند) (${settings.currency}):`
+                            : `مجموع گردش و مانده نهایی (${settings.currency}):`}
                         </td>
                         <td className="py-2.5 px-3 font-mono tabular-nums font-black text-rose-800 text-xs whitespace-nowrap text-left w-32 shrink-0">
-                          {toPersianDigits(fullLedger.totalDebit.toLocaleString('en-US'))}
+                          {toPersianDigits(activeTotals.totalDebit.toLocaleString('en-US'))}
                         </td>
                         <td className="py-2.5 px-3 font-mono tabular-nums font-black text-emerald-800 text-xs whitespace-nowrap text-left w-32 shrink-0">
-                          {toPersianDigits(fullLedger.totalCredit.toLocaleString('en-US'))}
+                          {toPersianDigits(activeTotals.totalCredit.toLocaleString('en-US'))}
                         </td>
                         <td colSpan={2} className="py-2.5 px-3 font-mono tabular-nums font-black text-xs whitespace-nowrap text-left w-60">
-                          <span className={fullLedger.netBalance > 0 ? 'text-rose-800' : fullLedger.netBalance < 0 ? 'text-blue-800' : 'text-emerald-800'}>
-                            {toPersianDigits(Math.abs(fullLedger.netBalance).toLocaleString('en-US'))} {settings.currency} (
-                            {fullLedger.netBalance > 0 ? 'بدهکار' : fullLedger.netBalance < 0 ? 'بستانکار' : 'تسویه'})
+                          <span className={activeTotals.netBalance > 0 ? 'text-rose-800' : activeTotals.netBalance < 0 ? 'text-blue-800' : 'text-emerald-800'}>
+                            {toPersianDigits(Math.abs(activeTotals.netBalance).toLocaleString('en-US'))} {settings.currency} (
+                            {activeTotals.netBalance > 0 ? 'بدهکار' : activeTotals.netBalance < 0 ? 'بستانکار' : 'تسویه'})
                           </span>
                         </td>
                       </tr>
@@ -1395,10 +1451,11 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
         {/* MODAL FOOTER & MOBILE STICKY SUMMARY BAR */}
         <div className="no-print p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2.5 shrink-0">
           <div className="text-[11px] sm:text-xs text-slate-500 truncate min-w-0">
-            مانده به حروف: <strong className="text-slate-800">
-              {fullLedger.netBalance === 0 
+            {isSearchOrFilterActive ? 'مانده نتایج جستجو به حروف: ' : 'مانده به حروف: '}
+            <strong className="text-slate-800">
+              {activeTotals.netBalance === 0 
                 ? 'تسویه کامل (بی‌حساب)' 
-                : `${numberToPersianWords(Math.abs(fullLedger.netBalance))} ${settings.currency} ${fullLedger.netBalance > 0 ? 'بدهکار' : 'طلبکار (بستانکار)'}`}
+                : `${numberToPersianWords(Math.abs(activeTotals.netBalance))} ${settings.currency} ${activeTotals.netBalance > 0 ? 'بدهکار' : 'طلبکار (بستانکار)'}`}
             </strong>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
@@ -1857,8 +1914,39 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                         }}
                       >
                         <span>مشخصات طرف‌حساب (خریدار / متقاضی)</span>
-                        <span>تعداد کل ردیف‌های گردش: {toPersianDigits(fullLedger.entries.length)} سند</span>
+                        <span>
+                          تعداد ردیف‌های گردش: {toPersianDigits(activeTotals.entriesCount)} سند
+                          {isSearchOrFilterActive ? ' (بر اساس جستجو و فیلتر)' : ''}
+                        </span>
                       </div>
+
+                      {/* Filter notice banner in PDF if search/filter is active */}
+                      {isSearchOrFilterActive && (
+                        <div
+                          style={{
+                            borderBottom: '1px solid #94a3b8',
+                            padding: '5px 12px',
+                            fontSize: '9.5px',
+                            backgroundColor: '#f8fafc',
+                            color: '#1e293b',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <div>
+                            <strong style={{ color: '#0f172a' }}>فیلتر اعمال‌شده در گزارش: </strong>
+                            <span>
+                              {searchQuery.trim() ? `جستجو: «${searchQuery.trim()}» ` : ''}
+                              {filterType === 'debt' ? '• فقط اسناد بدهکاری ' : filterType === 'deposit' ? '• فقط اسناد واریزی ' : ''}
+                              {dateFilter === 'this_year' ? '• سال جاری' : ''}
+                            </span>
+                          </div>
+                          <span style={{ color: '#475569', fontWeight: 'bold' }}>
+                            نمایش {toPersianDigits(activeTotals.entriesCount)} از کل {toPersianDigits(fullLedger.entries.length)} سند
+                          </span>
+                        </div>
+                      )}
 
                       {/* Customer Details 4-Cell Grid */}
                       <div
@@ -1906,33 +1994,39 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                         }}
                       >
                         <div style={{ padding: '6px 12px', borderLeft: '1px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff' }}>
-                          <span style={{ color: '#475569', fontWeight: '600' }}>جمع کل بدهکار:</span>
+                          <span style={{ color: '#475569', fontWeight: '600' }}>
+                            {isSearchOrFilterActive ? 'جمع بدهکار (جستجو):' : 'جمع کل بدهکار:'}
+                          </span>
                           <strong style={{ fontFamily: 'monospace', color: '#991b1b', fontSize: '11px' }}>
-                            {toPersianDigits(fullLedger.totalDebit.toLocaleString('en-US'))} {settings.currency}
+                            {toPersianDigits(activeTotals.totalDebit.toLocaleString('en-US'))} {settings.currency}
                           </strong>
                         </div>
                         <div style={{ padding: '6px 12px', borderLeft: '1px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff' }}>
-                          <span style={{ color: '#475569', fontWeight: '600' }}>جمع کل بستانکار:</span>
+                          <span style={{ color: '#475569', fontWeight: '600' }}>
+                            {isSearchOrFilterActive ? 'جمع بستانکار (جستجو):' : 'جمع کل بستانکار:'}
+                          </span>
                           <strong style={{ fontFamily: 'monospace', color: '#065f46', fontSize: '11px' }}>
-                            {toPersianDigits(fullLedger.totalCredit.toLocaleString('en-US'))} {settings.currency}
+                            {toPersianDigits(activeTotals.totalCredit.toLocaleString('en-US'))} {settings.currency}
                           </strong>
                         </div>
                         <div style={{ padding: '6px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff' }}>
-                          <span style={{ color: '#0f172a', fontWeight: '800' }}>مانده نهایی حساب:</span>
+                          <span style={{ color: '#0f172a', fontWeight: '800' }}>
+                            {isSearchOrFilterActive ? 'مانده نتایج جستجو:' : 'مانده نهایی حساب:'}
+                          </span>
                           <strong
                             style={{
                               fontFamily: 'monospace',
                               fontSize: '11px',
                               color:
-                                fullLedger.netBalance > 0
+                                activeTotals.netBalance > 0
                                   ? '#991b1b'
-                                  : fullLedger.netBalance < 0
+                                  : activeTotals.netBalance < 0
                                   ? '#1e40af'
                                   : '#065f46',
                             }}
                           >
-                            {toPersianDigits(Math.abs(fullLedger.netBalance).toLocaleString('en-US'))} {settings.currency} (
-                            {fullLedger.netBalance > 0 ? 'بدهکار' : fullLedger.netBalance < 0 ? 'بستانکار' : 'تسویه'})
+                            {toPersianDigits(Math.abs(activeTotals.netBalance).toLocaleString('en-US'))} {settings.currency} (
+                            {activeTotals.netBalance > 0 ? 'بدهکار' : activeTotals.netBalance < 0 ? 'بستانکار' : 'تسویه'})
                           </strong>
                         </div>
                       </div>
@@ -1958,78 +2052,88 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
               </thead>
 
               <tbody style={{ backgroundColor: '#ffffff' }}>
-                {fullLedger.entries.map((item, idx) => (
-                  <tr
-                    key={`pdf-${item.id}`}
-                    style={{
-                      backgroundColor: '#ffffff',
-                    }}
-                  >
-                    <td style={{ padding: '5px 4px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', color: '#334155', fontWeight: 'bold' }}>
-                      {toPersianDigits(idx + 1)}
-                    </td>
-                    <td style={{ padding: '5px 5px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>
-                      {toPersianDigits(item.date)}
-                    </td>
-                    <td style={{ padding: '5px 5px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontWeight: '600', color: '#1e293b' }}>
-                      {getDisplayDocTypeLabel(item)}
-                    </td>
-                    <td style={{ padding: '5px 5px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#334155' }}>
-                      {toPersianDigits(item.documentNumber)}
-                    </td>
-                    <td style={{ padding: '5px 8px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', lineHeight: '1.45', color: '#0f172a' }}>
-                      <div style={{ fontWeight: '500' }}>{item.description}</div>
-                      {showSuppliers && item.supplierNames && item.supplierNames.length > 0 && (
-                        <div style={{ color: '#92400e', fontSize: '9px', marginTop: '2px', fontWeight: 'bold' }}>
-                          تامین‌کننده / فروشنده کالا: {item.supplierNames.join('، ')}
-                        </div>
-                      )}
-                      {item.trackingNumber && (
-                        <span style={{ display: 'block', fontSize: '9px', color: '#475569', fontFamily: 'monospace', marginTop: '1px' }}>
-                          کد پیگیری / سریال: {toPersianDigits(item.trackingNumber)}
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ padding: '5px 6px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#991b1b' }}>
-                      {item.debit > 0 ? toPersianDigits(item.debit.toLocaleString('en-US')) : '—'}
-                    </td>
-                    <td style={{ padding: '5px 6px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#065f46' }}>
-                      {item.credit > 0 ? toPersianDigits(item.credit.toLocaleString('en-US')) : '—'}
-                    </td>
-                    <td style={{ padding: '5px 6px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: '800', color: '#0f172a' }}>
-                      {toPersianDigits(Math.abs(item.balance).toLocaleString('en-US'))}
-                    </td>
-                    <td
-                      style={{
-                        padding: '5px 4px',
-                        border: '1px solid #94a3b8',
-                        backgroundColor: '#ffffff',
-                        textAlign: 'center',
-                        fontWeight: '800',
-                        fontSize: '9.5px',
-                        color: item.balance > 0 ? '#991b1b' : item.balance < 0 ? '#1e40af' : '#065f46',
-                      }}
-                    >
-                      {item.balance > 0 ? 'بد' : item.balance < 0 ? 'بس' : 'تسویه'}
+                {filteredEntries.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} style={{ textAlign: 'center', padding: '24px 10px', color: '#64748b', fontSize: '11px', border: '1px solid #94a3b8' }}>
+                      هیچ سندی با معیارهای جستجو و فیلتر فعلی یافت نشد.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredEntries.map((item, idx) => (
+                    <tr
+                      key={`pdf-${item.id}`}
+                      style={{
+                        backgroundColor: '#ffffff',
+                      }}
+                    >
+                      <td style={{ padding: '5px 4px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', color: '#334155', fontWeight: 'bold' }}>
+                        {toPersianDigits(idx + 1)}
+                      </td>
+                      <td style={{ padding: '5px 5px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#0f172a' }}>
+                        {toPersianDigits(item.date)}
+                      </td>
+                      <td style={{ padding: '5px 5px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontWeight: '600', color: '#1e293b' }}>
+                        {getDisplayDocTypeLabel(item)}
+                      </td>
+                      <td style={{ padding: '5px 5px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#334155' }}>
+                        {toPersianDigits(item.documentNumber)}
+                      </td>
+                      <td style={{ padding: '5px 8px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', lineHeight: '1.45', color: '#0f172a' }}>
+                        <div style={{ fontWeight: '500' }}>{item.description}</div>
+                        {showSuppliers && item.supplierNames && item.supplierNames.length > 0 && (
+                          <div style={{ color: '#92400e', fontSize: '9px', marginTop: '2px', fontWeight: 'bold' }}>
+                            تامین‌کننده / فروشنده کالا: {item.supplierNames.join('، ')}
+                          </div>
+                        )}
+                        {item.trackingNumber && (
+                          <span style={{ display: 'block', fontSize: '9px', color: '#475569', fontFamily: 'monospace', marginTop: '1px' }}>
+                            کد پیگیری / سریال: {toPersianDigits(item.trackingNumber)}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '5px 6px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#991b1b' }}>
+                        {item.debit > 0 ? toPersianDigits(item.debit.toLocaleString('en-US')) : '—'}
+                      </td>
+                      <td style={{ padding: '5px 6px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: 'bold', color: '#065f46' }}>
+                        {item.credit > 0 ? toPersianDigits(item.credit.toLocaleString('en-US')) : '—'}
+                      </td>
+                      <td style={{ padding: '5px 6px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: '800', color: '#0f172a' }}>
+                        {toPersianDigits(Math.abs(item.balance).toLocaleString('en-US'))}
+                      </td>
+                      <td
+                        style={{
+                          padding: '5px 4px',
+                          border: '1px solid #94a3b8',
+                          backgroundColor: '#ffffff',
+                          textAlign: 'center',
+                          fontWeight: '800',
+                          fontSize: '9.5px',
+                          color: item.balance > 0 ? '#991b1b' : item.balance < 0 ? '#1e40af' : '#065f46',
+                        }}
+                      >
+                        {item.balance > 0 ? 'بد' : item.balance < 0 ? 'بس' : 'تسویه'}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
 
               <tfoot style={{ backgroundColor: '#ffffff' }}>
                 {/* Grand Totals Row */}
                 <tr style={{ backgroundColor: '#ffffff', fontWeight: '900', color: '#0f172a', fontSize: '10.5px' }}>
                   <td colSpan={5} style={{ padding: '8px 10px', border: '1px solid #64748b', backgroundColor: '#ffffff', textAlign: 'left', fontWeight: '900' }}>
-                    جمع کل گردش حساب و مانده نهایی ({settings.currency}):
+                    {isSearchOrFilterActive
+                      ? `جمع گردش و مانده نتایج جستجو (${toPersianDigits(activeTotals.entriesCount)} سند) (${settings.currency}):`
+                      : `جمع کل گردش حساب و مانده نهایی (${settings.currency}):`}
                   </td>
                   <td style={{ padding: '8px 6px', border: '1px solid #64748b', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: '900', color: '#991b1b' }}>
-                    {toPersianDigits(fullLedger.totalDebit.toLocaleString('en-US'))}
+                    {toPersianDigits(activeTotals.totalDebit.toLocaleString('en-US'))}
                   </td>
                   <td style={{ padding: '8px 6px', border: '1px solid #64748b', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: '900', color: '#065f46' }}>
-                    {toPersianDigits(fullLedger.totalCredit.toLocaleString('en-US'))}
+                    {toPersianDigits(activeTotals.totalCredit.toLocaleString('en-US'))}
                   </td>
                   <td style={{ padding: '8px 6px', border: '1px solid #64748b', backgroundColor: '#ffffff', textAlign: 'center', fontFamily: 'monospace', fontWeight: '900', color: '#0f172a' }}>
-                    {toPersianDigits(Math.abs(fullLedger.netBalance).toLocaleString('en-US'))}
+                    {toPersianDigits(Math.abs(activeTotals.netBalance).toLocaleString('en-US'))}
                   </td>
                   <td
                     style={{
@@ -2039,10 +2143,10 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                       textAlign: 'center',
                       fontWeight: '900',
                       fontSize: '9.5px',
-                      color: fullLedger.netBalance > 0 ? '#991b1b' : fullLedger.netBalance < 0 ? '#1e40af' : '#065f46',
+                      color: activeTotals.netBalance > 0 ? '#991b1b' : activeTotals.netBalance < 0 ? '#1e40af' : '#065f46',
                     }}
                   >
-                    {fullLedger.netBalance > 0 ? 'بدهکار' : fullLedger.netBalance < 0 ? 'بستانکار' : 'تسویه'}
+                    {activeTotals.netBalance > 0 ? 'بدهکار' : activeTotals.netBalance < 0 ? 'بستانکار' : 'تسویه'}
                   </td>
                 </tr>
               </tfoot>
@@ -2073,17 +2177,24 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
               }}
             >
               <div>
-                <strong style={{ color: '#0f172a' }}>مانده نهایی حساب به حروف: </strong>
+                <strong style={{ color: '#0f172a' }}>
+                  {isSearchOrFilterActive ? 'مانده نتایج جستجو به حروف: ' : 'مانده نهایی حساب به حروف: '}
+                </strong>
                 <span
                   style={{
                     fontWeight: '800',
-                    color: fullLedger.netBalance > 0 ? '#991b1b' : fullLedger.netBalance < 0 ? '#1e40af' : '#065f46',
+                    color: activeTotals.netBalance > 0 ? '#991b1b' : activeTotals.netBalance < 0 ? '#1e40af' : '#065f46',
                   }}
                 >
-                  {fullLedger.netBalance === 0
-                    ? 'حساب طرف‌حساب کاملاً تسویه و بی‌حساب می‌باشد.'
-                    : `${numberToPersianWords(Math.abs(fullLedger.netBalance))} ${settings.currency}`}
+                  {activeTotals.netBalance === 0
+                    ? 'حساب طرف‌حساب در این بازه/جستجو کاملاً تسویه و بی‌حساب می‌باشد.'
+                    : `${numberToPersianWords(Math.abs(activeTotals.netBalance))} ${settings.currency}`}
                 </span>
+                {isSearchOrFilterActive && (
+                  <div style={{ fontSize: '9px', color: '#64748b', marginTop: '4px' }}>
+                    * ارقام، اقلام و مانده فوق بر اساس نتایج جستجو و فیلترهای انتخابی کاربر در سیستم استخراج و صادر گردیده است.
+                  </div>
+                )}
               </div>
             </div>
 
