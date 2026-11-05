@@ -1179,6 +1179,12 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
       const extraDeletedInvoiceIds = Array.isArray(incomingData.deletedInvoiceIds) ? incomingData.deletedInvoiceIds : [];
       const currentLegacyDeleted = Array.isArray(currentDb.deletedInvoiceIds) ? currentDb.deletedInvoiceIds : [];
 
+      const revivedCatSet = new Set<string>(
+        Array.isArray(incomingData.reviveCategories)
+          ? incomingData.reviveCategories.map((c: string) => String(c || '').trim().toLowerCase()).filter(Boolean)
+          : []
+      );
+
       const combinedTombstones = {
         invoices: mergeTombstoneList('invoices', [...extraDeletedInvoiceIds, ...currentLegacyDeleted]),
         products: mergeTombstoneList('products'),
@@ -1189,7 +1195,9 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         savedVehicles: mergeTombstoneList('savedVehicles'),
         customerTransactions: mergeTombstoneList('customerTransactions'),
         users: mergeTombstoneList('users'),
-        categories: mergeTombstoneList('categories'),
+        categories: mergeTombstoneList('categories').filter(
+          (c: string) => !revivedCatSet.has(c.trim().toLowerCase())
+        ),
       };
 
       const invoiceDelSet = new Set(combinedTombstones.invoices);
@@ -1240,7 +1248,7 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         delete currentExitLogs[delId];
       });
 
-      const updatedDb = {
+      const updatedDb: any = {
         ...currentDb,
         ...incomingData,
         invoices: finalInvoices,
@@ -1260,6 +1268,7 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         revision: currentRev + 1,
         updatedAt: nowIso,
       };
+      delete updatedDb.reviveCategories;
 
       // Calculate checksum
       const rawContent = JSON.stringify(updatedDb, null, 2);

@@ -1713,12 +1713,51 @@ export const StorageService = {
     }
   },
 
-  saveCategories(categories: string[]) {
+  unrecordCategoryTombstone(categoryNames: string | string[]) {
+    try {
+      const names = (Array.isArray(categoryNames) ? categoryNames : [categoryNames])
+        .map((c) => String(c || '').trim())
+        .filter(Boolean);
+      if (names.length === 0) return;
+
+      const lowerSet = new Set(names.map((n) => n.toLowerCase()));
+      const current = this.getDeletedTombstones();
+      const before = current.categories || [];
+      const after = before.filter((c) => !lowerSet.has(String(c || '').trim().toLowerCase()));
+      if (after.length !== before.length) {
+        current.categories = after;
+        localStorage.setItem(STORAGE_KEYS.TOMBSTONES, JSON.stringify(current));
+      }
+      this.queuePushToServer({ reviveCategories: names, tombstones: current });
+    } catch (e) {
+      console.error('Failed to unrecord category tombstone:', e);
+    }
+  },
+
+  saveCategories(categories: string[], revivedNames?: string[]) {
+    if (revivedNames && revivedNames.length > 0) {
+      this.unrecordCategoryTombstone(revivedNames);
+    }
     const tombstones = this.getDeletedTombstones();
     const catDelSet = new Set((tombstones.categories || []).map((c) => c.toLowerCase()));
-    const clean = Array.from(new Set(categories.map((c) => c.trim()).filter((c) => Boolean(c) && !catDelSet.has(c.toLowerCase()))));
+    const seenLower = new Set<string>();
+    const clean: string[] = [];
+    for (const rawCat of categories) {
+      const trimmed = String(rawCat || '').trim();
+      if (!trimmed) continue;
+      const lower = trimmed.toLowerCase();
+      if (catDelSet.has(lower) || seenLower.has(lower)) continue;
+      seenLower.add(lower);
+      clean.push(trimmed);
+    }
+    if (!seenLower.has('عمومی')) {
+      clean.unshift('عمومی');
+    }
     localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(clean));
-    this.queuePushToServer({ categories: clean });
+    this.queuePushToServer({
+      categories: clean,
+      ...(revivedNames && revivedNames.length > 0 ? { reviveCategories: revivedNames } : {}),
+    });
     this.notifyChange();
   },
 
@@ -1728,14 +1767,25 @@ export const StorageService = {
 
   batchAssignCategory(productIds: string[], targetCategory: string): number {
     const cleanCategory = targetCategory.trim() || 'عمومی';
+    this.unrecordCategoryTombstone(cleanCategory);
+    const currentCats = this.getCategories();
+    if (!currentCats.some((c) => c.toLowerCase() === cleanCategory.toLowerCase())) {
+      this.saveCategories([...currentCats, cleanCategory], [cleanCategory]);
+    }
+
     const products = this.getProducts();
     const idSet = new Set(productIds);
     let updatedCount = 0;
+    const nowShamsi = new Intl.DateTimeFormat('fa-IR-u-nu-latn', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
 
     const updatedProducts = products.map((p) => {
       if (idSet.has(p.id)) {
         updatedCount++;
-        return { ...p, category: cleanCategory };
+        return { ...p, category: cleanCategory, updatedAt: nowShamsi };
       }
       return p;
     });
@@ -1747,12 +1797,132 @@ export const StorageService = {
     return updatedCount;
   },
 
+  batchUpdateProductsAttributes(
+    productIds: string[],
+    updates: { category?: string; unit?: string; minStockAlert?: number }
+  ): number {
+    const idSet = new Set(productIds);
+    if (idSet.size === 0) return 0;
+
+    if (updates.category) {
+      const cleanCat = updates.category.trim();
+      if (cleanCat) {
+        this.unrecordCategoryTombstone(cleanCat);
+        const currentCats = this.getCategories();
+        if (!currentCats.some((c) => c.toLowerCase() === cleanCat.toLowerCase())) {
+          this.saveCategories([...currentCats, cleanCat], [cleanCat]);
+        }
+      }
+    }
+
+    const products = this.getProducts();
+    let updatedCount = 0;
+    const nowShamsi = new Intl.DateTimeFormat('fa-IR-u-nu-latn', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+
+    const updatedProducts = products.map((p) => {
+      if (!idSet.has(p.id)) return p;
+      updatedCount++;
+      return {
+        ...p,
+        ...(updates.category !== undefined ? { category: updates.category.trim() || 'عمومی' } : {}),
+        ...(updates.unit !== undefined && updates.unit.trim() ? { unit: updates.unit.trim() } : {}),
+        ...(updates.minStockAlert !== undefined && !isNaN(updates.minStockAlert)
+          ? { minStockAlert: Math.max(0, Number(updates.minStockAlert)) }
+          : {}),
+        updatedAt: nowShamsi,
+      };
+    });
+
+    if (updatedCount > 0) {
+      this.saveProducts(updatedProducts);
+      this.notifyChange();
+    }
+    return updatedCount;
+  },
+
+  quickSaveProduct(productData: Partial<Product> & { name: string }): Product {
+    const cleanName = productData.name.trim();
+    const cleanCat = (productData.category || 'عمومی').trim() || 'عمومی';
+    this.unrecordCategoryTombstone(cleanCat);
+    const currentCats = this.getCategories();
+    if (!currentCats.some((c) => c.toLowerCase() === cleanCat.toLowerCase())) {
+      this.saveCategories([...currentCats, cleanCat], [cleanCat]);
+    }
+
+    const products = this.getProducts();
+    const nowShamsi = new Intl.DateTimeFormat('fa-IR-u-nu-latn', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+
+    let savedProduct: Product;
+    if (productData.id) {
+      const idx = products.findIndex((p) => p.id === productData.id);
+      if (idx !== -1) {
+        const existing = products[idx];
+        const newBuy = Number(productData.buyPrice ?? existing.buyPrice) || 0;
+        const newSell = Number(productData.sellPrice ?? existing.sellPrice) || 0;
+        const newWholesale =
+          productData.wholesalePrice !== undefined
+            ? Number(productData.wholesalePrice) || 0
+            : existing.wholesalePrice;
+
+        savedProduct = {
+          ...existing,
+          ...productData,
+          name: cleanName,
+          category: cleanCat,
+          unit: (productData.unit || existing.unit || 'عدد').trim(),
+          buyPrice: newBuy,
+          purchasePrice: newBuy,
+          sellPrice: newSell,
+          wholesalePrice: newWholesale,
+          stock: Number(productData.stock ?? existing.stock) || 0,
+          minStockAlert: Number(productData.minStockAlert ?? existing.minStockAlert) || 0,
+          updatedAt: nowShamsi,
+        };
+        const updatedList = [...products];
+        updatedList[idx] = savedProduct;
+        this.saveProducts(updatedList);
+        this.notifyChange();
+        return savedProduct;
+      }
+    }
+
+    savedProduct = {
+      id: productData.id || `prod_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      code: (productData.code || '').trim(),
+      name: cleanName,
+      category: cleanCat,
+      unit: (productData.unit || 'عدد').trim(),
+      buyPrice: Number(productData.buyPrice) || 0,
+      purchasePrice: Number(productData.buyPrice) || 0,
+      sellPrice: Number(productData.sellPrice) || 0,
+      wholesalePrice: productData.wholesalePrice ? Number(productData.wholesalePrice) : undefined,
+      stock: Number(productData.stock) || 0,
+      minStockAlert: Number(productData.minStockAlert ?? 5) || 0,
+      description: productData.description || '',
+      updatedAt: nowShamsi,
+    };
+
+    const updatedList = [savedProduct, ...products];
+    this.saveProducts(updatedList);
+    this.notifyChange();
+    return this.getProducts().find((p) => p.id === savedProduct.id) || savedProduct;
+  },
+
   addCategory(name: string): boolean {
     const clean = name.trim();
     if (!clean) return false;
+    this.unrecordCategoryTombstone(clean);
     const current = this.getCategories();
     if (current.some((c) => c.toLowerCase() === clean.toLowerCase())) return false;
-    this.saveCategories([...current, clean]);
+    this.saveCategories([...current, clean], [clean]);
     return true;
   },
 
@@ -1761,15 +1931,23 @@ export const StorageService = {
     const cleanNew = newName.trim();
     if (!cleanNew || cleanOld === cleanNew) return false;
 
+    // Unrecord newName from tombstones in case it was deleted in the past
+    this.unrecordCategoryTombstone(cleanNew);
+
     const current = this.getCategories();
-    const updatedCategories = current.map((c) => (c === cleanOld ? cleanNew : c));
-    this.saveCategories(updatedCategories);
+    const updatedCategories = current.map((c) =>
+      c.trim().toLowerCase() === cleanOld.toLowerCase() ? cleanNew : c
+    );
+    if (cleanOld.toLowerCase() !== cleanNew.toLowerCase()) {
+      this.recordTombstone('categories', cleanOld);
+    }
+    this.saveCategories(updatedCategories, [cleanNew]);
 
     if (updateProducts) {
       const products = this.getProducts();
       let changed = false;
       const updatedProducts = products.map((p) => {
-        if (p.category === cleanOld) {
+        if ((p.category || '').trim().toLowerCase() === cleanOld.toLowerCase()) {
           changed = true;
           return { ...p, category: cleanNew };
         }
@@ -1779,23 +1957,31 @@ export const StorageService = {
         this.saveProducts(updatedProducts);
       }
     }
+    this.notifyChange();
     return true;
   },
 
   deleteCategory(categoryName: string, reassignTo = 'عمومی'): boolean {
     const clean = categoryName.trim();
+    if (!clean || clean === 'عمومی') return false;
+    const cleanTarget = (reassignTo || 'عمومی').trim() || 'عمومی';
+
+    this.unrecordCategoryTombstone(cleanTarget);
     this.recordTombstone('categories', clean);
 
     const current = this.getCategories();
-    const updated = current.filter((c) => c !== clean);
-    this.saveCategories(updated);
+    const filtered = current.filter((c) => c.trim().toLowerCase() !== clean.toLowerCase());
+    if (!filtered.some((c) => c.toLowerCase() === cleanTarget.toLowerCase())) {
+      filtered.push(cleanTarget);
+    }
+    this.saveCategories(filtered, [cleanTarget]);
 
     const products = this.getProducts();
     let changed = false;
     const updatedProducts = products.map((p) => {
-      if (p.category === clean) {
+      if ((p.category || '').trim().toLowerCase() === clean.toLowerCase()) {
         changed = true;
-        return { ...p, category: reassignTo };
+        return { ...p, category: cleanTarget };
       }
       return p;
     });
@@ -1806,18 +1992,95 @@ export const StorageService = {
     return true;
   },
 
+  cleanupEmptyCategories(): { removedCount: number; removedCategories: string[] } {
+    const products = this.getProducts();
+    const usedCatLower = new Set(
+      products.map((p) => (p.category || 'عمومی').trim().toLowerCase()).filter(Boolean)
+    );
+    usedCatLower.add('عمومی');
+
+    const current = this.getCategories();
+    const removedCategories: string[] = [];
+    const remaining: string[] = [];
+
+    current.forEach((cat) => {
+      const trimmed = cat.trim();
+      if (!trimmed) return;
+      if (usedCatLower.has(trimmed.toLowerCase())) {
+        remaining.push(trimmed);
+      } else {
+        removedCategories.push(trimmed);
+      }
+    });
+
+    if (removedCategories.length > 0) {
+      this.recordTombstone('categories', removedCategories);
+      this.saveCategories(remaining);
+      this.notifyChange();
+    }
+    return { removedCount: removedCategories.length, removedCategories };
+  },
+
+  normalizeAndDeduplicateCategories(): { fixedProductsCount: number; mergedCategoriesCount: number } {
+    const products = this.getProducts();
+    const currentCats = this.getCategories();
+    const canonicalMap = new Map<string, string>();
+    canonicalMap.set('عمومی', 'عمومی');
+
+    let mergedCategoriesCount = 0;
+    const cleanCats: string[] = ['عمومی'];
+
+    currentCats.forEach((c) => {
+      const norm = String(c || '').replace(/\s+/g, ' ').trim();
+      if (!norm) return;
+      const lower = norm.toLowerCase();
+      if (!canonicalMap.has(lower)) {
+        canonicalMap.set(lower, norm);
+        cleanCats.push(norm);
+      } else if (norm !== c) {
+        mergedCategoriesCount++;
+      }
+    });
+
+    let fixedProductsCount = 0;
+    const updatedProducts = products.map((p) => {
+      const rawCat = String(p.category || '').replace(/\s+/g, ' ').trim() || 'عمومی';
+      const lower = rawCat.toLowerCase();
+      let canonical = canonicalMap.get(lower);
+      if (!canonical) {
+        canonical = rawCat;
+        canonicalMap.set(lower, canonical);
+        cleanCats.push(canonical);
+      }
+      if (p.category !== canonical) {
+        fixedProductsCount++;
+        return { ...p, category: canonical };
+      }
+      return p;
+    });
+
+    if (fixedProductsCount > 0) {
+      this.saveProducts(updatedProducts);
+    }
+    this.saveCategories(cleanCats, cleanCats);
+    this.notifyChange();
+    return { fixedProductsCount, mergedCategoriesCount };
+  },
+
   /**
-   * Batch update prices for all products in a given category by a percentage
-   * Useful for inflation or category-wide supplier price adjustments
+   * Batch update prices for products in a category (or all categories via '__ALL__')
+   * Supports percentage change, fixed amount change, or setting sellPrice by margin % over buyPrice
    */
   batchRepriceCategory(
     categoryName: string,
-    targetPrice: 'sellPrice' | 'buyPrice' | 'both',
-    percentChange: number,
-    roundTo: number = 1000
+    targetPrice: 'sellPrice' | 'buyPrice' | 'wholesalePrice' | 'both',
+    valueChange: number,
+    roundTo: number = 1000,
+    mode: 'percent' | 'fixed_amount' | 'margin_from_buy' = 'percent'
   ): { count: number; changedCount: number } {
     const products = this.getProducts();
-    const factor = 1 + percentChange / 100;
+    const isAll = categoryName === '__ALL__';
+    const factor = 1 + valueChange / 100;
     let changedCount = 0;
     let categoryProductCount = 0;
 
@@ -1826,31 +2089,88 @@ export const StorageService = {
       return Math.round(val / step) * step;
     };
 
+    const nowShamsi = new Intl.DateTimeFormat('fa-IR-u-nu-latn', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+
     const updated = products.map((p) => {
-      if (p.category === categoryName) {
+      const pCat = (p.category || 'عمومی').trim();
+      if (isAll || pCat === categoryName) {
         categoryProductCount++;
-        let newSell = p.sellPrice;
-        let newBuy = p.buyPrice ?? p.purchasePrice;
+        const oldSell = Number(p.sellPrice) || 0;
+        const oldBuy = Number(p.buyPrice ?? p.purchasePrice) || 0;
+        const oldWholesale = Number(p.wholesalePrice) || 0;
 
-        if (targetPrice === 'sellPrice' || targetPrice === 'both') {
-          if (typeof p.sellPrice === 'number' && p.sellPrice > 0) {
-            newSell = Math.max(0, round(p.sellPrice * factor, roundTo));
+        let newSell = oldSell;
+        let newBuy = oldBuy;
+        let newWholesale = oldWholesale;
+
+        if (mode === 'margin_from_buy') {
+          if (oldBuy > 0) {
+            newSell = Math.max(0, round(oldBuy * (1 + valueChange / 100), roundTo));
+          }
+        } else if (mode === 'fixed_amount') {
+          if (targetPrice === 'sellPrice' || targetPrice === 'both') {
+            if (oldSell > 0 || valueChange > 0) {
+              newSell = Math.max(0, round(oldSell + valueChange, roundTo));
+            }
+          }
+          if (targetPrice === 'buyPrice' || targetPrice === 'both') {
+            if (oldBuy > 0 || valueChange > 0) {
+              newBuy = Math.max(0, round(oldBuy + valueChange, roundTo));
+            }
+          }
+          if (targetPrice === 'wholesalePrice') {
+            if (oldWholesale > 0 || valueChange > 0) {
+              newWholesale = Math.max(0, round(oldWholesale + valueChange, roundTo));
+            }
+          }
+        } else {
+          // mode === 'percent'
+          if (targetPrice === 'sellPrice' || targetPrice === 'both') {
+            if (oldSell > 0) {
+              newSell = Math.max(0, round(oldSell * factor, roundTo));
+            }
+          }
+          if (targetPrice === 'buyPrice' || targetPrice === 'both') {
+            if (oldBuy > 0) {
+              newBuy = Math.max(0, round(oldBuy * factor, roundTo));
+            }
+          }
+          if (targetPrice === 'wholesalePrice') {
+            if (oldWholesale > 0) {
+              newWholesale = Math.max(0, round(oldWholesale * factor, roundTo));
+            }
           }
         }
-        if (targetPrice === 'buyPrice' || targetPrice === 'both') {
-          const curBuy = p.buyPrice ?? p.purchasePrice;
-          if (typeof curBuy === 'number' && curBuy > 0) {
-            newBuy = Math.max(0, round(curBuy * factor, roundTo));
-          }
-        }
 
-        if (newSell !== p.sellPrice || newBuy !== (p.buyPrice ?? p.purchasePrice)) {
+        if (newSell !== oldSell || newBuy !== oldBuy || newWholesale !== oldWholesale) {
           changedCount++;
+          const historyEntry = {
+            id: `ph_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            date: nowShamsi,
+            buyPrice: newBuy,
+            sellPrice: newSell,
+            wholesalePrice: newWholesale > 0 ? newWholesale : undefined,
+            note:
+              mode === 'margin_from_buy'
+                ? `تنظیم حاشیه سود (${valueChange}% روی خرید)`
+                : mode === 'fixed_amount'
+                ? `تعدیل گروهی مبلغ ثابت (${valueChange > 0 ? '+' : ''}${valueChange})`
+                : `تعدیل گروهی درصدی (${valueChange > 0 ? '+' : ''}${valueChange}%)`,
+          };
+          const prevHistory = Array.isArray(p.priceHistory) ? p.priceHistory : [];
+
           return {
             ...p,
             sellPrice: newSell,
             buyPrice: newBuy,
             purchasePrice: newBuy,
+            ...(newWholesale > 0 || p.wholesalePrice !== undefined ? { wholesalePrice: newWholesale } : {}),
+            updatedAt: nowShamsi,
+            priceHistory: [historyEntry, ...prevHistory].slice(0, 30),
           };
         }
       }

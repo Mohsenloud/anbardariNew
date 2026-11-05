@@ -3158,6 +3158,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           categories={categories}
           products={products}
           currency={settings.currency}
+          currentUser={currentUser}
           onAddCategory={handleAddCategory}
           onRenameCategory={handleRenameCategory}
           onDeleteCategory={handleDeleteCategory}

@@ -1102,8 +1102,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               categories={StorageService.getCategories()}
               products={products}
               currency={formData.currency || 'تومان'}
+              currentUser={currentUser}
               embedded={true}
               onReloadProducts={onReloadData}
+              onNavigateToInventory={onNavigateToTab ? () => onNavigateToTab('inventory') : undefined}
             />
           )}
 
