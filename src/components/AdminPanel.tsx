@@ -4174,92 +4174,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
           {/* 6. DATA CENTER & BACKUP (مرکز داده و پشتیبان‌گیری) */}
           {activeSection === 'data' && (
-            <div className="space-y-6">
-              {/* Automated Backup & Database Hardening Manager */}
-              <BackupManager currentUser={currentUser} onDataRestored={onReloadData} />
-
-              {/* Data Center Operations (CSV Export & Sensitivity Tools) */}
-              <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
-                {/* Accounting CSV Export Card */}
-                <div className="p-4 rounded-xl border border-emerald-300/80 bg-emerald-50/40 space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-emerald-800">
-                      <FileSpreadsheet className="w-5 h-5 text-emerald-600 shrink-0" />
-                      <h4 className="font-bold text-xs text-slate-800">خروجی اکسل و CSV فاکتورها (ویژه نرم‌افزارهای حسابداری)</h4>
-                    </div>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold self-start sm:self-auto">
-                      سازگار با هلو، سپیدار، راه‌کاران، پارسیان و اکسل
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 leading-relaxed">
-                    استخراج جامع کلیه فاکتورهای فروش ثبت‌شده به همراه مشخصات خریدار، شماره تماس، کد پیگیری، اقلام فاکتور، مبالغ مالیات و تخفیفات، وضعیت تسویه و روش پرداخت با انکودینگ استاندارد UTF-8 BOM جهت گزارش‌گیری و ثبت اسناد حسابداری.
-                  </p>
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <button
-                      type="button"
-                      id="admin-datacenter-export-csv-btn"
-                      onClick={() => exportInvoicesToCsv(invoices, formData, 'خروجی_حسابداری_کل_فاکتورها')}
-                      disabled={invoices.length === 0}
-                      className="py-2.5 px-4 bg-emerald-700 hover:bg-emerald-800 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <Download className="w-4 h-4" />
-                      <span>دانلود CSV همه فاکتورها ({toPersianDigits(invoices.length)} فاکتور)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveSection('invoices')}
-                      className="py-2.5 px-4 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <Filter className="w-4 h-4 text-slate-500" />
-                      <span>مشاهده و فیلترگذاری قبل از خروجی</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Maintenance & Reset Operations */}
-                <div className="pt-2 border-t border-slate-100 space-y-4">
-                  <h4 className="font-bold text-xs text-slate-800 flex items-center gap-1.5 text-rose-700">
-                    <AlertTriangle className="w-4 h-4 text-rose-600" />
-                    عملیات حساس و پاکسازی داده‌ها
-                  </h4>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {/* Clear Invoices Only */}
-                    <button
-                      type="button"
-                      onClick={handleClearInvoices}
-                      className="p-3.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-2 text-center cursor-pointer transition-colors"
-                    >
-                      <Trash2 className="w-5 h-5 text-amber-600" />
-                      <span>پاکسازی فاکتورهای آزمایشی</span>
-                      <span className="text-[10px] text-amber-700 font-normal">کالاها و مشتریان حفظ می‌شوند</span>
-                    </button>
-
-                    {/* Reset to Demo Defaults */}
-                    <button
-                      type="button"
-                      onClick={handleResetDemoData}
-                      className="p-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-2 text-center cursor-pointer transition-colors"
-                    >
-                      <RotateCcw className="w-5 h-5 text-slate-600" />
-                      <span>بارگذاری داده‌های دمو و نمونه</span>
-                      <span className="text-[10px] text-slate-500 font-normal">بازگردانی نمونه اولیه محصولات</span>
-                    </button>
-
-                    {/* Factory Reset */}
-                    <button
-                      type="button"
-                      onClick={handleFactoryReset}
-                      className="p-3.5 bg-rose-50 hover:bg-rose-100 text-rose-900 border border-rose-200 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-2 text-center cursor-pointer transition-colors"
-                    >
-                      <AlertTriangle className="w-5 h-5 text-rose-600" />
-                      <span>بازنشانی به تنظیمات کارخانه</span>
-                      <span className="text-[10px] text-rose-700 font-normal">حذف کامل تمامی اطلاعات</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <BackupManager
+              currentUser={currentUser}
+              onDataRestored={onReloadData}
+              onNavigateToInvoicesCsv={() => setActiveSection('invoices')}
+            />
           )}
 
           {/* 6. USERS & ACCESS CONTROL (کاربران و سطوح دسترسی) */}

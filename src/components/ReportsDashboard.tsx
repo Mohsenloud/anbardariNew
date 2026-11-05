@@ -20,9 +20,10 @@ import {
   getInvoiceDaysAge,
 } from '../utils/jalali';
 import { isServiceItem } from '../utils/serviceHelper';
-import { StorageService } from '../utils/storage';
+import { StorageService, canUserViewBuyPrices } from '../utils/storage';
 import { JalaliDatePicker } from './JalaliDatePicker';
 import { PurchaseInvoiceViewModal } from './PurchaseInvoiceViewModal';
+import { SmartPagination, paginateArray } from './SmartPagination';
 import {
   TrendingUp,
   DollarSign,
@@ -203,11 +204,23 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
   const [customFromDate, setCustomFromDate] = useState<string>(() => addDaysToJalali(-30));
   const [customToDate, setCustomToDate] = useState<string>(() => getCurrentJalaliDate());
 
+  const canViewBuyPrices = canUserViewBuyPrices(currentUser);
+
   const [activeSubTab, setActiveSubTab] = useState<ReportSubTab>('overview');
-  const [itemSortMode, setItemSortMode] = useState<ItemSortMode>('profit');
+  const [itemSortMode, setItemSortMode] = useState<ItemSortMode>(() =>
+    canUserViewBuyPrices(currentUser) ? 'profit' : 'revenue'
+  );
   const [itemTypeFilter, setItemTypeFilter] = useState<ItemTypeFilter>('all');
   const [itemSearchQuery, setItemSearchQuery] = useState<string>('');
   const [warehouseHealthFilter, setWarehouseHealthFilter] = useState<WarehouseHealthFilter>('low_stock');
+
+  // Pagination states for heavy report tables
+  const [dcPage, setDcPage] = useState(1);
+  const [dcPageSize, setDcPageSize] = useState(50);
+  const [matrixPage, setMatrixPage] = useState(1);
+  const [matrixPageSize, setMatrixPageSize] = useState(50);
+  const [profitPage, setProfitPage] = useState(1);
+  const [profitPageSize, setProfitPageSize] = useState(50);
 
   // States for Product-to-Customer Matrix Report Tab
   const [matrixViewMode, setMatrixViewMode] = useState<MatrixViewMode>('by_product');
@@ -1530,36 +1543,41 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
         <div className="flex items-center gap-1.5 pt-3 border-t border-slate-100 overflow-x-auto">
           {(
             [
-              { id: 'overview', label: 'نمای کلی و شاخص‌ها', icon: BarChart3 },
+              { id: 'overview', label: 'نمای کلی و شاخص‌ها', icon: BarChart3, show: true },
               {
                 id: 'debtors_creditors',
                 label: `لیست بدهکاران و بستانکاران (${toPersianDigits(
                   debtorsCreditorsAnalytics.debtorsCount + debtorsCreditorsAnalytics.creditorsCount
                 )})`,
                 icon: Scale,
+                show: true,
               },
               {
                 id: 'product_customer',
                 label: 'فروش کالا به اشخاص (محصول ⇄ مشتری)',
                 icon: UserCheck,
+                show: true,
               },
               {
                 id: 'profitability',
                 label: `تحلیل سودآوری اقلام (${toPersianDigits(financialAnalytics.allSoldItems.length)})`,
                 icon: Award,
+                show: canViewBuyPrices,
               },
               {
                 id: 'cashflow',
                 label: 'جریان نقدینگی و مطالبات',
                 icon: Wallet,
+                show: true,
               },
               {
                 id: 'warehouse',
                 label: `ارزش‌گذاری و سلامت انبار (${toPersianDigits(warehouseAnalytics.physicalProductsCount)})`,
                 icon: Boxes,
+                show: true,
               },
             ] as const
-          ).map((tab) => {
+          ).filter((t) => t.show).map((tab) => {
             const Icon = tab.icon;
             const isActive = activeSubTab === tab.id;
             return (
@@ -1581,8 +1599,8 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
         </div>
       </div>
 
-      {/* Main 4 KPI Cards (Always visible for instant executive context) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      {/* Main KPI Cards */}
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${canViewBuyPrices ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-3.5`}>
         {/* 1. Confirmed Sales Revenue */}
         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div>
@@ -1603,33 +1621,35 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
           </div>
         </div>
 
-        {/* 2. Net Operating Profit & Margin */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-bold">سود خالص فروش</span>
-              <span className="p-2 rounded-xl bg-blue-50 text-blue-600">
-                <TrendingUp className="w-4 h-4" />
+        {/* 2. Net Operating Profit & Margin (Only for users with canViewBuyPrices) */}
+        {canViewBuyPrices && (
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between text-slate-500 mb-2">
+                <span className="text-xs font-bold">سود خالص فروش</span>
+                <span className="p-2 rounded-xl bg-blue-50 text-blue-600">
+                  <TrendingUp className="w-4 h-4" />
+                </span>
+              </div>
+              <div
+                className={`text-lg sm:text-xl font-black tabular-nums ${
+                  financialAnalytics.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'
+                }`}
+              >
+                {formatPrice(financialAnalytics.netProfit, settings.currency)}
+              </div>
+            </div>
+            <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] tabular-nums">
+              <span className="text-emerald-700 font-bold flex items-center gap-0.5">
+                <ArrowUpRight className="w-3.5 h-3.5" />
+                حاشیه سود: {toPersianDigits(financialAnalytics.profitMargin)}٪
+              </span>
+              <span className="text-slate-400">
+                بهای تمام‌شده: {formatPrice(financialAnalytics.totalCostOfGoodsSold, '')}
               </span>
             </div>
-            <div
-              className={`text-lg sm:text-xl font-black tabular-nums ${
-                financialAnalytics.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'
-              }`}
-            >
-              {formatPrice(financialAnalytics.netProfit, settings.currency)}
-            </div>
           </div>
-          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] tabular-nums">
-            <span className="text-emerald-700 font-bold flex items-center gap-0.5">
-              <ArrowUpRight className="w-3.5 h-3.5" />
-              حاشیه سود: {toPersianDigits(financialAnalytics.profitMargin)}٪
-            </span>
-            <span className="text-slate-400">
-              بهای تمام‌شده: {formatPrice(financialAnalytics.totalCostOfGoodsSold, '')}
-            </span>
-          </div>
-        </div>
+        )}
 
         {/* 3. Cash Collected vs. Receivables */}
         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
@@ -1658,20 +1678,27 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-bold">سرمایه موجودی انبار (خرید)</span>
+              <span className="text-xs font-bold">
+                {canViewBuyPrices ? 'سرمایه موجودی انبار (خرید)' : 'ارزش موجودی انبار (فروش)'}
+              </span>
               <span className="p-2 rounded-xl bg-purple-50 text-purple-600">
                 <Boxes className="w-4 h-4" />
               </span>
             </div>
             <div className="text-lg sm:text-xl font-black text-purple-700 tabular-nums">
-              {formatPrice(warehouseAnalytics.inventoryCostValue, settings.currency)}
+              {formatPrice(
+                canViewBuyPrices ? warehouseAnalytics.inventoryCostValue : warehouseAnalytics.inventorySalesValue,
+                settings.currency
+              )}
             </div>
           </div>
           <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 tabular-nums">
             <span>ارزش فروش: {formatPrice(warehouseAnalytics.inventorySalesValue, '')}</span>
-            <span className="text-purple-700 font-bold">
-              سود انبار: {formatPrice(warehouseAnalytics.potentialInventoryProfit, '')}
-            </span>
+            {canViewBuyPrices && (
+              <span className="text-purple-700 font-bold">
+                سود انبار: {formatPrice(warehouseAnalytics.potentialInventoryProfit, '')}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -1753,7 +1780,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                   <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg">
                     {(
                       [
-                        { id: 'profit', label: 'بیشترین سود' },
+                        ...(canViewBuyPrices ? [{ id: 'profit' as ItemSortMode, label: 'بیشترین سود' }] : []),
                         { id: 'revenue', label: 'مبلغ فروش' },
                         { id: 'quantity', label: 'تعداد' },
                       ] as { id: ItemSortMode; label: string }[]
@@ -1810,12 +1837,20 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                         </div>
 
                         <div className="text-left shrink-0 mr-2 tabular-nums">
-                          <div className="font-bold text-emerald-700">
-                            سود: {formatPrice(item.netProfit, settings.currency)}
-                          </div>
-                          <div className="text-[11px] text-slate-500 mt-0.5">
-                            حاشیه سود: {toPersianDigits(item.marginPercent)}٪
-                          </div>
+                          {canViewBuyPrices ? (
+                            <>
+                              <div className="font-bold text-emerald-700">
+                                سود: {formatPrice(item.netProfit, settings.currency)}
+                              </div>
+                              <div className="text-[11px] text-slate-500 mt-0.5">
+                                حاشیه سود: {toPersianDigits(item.marginPercent)}٪
+                              </div>
+                            </>
+                          ) : (
+                            <div className="font-bold text-slate-800">
+                              فروش: {formatPrice(item.netRevenue, settings.currency)}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1832,13 +1867,15 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                   >
                     گزارش فروش هر کالا به اشخاص ←
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveSubTab('profitability')}
-                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
-                  >
-                    جدول کامل سودآوری ({toPersianDigits(sortedItems.length)} مورد) ←
-                  </button>
+                  {canViewBuyPrices && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubTab('profitability')}
+                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
+                    >
+                      جدول کامل سودآوری ({toPersianDigits(sortedItems.length)} مورد) ←
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -2740,7 +2777,8 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                         </td>
                       </tr>
                     ) : (
-                      debtorsCreditorsAnalytics.filteredParties.map((party, idx) => {
+                      paginateArray(debtorsCreditorsAnalytics.filteredParties, dcPage, dcPageSize).map((party, idx) => {
+                        const globalIndex = dcPageSize > 0 ? (dcPage - 1) * dcPageSize + idx : idx;
                         const isExpanded = expandedDcPartyKey === party.key;
                         return (
                           <React.Fragment key={party.key}>
@@ -2748,7 +2786,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                               onClick={() => setExpandedDcPartyKey(isExpanded ? null : party.key)}
                               className="hover:bg-slate-50/80 transition-colors cursor-pointer"
                             >
-                              <td className="py-3.5 px-4 font-bold text-slate-400">{toPersianDigits(idx + 1)}</td>
+                              <td className="py-3.5 px-4 font-bold text-slate-400">{toPersianDigits(globalIndex + 1)}</td>
                               <td className="py-3.5 px-4">
                                 <div className="font-black text-slate-800">{party.name}</div>
                                 {party.address && <div className="text-[10px] text-slate-400 truncate max-w-[180px]">{party.address}</div>}
@@ -2881,6 +2919,19 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                   </tbody>
                 </table>
               </div>
+
+              {debtorsCreditorsAnalytics.filteredParties.length > 0 && (
+                <div className="p-3 border-t border-slate-200/80 bg-slate-50/40">
+                  <SmartPagination
+                    currentPage={dcPage}
+                    totalItems={debtorsCreditorsAnalytics.filteredParties.length}
+                    pageSize={dcPageSize}
+                    onPageChange={setDcPage}
+                    onPageSizeChange={setDcPageSize}
+                    itemLabel="طرف‌حساب"
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -3151,9 +3202,11 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {productCustomerMatrix.filteredRecords.map((rec, i) => (
+                    {paginateArray(productCustomerMatrix.filteredRecords, matrixPage, matrixPageSize).map((rec, i) => {
+                      const globalIndex = matrixPageSize > 0 ? (matrixPage - 1) * matrixPageSize + i : i;
+                      return (
                       <tr key={`${rec.invoiceId}_${rec.productKey}_${i}`} className="hover:bg-slate-50/80">
-                        <td className="py-2.5 px-3 text-slate-400 font-bold">{toPersianDigits(i + 1)}</td>
+                        <td className="py-2.5 px-3 text-slate-400 font-bold">{toPersianDigits(globalIndex + 1)}</td>
                         <td className="py-2.5 px-3 font-mono font-bold text-slate-700">
                           {toPersianDigits(rec.date)}
                         </td>
@@ -3174,7 +3227,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                             rec.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'
                           }`}
                         >
-                          {formatPrice(rec.netProfit, '')}
+                          {canViewBuyPrices ? formatPrice(rec.netProfit, '') : '—'}
                         </td>
                         <td className="py-2.5 px-3 text-center">
                           {onViewInvoice && (
@@ -3189,9 +3242,20 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                           )}
                         </td>
                       </tr>
-                    ))}
+                    );
+                    })}
                   </tbody>
                 </table>
+                <div className="mt-3">
+                  <SmartPagination
+                    currentPage={matrixPage}
+                    totalItems={productCustomerMatrix.filteredRecords.length}
+                    pageSize={matrixPageSize}
+                    onPageChange={setMatrixPage}
+                    onPageSizeChange={setMatrixPageSize}
+                    itemLabel="ردیف فروش"
+                  />
+                </div>
               </div>
             ) : (
               /* MODE 1 & MODE 2: Aggregated Product <-> Customer Matrix with Expandable Invoice Drill-down */
@@ -3218,13 +3282,14 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                       <th className="py-3 px-3 font-bold">دفعات (فاکتور)</th>
                       <th className="py-3 px-3 font-bold">میانگین فی ({settings.currency})</th>
                       <th className="py-3 px-3 font-bold">مبلغ خالص ({settings.currency})</th>
-                      <th className="py-3 px-3 font-bold">سود خالص ({settings.currency})</th>
+                      {canViewBuyPrices && <th className="py-3 px-3 font-bold">سود خالص ({settings.currency})</th>}
                       <th className="py-3 px-3 font-bold">آخرین خرید</th>
                       <th className="py-3 px-3 font-bold text-center">ریز فاکتورها</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {productCustomerMatrix.pairRows.map((row, idx) => {
+                    {paginateArray(productCustomerMatrix.pairRows, matrixPage, matrixPageSize).map((row, idx) => {
+                      const globalIndex = matrixPageSize > 0 ? (matrixPage - 1) * matrixPageSize + idx : idx;
                       const isExpanded = expandedMatrixRowKey === row.pairKey;
                       const sharePercent =
                         matrixViewMode === 'by_product'
@@ -3242,7 +3307,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                             }`}
                           >
                             <td className="py-3 px-3 font-bold text-slate-400">
-                              {toPersianDigits(idx + 1)}
+                              {toPersianDigits(globalIndex + 1)}
                             </td>
 
                             {matrixViewMode === 'by_product' ? (
@@ -3365,13 +3430,15 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                               {formatPrice(row.netRevenue, '')}
                             </td>
 
-                            <td
-                              className={`py-3 px-3 font-black ${
-                                row.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'
-                              }`}
-                            >
-                              {formatPrice(row.netProfit, '')}
-                            </td>
+                            {canViewBuyPrices && (
+                              <td
+                                className={`py-3 px-3 font-black ${
+                                  row.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'
+                                }`}
+                              >
+                                {formatPrice(row.netProfit, '')}
+                              </td>
+                            )}
 
                             <td className="py-3 px-3 font-mono text-slate-600">
                               {toPersianDigits(row.lastDate)}
@@ -3421,7 +3488,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                                           <th className="py-1.5 px-2">مقدار</th>
                                           <th className="py-1.5 px-2">فی واحد ({settings.currency})</th>
                                           <th className="py-1.5 px-2">مبلغ خالص ردیف</th>
-                                          <th className="py-1.5 px-2">سود ردیف</th>
+                                          {canViewBuyPrices && <th className="py-1.5 px-2">سود ردیف</th>}
                                           <th className="py-1.5 px-2 text-center">مشاهده سند</th>
                                         </tr>
                                       </thead>
@@ -3443,13 +3510,15 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                                             <td className="py-1.5 px-2 font-bold text-slate-900">
                                               {formatPrice(rec.netRevenue, '')}
                                             </td>
-                                            <td
-                                              className={`py-1.5 px-2 font-bold ${
-                                                rec.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'
-                                              }`}
-                                            >
-                                              {formatPrice(rec.netProfit, '')}
-                                            </td>
+                                            {canViewBuyPrices && (
+                                              <td
+                                                className={`py-1.5 px-2 font-bold ${
+                                                  rec.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'
+                                                }`}
+                                              >
+                                                {formatPrice(rec.netProfit, '')}
+                                              </td>
+                                            )}
                                             <td className="py-1.5 px-2 text-center">
                                               {onViewInvoice && (
                                                 <button
@@ -3476,6 +3545,16 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                     })}
                   </tbody>
                 </table>
+                <div className="mt-3">
+                  <SmartPagination
+                    currentPage={matrixPage}
+                    totalItems={productCustomerMatrix.pairRows.length}
+                    pageSize={matrixPageSize}
+                    onPageChange={setMatrixPage}
+                    onPageSizeChange={setMatrixPageSize}
+                    itemLabel="ردیف"
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -3568,10 +3647,12 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 tabular-nums">
-                  {sortedItems.map((item, idx) => (
+                  {paginateArray(sortedItems, profitPage, profitPageSize).map((item, idx) => {
+                    const globalIndex = profitPageSize > 0 ? (profitPage - 1) * profitPageSize + idx : idx;
+                    return (
                     <tr key={item.key} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3 px-3 font-bold text-slate-400">
-                        {toPersianDigits(idx + 1)}
+                        {toPersianDigits(globalIndex + 1)}
                       </td>
                       <td className="py-3 px-3">
                         <div className="font-bold text-slate-800">{item.name}</div>
@@ -3629,9 +3710,20 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                         </button>
                       </td>
                     </tr>
-                  ))}
+                  );
+                  })}
                 </tbody>
               </table>
+              <div className="mt-3">
+                <SmartPagination
+                  currentPage={profitPage}
+                  totalItems={sortedItems.length}
+                  pageSize={profitPageSize}
+                  onPageChange={setProfitPage}
+                  onPageSizeChange={setProfitPageSize}
+                  itemLabel="کالا / خدمت"
+                />
+              </div>
             </div>
           )}
         </div>

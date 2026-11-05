@@ -123,6 +123,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canManageInventory: true,
     canManageCustomers: true,
     canViewReports: true,
+    canViewBuyPrices: true,
     canAccessAdmin: true,
     canManageUsers: true,
   },
@@ -136,6 +137,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canManageInventory: true,
     canManageCustomers: true,
     canViewReports: true,
+    canViewBuyPrices: false,
     canAccessAdmin: false,
     canManageUsers: false,
   },
@@ -149,6 +151,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canManageInventory: false,
     canManageCustomers: true,
     canViewReports: false,
+    canViewBuyPrices: false,
     canAccessAdmin: false,
     canManageUsers: false,
   },
@@ -162,6 +165,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canManageInventory: true,
     canManageCustomers: false,
     canViewReports: false,
+    canViewBuyPrices: false,
     canAccessAdmin: false,
     canManageUsers: false,
   },
@@ -175,6 +179,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canManageInventory: false,
     canManageCustomers: true,
     canViewReports: true,
+    canViewBuyPrices: true,
     canAccessAdmin: false,
     canManageUsers: false,
   },
@@ -188,6 +193,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canManageInventory: false,
     canManageCustomers: false,
     canViewReports: false,
+    canViewBuyPrices: false,
     canAccessAdmin: false,
     canManageUsers: false,
   },
@@ -205,6 +211,7 @@ export function normalizeUserPermissions(
   // در صورتی که نقش کاربر صراحتاً «حسابدار» (accountant) باشد، طبق قانون سیستم مجاز به ثبت/ویرایش فاکتور خرید، خدمات یا فروش نیست
   const isStrictAccountant = role === 'accountant';
   const isAdmin = role === 'admin';
+  const isRestrictedFromBuyPrices = role === 'cashier' || role === 'warehouse';
 
   if (isAdmin) {
     return { ...DEFAULT_ROLE_PERMISSIONS.admin };
@@ -230,9 +237,21 @@ export function normalizeUserPermissions(
     canManageInventory: Boolean(perms.canManageInventory ?? roleDefaults.canManageInventory),
     canManageCustomers: Boolean(perms.canManageCustomers ?? roleDefaults.canManageCustomers),
     canViewReports: Boolean(perms.canViewReports ?? roleDefaults.canViewReports),
+    canViewBuyPrices: isRestrictedFromBuyPrices
+      ? false
+      : isStrictAccountant
+        ? true
+        : Boolean(perms.canViewBuyPrices ?? roleDefaults.canViewBuyPrices),
     canAccessAdmin: Boolean(perms.canAccessAdmin ?? roleDefaults.canAccessAdmin),
     canManageUsers: Boolean(perms.canManageUsers ?? roleDefaults.canManageUsers),
   };
+}
+
+export function canUserViewBuyPrices(user?: AppUser | null): boolean {
+  if (!user) return true;
+  if (user.role === 'admin' || user.role === 'accountant') return true;
+  if (user.role === 'cashier' || user.role === 'warehouse') return false;
+  return Boolean(user.permissions?.canViewBuyPrices);
 }
 
 export const ROLE_LABELS: Record<UserRole, string> = {
@@ -1015,7 +1034,7 @@ export const StorageService = {
   },
 
   // Fetch updated records from server and sync into local storage with Zero-Loss Protection & Cache Busting
-  async syncFromServer(force: boolean = false): Promise<boolean> {
+  async syncFromServer(force: boolean = false, isRestore: boolean = false): Promise<boolean> {
     try {
       const res = await fetch(`/api/db?_t=${Date.now()}`, {
         cache: 'no-store',
@@ -1034,6 +1053,7 @@ export const StorageService = {
         // If server data hasn't changed since last sync or local push, skip overwrite (unless forced on restore)
         if (
           !force &&
+          !isRestore &&
           this._lastServerRevision > 0 &&
           serverRevision > 0 &&
           serverRevision === this._lastServerRevision &&
@@ -1042,26 +1062,66 @@ export const StorageService = {
           return false;
         }
 
-        // Protect local settings if recently saved (e.g. within last 10 seconds), unless forced
-        const isRecentSave = !force && Date.now() - this._lastLocalSettingsSaveTime < 10000;
+        // Protect local settings if recently saved (e.g. within last 10 seconds), unless forced or restoring
+        const isRecentSave = !force && !isRestore && Date.now() - this._lastLocalSettingsSaveTime < 10000;
 
         let hasAnyUpdate = false;
 
         // 1. Synchronize server-wide tombstones across all entities
-        const localTombstones = this.getDeletedTombstones();
-        let tombstonesUpdated = false;
+        // On restore (isRestore = true), replace local tombstones with server tombstones and strip any active IDs in restored data
+        const localTombstones: AppTombstones = isRestore
+          ? {
+              invoices: [],
+              products: [],
+              customers: [],
+              purchaseInvoices: [],
+              inboundReceipts: [],
+              directTransfers: [],
+              savedVehicles: [],
+              customerTransactions: [],
+              users: [],
+              categories: [],
+            }
+          : this.getDeletedTombstones();
+        let tombstonesUpdated = isRestore;
+
+        const activeIdsInServer = {
+          invoices: new Set(Array.isArray(d.invoices) ? d.invoices.map((x: any) => x?.id).filter(Boolean) : []),
+          products: new Set(Array.isArray(d.products) ? d.products.map((x: any) => x?.id).filter(Boolean) : []),
+          customers: new Set(Array.isArray(d.customers) ? d.customers.map((x: any) => x?.id).filter(Boolean) : []),
+          purchaseInvoices: new Set(Array.isArray(d.purchaseInvoices) ? d.purchaseInvoices.map((x: any) => x?.id).filter(Boolean) : []),
+          inboundReceipts: new Set(Array.isArray(d.inboundReceipts) ? d.inboundReceipts.map((x: any) => x?.id).filter(Boolean) : []),
+          directTransfers: new Set(Array.isArray(d.directTransfers) ? d.directTransfers.map((x: any) => x?.id).filter(Boolean) : []),
+          savedVehicles: new Set(Array.isArray(d.savedVehicles) ? d.savedVehicles.map((x: any) => x?.id).filter(Boolean) : []),
+          customerTransactions: new Set(Array.isArray(d.customerTransactions) ? d.customerTransactions.map((x: any) => x?.id).filter(Boolean) : []),
+          users: new Set(Array.isArray(d.users) ? d.users.map((x: any) => x?.id).filter(Boolean) : []),
+          categories: new Set(Array.isArray(d.categories) ? d.categories.map((c: string) => String(c).trim().toLowerCase()) : []),
+        };
 
         const mergeList = (key: keyof AppTombstones, serverList: any) => {
+          const activeSet = activeIdsInServer[key];
+          const set = new Set(
+            (localTombstones[key] || []).filter((id) =>
+              key === 'categories' ? !activeSet.has(id.trim().toLowerCase()) : !activeSet.has(id.trim())
+            )
+          );
           if (Array.isArray(serverList)) {
-            const set = new Set(localTombstones[key] || []);
             serverList.forEach((id: string) => {
-              if (typeof id === 'string' && id.trim() && !set.has(id.trim())) {
-                set.add(id.trim());
-                tombstonesUpdated = true;
+              if (typeof id === 'string' && id.trim()) {
+                const cleanId = id.trim();
+                const isAlive = key === 'categories' ? activeSet.has(cleanId.toLowerCase()) : activeSet.has(cleanId);
+                if (!isAlive && !set.has(cleanId)) {
+                  set.add(cleanId);
+                  tombstonesUpdated = true;
+                }
               }
             });
-            localTombstones[key] = Array.from(set).slice(-2000);
           }
+          const finalArr = Array.from(set).slice(-2000);
+          if (finalArr.length !== (localTombstones[key] || []).length) {
+            tombstonesUpdated = true;
+          }
+          localTombstones[key] = finalArr;
         };
 
         if (d.tombstones && typeof d.tombstones === 'object') {
@@ -1075,6 +1135,9 @@ export const StorageService = {
           mergeList('customerTransactions', d.tombstones.customerTransactions);
           mergeList('users', d.tombstones.users);
           mergeList('categories', d.tombstones.categories);
+        } else {
+          // Still purify against active server entities
+          (Object.keys(activeIdsInServer) as Array<keyof AppTombstones>).forEach((k) => mergeList(k, []));
         }
 
         if (Array.isArray(d.deletedInvoiceIds)) {
@@ -1162,8 +1225,8 @@ export const StorageService = {
           const localUpdated = currentLocal.updatedAt ? new Date(currentLocal.updatedAt).getTime() : 0;
           const remoteUpdated = d.settings.updatedAt ? new Date(d.settings.updatedAt).getTime() : 0;
 
-          // Never revert local user modifications back to older/empty server defaults
-          if (isRecentSave || (localUpdated >= remoteUpdated && localUpdated > 0)) {
+          // Never revert local user modifications back to older/empty server defaults (unless explicitly restoring a backup)
+          if (!isRestore && (isRecentSave || (localUpdated >= remoteUpdated && localUpdated > 0))) {
             const preservedSettings: StoreSettings = {
               ...initialSettings,
               ...d.settings,
@@ -1239,7 +1302,7 @@ export const StorageService = {
     backups: ServerBackupInfo[];
   }> {
     try {
-      const res = await fetch('/api/backups');
+      const res = await fetch('/api/backups', { cache: 'no-store' });
       if (!res.ok) return { success: false, total: 0, autoBackupIntervalHours: 4, backups: [] };
       return await res.json();
     } catch {
@@ -1247,8 +1310,52 @@ export const StorageService = {
     }
   },
 
+  async inspectServerBackup(filename: string): Promise<{
+    success: boolean;
+    filename?: string;
+    label?: string;
+    trigger?: string;
+    createdAt?: string;
+    sizeBytes?: number;
+    checksum?: string;
+    checksumValid?: boolean;
+    stats?: ServerBackupInfo['stats'];
+    storeName?: string;
+    message?: string;
+  }> {
+    try {
+      const res = await fetch(`/api/backups/inspect/${encodeURIComponent(filename)}`, { cache: 'no-store' });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در بررسی مشخصات نسخه پشتیبان' };
+    }
+  },
+
+  async pruneServerBackups(keepAutoCount = 5): Promise<{
+    success: boolean;
+    deletedCount?: number;
+    message?: string;
+    backups?: ServerBackupInfo[];
+  }> {
+    try {
+      const res = await fetch('/api/backups/prune', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keepAutoCount }),
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در پاکسازی نسخه‌های قدیمی' };
+    }
+  },
+
   async createServerBackup(label?: string): Promise<{ success: boolean; message?: string; filename?: string; backups?: ServerBackupInfo[] }> {
     try {
+      // First push latest client state so the server backup has 100% up-to-date data
+      try {
+        await this.pushToServer();
+      } catch {}
+
       const res = await fetch('/api/backups/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1260,16 +1367,16 @@ export const StorageService = {
     }
   },
 
-  async restoreServerBackup(filename: string): Promise<{ success: boolean; message?: string }> {
+  async restoreServerBackup(filename: string, modules?: string[]): Promise<{ success: boolean; message?: string; backups?: ServerBackupInfo[] }> {
     try {
       const res = await fetch('/api/backups/restore', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename }),
+        body: JSON.stringify({ filename, modules }),
       });
       const data = await res.json();
       if (data.success) {
-        await this.syncFromServer(true);
+        await this.syncFromServer(true, true);
       }
       return data;
     } catch (e: any) {
@@ -1288,16 +1395,21 @@ export const StorageService = {
     }
   },
 
-  async uploadServerBackup(fileContent: string, restoreNow: boolean, label?: string): Promise<{ success: boolean; message?: string; backups?: ServerBackupInfo[] }> {
+  async uploadServerBackup(
+    fileContent: string,
+    restoreNow: boolean,
+    label?: string,
+    modules?: string[]
+  ): Promise<{ success: boolean; message?: string; backups?: ServerBackupInfo[] }> {
     try {
       const res = await fetch('/api/backups/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ backupContent: fileContent, restoreNow, label }),
+        body: JSON.stringify({ backupContent: fileContent, restoreNow, label, modules }),
       });
       const data = await res.json();
       if (data.success && restoreNow) {
-        await this.syncFromServer(true);
+        await this.syncFromServer(true, true);
       }
       return data;
     } catch (e: any) {
@@ -3669,18 +3781,69 @@ export const StorageService = {
   },
 
   clearInvoices() {
+    const currentInvoices = this.getInvoices();
+    const tombstones = this.getDeletedTombstones();
+    const invSet = new Set(tombstones.invoices || []);
+    currentInvoices.forEach((inv) => {
+      if (inv?.id) invSet.add(inv.id);
+    });
+    tombstones.invoices = Array.from(invSet).slice(-2000);
+    localStorage.setItem(STORAGE_KEYS.TOMBSTONES, JSON.stringify(tombstones));
+    localStorage.setItem(STORAGE_KEYS.DELETED_INVOICES, JSON.stringify(tombstones.invoices));
     localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify({}));
+    this.pushToServer({
+      invoices: [],
+      exitSlipLogs: {},
+      deletedInvoiceIds: tombstones.invoices,
+      tombstones,
+    });
+    this.notifyChange();
   },
 
   clearAllData() {
+    const tombstones: AppTombstones = {
+      invoices: this.getInvoices().map((x) => x.id),
+      products: this.getProducts().map((x) => x.id),
+      customers: this.getCustomers().map((x) => x.id),
+      purchaseInvoices: this.getPurchaseInvoices().map((x) => x.id),
+      inboundReceipts: this.getInboundReceipts().map((x) => x.id),
+      directTransfers: this.getDirectTransfers().map((x) => x.id),
+      savedVehicles: this.getSavedVehicles().map((x) => x.id),
+      customerTransactions: this.getCustomerTransactions().map((x) => x.id),
+      users: [],
+      categories: [],
+    };
+    localStorage.setItem(STORAGE_KEYS.TOMBSTONES, JSON.stringify(tombstones));
+    localStorage.setItem(STORAGE_KEYS.DELETED_INVOICES, JSON.stringify(tombstones.invoices));
     localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.DIRECT_TRANSFERS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.CUSTOMER_TRANSACTIONS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify({}));
+    this.pushToServer({
+      products: [],
+      customers: [],
+      invoices: [],
+      purchaseInvoices: [],
+      inboundReceipts: [],
+      movements: [],
+      directTransfers: [],
+      customerTransactions: [],
+      exitSlipLogs: {},
+      deletedInvoiceIds: tombstones.invoices,
+      tombstones,
+    });
+    this.notifyChange();
   },
 
   resetSettingsToDefault(): StoreSettings {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(initialSettings));
+    this.pushToServer({ settings: initialSettings });
     return initialSettings;
   },
 
@@ -4161,7 +4324,7 @@ export const StorageService = {
 
   exportAllDataAsObject(): Record<string, any> {
     return {
-      version: '1.2',
+      version: '1.3',
       exportDate: getCurrentJalaliDate(),
       timestamp: new Date().toISOString(),
       products: this.getProducts(),
@@ -4172,6 +4335,7 @@ export const StorageService = {
       movements: this.getMovements(),
       settings: this.getSettings(),
       users: this.getUsers(),
+      exitSlipLogs: this.getExitSlipLogs(),
       activityLogs: this.getActivityLogs(),
       directTransfers: this.getDirectTransfers(),
       savedVehicles: this.getSavedVehicles(),
@@ -4187,51 +4351,100 @@ export const StorageService = {
     return JSON.stringify(this.exportAllDataAsObject(), null, 2);
   },
 
-  importAllData(jsonString: string): boolean {
+  importAllData(jsonString: string, selectedModules?: string[]): boolean {
     try {
       const parsed = JSON.parse(jsonString);
       const actualData = parsed.data || parsed;
-      if (actualData.products && Array.isArray(actualData.products)) {
-        this.saveProducts(actualData.products);
+      const isSelective = Array.isArray(selectedModules) && selectedModules.length > 0;
+      const modSet = new Set(selectedModules || []);
+      const shouldImport = (key: string) => !isSelective || modSet.has(key);
+
+      // Clear local tombstones for any entities being restored so they aren't filtered out
+      const currentTombstones = this.getDeletedTombstones();
+      const stripRestoredIds = (tombKey: keyof AppTombstones, arr: any[]) => {
+        if (!Array.isArray(arr)) return;
+        const activeIds = new Set(arr.map((x: any) => x?.id).filter(Boolean));
+        currentTombstones[tombKey] = (currentTombstones[tombKey] || []).filter((id) => !activeIds.has(id));
+      };
+
+      if (shouldImport('products') && Array.isArray(actualData.products)) {
+        stripRestoredIds('products', actualData.products);
       }
-      if (actualData.customers && Array.isArray(actualData.customers)) {
-        this.saveCustomers(actualData.customers);
+      if (shouldImport('customers') && Array.isArray(actualData.customers)) {
+        stripRestoredIds('customers', actualData.customers);
+        if (Array.isArray(actualData.customerTransactions)) {
+          stripRestoredIds('customerTransactions', actualData.customerTransactions);
+        }
       }
-      if (actualData.invoices && Array.isArray(actualData.invoices)) {
-        this.saveInvoices(actualData.invoices);
+      if (shouldImport('invoices') && Array.isArray(actualData.invoices)) {
+        stripRestoredIds('invoices', actualData.invoices);
       }
-      if (actualData.purchaseInvoices && Array.isArray(actualData.purchaseInvoices)) {
-        this.savePurchaseInvoices(actualData.purchaseInvoices);
+      if (shouldImport('purchaseInvoices') && Array.isArray(actualData.purchaseInvoices)) {
+        stripRestoredIds('purchaseInvoices', actualData.purchaseInvoices);
+        if (Array.isArray(actualData.inboundReceipts)) {
+          stripRestoredIds('inboundReceipts', actualData.inboundReceipts);
+        }
       }
-      if (actualData.inboundReceipts && Array.isArray(actualData.inboundReceipts)) {
-        this.saveInboundReceipts(actualData.inboundReceipts);
+      if (shouldImport('movements') && Array.isArray(actualData.directTransfers)) {
+        stripRestoredIds('directTransfers', actualData.directTransfers);
       }
-      if (actualData.movements && Array.isArray(actualData.movements)) {
-        this.saveMovements(actualData.movements);
+      if (shouldImport('users') && Array.isArray(actualData.users)) {
+        stripRestoredIds('users', actualData.users);
       }
-      if (actualData.settings && typeof actualData.settings === 'object') {
+
+      localStorage.setItem(STORAGE_KEYS.TOMBSTONES, JSON.stringify(currentTombstones));
+      localStorage.setItem(STORAGE_KEYS.DELETED_INVOICES, JSON.stringify(currentTombstones.invoices));
+
+      if (shouldImport('products') && Array.isArray(actualData.products)) {
+        const { products: ensured } = ensureProductCodesAndBarcodes(actualData.products);
+        localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(ensured));
+        if (Array.isArray(actualData.categories)) {
+          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(actualData.categories));
+        }
+      }
+      if (shouldImport('customers')) {
+        if (Array.isArray(actualData.customers)) {
+          localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(actualData.customers));
+        }
+        if (Array.isArray(actualData.customerTransactions)) {
+          localStorage.setItem(STORAGE_KEYS.CUSTOMER_TRANSACTIONS, JSON.stringify(actualData.customerTransactions));
+        }
+      }
+      if (shouldImport('invoices')) {
+        if (Array.isArray(actualData.invoices)) {
+          localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(actualData.invoices));
+        }
+        if (actualData.exitSlipLogs && typeof actualData.exitSlipLogs === 'object') {
+          localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(actualData.exitSlipLogs));
+        }
+      }
+      if (shouldImport('purchaseInvoices')) {
+        if (Array.isArray(actualData.purchaseInvoices)) {
+          localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(actualData.purchaseInvoices));
+        }
+        if (Array.isArray(actualData.inboundReceipts)) {
+          localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(actualData.inboundReceipts));
+        }
+      }
+      if (shouldImport('movements')) {
+        if (Array.isArray(actualData.movements)) {
+          localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(actualData.movements));
+        }
+        if (Array.isArray(actualData.directTransfers)) {
+          localStorage.setItem(STORAGE_KEYS.DIRECT_TRANSFERS, JSON.stringify(actualData.directTransfers));
+        }
+        if (Array.isArray(actualData.savedVehicles)) {
+          localStorage.setItem(STORAGE_KEYS.SAVED_VEHICLES, JSON.stringify(actualData.savedVehicles));
+        }
+      }
+      if (shouldImport('settings') && actualData.settings && typeof actualData.settings === 'object') {
         this.saveSettings(actualData.settings);
       }
-      if (actualData.users && Array.isArray(actualData.users)) {
-        this.saveUsers(actualData.users);
+      if (shouldImport('users') && Array.isArray(actualData.users) && actualData.users.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(actualData.users));
       }
-      if (actualData.activityLogs && Array.isArray(actualData.activityLogs)) {
-        this.saveActivityLogs(actualData.activityLogs);
-      }
-      if (actualData.directTransfers && Array.isArray(actualData.directTransfers)) {
-        this.saveDirectTransfers(actualData.directTransfers);
-      }
-      if (actualData.savedVehicles && Array.isArray(actualData.savedVehicles)) {
-        this.saveSavedVehicles(actualData.savedVehicles);
-      }
-      if (actualData.customerTransactions && Array.isArray(actualData.customerTransactions)) {
-        this.saveCustomerTransactions(actualData.customerTransactions);
-      }
-      if (actualData.categories && Array.isArray(actualData.categories)) {
-        localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(actualData.categories));
-      }
-      if (actualData.tombstones && typeof actualData.tombstones === 'object') {
-        localStorage.setItem(STORAGE_KEYS.TOMBSTONES, JSON.stringify(actualData.tombstones));
+      if (!isSelective && Array.isArray(actualData.activityLogs)) {
+        localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(actualData.activityLogs));
       }
 
       this.notifyChange();
@@ -4243,7 +4456,107 @@ export const StorageService = {
     }
   },
 
+  async optimizeDatabase(): Promise<{
+    success: boolean;
+    cleanedOrphanSlips: number;
+    cleanedTombstones: number;
+    trimmedLogs: number;
+    ensuredBarcodes: number;
+    sizeBeforeKB: string;
+    sizeAfterKB: string;
+    message: string;
+  }> {
+    const sizeBeforeKB = this.getStorageStats().sizeKB;
+
+    // 1. Clean orphan exitSlipLogs (belonging to deleted or proforma invoices)
+    const invoices = this.getInvoices();
+    const validInvoiceIds = new Set(invoices.filter((i) => !i.isProforma).map((i) => i.id));
+    const rawLogs: Record<string, ExitSlipData> = this.getExitSlipLogs();
+    const cleanedLogs: Record<string, ExitSlipData> = {};
+    let cleanedOrphanSlips = 0;
+    for (const [invId, slip] of Object.entries(rawLogs)) {
+      if (validInvoiceIds.has(invId)) {
+        cleanedLogs[invId] = slip;
+      } else {
+        cleanedOrphanSlips++;
+      }
+    }
+    localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(cleanedLogs));
+
+    // 2. Ensure product codes & barcodes
+    const products = this.getProducts();
+    const { products: ensuredProducts, changed } = ensureProductCodesAndBarcodes(products);
+    if (changed) {
+      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(ensuredProducts));
+    }
+
+    // 3. Purify tombstones (remove duplicates & any IDs that are currently active, cap at 500 per entity)
+    const tombstones = this.getDeletedTombstones();
+    const activeSets: Record<keyof AppTombstones, Set<string>> = {
+      invoices: new Set(invoices.map((x) => x.id)),
+      products: new Set(ensuredProducts.map((x) => x.id)),
+      customers: new Set(this.getCustomers().map((x) => x.id)),
+      purchaseInvoices: new Set(this.getPurchaseInvoices().map((x) => x.id)),
+      inboundReceipts: new Set(this.getInboundReceipts().map((x) => x.id)),
+      directTransfers: new Set(this.getDirectTransfers().map((x) => x.id)),
+      savedVehicles: new Set(this.getSavedVehicles().map((x) => x.id)),
+      customerTransactions: new Set(this.getCustomerTransactions().map((x) => x.id)),
+      users: new Set(this.getUsers().map((x) => x.id)),
+      categories: new Set(this.getCategories().map((c) => c.toLowerCase())),
+    };
+
+    let cleanedTombstones = 0;
+    (Object.keys(activeSets) as Array<keyof AppTombstones>).forEach((k) => {
+      const orig: string[] = tombstones[k] || [];
+      const uniq: string[] = Array.from(new Set<string>(orig.map((s) => String(s).trim()).filter(Boolean)));
+      const filtered = uniq
+        .filter((id: string) => (k === 'categories' ? !activeSets[k].has(id.toLowerCase()) : !activeSets[k].has(id)))
+        .slice(-500);
+      cleanedTombstones += Math.max(0, orig.length - filtered.length);
+      tombstones[k] = filtered;
+    });
+    localStorage.setItem(STORAGE_KEYS.TOMBSTONES, JSON.stringify(tombstones));
+    localStorage.setItem(STORAGE_KEYS.DELETED_INVOICES, JSON.stringify(tombstones.invoices));
+
+    // 4. Trim activity logs to max 500 recent items
+    const logs = this.getActivityLogs();
+    let trimmedLogs = 0;
+    if (logs.length > 500) {
+      trimmedLogs = logs.length - 500;
+      localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(logs.slice(0, 500)));
+    }
+
+    await this.pushToServer();
+    this.notifyChange();
+    const sizeAfterKB = this.getStorageStats().sizeKB;
+
+    return {
+      success: true,
+      cleanedOrphanSlips,
+      cleanedTombstones,
+      trimmedLogs,
+      ensuredBarcodes: changed ? ensuredProducts.length : 0,
+      sizeBeforeKB,
+      sizeAfterKB,
+      message: `بهینه‌سازی و یکپارچه‌سازی پایگاه‌داده با موفقیت انجام شد (حجم حافظه: ${sizeAfterKB} کیلوبایت).`,
+    };
+  },
+
   resetToDefaults() {
+    const emptyTombstones: AppTombstones = {
+      invoices: [],
+      products: [],
+      customers: [],
+      purchaseInvoices: [],
+      inboundReceipts: [],
+      directTransfers: [],
+      savedVehicles: [],
+      customerTransactions: [],
+      users: [],
+      categories: [],
+    };
+    localStorage.setItem(STORAGE_KEYS.TOMBSTONES, JSON.stringify(emptyTombstones));
+    localStorage.setItem(STORAGE_KEYS.DELETED_INVOICES, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(initialProducts));
     localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(initialCustomers));
     localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(initialInvoices));
@@ -4253,6 +4566,10 @@ export const StorageService = {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(initialSettings));
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(initialUsers));
     localStorage.setItem(STORAGE_KEYS.DIRECT_TRANSFERS, JSON.stringify(initialDirectTransfers));
+    localStorage.setItem(STORAGE_KEYS.CUSTOMER_TRANSACTIONS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify({}));
     localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, initialUsers[0].id);
+    this.pushToServer();
+    this.notifyChange();
   }
 };

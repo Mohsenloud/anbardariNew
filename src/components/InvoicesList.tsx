@@ -10,6 +10,7 @@ import { InvoiceQuickDetailsModal } from './InvoiceQuickDetailsModal';
 import { CustomerBulkPaymentModal } from './CustomerBulkPaymentModal';
 import { InvoiceShareLinkModal } from './InvoiceShareLinkModal';
 import { NumericInput } from './NumericInput';
+import { SmartPagination, paginateArray } from './SmartPagination';
 import { 
   Search, 
   Printer, 
@@ -141,6 +142,14 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
       localStorage.setItem('sepehr_invoices_sort_by', sortBy);
     } catch {}
   }, [sortBy]);
+
+  // Smart Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, docTypeFilter, creatorFilter, sortBy]);
   
   // Modals state
   const [quickDetailsInvoice, setQuickDetailsInvoice] = useState<Invoice | null>(null);
@@ -1086,7 +1095,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
               )}
             </div>
           ) : (
-            filteredInvoices.map((inv) => {
+            paginateArray(filteredInvoices, currentPage, pageSize).map((inv) => {
               const isPaid = inv.paymentStatus === 'paid';
               const isPartial = inv.paymentStatus === 'partial';
               const remainingDebt = Math.max(0, inv.finalTotal - (inv.paidAmount || 0));
@@ -1236,7 +1245,8 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredInvoices.map((inv, index) => {
+                paginateArray(filteredInvoices, currentPage, pageSize).map((inv, index) => {
+                  const globalIndex = pageSize > 0 ? (currentPage - 1) * pageSize + index : index;
                   const isPaid = inv.paymentStatus === 'paid';
                   const isPartial = inv.paymentStatus === 'partial';
 
@@ -1244,11 +1254,11 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                     <tr 
                       key={inv.id} 
                       onClick={() => setQuickDetailsInvoice(inv)}
-                      className={`${index % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'} hover:bg-emerald-50/40 transition-colors cursor-pointer group`}
+                      className={`${globalIndex % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'} hover:bg-emerald-50/40 transition-colors cursor-pointer group`}
                     >
                       {/* Row index */}
                       <td className="py-3 px-3 text-center text-slate-400 font-mono font-bold text-[11px]">
-                        {toPersianDigits(index + 1)}
+                        {toPersianDigits(globalIndex + 1)}
                       </td>
 
                       {/* Invoice Number */}
@@ -1392,6 +1402,19 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
             </tbody>
           </table>
         </div>
+
+        {filteredInvoices.length > 0 && (
+          <div className="p-3 border-t border-slate-200/80 bg-slate-50/40">
+            <SmartPagination
+              currentPage={currentPage}
+              totalItems={filteredInvoices.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+              itemLabel="فاکتور"
+            />
+          </div>
+        )}
 
         {/* 6. Summary Footer Bar */}
         {filteredInvoices.length > 0 && (

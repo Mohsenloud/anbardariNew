@@ -13,6 +13,7 @@ import { CustomerTransactionModal } from './CustomerTransactionModal';
 import { InvoiceShareLinkModal } from './InvoiceShareLinkModal';
 import { JalaliDatePicker } from './JalaliDatePicker';
 import { NumericInput } from './NumericInput';
+import { SmartPagination, paginateArray } from './SmartPagination';
 import { 
   Users, 
   Globe, 
@@ -110,6 +111,12 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [supplierSearchQuery, setSupplierSearchQuery] = useState('');
   const [followUpFilter, setFollowUpFilter] = useState<'all' | 'due' | 'upcoming'>('all');
+  const [customersPage, setCustomersPage] = useState(1);
+  const [customersPageSize, setCustomersPageSize] = useState(50);
+
+  useEffect(() => {
+    setCustomersPage(1);
+  }, [searchQuery]);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -1355,7 +1362,8 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredCustomers.map((cust, index) => {
+                  {paginateArray(filteredCustomers, customersPage, customersPageSize).map((cust, index) => {
+                    const globalIndex = customersPageSize > 0 ? (customersPage - 1) * customersPageSize + index : index;
                     const m = customerMetrics.get(cust.id);
                     const customerInvoices = m?.invoices || [];
                     const totalSpent = m?.totalSpent || 0;
@@ -1368,12 +1376,12 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                       <tr
                         key={cust.id}
                         className={`${
-                          index % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'
+                          globalIndex % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'
                         } hover:bg-purple-50/40 transition-colors group`}
                       >
                         {/* Index */}
                         <td className="py-3.5 px-3 text-center text-slate-400 font-mono font-bold text-[11px]">
-                          {toPersianDigits(index + 1)}
+                          {toPersianDigits(globalIndex + 1)}
                         </td>
 
                         {/* Customer Name & National ID (Clickable to open details) */}
@@ -1609,7 +1617,9 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
 
             {/* Mobile Single-Line Items View: فقط نام و موبایل در یک خط با کلیک جهت باز شدن جزئیات */}
             <div className="block sm:hidden divide-y divide-slate-100 bg-white">
-              {filteredCustomers.map((cust, index) => (
+              {paginateArray(filteredCustomers, customersPage, customersPageSize).map((cust, index) => {
+                const globalIndex = customersPageSize > 0 ? (customersPage - 1) * customersPageSize + index : index;
+                return (
                 <div
                   key={cust.id}
                   onClick={() => setDetailCustomer(cust)}
@@ -1618,7 +1628,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                   {/* نام مشتری (با کلیک، جزئیات کامل مشتری باز می‌شود) */}
                   <div className="flex items-center gap-2 min-w-0 flex-1 group">
                     <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 group-hover:bg-purple-100 group-hover:text-purple-700 font-mono text-[10px] font-bold flex items-center justify-center shrink-0 transition-colors">
-                      {toPersianDigits(index + 1)}
+                      {toPersianDigits(globalIndex + 1)}
                     </span>
                     <span className="font-bold text-slate-800 text-xs group-hover:text-purple-700 transition-colors truncate">
                       {cust.name}
@@ -1640,7 +1650,8 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                     )}
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           </div>
         ) : (
@@ -1650,7 +1661,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
           <div>
             {/* Desktop Grid View */}
             <div className="hidden sm:grid p-4 sm:p-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredCustomers.map((cust, index) => {
+            {paginateArray(filteredCustomers, customersPage, customersPageSize).map((cust, index) => {
               const m = customerMetrics.get(cust.id);
               const customerInvoices = m?.invoices || [];
               const totalSpent = m?.totalSpent || 0;
@@ -1859,7 +1870,9 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
 
             {/* Mobile Single-Line Items View */}
             <div className="block sm:hidden divide-y divide-slate-100 bg-white">
-              {filteredCustomers.map((cust, index) => (
+              {paginateArray(filteredCustomers, customersPage, customersPageSize).map((cust, index) => {
+                const globalIndex = customersPageSize > 0 ? (customersPage - 1) * customersPageSize + index : index;
+                return (
                 <div
                   key={cust.id}
                   onClick={() => setDetailCustomer(cust)}
@@ -1868,7 +1881,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                   {/* نام مشتری (با کلیک، جزئیات کامل مشتری باز می‌شود) */}
                   <div className="flex items-center gap-2 min-w-0 flex-1 group">
                     <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 group-hover:bg-purple-100 group-hover:text-purple-700 font-mono text-[10px] font-bold flex items-center justify-center shrink-0 transition-colors">
-                      {toPersianDigits(index + 1)}
+                      {toPersianDigits(globalIndex + 1)}
                     </span>
                     <span className="font-bold text-slate-800 text-xs group-hover:text-purple-700 transition-colors truncate">
                       {cust.name}
@@ -1890,8 +1903,22 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                     )}
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
+          </div>
+        )}
+
+        {filteredCustomers.length > 0 && (
+          <div className="p-3 border-t border-slate-200/80 bg-slate-50/40">
+            <SmartPagination
+              currentPage={customersPage}
+              totalItems={filteredCustomers.length}
+              pageSize={customersPageSize}
+              onPageChange={setCustomersPage}
+              onPageSizeChange={setCustomersPageSize}
+              itemLabel="مشتری"
+            />
           </div>
         )}
       </div>

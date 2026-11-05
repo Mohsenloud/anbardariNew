@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Product, ProductVariant, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData, InboundReceipt, InboundReceiptItem, DirectTransfer, Customer } from '../types';
 import { toPersianDigits, toEnglishDigits, getCurrentJalaliDate, getCurrentJalaliTime, formatPrice, formatNumber, formatThousands } from '../utils/jalali';
-import { StorageService } from '../utils/storage';
+import { StorageService, canUserViewBuyPrices } from '../utils/storage';
 import { exportProductsToExcel, exportExitSlipsListToExcel } from '../utils/excelHelper';
 import { ExcelImportModal } from './ExcelImportModal';
 import { ExitSlipModal } from './ExitSlipModal';
@@ -14,6 +14,7 @@ import { CategoryManagerModal } from './CategoryManagerModal';
 import { ProductDetailsModal } from './ProductDetailsModal';
 import { ProductModal } from './ProductModal';
 import { WarehouseStatsModal } from './WarehouseStatsModal';
+import { SmartPagination, paginateArray } from './SmartPagination';
 import { autoSendExitSlipReportToTelegram } from '../utils/telegramService';
 import { hasPhysicalGoods } from '../utils/serviceHelper';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -156,6 +157,18 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       localStorage.setItem('sepehr_inventory_stock_filter', stockStatusFilter);
     } catch {}
   }, [stockStatusFilter]);
+
+  // Smart Pagination states
+  const [itemsPage, setItemsPage] = useState(1);
+  const [itemsPageSize, setItemsPageSize] = useState(50);
+  const [movementsPage, setMovementsPage] = useState(1);
+  const [movementsPageSize, setMovementsPageSize] = useState(50);
+  const [slipsPage, setSlipsPage] = useState(1);
+  const [slipsPageSize, setSlipsPageSize] = useState(50);
+
+  useEffect(() => {
+    setItemsPage(1);
+  }, [searchQuery, selectedCategory, stockStatusFilter]);
 
   // Direct Transfers (خروج و ورود بدون فاکتور - امانی/تعمیرات)
   const [directTransfers, setDirectTransfers] = useState<DirectTransfer[]>(() => StorageService.getDirectTransfers());
@@ -1027,7 +1040,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     id="export-inventory-excel-btn"
                     onClick={() => {
                       setIsActionsDropdownOpen(false);
-                      exportProductsToExcel(products);
+                      exportProductsToExcel(products, canUserViewBuyPrices(currentUser));
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer text-right"
                   >
@@ -1649,18 +1662,20 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    filteredProducts.map((prod, index) => (
+                    paginateArray(filteredProducts, itemsPage, itemsPageSize).map((prod, index) => {
+                      const globalIndex = itemsPageSize > 0 ? (itemsPage - 1) * itemsPageSize + index : index;
+                      return (
                       <tr
                         key={prod.id}
                         onClick={() => setDetailProduct(prod)}
                         className={`cursor-pointer transition-colors ${
-                          index % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'
+                          globalIndex % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'
                         } hover:bg-emerald-50/40`}
                         title="جهت مشاهده تمام اطلاعات این کالا کلیک کنید"
                       >
                         {/* 1. Index */}
                         <td className="p-3.5 text-center text-slate-400 font-mono text-xs">
-                          {toPersianDigits(index + 1)}
+                          {toPersianDigits(globalIndex + 1)}
                         </td>
 
                         {/* 2. Product Name */}
@@ -1705,7 +1720,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                           </button>
                         </td>
                       </tr>
-                    ))
+                    );
+                    })
                   )}
                 </tbody>
               </table>
@@ -1718,12 +1734,14 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                   هیچ کالایی با معیارهای جستجو یافت نشد.
                 </div>
               ) : (
-                filteredProducts.map((prod, index) => (
+                paginateArray(filteredProducts, itemsPage, itemsPageSize).map((prod, index) => {
+                  const globalIndex = itemsPageSize > 0 ? (itemsPage - 1) * itemsPageSize + index : index;
+                  return (
                   <div
                     key={prod.id}
                     onClick={() => setDetailProduct(prod)}
                     className={`p-3.5 space-y-2 cursor-pointer transition-colors hover:bg-emerald-50/40 active:bg-slate-100 ${
-                      index % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'
+                      globalIndex % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'
                     }`}
                     title="جهت مشاهده تمام اطلاعات این کالا کلیک کنید"
                   >
@@ -1731,7 +1749,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <span className="font-mono text-slate-400 text-xs w-6 text-center shrink-0">
-                          {toPersianDigits(index + 1)}.
+                          {toPersianDigits(globalIndex + 1)}.
                         </span>
                         <span className="font-extrabold text-slate-900 text-xs sm:text-sm truncate">
                           {prod.name}
@@ -1770,8 +1788,22 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                       </button>
                     </div>
                   </div>
-                ))
+                );
+                })
               )}
+            </div>
+          )}
+
+          {filteredProducts.length > 0 && (
+            <div className="p-3 border-t border-slate-200/80 bg-slate-50/40">
+              <SmartPagination
+                currentPage={itemsPage}
+                totalItems={filteredProducts.length}
+                pageSize={itemsPageSize}
+                onPageChange={setItemsPage}
+                onPageSizeChange={setItemsPageSize}
+                itemLabel="کالا"
+              />
             </div>
           )}
         </div>
@@ -1794,7 +1826,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                 هیچ تراکنشی در انبار ثبت نشده است.
               </div>
             ) : (
-              movements.map((mov, index) => {
+              paginateArray(movements, movementsPage, movementsPageSize).map((mov, index) => {
                 const isPositive = mov.quantity > 0;
                 return (
                   <div key={mov.id} className={`p-3.5 space-y-2 ${index % 2 === 1 ? 'bg-slate-50/85' : 'bg-white'} hover:bg-slate-100/60 transition-colors`}>
@@ -1880,7 +1912,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  movements.map((mov, index) => {
+                  paginateArray(movements, movementsPage, movementsPageSize).map((mov, index) => {
                     const isPositive = mov.quantity > 0;
                     return (
                       <tr key={mov.id} className={`${index % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'} hover:bg-slate-100/70 transition-colors`}>
@@ -1932,6 +1964,19 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
               </tbody>
             </table>
           </div>
+
+          {movements.length > 0 && (
+            <div className="p-3 border-t border-slate-200/80 bg-slate-50/40">
+              <SmartPagination
+                currentPage={movementsPage}
+                totalItems={movements.length}
+                pageSize={movementsPageSize}
+                onPageChange={setMovementsPage}
+                onPageSizeChange={setMovementsPageSize}
+                itemLabel="تراکنش"
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -2067,7 +2112,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
               <>
                 {/* Mobile View: Ultra-Clean 2-Row Cards */}
                 <div className="block sm:hidden divide-y divide-slate-100">
-                  {filteredExitSlips.map((inv) => {
+                  {paginateArray(filteredExitSlips, slipsPage, slipsPageSize).map((inv) => {
                     const slipLog = exitSlipLogs[inv.id] || { invoiceId: inv.id, printCount: 0, history: [] };
                     const isDelivered = Boolean(slipLog.isDelivered);
                     const slipNumber = slipLog.slipNumber || inv.invoiceNumber;
@@ -2166,7 +2211,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {filteredExitSlips.map((inv, index) => {
+                      {paginateArray(filteredExitSlips, slipsPage, slipsPageSize).map((inv, index) => {
+                        const globalIndex = slipsPageSize > 0 ? (slipsPage - 1) * slipsPageSize + index : index;
                         const slipLog = exitSlipLogs[inv.id] || { invoiceId: inv.id, printCount: 0, history: [] };
                         const isDelivered = Boolean(slipLog.isDelivered);
                         const slipNumber = slipLog.slipNumber || inv.invoiceNumber;
@@ -2175,11 +2221,11 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                           <tr 
                             key={inv.id} 
                             onClick={() => setDetailSlipInvoice(inv)}
-                            className={`${index % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'} hover:bg-emerald-50/40 transition-colors cursor-pointer group`}
+                            className={`${globalIndex % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'} hover:bg-emerald-50/40 transition-colors cursor-pointer group`}
                           >
                             {/* Row index */}
                             <td className="py-3.5 px-3 text-center text-slate-400 font-mono font-bold text-[11px]">
-                              {toPersianDigits(index + 1)}
+                              {toPersianDigits(globalIndex + 1)}
                             </td>
 
                             {/* Slip Number */}
@@ -2260,6 +2306,19 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     </tbody>
                   </table>
                 </div>
+
+                {filteredExitSlips.length > 0 && (
+                  <div className="p-3 border-t border-slate-200/80 bg-slate-50/40">
+                    <SmartPagination
+                      currentPage={slipsPage}
+                      totalItems={filteredExitSlips.length}
+                      pageSize={slipsPageSize}
+                      onPageChange={setSlipsPage}
+                      onPageSizeChange={setSlipsPageSize}
+                      itemLabel="حواله خروج"
+                    />
+                  </div>
+                )}
               </>
             )}
         </div>
@@ -2286,7 +2345,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           product={editingProduct}
           categories={categories}
           currency={settings.currency}
-          isAdmin={!currentUser || currentUser.role === 'admin' || currentUser.permissions?.canAccessAdmin}
+          isAdmin={canUserViewBuyPrices(currentUser)}
           onSave={handleSaveProductForm}
           onClose={() => setIsProductModalOpen(false)}
           onRegenerateCode={handleRegenerateCode}
@@ -3153,6 +3212,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
         inboundReceipts={inboundReceipts}
         directTransfers={directTransfers}
         currency={settings.currency}
+        canViewBuyPrices={canUserViewBuyPrices(currentUser)}
         onNavigateSubTab={(subTab) => handleSelectSubTab(subTab)}
         onFilterLowStock={() => {
           handleSelectSubTab('items');

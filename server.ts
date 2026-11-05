@@ -497,7 +497,120 @@ interface BackupRecord {
     customersCount: number;
     purchaseInvoicesCount: number;
     inboundReceiptsCount: number;
+    movementsCount: number;
+    customerTransactionsCount: number;
+    directTransfersCount: number;
+    usersCount: number;
   };
+}
+
+function computeBackupStats(d: any) {
+  const src = d?.data && typeof d.data === 'object' ? d.data : d || {};
+  return {
+    productsCount: Array.isArray(src.products) ? src.products.length : 0,
+    invoicesCount: Array.isArray(src.invoices) ? src.invoices.length : 0,
+    customersCount: Array.isArray(src.customers) ? src.customers.length : 0,
+    purchaseInvoicesCount: Array.isArray(src.purchaseInvoices) ? src.purchaseInvoices.length : 0,
+    inboundReceiptsCount: Array.isArray(src.inboundReceipts) ? src.inboundReceipts.length : 0,
+    movementsCount: Array.isArray(src.movements) ? src.movements.length : 0,
+    customerTransactionsCount: Array.isArray(src.customerTransactions) ? src.customerTransactions.length : 0,
+    directTransfersCount: Array.isArray(src.directTransfers) ? src.directTransfers.length : 0,
+    usersCount: Array.isArray(src.users) ? src.users.length : 0,
+  };
+}
+
+function prepareRestoredDatabaseState(currentDb: any, targetData: any, selectedModules?: string[]): any {
+  const isSelective = Array.isArray(selectedModules) && selectedModules.length > 0;
+  const modSet = new Set(selectedModules || []);
+
+  const base = isSelective ? { ...currentDb } : { ...DEFAULT_INITIAL_DATA, ...targetData };
+
+  if (isSelective) {
+    if (modSet.has('products')) {
+      base.products = Array.isArray(targetData.products) ? targetData.products : [];
+      if (Array.isArray(targetData.categories)) base.categories = targetData.categories;
+    }
+    if (modSet.has('invoices')) {
+      base.invoices = Array.isArray(targetData.invoices) ? targetData.invoices : [];
+      if (targetData.exitSlipLogs && typeof targetData.exitSlipLogs === 'object') {
+        base.exitSlipLogs = targetData.exitSlipLogs;
+      }
+    }
+    if (modSet.has('purchaseInvoices')) {
+      base.purchaseInvoices = Array.isArray(targetData.purchaseInvoices) ? targetData.purchaseInvoices : [];
+      base.inboundReceipts = Array.isArray(targetData.inboundReceipts) ? targetData.inboundReceipts : [];
+    }
+    if (modSet.has('customers')) {
+      base.customers = Array.isArray(targetData.customers) ? targetData.customers : [];
+      base.customerTransactions = Array.isArray(targetData.customerTransactions) ? targetData.customerTransactions : [];
+    }
+    if (modSet.has('movements')) {
+      base.movements = Array.isArray(targetData.movements) ? targetData.movements : [];
+      base.directTransfers = Array.isArray(targetData.directTransfers) ? targetData.directTransfers : [];
+      base.savedVehicles = Array.isArray(targetData.savedVehicles) ? targetData.savedVehicles : [];
+    }
+    if (modSet.has('users') && Array.isArray(targetData.users) && targetData.users.length > 0) {
+      base.users = targetData.users;
+    }
+    if (modSet.has('settings') && targetData.settings && typeof targetData.settings === 'object') {
+      base.settings = {
+        ...DEFAULT_INITIAL_DATA.settings,
+        ...(currentDb?.settings || {}),
+        ...targetData.settings,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+  } else {
+    if (targetData.settings && typeof targetData.settings === 'object') {
+      base.settings = {
+        ...DEFAULT_INITIAL_DATA.settings,
+        ...targetData.settings,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+  }
+
+  // Purify tombstones: any ID present in the restored collections MUST be removed from tombstones
+  // so restored items are never filtered out or re-deleted by client sync!
+  const activeProductIds = new Set<string>((base.products || []).map((x: any) => String(x?.id || '')).filter(Boolean));
+  const activeInvoiceIds = new Set<string>((base.invoices || []).map((x: any) => String(x?.id || '')).filter(Boolean));
+  const activeCustomerIds = new Set<string>((base.customers || []).map((x: any) => String(x?.id || '')).filter(Boolean));
+  const activePurchaseIds = new Set<string>((base.purchaseInvoices || []).map((x: any) => String(x?.id || '')).filter(Boolean));
+  const activeInboundIds = new Set<string>((base.inboundReceipts || []).map((x: any) => String(x?.id || '')).filter(Boolean));
+  const activeTransferIds = new Set<string>((base.directTransfers || []).map((x: any) => String(x?.id || '')).filter(Boolean));
+  const activeVehicleIds = new Set<string>((base.savedVehicles || []).map((x: any) => String(x?.id || '')).filter(Boolean));
+  const activeTxnIds = new Set<string>((base.customerTransactions || []).map((x: any) => String(x?.id || '')).filter(Boolean));
+  const activeUserIds = new Set<string>((base.users || []).map((x: any) => String(x?.id || '')).filter(Boolean));
+  const activeCats = new Set<string>((base.categories || []).map((c: string) => String(c).trim().toLowerCase()));
+
+  const rawTombstones = isSelective ? (currentDb?.tombstones || {}) : (targetData?.tombstones || {});
+  const filterTomb = (arr: any, activeSet: Set<string>) =>
+    Array.isArray(arr) ? arr.filter((id: string) => typeof id === 'string' && !activeSet.has(id.trim())) : [];
+
+  const cleanTombstones = {
+    invoices: filterTomb(rawTombstones.invoices, activeInvoiceIds),
+    products: filterTomb(rawTombstones.products, activeProductIds),
+    customers: filterTomb(rawTombstones.customers, activeCustomerIds),
+    purchaseInvoices: filterTomb(rawTombstones.purchaseInvoices, activePurchaseIds),
+    inboundReceipts: filterTomb(rawTombstones.inboundReceipts, activeInboundIds),
+    directTransfers: filterTomb(rawTombstones.directTransfers, activeTransferIds),
+    savedVehicles: filterTomb(rawTombstones.savedVehicles, activeVehicleIds),
+    customerTransactions: filterTomb(rawTombstones.customerTransactions, activeTxnIds),
+    users: filterTomb(rawTombstones.users, activeUserIds),
+    categories: Array.isArray(rawTombstones.categories)
+      ? rawTombstones.categories.filter((c: string) => !activeCats.has(String(c).trim().toLowerCase()))
+      : [],
+  };
+
+  base.tombstones = cleanTombstones;
+  base.deletedInvoiceIds = cleanTombstones.invoices;
+
+  const currentRev = typeof currentDb?.revision === 'number' ? currentDb.revision : 1;
+  const targetRev = typeof targetData?.revision === 'number' ? targetData.revision : 1;
+  base.revision = Math.max(currentRev, targetRev) + 5;
+  base.updatedAt = new Date().toISOString();
+
+  return base;
 }
 
 function pruneOldBackups(maxKeep = 30) {
@@ -549,13 +662,7 @@ function createBackup(
       trigger,
       label,
       checksum: dataChecksum,
-      stats: {
-        productsCount: Array.isArray(currentData.products) ? currentData.products.length : 0,
-        invoicesCount: Array.isArray(currentData.invoices) ? currentData.invoices.length : 0,
-        customersCount: Array.isArray(currentData.customers) ? currentData.customers.length : 0,
-        purchaseInvoicesCount: Array.isArray(currentData.purchaseInvoices) ? currentData.purchaseInvoices.length : 0,
-        inboundReceiptsCount: Array.isArray(currentData.inboundReceipts) ? currentData.inboundReceipts.length : 0,
-      },
+      stats: computeBackupStats(currentData),
       data: currentData,
     };
 
@@ -600,16 +707,11 @@ function getBackupsList(): BackupRecord[] {
         const label = isEnvelope ? parsed.label : 'نسخه پشتیبان سرور';
         const createdAt = isEnvelope ? parsed.createdAt : stat.mtime.toISOString();
         const checksum = isEnvelope ? parsed.checksum : computeChecksum(content);
+        const computedStats = computeBackupStats(parsed);
         const stats =
           isEnvelope && parsed.stats
-            ? parsed.stats
-            : {
-                productsCount: Array.isArray(parsed.products) ? parsed.products.length : 0,
-                invoicesCount: Array.isArray(parsed.invoices) ? parsed.invoices.length : 0,
-                customersCount: Array.isArray(parsed.customers) ? parsed.customers.length : 0,
-                purchaseInvoicesCount: Array.isArray(parsed.purchaseInvoices) ? parsed.purchaseInvoices.length : 0,
-                inboundReceiptsCount: Array.isArray(parsed.inboundReceipts) ? parsed.inboundReceipts.length : 0,
-              };
+            ? { ...computedStats, ...parsed.stats }
+            : computedStats;
 
         list.push({
           filename: f,
@@ -1382,10 +1484,89 @@ app.post('/api/backups/create', async (req, res) => {
   }
 });
 
-// 7. Backups API: Restore a specific backup
+// 6.5. Backups API: Inspect & verify a specific backup file before restore
+app.get('/api/backups/inspect/:filename', (req, res) => {
+  try {
+    const safeFilename = path.basename(req.params.filename);
+    const backupFilePath = path.join(BACKUPS_DIR, safeFilename);
+
+    if (!fs.existsSync(backupFilePath)) {
+      return res.status(404).json({ success: false, message: 'فایل پشتیبان یافت نشد.' });
+    }
+
+    const stat = fs.statSync(backupFilePath);
+    const content = fs.readFileSync(backupFilePath, 'utf-8');
+    const parsed = JSON.parse(content);
+    const isEnvelope = Boolean(parsed.backupVersion && parsed.data);
+    const actualData = isEnvelope ? parsed.data : parsed;
+    const computedHash = computeChecksum(actualData);
+    const recordedHash = isEnvelope && parsed.checksum ? parsed.checksum : computedHash;
+    const checksumValid = !isEnvelope || !parsed.checksum || computedHash === recordedHash;
+    const stats = computeBackupStats(actualData);
+
+    res.json({
+      success: true,
+      filename: safeFilename,
+      label: isEnvelope ? parsed.label : 'نسخه پشتیبان سرور',
+      trigger: isEnvelope ? parsed.trigger : 'manual',
+      createdAt: isEnvelope ? parsed.createdAt : stat.mtime.toISOString(),
+      sizeBytes: stat.size,
+      checksum: recordedHash,
+      checksumValid,
+      stats,
+      storeName: actualData?.settings?.storeName || '',
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 6.6. Backups API: Prune old auto backups while keeping manual/important ones
+app.post('/api/backups/prune', (req, res) => {
+  try {
+    const keepAutoCount = typeof req.body?.keepAutoCount === 'number' ? Math.max(1, req.body.keepAutoCount) : 5;
+    if (!fs.existsSync(BACKUPS_DIR)) {
+      return res.json({ success: true, deletedCount: 0, backups: [] });
+    }
+
+    const allBackups = getBackupsList();
+    const autoBackups = allBackups.filter((b) => b.trigger === 'auto');
+    let deletedCount = 0;
+
+    if (autoBackups.length > keepAutoCount) {
+      const toRemove = autoBackups.slice(keepAutoCount);
+      for (const b of toRemove) {
+        try {
+          const fp = path.join(BACKUPS_DIR, path.basename(b.filename));
+          if (fs.existsSync(fp)) {
+            fs.unlinkSync(fp);
+            deletedCount++;
+          }
+        } catch {}
+      }
+    }
+
+    const updatedBackups = getBackupsList();
+    res.json({
+      success: true,
+      deletedCount,
+      message:
+        deletedCount > 0
+          ? `${deletedCount} نسخه پشتیبان خودکار قدیمی پاکسازی شد.`
+          : 'نسخه خودکار قدیمی مازاد برای پاکسازی وجود نداشت.',
+      backups: updatedBackups,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 7. Backups API: Restore a specific backup (Full or Selective Modules)
 app.post('/api/backups/restore', async (req, res) => {
   try {
     const rawFilename = req.body?.filename;
+    const selectedModules: string[] | undefined = Array.isArray(req.body?.modules) ? req.body.modules : undefined;
+
     if (!rawFilename || typeof rawFilename !== 'string') {
       return res.status(400).json({ success: false, message: 'نام فایل پشتیبان نامعتبر است.' });
     }
@@ -1407,30 +1588,43 @@ app.post('/api/backups/restore', async (req, res) => {
       return res.status(400).json({ success: false, message: `محتوای فایل پشتیبان معتبر نیست: ${validation.error}` });
     }
 
-    // Safety step: Create a pre-restore backup of the current database before overwriting!
-    createBackup('pre-restore', `پشتیبان خودکار اضطراری قبل از بازیابی نسخه ${safeFilename}`);
+    const restoreResult = await enqueueDbWrite(async () => {
+      const { data: currentDb } = await getLatestConvergedDatabase();
 
-    // Overwrite database with target backup
-    const ok = writeDatabase(targetData, false);
-    if (!ok) {
-      return res.status(500).json({ success: false, message: 'خطا در اعمال اطلاعات نسخه پشتیبان بر روی پایگاه‌داده.' });
-    }
+      // Safety step: Create a pre-restore backup of the current database before overwriting!
+      createBackup('pre-restore', `پشتیبان خودکار اضطراری قبل از بازیابی نسخه ${safeFilename}`, currentDb);
 
-    // Sync to PostgreSQL if connected
-    if (getPostgresStatus().connected) {
-      try {
-        await saveStateToPostgres(targetData);
-      } catch (pgErr: any) {
-        console.warn('[PostgreSQL Restore Sync Notice]:', pgErr.message);
+      const finalState = prepareRestoredDatabaseState(currentDb, targetData, selectedModules);
+
+      // Overwrite database with target backup
+      const ok = writeDatabase(finalState, false);
+      if (!ok) {
+        throw new Error('خطا در اعمال اطلاعات نسخه پشتیبان بر روی پایگاه‌داده.');
       }
-    }
 
+      // Sync to PostgreSQL if connected
+      if (getPostgresStatus().connected) {
+        try {
+          await saveStateToPostgres(finalState);
+        } catch (pgErr: any) {
+          console.warn('[PostgreSQL Restore Sync Notice]:', pgErr.message);
+        }
+      }
+
+      return finalState;
+    });
+
+    const backups = getBackupsList();
     console.log(`[Backup Engine] Successfully restored database from backup: ${safeFilename}`);
     res.json({
       success: true,
-      message: 'پایگاه‌داده با موفقیت به نسخه انتخاب‌شده بازگردانی شد.',
+      message:
+        selectedModules && selectedModules.length > 0
+          ? 'بخش‌های انتخاب‌شده با موفقیت از نسخه پشتیبان بازیابی شدند.'
+          : 'پایگاه‌داده با موفقیت به نسخه انتخاب‌شده بازگردانی شد.',
       restoredFrom: safeFilename,
-      data: targetData,
+      data: restoreResult,
+      backups,
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -1479,10 +1673,12 @@ app.delete('/api/backups/:filename', (req, res) => {
   }
 });
 
-// 10. Backups API: Upload & Import external backup file
+// 10. Backups API: Upload & Import external backup file (with optional selective module restore)
 app.post('/api/backups/upload', async (req, res) => {
   try {
-    const { backupContent, restoreNow, label } = req.body;
+    const { backupContent, restoreNow, label, modules } = req.body;
+    const selectedModules: string[] | undefined = Array.isArray(modules) ? modules : undefined;
+
     if (!backupContent || typeof backupContent !== 'string') {
       return res.status(400).json({ success: false, message: 'محتوای فایل پشتیبان ارسال نشده است.' });
     }
@@ -1513,13 +1709,7 @@ app.post('/api/backups/upload', async (req, res) => {
       trigger: 'manual',
       label: label?.trim() || 'فایل پشتیبان بارگذاری‌شده از دستگاه',
       checksum: computeChecksum(actualData),
-      stats: {
-        productsCount: Array.isArray(actualData.products) ? actualData.products.length : 0,
-        invoicesCount: Array.isArray(actualData.invoices) ? actualData.invoices.length : 0,
-        customersCount: Array.isArray(actualData.customers) ? actualData.customers.length : 0,
-        purchaseInvoicesCount: Array.isArray(actualData.purchaseInvoices) ? actualData.purchaseInvoices.length : 0,
-        inboundReceiptsCount: Array.isArray(actualData.inboundReceipts) ? actualData.inboundReceipts.length : 0,
-      },
+      stats: computeBackupStats(actualData),
       data: actualData,
     };
 
@@ -1527,21 +1717,30 @@ app.post('/api/backups/upload', async (req, res) => {
 
     // If restoreNow was requested
     if (restoreNow) {
-      createBackup('pre-restore', 'پشتیبان خودکار قبل از اعمال فایل بارگذاری‌شده');
-      writeDatabase(actualData, false);
-      if (getPostgresStatus().connected) {
-        try {
-          await saveStateToPostgres(actualData);
-        } catch (pgErr: any) {
-          console.warn('[PostgreSQL Upload-Restore Sync Notice]:', pgErr.message);
+      await enqueueDbWrite(async () => {
+        const { data: currentDb } = await getLatestConvergedDatabase();
+        createBackup('pre-restore', 'پشتیبان خودکار قبل از اعمال فایل بارگذاری‌شده', currentDb);
+
+        const finalState = prepareRestoredDatabaseState(currentDb, actualData, selectedModules);
+        writeDatabase(finalState, false);
+        if (getPostgresStatus().connected) {
+          try {
+            await saveStateToPostgres(finalState);
+          } catch (pgErr: any) {
+            console.warn('[PostgreSQL Upload-Restore Sync Notice]:', pgErr.message);
+          }
         }
-      }
+      });
     }
 
     const backups = getBackupsList();
     res.json({
       success: true,
-      message: restoreNow ? 'فایل پشتیبان بارگذاری و اطلاعات با موفقیت بازیابی شد.' : 'فایل پشتیبان در سرور ذخیره شد.',
+      message: restoreNow
+        ? selectedModules && selectedModules.length > 0
+          ? 'فایل پشتیبان بارگذاری شد و بخش‌های انتخاب‌شده با موفقیت بازیابی گردید.'
+          : 'فایل پشتیبان بارگذاری و کلیه اطلاعات با موفقیت بازیابی شد.'
+        : 'فایل پشتیبان با موفقیت در آرشیو سرور ذخیره شد.',
       filename,
       restored: !!restoreNow,
       backups,
@@ -1551,14 +1750,26 @@ app.post('/api/backups/upload', async (req, res) => {
   }
 });
 
-// 11. Legacy download central backup JSON (for backwards compatibility)
-app.get('/api/backup', (req, res) => {
+// 11. Download live converged backup JSON with full envelope & checksum
+app.get('/api/backup', async (req, res) => {
   try {
-    const data = readDatabase();
-    const filename = `factor-backup-server-${Date.now()}.json`;
-    res.setHeader('Content-disposition', `attachment; filename=${filename}`);
-    res.setHeader('Content-type', 'application/json');
-    res.send(JSON.stringify(data, null, 2));
+    setNoCacheHeaders(res);
+    const { data } = await getLatestConvergedDatabase();
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const filename = `mana_backup_${dateStr}.json`;
+    const envelope = {
+      backupVersion: 1,
+      createdAt: now.toISOString(),
+      trigger: 'manual',
+      label: `نسخه پشتیبان کامل سامانه (${dateStr})`,
+      checksum: computeChecksum(data),
+      stats: computeBackupStats(data),
+      data,
+    };
+    res.setHeader('Content-disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-type', 'application/json; charset=utf-8');
+    res.send(JSON.stringify(envelope, null, 2));
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -11,7 +11,7 @@ import {
   CustomerTransaction 
 } from '../types';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate, getCurrentJalaliTime, formatNumber } from '../utils/jalali';
-import { StorageService } from '../utils/storage';
+import { StorageService, canUserViewBuyPrices } from '../utils/storage';
 import { getRoleBadgeConfig, isTabPermitted } from '../utils/permissions';
 import { clearAppCacheAndReload, getLastCacheUpdatedTime } from '../utils/appUpdater';
 import { NumericInput } from './NumericInput';
@@ -1137,9 +1137,11 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                   <span className="text-lg lg:text-xl font-black text-slate-900 block font-mono tabular-nums">
                     {toPersianDigits(products.length)} <span className="text-xs font-normal text-slate-500">قلم</span>
                   </span>
-                  <span className="text-xs font-bold text-slate-500 font-mono">
-                    {formatPrice(totalInventoryValuation)}
-                  </span>
+                  {canUserViewBuyPrices(currentUser) && (
+                    <span className="text-xs font-bold text-slate-500 font-mono">
+                      {formatPrice(totalInventoryValuation)}
+                    </span>
+                  )}
                 </div>
                 <div className="mt-1">
                   {lowStockProducts.length > 0 ? (

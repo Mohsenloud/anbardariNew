@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Product, ProductVariant, Customer, Invoice, InvoiceItem, StoreSettings, PaymentMethod, DEFAULT_PRINT_LAYOUT, AppUser } from '../types';
 import { getCurrentJalaliDate, formatPrice, toPersianDigits, toEnglishDigits, formatNumber, formatThousands } from '../utils/jalali';
+import { canUserViewBuyPrices } from '../utils/storage';
 import { NumericInput } from './NumericInput';
 import { 
   Plus, 
@@ -3665,15 +3666,24 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                 </div>
 
                 {/* Buy Price */}
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
-                  <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
-                    <Banknote className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    قیمت خرید:
-                  </span>
-                  <div className="text-xs sm:text-base font-black text-slate-800 font-mono">
-                    {viewingCatalogProduct.buyPrice ? formatPrice(viewingCatalogProduct.buyPrice) : '۰'} <span className="text-[11px] font-medium text-slate-500">{settings.currency}</span>
+                {canUserViewBuyPrices(currentUser) && (
+                  <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                    <span className="text-[11px] font-bold text-slate-600 flex items-center justify-between gap-1">
+                      <span className="flex items-center gap-1">
+                        <Banknote className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        قیمت خرید:
+                      </span>
+                      {viewingCatalogProduct.buyPrice > 0 && viewingCatalogProduct.sellPrice > 0 && (
+                        <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded font-mono">
+                          سود: {toPersianDigits(Math.round(((viewingCatalogProduct.sellPrice - viewingCatalogProduct.buyPrice) / viewingCatalogProduct.buyPrice) * 100))}٪
+                        </span>
+                      )}
+                    </span>
+                    <div className="text-xs sm:text-base font-black text-slate-800 font-mono">
+                      {viewingCatalogProduct.buyPrice ? formatPrice(viewingCatalogProduct.buyPrice) : '۰'} <span className="text-[11px] font-medium text-slate-500">{settings.currency}</span>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Stock */}
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
@@ -3761,7 +3771,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
               )}
 
               {/* Purchase Price History inside Catalog Details Modal */}
-              {viewingCatalogProduct.priceHistory && viewingCatalogProduct.priceHistory.length > 0 && (
+              {canUserViewBuyPrices(currentUser) && viewingCatalogProduct.priceHistory && viewingCatalogProduct.priceHistory.length > 0 && (
                 <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold text-slate-800">
                     <span className="flex items-center gap-1.5">
@@ -3964,7 +3974,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                   <span className="text-[11px] font-black text-slate-700 block">
                     قیمت‌گذاری مالی ({settings.currency}):
                   </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+                  <div className={`grid grid-cols-1 ${canUserViewBuyPrices(currentUser) ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-2.5 sm:gap-3`}>
                     <div>
                       <label className="block text-[11px] font-bold text-slate-600 mb-1">
                         قیمت فروش عادی ({settings.currency}) *
@@ -3988,17 +3998,19 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                         className="w-full bg-indigo-50/40 border border-indigo-200 rounded-xl px-3 py-2 text-xs font-bold text-indigo-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                       />
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                        قیمت خرید ({settings.currency})
-                      </label>
-                      <NumericInput
-                        min={0}
-                        value={editProductForm.buyPrice}
-                        onChange={(num) => setEditProductForm({ ...editProductForm, buyPrice: num })}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                      />
-                    </div>
+                    {canUserViewBuyPrices(currentUser) && (
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          قیمت خرید ({settings.currency})
+                        </label>
+                        <NumericInput
+                          min={0}
+                          value={editProductForm.buyPrice}
+                          onChange={(num) => setEditProductForm({ ...editProductForm, buyPrice: num })}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
 

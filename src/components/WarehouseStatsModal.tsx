@@ -24,6 +24,7 @@ interface WarehouseStatsModalProps {
   inboundReceipts: InboundReceipt[];
   directTransfers: DirectTransfer[];
   currency?: string;
+  canViewBuyPrices?: boolean;
   onNavigateSubTab?: (subTab: 'items' | 'inbound-receipts' | 'exit-slips' | 'direct-transfers' | 'movements') => void;
   onFilterLowStock?: () => void;
 }
@@ -36,6 +37,7 @@ export const WarehouseStatsModal: React.FC<WarehouseStatsModalProps> = ({
   inboundReceipts,
   directTransfers,
   currency = 'ریال',
+  canViewBuyPrices = true,
   onNavigateSubTab,
   onFilterLowStock
 }) => {
@@ -240,12 +242,14 @@ export const WarehouseStatsModal: React.FC<WarehouseStatsModalProps> = ({
                     <span className="text-xs font-bold text-slate-300">ارزش ریالی تخمینی موجودی انبار</span>
                   </div>
                   <p className="text-[11px] text-slate-400">
-                    محاسبه شده بر اساس مجموع موجودی لحظه‌ای و قیمت‌های خرید / فروش اقلام
+                    {canViewBuyPrices
+                      ? 'محاسبه شده بر اساس مجموع موجودی لحظه‌ای و قیمت‌های خرید / فروش اقلام'
+                      : 'محاسبه شده بر اساس مجموع موجودی لحظه‌ای و قیمت فروش اقلام'}
                   </p>
                 </div>
 
                 <div className="flex items-center gap-4 flex-wrap">
-                  {totalBuyValue > 0 && (
+                  {canViewBuyPrices && totalBuyValue > 0 && (
                     <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
                       <span className="text-[10px] text-slate-300 block">ارزش بر مبنای قیمت خرید:</span>
                       <span className="text-sm font-black text-amber-300 font-['Vazirmatn']">

@@ -440,8 +440,19 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                 {/* 1. Buy Price */}
                 {isAdmin && (
                   <div>
-                    <label htmlFor="product-modal-buyprice" className="block text-xs font-bold text-slate-700 mb-1.5">
-                      قیمت خرید (تأمین)
+                    <label htmlFor="product-modal-buyprice" className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                      <span>قیمت خرید (تأمین)</span>
+                      {product.buyPrice > 0 && product.sellPrice > 0 && (
+                        <span
+                          className={`text-[10px] font-black px-1.5 py-0.5 rounded-md font-mono ${
+                            product.sellPrice >= product.buyPrice
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border border-rose-200'
+                          }`}
+                        >
+                          سود: {toPersianDigits(Math.round(((product.sellPrice - product.buyPrice) / product.buyPrice) * 100))}٪
+                        </span>
+                      )}
                     </label>
                     <NumericInput
                       id="product-modal-buyprice"

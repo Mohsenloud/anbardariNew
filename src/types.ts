@@ -611,6 +611,7 @@ export interface UserPermissions {
   canManageInventory: boolean; // مدیریت کالاها و انبارداری
   canManageCustomers: boolean; // مدیریت مشتریان و طرف‌حساب‌ها
   canViewReports: boolean; // مشاهده گزارشات مالی و سود
+  canViewBuyPrices?: boolean; // مشاهده قیمت خرید، بهای تمام‌شده و حاشیه سود
   canAccessAdmin: boolean; // دسترسی به پنل مدیریت و تنظیمات
   canManageUsers: boolean; // تعریف و مدیریت کاربران
 }
@@ -802,6 +803,15 @@ export interface ActivityLog {
   deviceInfo?: string; // مشخصات مرورگر یا دستگاه
 }
 
+export type RestoreModuleKey =
+  | 'products'
+  | 'invoices'
+  | 'purchaseInvoices'
+  | 'customers'
+  | 'movements'
+  | 'users'
+  | 'settings';
+
 export interface ServerBackupInfo {
   filename: string;
   createdAt: string;
@@ -815,6 +825,10 @@ export interface ServerBackupInfo {
     customersCount: number;
     purchaseInvoicesCount: number;
     inboundReceiptsCount: number;
+    movementsCount?: number;
+    customerTransactionsCount?: number;
+    directTransfersCount?: number;
+    usersCount?: number;
   };
 }
 

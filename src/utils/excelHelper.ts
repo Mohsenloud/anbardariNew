@@ -202,42 +202,48 @@ export function generateCustomerExcelTemplate(): void {
 /**
  * EXPORT CURRENT PRODUCTS TO EXCEL
  */
-export function exportProductsToExcel(products: Product[]): void {
+export function exportProductsToExcel(products: Product[], includeBuyPrice = true): void {
   const rows: any[] = [];
 
   products.forEach((p) => {
     if (p.hasVariants && p.variants && p.variants.length > 0) {
       p.variants.forEach((v) => {
-        rows.push({
+        const row: Record<string, any> = {
           'نام کالا': p.name,
           'کد کالا': p.code,
           'تنوع / رنگ / مدل': v.name,
           'کد اختصاصی تنوع': v.code || '',
           'دسته‌بندی': p.category,
           'واحد سنجش': p.unit,
-          'قیمت خرید (ریال)': v.buyPrice || p.buyPrice,
-          'قیمت فروش (ریال)': v.sellPrice || p.sellPrice,
-          'موجودی این تنوع': v.stock,
-          'کل موجودی کالا': p.stock,
-          'حداقل هشدار': p.minStockAlert,
-          'توضیحات': p.description || '',
-        });
+        };
+        if (includeBuyPrice) {
+          row['قیمت خرید (ریال)'] = v.buyPrice || p.buyPrice;
+        }
+        row['قیمت فروش (ریال)'] = v.sellPrice || p.sellPrice;
+        row['موجودی این تنوع'] = v.stock;
+        row['کل موجودی کالا'] = p.stock;
+        row['حداقل هشدار'] = p.minStockAlert;
+        row['توضیحات'] = p.description || '';
+        rows.push(row);
       });
     } else {
-      rows.push({
+      const row: Record<string, any> = {
         'نام کالا': p.name,
         'کد کالا': p.code,
         'تنوع / رنگ / مدل': '',
         'کد اختصاصی تنوع': '',
         'دسته‌بندی': p.category,
         'واحد سنجش': p.unit,
-        'قیمت خرید (ریال)': p.buyPrice,
-        'قیمت فروش (ریال)': p.sellPrice,
-        'موجودی این تنوع': p.stock,
-        'کل موجودی کالا': p.stock,
-        'حداقل هشدار': p.minStockAlert,
-        'توضیحات': p.description || '',
-      });
+      };
+      if (includeBuyPrice) {
+        row['قیمت خرید (ریال)'] = p.buyPrice;
+      }
+      row['قیمت فروش (ریال)'] = p.sellPrice;
+      row['موجودی این تنوع'] = p.stock;
+      row['کل موجودی کالا'] = p.stock;
+      row['حداقل هشدار'] = p.minStockAlert;
+      row['توضیحات'] = p.description || '';
+      rows.push(row);
     }
   });
 
@@ -250,7 +256,7 @@ export function exportProductsToExcel(products: Product[]): void {
     { wch: 16 },
     { wch: 18 },
     { wch: 14 },
-    { wch: 16 },
+    ...(includeBuyPrice ? [{ wch: 16 }] : []),
     { wch: 16 },
     { wch: 16 },
     { wch: 16 },

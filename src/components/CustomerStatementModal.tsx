@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   X, 
   ReceiptText, 
@@ -52,6 +52,7 @@ import { exportCustomerStatementToExcel } from '../utils/excelHelper';
 import { exportElementToPdf } from '../utils/pdfHelper';
 import { CustomerTransactionModal } from './CustomerTransactionModal';
 import { NumericInput } from './NumericInput';
+import { SmartPagination, paginateArray } from './SmartPagination';
 import { sendTelegramTextMessage } from '../utils/telegramService';
 
 interface CustomerStatementModalProps {
@@ -94,6 +95,13 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   const [filterType, setFilterType] = useState<'all' | 'debt' | 'deposit'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<'all' | '30days' | 'this_year'>('all');
+  const [entriesPage, setEntriesPage] = useState(1);
+  const [entriesPageSize, setEntriesPageSize] = useState(50);
+
+  useEffect(() => {
+    setEntriesPage(1);
+  }, [filterType, searchQuery, dateFilter, customer?.id]);
+
   const [transactionToEdit, setTransactionToEdit] = useState<CustomerTransaction | null>(null);
 
   // Universal deletion state (for manual deposit/debt, invoice payment, or invoice debt)
@@ -915,7 +923,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                   </p>
                 </div>
               ) : (
-                filteredEntries.map((entry, index) => {
+                paginateArray(filteredEntries, entriesPage, entriesPageSize).map((entry) => {
                   const isInvoice = entry.documentType === 'invoice';
                   const isPayment = entry.documentType === 'deposit' || entry.documentType === 'invoice_payment';
                   const isManualTxn = !!entry.rawTransaction;
@@ -1214,7 +1222,8 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                         </td>
                       </tr>
                     ) : (
-                      filteredEntries.map((entry, index) => {
+                      paginateArray(filteredEntries, entriesPage, entriesPageSize).map((entry, index) => {
+                        const globalIndex = entriesPageSize > 0 ? (entriesPage - 1) * entriesPageSize + index : index;
                         const isInvoice = entry.documentType === 'invoice';
                         const isManualTxn = !!entry.rawTransaction;
                         const hasClickableInvoice = Boolean(entry.rawInvoice || entry.rawPurchaseInvoice);
@@ -1234,11 +1243,11 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                                 ? 'cursor-pointer hover:bg-purple-50/50'
                                 : 'hover:bg-slate-50'
                             } ${
-                              index % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'
+                              globalIndex % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'
                             }`}
                           >
                             <td className="py-2.5 px-2 text-center text-slate-400 font-mono text-[11px] w-10 shrink-0">
-                              {toPersianDigits(index + 1)}
+                              {toPersianDigits(globalIndex + 1)}
                             </td>
                             <td className="py-2.5 px-2.5 font-mono text-slate-700 font-semibold whitespace-nowrap w-24 text-right shrink-0">
                               {toPersianDigits(entry.date)}
@@ -1444,6 +1453,19 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                   )}
                 </table>
               </div>
+            </div>
+          )}
+
+          {filteredEntries.length > 0 && (
+            <div className="mt-3">
+              <SmartPagination
+                currentPage={entriesPage}
+                totalItems={filteredEntries.length}
+                pageSize={entriesPageSize}
+                onPageChange={setEntriesPage}
+                onPageSizeChange={setEntriesPageSize}
+                itemLabel="تراکنش"
+              />
             </div>
           )}
         </div>

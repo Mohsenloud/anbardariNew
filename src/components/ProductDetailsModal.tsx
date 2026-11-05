@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Product, StoreSettings, AppUser, ProductPriceHistoryEntry } from '../types';
 import { toPersianDigits, formatPrice, formatNumber } from '../utils/jalali';
-import { StorageService } from '../utils/storage';
+import { StorageService, canUserViewBuyPrices } from '../utils/storage';
 import {
   X,
   Package,
@@ -45,8 +45,10 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   onOpenInventoryCount,
   onDelete,
 }) => {
+  const canViewBuyPrices = canUserViewBuyPrices(currentUser);
+
   const combinedPriceHistory = useMemo(() => {
-    if (!product) return [];
+    if (!product || !canViewBuyPrices) return [];
     const entries: ProductPriceHistoryEntry[] = [];
     const seenKeys = new Set<string>();
 
@@ -138,7 +140,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
         diffPercent,
       };
     }).reverse();
-  }, [product]);
+  }, [product, canViewBuyPrices]);
 
   if (!isOpen || !product) return null;
 
@@ -221,8 +223,8 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
             </div>
           </div>
 
-          {/* Pricing & Financial Info (3 Tiers: Regular Sell, Wholesale/Colleague, Buy Cost) */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Pricing & Financial Info */}
+          <div className={`grid grid-cols-1 ${canViewBuyPrices ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
             <div className="bg-white border border-slate-200 rounded-xl p-3">
               <span className="text-slate-500 text-[11px] block mb-1">قیمت فروش عادی:</span>
               <div className="flex items-center gap-1 text-emerald-700 font-mono font-bold text-sm">
@@ -245,13 +247,29 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
               </div>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl p-3">
-              <span className="text-slate-500 text-[11px] block mb-1">آخرین قیمت خرید (تأمین):</span>
-              <div className="flex items-center gap-1 text-slate-900 font-mono font-bold text-sm">
-                <Tag className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                <span>{formatPrice(product.buyPrice || 0, settings.currency)}</span>
+            {canViewBuyPrices && (
+              <div className="bg-white border border-slate-200 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-slate-500 text-[11px]">آخرین قیمت خرید (تأمین):</span>
+                  {product.buyPrice > 0 && product.sellPrice > 0 && (
+                    <span
+                      className={`text-[10px] font-black px-1.5 py-0.5 rounded-md font-mono ${
+                        product.sellPrice >= product.buyPrice
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : 'bg-rose-50 text-rose-700 border border-rose-200'
+                      }`}
+                      title="حاشیه سود ناخالص"
+                    >
+                      سود: {toPersianDigits(Math.round(((product.sellPrice - product.buyPrice) / product.buyPrice) * 100))}٪
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 text-slate-900 font-mono font-bold text-sm">
+                  <Tag className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span>{formatPrice(product.buyPrice || 0, settings.currency)}</span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Variants / Color / Size Breakdown */}
@@ -294,72 +312,74 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
           )}
 
           {/* Purchase Price History Timeline (تاریخچه تغییرات قیمت خرید کالا در طول زمان) */}
-          <div className="border border-slate-200 bg-slate-50/80 rounded-2xl p-3.5 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 font-black text-slate-800 text-xs">
-                <History className="w-4 h-4 text-blue-600" />
-                <span>تاریخچه تغییرات قیمت خرید در طول زمان</span>
+          {canViewBuyPrices && (
+            <div className="border border-slate-200 bg-slate-50/80 rounded-2xl p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 font-black text-slate-800 text-xs">
+                  <History className="w-4 h-4 text-blue-600" />
+                  <span>تاریخچه تغییرات قیمت خرید در طول زمان</span>
+                </div>
+                <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                  {toPersianDigits(combinedPriceHistory.length)} سابقه ثبت‌شده
+                </span>
               </div>
-              <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200">
-                {toPersianDigits(combinedPriceHistory.length)} سابقه ثبت‌شده
-              </span>
-            </div>
 
-            {combinedPriceHistory.length === 0 ? (
-              <div className="text-center py-4 text-slate-400 text-xs bg-white rounded-xl border border-slate-200/70">
-                هنوز سابقه تغییری برای قیمت خرید این کالا ثبت نشده است.
-              </div>
-            ) : (
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden max-h-48 overflow-y-auto divide-y divide-slate-100">
-                {combinedPriceHistory.map((item, idx) => (
-                  <div key={item.id || idx} className="p-2.5 flex flex-wrap items-center justify-between gap-2 hover:bg-slate-50/80 transition-colors">
-                    <div className="flex flex-col gap-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-slate-700 text-[11px] bg-slate-100 px-1.5 py-0.5 rounded">
-                          {toPersianDigits(item.date)}
-                        </span>
-                        {item.supplierName && (
-                          <span className="font-bold text-slate-800 text-xs">
-                            تامین‌کننده: {item.supplierName}
+              {combinedPriceHistory.length === 0 ? (
+                <div className="text-center py-4 text-slate-400 text-xs bg-white rounded-xl border border-slate-200/70">
+                  هنوز سابقه تغییری برای قیمت خرید این کالا ثبت نشده است.
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden max-h-48 overflow-y-auto divide-y divide-slate-100">
+                  {combinedPriceHistory.map((item, idx) => (
+                    <div key={item.id || idx} className="p-2.5 flex flex-wrap items-center justify-between gap-2 hover:bg-slate-50/80 transition-colors">
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-slate-700 text-[11px] bg-slate-100 px-1.5 py-0.5 rounded">
+                            {toPersianDigits(item.date)}
                           </span>
-                        )}
-                        {item.invoiceNumber && (
-                          <span className="text-[10px] font-mono text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
-                            سند: {toPersianDigits(item.invoiceNumber)}
-                          </span>
+                          {item.supplierName && (
+                            <span className="font-bold text-slate-800 text-xs">
+                              تامین‌کننده: {item.supplierName}
+                            </span>
+                          )}
+                          {item.invoiceNumber && (
+                            <span className="text-[10px] font-mono text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+                              سند: {toPersianDigits(item.invoiceNumber)}
+                            </span>
+                          )}
+                        </div>
+                        {item.note && (
+                          <span className="text-[10px] text-slate-500 pr-1">{item.note}</span>
                         )}
                       </div>
-                      {item.note && (
-                        <span className="text-[10px] text-slate-500 pr-1">{item.note}</span>
-                      )}
-                    </div>
 
-                    <div className="flex items-center gap-2 font-mono">
-                      {item.diff !== 0 && (
-                        <span
-                          className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                            item.diff > 0
-                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          }`}
-                          title={item.diff > 0 ? 'افزایش قیمت خرید نسبت به خرید قبلی' : 'کاهش قیمت خرید نسبت به خرید قبلی'}
-                        >
-                          {item.diff > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                          <span dir="ltr">
-                            {item.diff > 0 ? '+' : ''}
-                            {toPersianDigits(item.diffPercent)}٪
+                      <div className="flex items-center gap-2 font-mono">
+                        {item.diff !== 0 && (
+                          <span
+                            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              item.diff > 0
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            }`}
+                            title={item.diff > 0 ? 'افزایش قیمت خرید نسبت به خرید قبلی' : 'کاهش قیمت خرید نسبت به خرید قبلی'}
+                          >
+                            {item.diff > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                            <span dir="ltr">
+                              {item.diff > 0 ? '+' : ''}
+                              {toPersianDigits(item.diffPercent)}٪
+                            </span>
                           </span>
+                        )}
+                        <span className="font-black text-slate-900 text-xs bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg">
+                          {formatPrice(item.buyPrice, settings.currency)}
                         </span>
-                      )}
-                      <span className="font-black text-slate-900 text-xs bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg">
-                        {formatPrice(item.buyPrice, settings.currency)}
-                      </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Barcode & Extra Technical Data */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-600">
