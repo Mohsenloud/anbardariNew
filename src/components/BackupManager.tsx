@@ -84,11 +84,15 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Filter & Pagination for Server Backups List
+  // Filter, Sort & Pagination for Server Backups List
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [triggerFilter, setTriggerFilter] = useState<TriggerFilter>('all');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'largest' | 'smallest'>('newest');
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(25);
+  const [pageSize, setPageSize] = useState<number>(15);
+  const [selectedBackupModal, setSelectedBackupModal] = useState<ServerBackupInfo | null>(null);
+  const [selectedBackupFiles, setSelectedBackupFiles] = useState<string[]>([]);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState<boolean>(false);
 
   // Interactive Restore / Upload Preview Modal State
   const [restoreTarget, setRestoreTarget] = useState<{
@@ -217,10 +221,27 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
   // Reset pagination when filter or search changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, triggerFilter]);
+  }, [searchQuery, triggerFilter, sortBy]);
+
+  const triggerCounts = useMemo(() => {
+    const counts: Record<TriggerFilter, number> = {
+      all: backups.length,
+      manual: 0,
+      auto: 0,
+      'pre-restore': 0,
+      startup: 0,
+    };
+    backups.forEach((b) => {
+      if (b.trigger === 'auto') counts.auto++;
+      else if (b.trigger === 'pre-restore') counts['pre-restore']++;
+      else if (b.trigger === 'startup') counts.startup++;
+      else counts.manual++;
+    });
+    return counts;
+  }, [backups]);
 
   const filteredBackups = useMemo(() => {
-    return backups.filter((bk) => {
+    const list = backups.filter((bk) => {
       if (triggerFilter !== 'all' && bk.trigger !== triggerFilter) {
         return false;
       }
@@ -233,7 +254,20 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
       }
       return true;
     });
-  }, [backups, triggerFilter, searchQuery]);
+
+    return [...list].sort((a, b) => {
+      if (sortBy === 'oldest') {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+      if (sortBy === 'largest') {
+        return (b.sizeBytes || 0) - (a.sizeBytes || 0);
+      }
+      if (sortBy === 'smallest') {
+        return (a.sizeBytes || 0) - (b.sizeBytes || 0);
+      }
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [backups, triggerFilter, searchQuery, sortBy]);
 
   const paginatedBackups = useMemo(
     () => paginateArray(filteredBackups, currentPage, pageSize),
@@ -636,6 +670,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
       const res = await StorageService.deleteServerBackup(deleteTarget.filename);
       if (res.success) {
         showNotification('success', 'فایل پشتیبان با موفقیت حذف شد.');
+        setSelectedBackupFiles((prev) => prev.filter((f) => f !== deleteTarget.filename));
         setDeleteTarget(null);
         if (res.backups) {
           setBackups(res.backups);
@@ -647,6 +682,29 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
       }
     } catch {
       showNotification('error', 'خطا در ارتباط با سرور.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Handle bulk delete of selected backups
+  const handleConfirmBulkDeleteBackups = async () => {
+    if (selectedBackupFiles.length === 0) return;
+    setActionLoading(true);
+    let deletedCount = 0;
+    try {
+      for (const filename of selectedBackupFiles) {
+        const res = await StorageService.deleteServerBackup(filename);
+        if (res.success) {
+          deletedCount++;
+        }
+      }
+      setSelectedBackupFiles([]);
+      setShowBulkDeleteModal(false);
+      await fetchBackups();
+      showNotification('success', `${toPersianDigits(deletedCount)} نسخه پشتیبان انتخاب‌شده با موفقیت حذف شدند.`);
+    } catch {
+      showNotification('error', 'خطا در حذف گروهی نسخه‌های پشتیبان.');
     } finally {
       setActionLoading(false);
     }
@@ -729,42 +787,54 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
   };
 
   const formatFileSize = (bytes: number): string => {
-    if (!bytes || bytes === 0) return '۰ کیلوبایت';
-    if (bytes < 1024) return `${toPersianDigits(bytes)} بایت`;
+    if (!bytes || bytes === 0) return '0 KB';
+    if (bytes < 1024) return `${toPersianDigits(bytes)} B`;
     const kb = Math.round(bytes / 1024);
-    if (kb < 1024) return `${toPersianDigits(kb)} کیلوبایت`;
+    if (kb < 1024) return `${toPersianDigits(kb)} KB`;
     const mb = (bytes / (1024 * 1024)).toFixed(1);
-    return `${toPersianDigits(mb)} مگابایت`;
+    return `${toPersianDigits(mb)} MB`;
   };
 
-  const getTriggerBadge = (trigger: string) => {
+  const getTriggerBadge = (trigger: string, compact = false) => {
     switch (trigger) {
       case 'auto':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-            <Clock className="w-3 h-3 text-emerald-600" />
-            خودکار
+          <span
+            title="پشتیبان‌گیری خودکار زمان‌بندی‌شده سرور"
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/80 shrink-0"
+          >
+            <Clock className="w-3 h-3 text-emerald-600 shrink-0" />
+            <span>خودکار</span>
           </span>
         );
       case 'pre-restore':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-            <ShieldCheck className="w-3 h-3 text-amber-600" />
-            ایمنی قبل بازیابی
+          <span
+            title="پشتیبان ایمنی خودکار ثبت‌شده قبل از بازیابی"
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200/80 shrink-0"
+          >
+            <ShieldCheck className="w-3 h-3 text-amber-600 shrink-0" />
+            <span>{compact ? 'ایمنی' : 'ایمنی قبل بازیابی'}</span>
           </span>
         );
       case 'startup':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
-            <Layers className="w-3 h-3 text-blue-600" />
-            راه‌اندازی سیستم
+          <span
+            title="پشتیبان اولیه هنگام راه‌اندازی سرور"
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200/80 shrink-0"
+          >
+            <Layers className="w-3 h-3 text-blue-600 shrink-0" />
+            <span>{compact ? 'سیستمی' : 'راه‌اندازی'}</span>
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
-            <CheckCircle2 className="w-3 h-3 text-indigo-600" />
-            دستی
+          <span
+            title="پشتیبان ثبت‌شده توسط مدیر سیستم"
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200/80 shrink-0"
+          >
+            <CheckCircle2 className="w-3 h-3 text-indigo-600 shrink-0" />
+            <span>دستی</span>
           </span>
         );
     }
@@ -782,6 +852,37 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
       }).format(date);
     } catch {
       return isoString;
+    }
+  }
+
+  function formatCompactPersianDateTime(isoString: string): { date: string; time: string; relative: string } {
+    try {
+      const d = new Date(isoString);
+      const date = new Intl.DateTimeFormat('fa-IR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(d);
+      const time = new Intl.DateTimeFormat('fa-IR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(d);
+
+      const diffSec = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+      let relative = 'لحظاتی پیش';
+      if (diffSec >= 86400) {
+        const days = Math.floor(diffSec / 86400);
+        relative = `${toPersianDigits(days)} روز پیش`;
+      } else if (diffSec >= 3600) {
+        const hours = Math.floor(diffSec / 3600);
+        relative = `${toPersianDigits(hours)} ساعت پیش`;
+      } else if (diffSec >= 60) {
+        const mins = Math.floor(diffSec / 60);
+        relative = `${toPersianDigits(mins)} دقیقه پیش`;
+      }
+      return { date, time, relative };
+    } catch {
+      return { date: isoString, time: '', relative: '' };
     }
   }
 
@@ -1142,81 +1243,147 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
       {/* ===================================================================== */}
       {activeSubTab === 'backups' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          {/* Header & Filter Bar */}
-          <div className="p-4 sm:p-5 border-b border-slate-100 space-y-3.5 bg-slate-50/50">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Database className="w-4 h-4 text-emerald-600" />
-                  <h4 className="font-black text-sm text-slate-900">آرشیو نسخه‌های پشتیبان ثبت‌شده در سرور</h4>
-                  <span className="text-[11px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md font-bold tabular-nums">
-                    {toPersianDigits(filteredBackups.length)} از {toPersianDigits(backups.length)} نسخه
-                  </span>
+          {/* Compact Header, Search, Filter Pills & Sort Controls */}
+          <div className="p-3.5 sm:p-4 border-b border-slate-200 space-y-3 bg-slate-50/60">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <Archive className="w-4 h-4" />
                 </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  قبل از هرگونه بازیابی، می‌توانید محتوای دقیق نسخه پشتیبان را با وضعیت فعلی مقایسه کرده و به‌صورت کامل یا انتخابی بازیابی نمایید.
-                </p>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-black text-xs sm:text-sm text-slate-900">
+                      آرشیو نسخه‌های پشتیبان ثبت‌شده در سرور
+                    </h4>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold tabular-nums">
+                      {toPersianDigits(filteredBackups.length)} نسخه
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 hidden sm:block mt-0.5">
+                    روی آیکون چشم جهت مشاهده جزئیات کامل یا دکمه بازیابی جهت پیش‌نمایش و مقایسه با وضعیت فعلی کلیک کنید
+                  </p>
+                </div>
               </div>
 
-              {autoBackupsCount > 5 && (
-                <button
-                  type="button"
-                  onClick={handlePruneOldAutoBackups}
-                  disabled={actionLoading}
-                  className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer self-start sm:self-auto shrink-0"
-                  title="حذف نسخه‌های خودکار قدیمی و حفظ ۵ نسخه خودکار آخر به همراه تمام نسخه‌های دستی"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  <span>پاکسازی بکاپ‌های خودکار قدیمی</span>
-                </button>
-              )}
-            </div>
-
-            {/* Search & Trigger Filter Pills */}
-            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-              <div className="relative flex-1 max-w-md">
-                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="جستجو در عنوان بکاپ، نام فایل یا تاریخ..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl pr-9 pl-8 py-2 text-xs text-slate-800 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none"
-                />
-                {searchQuery && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {selectedBackupFiles.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    onClick={() => setShowBulkDeleteModal(true)}
+                    disabled={actionLoading}
+                    className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>حذف انتخابی ({toPersianDigits(selectedBackupFiles.length)})</span>
+                  </button>
+                )}
+
+                {autoBackupsCount > 5 && (
+                  <button
+                    type="button"
+                    onClick={handlePruneOldAutoBackups}
+                    disabled={actionLoading}
+                    className="px-2.5 py-1.5 bg-white hover:bg-amber-50 text-slate-700 hover:text-amber-800 border border-slate-200 hover:border-amber-300 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
+                    title="حفظ ۵ نسخه خودکار آخر و حذف بکاپ‌های خودکار قدیمی‌تر"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span className="hidden sm:inline">پاکسازی خودکارهای قدیمی</span>
+                    <span className="sm:hidden">پاکسازی قدیمی‌ها</span>
                   </button>
                 )}
               </div>
+            </div>
 
-              <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-xl border border-slate-200">
-                {(
-                  [
-                    { id: 'all', label: 'همه نسخه‌ها' },
-                    { id: 'manual', label: 'دستی' },
-                    { id: 'auto', label: 'خودکار' },
-                    { id: 'pre-restore', label: 'ایمنی قبل بازیابی' },
-                    { id: 'startup', label: 'راه‌اندازی' },
-                  ] as { id: TriggerFilter; label: string }[]
-                ).map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setTriggerFilter(tab.id)}
-                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                      triggerFilter === tab.id
-                        ? 'bg-slate-900 text-white shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                    }`}
+            {/* Search + Trigger Filter Pills + Sort Selector */}
+            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1">
+                <div className="relative flex-1 sm:max-w-xs">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="جستجوی عنوان، فایل یا تاریخ..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl pr-8 pl-7 py-1.5 text-xs text-slate-800 focus:border-emerald-500 outline-none"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Pills with Counts */}
+                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 overflow-x-auto">
+                  {(
+                    [
+                      { id: 'all', label: 'همه', count: triggerCounts.all },
+                      { id: 'manual', label: 'دستی', count: triggerCounts.manual },
+                      { id: 'auto', label: 'خودکار', count: triggerCounts.auto },
+                      { id: 'pre-restore', label: 'ایمنی', count: triggerCounts['pre-restore'] },
+                      { id: 'startup', label: 'سیستمی', count: triggerCounts.startup },
+                    ] as { id: TriggerFilter; label: string; count: number }[]
+                  ).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setTriggerFilter(tab.id)}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1 ${
+                        triggerFilter === tab.id
+                          ? 'bg-slate-900 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span>{tab.label}</span>
+                      <span
+                        className={`text-[9px] px-1 rounded tabular-nums ${
+                          triggerFilter === tab.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {toPersianDigits(tab.count)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sort Selector & Legend */}
+              <div className="flex items-center justify-between sm:justify-end gap-2">
+                <div className="hidden xl:flex items-center gap-2 text-[10px] text-slate-500 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200/80">
+                  <span className="flex items-center gap-1" title="تعداد کالاها">
+                    <Boxes className="w-3 h-3 text-blue-600" /> کالا
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1" title="فاکتورهای فروش">
+                    <ReceiptText className="w-3 h-3 text-emerald-600" /> فروش
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1" title="فاکتورهای خرید">
+                    <ShoppingBag className="w-3 h-3 text-indigo-600" /> خرید
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1" title="مشتریان و طرف‌حساب‌ها">
+                    <Users className="w-3 h-3 text-purple-600" /> مشتری
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-600 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5">
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as any)}
+                    className="bg-transparent font-bold text-slate-800 outline-none cursor-pointer text-[11px]"
                   >
-                    {tab.label}
-                  </button>
-                ))}
+                    <option value="newest">جدیدترین زمان ثبت</option>
+                    <option value="oldest">قدیمی‌ترین زمان ثبت</option>
+                    <option value="largest">بیشترین حجم فایل</option>
+                    <option value="smallest">کمترین حجم فایل</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -1257,123 +1424,139 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
             </div>
           ) : (
             <>
-              {/* Desktop Table View */}
-              <div className="hidden md:block overflow-x-auto">
+              {/* =============================================================== */}
+              {/* DECLUTTERED DESKTOP TABLE VIEW (Click Row for Details & Actions) */}
+              {/* =============================================================== */}
+              <div className="hidden md:block">
                 <table className="w-full text-right text-xs">
-                  <thead className="bg-slate-100/75 text-slate-700 font-bold border-b border-slate-200">
+                  <thead className="bg-slate-100/80 text-slate-600 font-bold border-b border-slate-200 text-[11px]">
                     <tr>
-                      <th className="py-3 px-4">عنوان و مشخصات نسخه</th>
-                      <th className="py-3 px-4">نوع ثبت</th>
-                      <th className="py-3 px-4">تاریخ و زمان</th>
-                      <th className="py-3 px-4">محتویات ذخیره‌شده</th>
-                      <th className="py-3 px-4">حجم فایل</th>
-                      <th className="py-3 px-4 text-center">عملیات</th>
+                      <th className="py-2.5 px-3 w-16 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <input
+                            type="checkbox"
+                            checked={
+                              paginatedBackups.length > 0 &&
+                              paginatedBackups.every((b) => selectedBackupFiles.includes(b.filename))
+                            }
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                const pageFiles = paginatedBackups.map((b) => b.filename);
+                                setSelectedBackupFiles((prev) => Array.from(new Set([...prev, ...pageFiles])));
+                              } else {
+                                const pageSet = new Set(paginatedBackups.map((b) => b.filename));
+                                setSelectedBackupFiles((prev) => prev.filter((f) => !pageSet.has(f)));
+                              }
+                            }}
+                            className="w-3.5 h-3.5 rounded text-emerald-600 cursor-pointer"
+                            title="انتخاب همه در این صفحه"
+                          />
+                          <span>#</span>
+                        </div>
+                      </th>
+                      <th className="py-2.5 px-3">عنوان نسخه پشتیبان</th>
+                      <th className="py-2.5 px-3 w-36 text-center">نوع ثبت</th>
+                      <th className="py-2.5 px-3 w-48">تاریخ و زمان ثبت</th>
+                      <th className="py-2.5 px-3 w-28 text-center">حجم فایل</th>
+                      <th className="py-2.5 px-4 w-36 text-left">جزئیات و عملیات</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {paginatedBackups.map((bk, index) => {
                       const rowNumber = (currentPage - 1) * (pageSize || filteredBackups.length) + index + 1;
+                      const isLatest =
+                        currentPage === 1 &&
+                        index === 0 &&
+                        sortBy === 'newest' &&
+                        triggerFilter === 'all' &&
+                        !searchQuery;
+                      const isSelected = selectedBackupFiles.includes(bk.filename);
+                      const dt = formatCompactPersianDateTime(bk.createdAt);
+
                       return (
-                        <tr key={bk.filename} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2.5">
-                              <span className="w-6 h-6 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold text-[10px] shrink-0 tabular-nums">
+                        <tr
+                          key={bk.filename}
+                          onClick={() => setSelectedBackupModal(bk)}
+                          className={`group cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'bg-emerald-50/60 hover:bg-emerald-50'
+                              : 'hover:bg-slate-50/90'
+                          }`}
+                        >
+                          {/* 1. Checkbox + Row Number */}
+                          <td
+                            className="py-3 px-3 text-center"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center justify-center gap-1.5">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  setSelectedBackupFiles((prev) =>
+                                    e.target.checked
+                                      ? [...prev, bk.filename]
+                                      : prev.filter((f) => f !== bk.filename)
+                                  );
+                                }}
+                                className="w-3.5 h-3.5 rounded text-emerald-600 cursor-pointer"
+                              />
+                              <span className="w-5 h-5 rounded-md bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[10px] tabular-nums">
                                 {toPersianDigits(rowNumber)}
                               </span>
-                              <div className="min-w-0">
-                                <p className="font-bold text-slate-900 text-xs truncate">{bk.label}</p>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  <span className="text-[10px] font-mono text-slate-400 truncate" dir="ltr">
-                                    {bk.filename}
-                                  </span>
-                                  {bk.checksum && (
-                                    <span
-                                      className="inline-flex items-center gap-0.5 text-[9px] text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 font-mono"
-                                      title={`SHA-256: ${bk.checksum}`}
-                                    >
-                                      <FileCheck className="w-2.5 h-2.5" />
-                                      SHA-256
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
                             </div>
                           </td>
-                          <td className="py-3 px-4 whitespace-nowrap">{getTriggerBadge(bk.trigger)}</td>
-                          <td className="py-3 px-4 font-medium text-slate-600 whitespace-nowrap">
-                            {formatIsoToPersianTime(bk.createdAt)}
-                          </td>
-                          <td className="py-3 px-4 text-slate-500">
-                            <div className="flex flex-wrap gap-1 text-[10px] tabular-nums">
-                              <span className="bg-blue-50 text-blue-800 border border-blue-200/70 px-1.5 py-0.5 rounded font-bold">
-                                {toPersianDigits(bk.stats?.productsCount ?? 0)} کالا
+
+                          {/* 2. Clean Backup Title */}
+                          <td className="py-3 px-3 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="font-bold text-slate-800 group-hover:text-emerald-700 transition-colors text-xs truncate max-w-[280px] lg:max-w-[420px]"
+                                title={bk.label}
+                              >
+                                {bk.label}
                               </span>
-                              <span className="bg-emerald-50 text-emerald-800 border border-emerald-200/70 px-1.5 py-0.5 rounded font-bold">
-                                {toPersianDigits(bk.stats?.invoicesCount ?? 0)} فروش
-                              </span>
-                              {(bk.stats?.purchaseInvoicesCount ?? 0) > 0 && (
-                                <span className="bg-indigo-50 text-indigo-800 border border-indigo-200/70 px-1.5 py-0.5 rounded font-bold">
-                                  {toPersianDigits(bk.stats.purchaseInvoicesCount)} خرید
+                              {isLatest && (
+                                <span className="text-[9px] font-black bg-emerald-600 text-white px-1.5 py-0.5 rounded shrink-0">
+                                  آخرین نسخه
                                 </span>
                               )}
-                              <span className="bg-purple-50 text-purple-800 border border-purple-200/70 px-1.5 py-0.5 rounded font-bold">
-                                {toPersianDigits(bk.stats?.customersCount ?? 0)} مشتری
+                            </div>
+                          </td>
+
+                          {/* 3. Trigger Badge */}
+                          <td className="py-3 px-3 text-center whitespace-nowrap">
+                            {getTriggerBadge(bk.trigger, true)}
+                          </td>
+
+                          {/* 4. Compact Date & Time */}
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 tabular-nums">
+                              <span>{dt.date}</span>
+                              <span className="text-slate-300">•</span>
+                              <span className="text-slate-500 font-mono">{dt.time}</span>
+                              <span className="text-[10px] font-normal text-slate-400">
+                                ({dt.relative})
                               </span>
                             </div>
                           </td>
-                          <td className="py-3 px-4 font-medium text-slate-600 font-mono text-[11px] whitespace-nowrap">
-                            {formatFileSize(bk.sizeBytes)}
+
+                          {/* 5. File Size */}
+                          <td className="py-3 px-3 text-center whitespace-nowrap">
+                            <span
+                              className="text-[11px] font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md"
+                              dir="ltr"
+                            >
+                              {formatFileSize(bk.sizeBytes)}
+                            </span>
                           </td>
-                          <td className="py-3 px-4 whitespace-nowrap">
-                            <div className="flex items-center justify-center gap-1.5">
-                              {/* Preview & Restore button */}
-                              <button
-                                type="button"
-                                onClick={() => handleOpenServerBackupRestore(bk)}
-                                disabled={actionLoading}
-                                className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
-                                title="پیش‌نمایش، مقایسه و بازیابی این نسخه"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
-                                <span>پیش‌نمایش و بازیابی</span>
-                              </button>
 
-                              {/* Download link */}
-                              <a
-                                href={`/api/backups/download/${encodeURIComponent(bk.filename)}`}
-                                download={bk.filename}
-                                className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 rounded-lg transition-colors cursor-pointer"
-                                title="دانلود فایل JSON این نسخه"
-                              >
-                                <Download className="w-4 h-4" />
-                              </a>
-
-                              {/* Send this backup to Telegram */}
-                              <button
-                                type="button"
-                                onClick={() => handleSendBackupToTelegram(bk.filename)}
-                                disabled={sendingTelegramFile === bk.filename || actionLoading}
-                                className="p-1.5 text-slate-600 hover:text-sky-600 hover:bg-sky-50 border border-transparent hover:border-sky-200 rounded-lg transition-colors cursor-pointer"
-                                title="ارسال این نسخه به تلگرام"
-                              >
-                                <Send
-                                  className={`w-4 h-4 ${
-                                    sendingTelegramFile === bk.filename ? 'animate-bounce text-sky-600' : ''
-                                  }`}
-                                />
-                              </button>
-
-                              {/* Delete button */}
-                              <button
-                                type="button"
-                                onClick={() => setDeleteTarget({ filename: bk.filename, label: bk.label })}
-                                disabled={actionLoading}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded-lg transition-colors cursor-pointer"
-                                title="حذف نسخه"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
+                          {/* 6. Subtle Prompt to Open Modal */}
+                          <td className="py-3 px-4 text-left whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500 group-hover:text-emerald-700 bg-slate-100/80 group-hover:bg-emerald-50 border border-transparent group-hover:border-emerald-200 px-2.5 py-1 rounded-lg transition-all">
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>مشاهده و عملیات</span>
+                            </span>
                           </td>
                         </tr>
                       );
@@ -1382,90 +1565,86 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
                 </table>
               </div>
 
-              {/* Mobile Cards View */}
+              {/* =============================================================== */}
+              {/* DECLUTTERED MOBILE LIST VIEW (Click Row for Details & Actions)  */}
+              {/* =============================================================== */}
               <div className="md:hidden divide-y divide-slate-100">
                 {paginatedBackups.map((bk, index) => {
                   const rowNumber = (currentPage - 1) * (pageSize || filteredBackups.length) + index + 1;
+                  const isLatest =
+                    currentPage === 1 &&
+                    index === 0 &&
+                    sortBy === 'newest' &&
+                    triggerFilter === 'all' &&
+                    !searchQuery;
+                  const isSelected = selectedBackupFiles.includes(bk.filename);
+                  const dt = formatCompactPersianDateTime(bk.createdAt);
+
                   return (
-                    <div key={bk.filename} className="p-4 space-y-3 hover:bg-slate-50/60">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="w-6 h-6 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold text-[10px] shrink-0 tabular-nums">
+                    <div
+                      key={bk.filename}
+                      onClick={() => setSelectedBackupModal(bk)}
+                      className={`p-3 flex items-center justify-between gap-2.5 cursor-pointer transition-colors active:bg-slate-100 ${
+                        isSelected ? 'bg-emerald-50/60' : 'hover:bg-slate-50/80'
+                      }`}
+                    >
+                      {/* Right Side: Checkbox + Number + Title + Compact Date */}
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div
+                          className="flex items-center gap-1.5 shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              setSelectedBackupFiles((prev) =>
+                                e.target.checked
+                                  ? [...prev, bk.filename]
+                                  : prev.filter((f) => f !== bk.filename)
+                              );
+                            }}
+                            className="w-3.5 h-3.5 rounded text-emerald-600 cursor-pointer"
+                          />
+                          <span className="w-5 h-5 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-[10px] tabular-nums">
                             {toPersianDigits(rowNumber)}
                           </span>
-                          <div className="min-w-0">
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
                             <p className="font-bold text-slate-900 text-xs truncate">{bk.label}</p>
-                            <p className="text-[10px] text-slate-500 mt-0.5">
-                              {formatIsoToPersianTime(bk.createdAt)} • {formatFileSize(bk.sizeBytes)}
-                            </p>
+                            {isLatest && (
+                              <span className="text-[9px] font-black bg-emerald-600 text-white px-1.5 py-0.2 rounded shrink-0">
+                                آخرین
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mt-0.5 tabular-nums">
+                            <span>
+                              {dt.date} • {dt.time}
+                            </span>
+                            <span className="text-slate-300">|</span>
+                            <span className="font-mono font-bold text-slate-600" dir="ltr">
+                              {formatFileSize(bk.sizeBytes)}
+                            </span>
                           </div>
                         </div>
-                        {getTriggerBadge(bk.trigger)}
                       </div>
 
-                      <div className="flex flex-wrap gap-1.5 text-[10px] tabular-nums">
-                        <span className="bg-blue-50 text-blue-800 border border-blue-200/70 px-2 py-0.5 rounded font-bold">
-                          {toPersianDigits(bk.stats?.productsCount ?? 0)} کالا
+                      {/* Left Side: Trigger Badge + View Icon */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {getTriggerBadge(bk.trigger, true)}
+                        <span className="p-1.5 rounded-lg bg-slate-100 text-slate-500">
+                          <Eye className="w-3.5 h-3.5" />
                         </span>
-                        <span className="bg-emerald-50 text-emerald-800 border border-emerald-200/70 px-2 py-0.5 rounded font-bold">
-                          {toPersianDigits(bk.stats?.invoicesCount ?? 0)} فاکتور فروش
-                        </span>
-                        {(bk.stats?.purchaseInvoicesCount ?? 0) > 0 && (
-                          <span className="bg-indigo-50 text-indigo-800 border border-indigo-200/70 px-2 py-0.5 rounded font-bold">
-                            {toPersianDigits(bk.stats.purchaseInvoicesCount)} فاکتور خرید
-                          </span>
-                        )}
-                        <span className="bg-purple-50 text-purple-800 border border-purple-200/70 px-2 py-0.5 rounded font-bold">
-                          {toPersianDigits(bk.stats?.customersCount ?? 0)} مشتری
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenServerBackupRestore(bk)}
-                          disabled={actionLoading}
-                          className="flex-1 py-2 px-3 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
-                          <span>پیش‌نمایش و بازیابی</span>
-                        </button>
-
-                        <a
-                          href={`/api/backups/download/${encodeURIComponent(bk.filename)}`}
-                          download={bk.filename}
-                          className="p-2 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 rounded-xl transition-colors"
-                          title="دانلود JSON"
-                        >
-                          <Download className="w-4 h-4" />
-                        </a>
-
-                        <button
-                          type="button"
-                          onClick={() => handleSendBackupToTelegram(bk.filename)}
-                          disabled={sendingTelegramFile === bk.filename || actionLoading}
-                          className="p-2 bg-slate-100 hover:bg-sky-50 text-slate-700 hover:text-sky-600 rounded-xl transition-colors cursor-pointer"
-                          title="ارسال به تلگرام"
-                        >
-                          <Send className="w-4 h-4" />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget({ filename: bk.filename, label: bk.label })}
-                          disabled={actionLoading}
-                          className="p-2 bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded-xl transition-colors cursor-pointer"
-                          title="حذف"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
                       </div>
                     </div>
                   );
                 })}
               </div>
 
-              <div className="p-3 border-t border-slate-100">
+              <div className="p-3 border-t border-slate-100 bg-slate-50/40">
                 <SmartPagination
                   currentPage={currentPage}
                   totalItems={filteredBackups.length}
@@ -2217,7 +2396,224 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
       )}
 
       {/* ===================================================================== */}
-      {/* MODAL 3: DELETE BACKUP CONFIRMATION MODAL                             */}
+      {/* MODAL 2.5: BACKUP ROW DETAILS & OPERATIONS MODAL                      */}
+      {/* ===================================================================== */}
+      {selectedBackupModal && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setSelectedBackupModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3.5">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 shrink-0">
+                  <Archive className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-black text-sm sm:text-base text-slate-900 truncate">
+                      {selectedBackupModal.label}
+                    </h3>
+                    {getTriggerBadge(selectedBackupModal.trigger, true)}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {formatIsoToPersianTime(selectedBackupModal.createdAt)} (
+                    {formatCompactPersianDateTime(selectedBackupModal.createdAt).relative})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedBackupModal(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Metadata Box (Filename, Size, SHA-256) */}
+            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80 space-y-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500 font-medium">نام فایل آرشیو:</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleCopyCommand(selectedBackupModal.filename, `modal_fn_${selectedBackupModal.filename}`)
+                  }
+                  className="flex items-center gap-1.5 font-mono text-[11px] text-slate-700 hover:text-emerald-700 bg-white px-2 py-1 rounded-md border border-slate-200 cursor-pointer truncate max-w-[260px]"
+                  dir="ltr"
+                  title="کپی نام فایل"
+                >
+                  {copiedKey === `modal_fn_${selectedBackupModal.filename}` ? (
+                    <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                  ) : (
+                    <Copy className="w-3 h-3 text-slate-400 shrink-0" />
+                  )}
+                  <span className="truncate">{selectedBackupModal.filename}</span>
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500 font-medium">حجم فایل پشتیبان:</span>
+                <span
+                  className="font-mono font-bold text-slate-800 bg-white px-2 py-0.5 rounded-md border border-slate-200"
+                  dir="ltr"
+                >
+                  {formatFileSize(selectedBackupModal.sizeBytes)}
+                </span>
+              </div>
+
+              {selectedBackupModal.checksum && (
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200/60">
+                  <span className="text-slate-500 font-medium flex items-center gap-1">
+                    <FileCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    امضای دیجیتال SHA-256:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleCopyCommand(
+                        selectedBackupModal.checksum,
+                        `modal_hash_${selectedBackupModal.filename}`
+                      )
+                    }
+                    className="flex items-center gap-1.5 font-mono text-[10px] text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-md border border-emerald-200 cursor-pointer"
+                    dir="ltr"
+                    title="کپی کد یکپارچگی SHA-256"
+                  >
+                    <span>{selectedBackupModal.checksum.slice(0, 18)}...</span>
+                    {copiedKey === `modal_hash_${selectedBackupModal.filename}` ? (
+                      <Check className="w-3 h-3 text-emerald-600" />
+                    ) : (
+                      <Copy className="w-3 h-3 text-emerald-600" />
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Content Statistics Grid */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-slate-500" />
+                <span>آمار رکوردهای ذخیره‌شده در این نسخه:</span>
+              </h4>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+                <div className="p-2.5 rounded-xl bg-blue-50/60 border border-blue-200/70">
+                  <Boxes className="w-4 h-4 text-blue-600 mx-auto mb-1" />
+                  <span className="text-[10px] text-slate-500 block">کالاهای انبار</span>
+                  <strong className="font-mono text-sm text-blue-900">
+                    {toPersianDigits(selectedBackupModal.stats?.productsCount ?? 0)}
+                  </strong>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-emerald-50/60 border border-emerald-200/70">
+                  <ReceiptText className="w-4 h-4 text-emerald-600 mx-auto mb-1" />
+                  <span className="text-[10px] text-slate-500 block">فاکتور فروش</span>
+                  <strong className="font-mono text-sm text-emerald-900">
+                    {toPersianDigits(selectedBackupModal.stats?.invoicesCount ?? 0)}
+                  </strong>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-indigo-50/60 border border-indigo-200/70">
+                  <ShoppingBag className="w-4 h-4 text-indigo-600 mx-auto mb-1" />
+                  <span className="text-[10px] text-slate-500 block">خرید و خدمات</span>
+                  <strong className="font-mono text-sm text-indigo-900">
+                    {toPersianDigits(selectedBackupModal.stats?.purchaseInvoicesCount ?? 0)}
+                  </strong>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-amber-50/60 border border-amber-200/70">
+                  <HardDrive className="w-4 h-4 text-amber-600 mx-auto mb-1" />
+                  <span className="text-[10px] text-slate-500 block">رسید انبار</span>
+                  <strong className="font-mono text-sm text-amber-900">
+                    {toPersianDigits(selectedBackupModal.stats?.inboundReceiptsCount ?? 0)}
+                  </strong>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-purple-50/60 border border-purple-200/70 col-span-2 sm:col-span-1">
+                  <Users className="w-4 h-4 text-purple-600 mx-auto mb-1" />
+                  <span className="text-[10px] text-slate-500 block">مشتریان</span>
+                  <strong className="font-mono text-sm text-purple-900">
+                    {toPersianDigits(selectedBackupModal.stats?.customersCount ?? 0)}
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Operations Section */}
+            <div className="space-y-2.5 pt-2 border-t border-slate-100">
+              <h4 className="text-xs font-bold text-slate-700">عملیات قابل انجام روی این نسخه:</h4>
+
+              {/* Primary Action: Preview & Restore */}
+              <button
+                type="button"
+                onClick={() => {
+                  const target = selectedBackupModal;
+                  setSelectedBackupModal(null);
+                  handleOpenServerBackupRestore(target);
+                }}
+                disabled={actionLoading}
+                className="w-full py-2.5 px-4 bg-amber-600 hover:bg-amber-700 active:scale-98 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer transition-all flex items-center justify-center gap-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>پیش‌نمایش مقایسه با وضعیت فعلی و بازیابی هوشمند (کامل / انتخابی)</span>
+              </button>
+
+              {/* Secondary Actions Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <a
+                  href={`/api/backups/download/${encodeURIComponent(selectedBackupModal.filename)}`}
+                  download={selectedBackupModal.filename}
+                  className="py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Download className="w-4 h-4 text-emerald-600" />
+                  <span>دانلود فایل JSON</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendBackupToTelegram(selectedBackupModal.filename)}
+                  disabled={sendingTelegramFile === selectedBackupModal.filename || actionLoading}
+                  className="py-2.5 px-3 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <Send
+                    className={`w-4 h-4 text-sky-600 ${
+                      sendingTelegramFile === selectedBackupModal.filename ? 'animate-bounce' : ''
+                    }`}
+                  />
+                  <span>
+                    {sendingTelegramFile === selectedBackupModal.filename
+                      ? 'در حال ارسال...'
+                      : 'ارسال به تلگرام'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = selectedBackupModal;
+                    setSelectedBackupModal(null);
+                    setDeleteTarget({ filename: target.filename, label: target.label });
+                  }}
+                  disabled={actionLoading}
+                  className="py-2.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <span>حذف از سرور</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL 3: DELETE BACKUP CONFIRMATION MODAL (SINGLE OR BULK)            */}
       {/* ===================================================================== */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -2249,6 +2645,47 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
               <button
                 type="button"
                 onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                انصراف
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBulkDeleteModal && selectedBackupFiles.length > 0 && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-rose-200 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3 text-rose-600 border-b border-slate-100 pb-3">
+              <div className="p-2 rounded-xl bg-rose-50 border border-rose-200">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="font-black text-sm text-slate-900">
+                  حذف گروهی نسخه‌های پشتیبان ({toPersianDigits(selectedBackupFiles.length)} فایل)
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">پاکسازی آرشیو سرور</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              آیا از حذف دائمی <strong>{toPersianDigits(selectedBackupFiles.length)} نسخه پشتیبان انتخاب‌شده</strong> از آرشیو سرور اطمینان دارید؟
+            </p>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={handleConfirmBulkDeleteBackups}
+                disabled={actionLoading}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {actionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                <span>تأیید و حذف {toPersianDigits(selectedBackupFiles.length)} نسخه</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteModal(false)}
                 className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
               >
                 انصراف
