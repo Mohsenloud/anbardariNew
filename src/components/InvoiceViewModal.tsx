@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Invoice, StoreSettings } from '../types';
-import { formatPrice, toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
+import { formatPrice, toPersianDigits, getCurrentJalaliDate, cleanInvoiceNotes } from '../utils/jalali';
 import { exportElementToPdf, printElementDirectly, printElementInNewWindow, generatePdfBlob, getInvoicePdfFilename } from '../utils/pdfHelper';
 import { TelegramSendPdfModal } from './TelegramSendPdfModal';
 import { formatInvoiceTelegramCaption } from '../utils/telegramService';
@@ -1034,92 +1034,135 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                 {/* ZONE 1: TOP (Header, Seller & Buyer details) */}
                 <div className={`shrink-0 ${isA5 ? 'space-y-2' : 'space-y-3'}`}>
                   {/* Header: Seller Brand + Invoice Title & Meta */}
+                  {/* Header: Seller Brand + Invoice Title & Meta */}
                   <div className={`invoice-header border-b-2 border-slate-900 ${isA5 ? 'pb-2' : 'pb-3'}`}>
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                      <div className="flex items-start gap-2.5">
-                        {/* Store Logo with Direct Upload / Change Capability */}
-                        <div className="relative group shrink-0">
-                          {(activeSettings.printLayout?.customLogoUrl || activeSettings.logo) ? (
-                            <img 
-                              src={activeSettings.printLayout?.customLogoUrl || activeSettings.logo} 
-                              alt={activeSettings.storeName} 
-                              className={`object-contain bg-white rounded-lg border border-slate-200 shadow-2xs ${
-                                isA5 ? 'h-8 max-h-8 max-w-[80px]' : 'h-11 max-h-11 max-w-[120px]'
-                              }`}
-                            />
-                          ) : (
-                            <span className={`rounded-lg bg-slate-900 text-white flex items-center justify-center font-black shadow-2xs ${
-                              isA5 ? 'w-8 h-8 text-xs' : 'w-11 h-11 text-base'
-                            }`}>
-                              {activeSettings.storeName ? activeSettings.storeName.charAt(0) : 'ف'}
-                            </span>
-                          )}
-                          <label 
-                            className="no-print no-pdf absolute inset-0 bg-black/60 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-lg cursor-pointer transition-opacity text-[10px] font-bold"
-                            title="کلیک برای بارگذاری یا تغییر لوگوی فروشگاه"
-                          >
-                            <span>لوگو</span>
-                            <input type="file" accept="image/*" onChange={handleDirectLogoUpload} className="hidden" />
-                          </label>
+                    {isOfficial ? (
+                      /* OFFICIAL INVOICE HEADER:
+                         - No brand/storeName or phone on the right (removed per user request)
+                         - Title centered: "فاکتور فروش" (or "پیش‌فاکتور فروش")
+                         - Date and Invoice Number in ONE line on the top-left
+                      */
+                      <div className="flex flex-row items-center justify-between gap-3">
+                        {/* Right empty spacer for perfect center alignment of title */}
+                        <div className="w-1/3 invisible sm:block"></div>
+
+                        {/* Center: Title centered */}
+                        <div className="flex-1 text-center">
+                          <h1 className={`font-black text-slate-900 tracking-wide ${isA5 ? 'text-sm' : 'text-lg'}`}>
+                            {invoice.isProforma ? 'پیش‌فاکتور فروش' : 'فاکتور فروش'}
+                          </h1>
                         </div>
 
-                        <div>
-                          <h2 className={`font-extrabold text-slate-900 leading-tight ${isA5 ? 'text-base' : 'text-xl'}`}>
-                            {activeSettings.storeName || 'فروشگاه سپهر'}
-                          </h2>
-                          {activeSettings.tagline && (
-                            <p className={`text-slate-600 mt-0.5 ${isA5 ? 'text-[10px]' : 'text-xs'}`}>
-                              {activeSettings.tagline}
-                            </p>
-                          )}
-                          {/* Seller Phone (آدرس از هدر حذف شد) */}
-                          <div className={`flex flex-wrap items-center gap-x-3 text-slate-600 pt-1 ${
-                            isA5 ? 'text-[9.5px]' : 'text-[11px]'
-                          }`}>
-                            {(activeSettings.phone || activeSettings.mobile) && (
-                              <span>
-                                تلفن: <strong className="text-slate-800 font-semibold">{toPersianDigits(activeSettings.phone || activeSettings.mobile)}</strong>
+                        {/* Left: Date & Invoice Number in one single line on the top-left */}
+                        <div className="w-auto sm:w-1/3 flex justify-end text-left shrink-0">
+                          <div className={`flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-slate-700 font-bold ${isA5 ? 'text-[9.5px]' : 'text-xs'}`}>
+                            <div className="flex items-center gap-1">
+                              <span>{invoice.isProforma ? 'شماره پیش‌فاکتور:' : 'شماره فاکتور:'}</span>
+                              <strong className="font-mono text-slate-900 font-black tracking-wide">
+                                {toPersianDigits(invoice.invoiceNumber)}
+                              </strong>
+                            </div>
+                            <span className="text-slate-300">|</span>
+                            <div className="flex items-center gap-1">
+                              <span>تاریخ:</span>
+                              <strong className="text-slate-900 font-bold">
+                                {toPersianDigits(activeInvoice?.date || invoice.date || getCurrentJalaliDate())}
+                              </strong>
+                              <button
+                                type="button"
+                                onClick={() => setIsDateModalOpen(true)}
+                                className="no-print no-pdf p-0.5 hover:bg-emerald-50 hover:text-emerald-800 text-slate-400 rounded-md transition-colors cursor-pointer"
+                                title="کلیک برای تغییر تاریخ فاکتور"
+                              >
+                                <Pencil className="w-3 h-3 text-slate-400 hover:text-emerald-600" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div className="flex items-start gap-2.5">
+                          {/* Store Logo with Direct Upload / Change Capability */}
+                          <div className="relative group shrink-0">
+                            {(activeSettings.printLayout?.customLogoUrl || activeSettings.logo) ? (
+                              <img 
+                                src={activeSettings.printLayout?.customLogoUrl || activeSettings.logo} 
+                                alt={activeSettings.storeName} 
+                                className={`object-contain bg-white rounded-lg border border-slate-200 shadow-2xs ${
+                                  isA5 ? 'h-8 max-h-8 max-w-[80px]' : 'h-11 max-h-11 max-w-[120px]'
+                                }`}
+                              />
+                            ) : (
+                              <span className={`rounded-lg bg-slate-900 text-white flex items-center justify-center font-black shadow-2xs ${
+                                isA5 ? 'w-8 h-8 text-xs' : 'w-11 h-11 text-base'
+                              }`}>
+                                {activeSettings.storeName ? activeSettings.storeName.charAt(0) : 'ف'}
                               </span>
                             )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Badge / Title */}
-                      <div className="text-center sm:text-left self-center sm:self-auto shrink-0">
-                        <h1 className={`font-black text-slate-900 tracking-wide border-b-2 border-slate-800 pb-0.5 ${isA5 ? 'text-sm' : 'text-lg'}`}>
-                          {invoice.isProforma
-                            ? currentTemplate === 'official'
-                              ? 'پیش‌فاکتور فروش کالا و خدمات'
-                              : 'پیش‌فاکتور فروش کالا'
-                            : currentTemplate === 'official'
-                            ? 'صورتحساب فروش کالا و خدمات'
-                            : 'فاکتور فروش کالا'}
-                        </h1>
-                        <div className={`flex flex-col items-center sm:items-start gap-1 mt-1 text-slate-600 ${isA5 ? 'text-[10px]' : 'text-xs'}`}>
-                          <div className="flex items-center gap-1.5">
-                            <span>تاریخ:</span>
-                            <strong className="text-slate-900 font-bold">
-                              {toPersianDigits(activeInvoice?.date || invoice.date || getCurrentJalaliDate())}
-                            </strong>
-                            <button
-                              type="button"
-                              onClick={() => setIsDateModalOpen(true)}
-                              className="no-print no-pdf p-0.5 hover:bg-emerald-50 hover:text-emerald-800 text-slate-400 rounded-md transition-colors cursor-pointer"
-                              title="کلیک برای تغییر تاریخ فاکتور"
+                            <label 
+                              className="no-print no-pdf absolute inset-0 bg-black/60 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-lg cursor-pointer transition-opacity text-[10px] font-bold"
+                              title="کلیک برای بارگذاری یا تغییر لوگوی فروشگاه"
                             >
-                              <Pencil className="w-3 h-3 text-slate-400 hover:text-emerald-600" />
-                            </button>
+                              <span>لوگو</span>
+                              <input type="file" accept="image/*" onChange={handleDirectLogoUpload} className="hidden" />
+                            </label>
                           </div>
-                          <div className="flex items-center gap-1.5 pt-0.5">
-                            <span>{invoice.isProforma ? 'شماره پیش‌فاکتور:' : 'شماره فاکتور:'}</span>
-                            <strong className={`text-slate-900 font-black tracking-wide ${isA5 ? 'text-xs' : 'text-sm'}`}>
-                              {toPersianDigits(invoice.invoiceNumber)}
-                            </strong>
+
+                          <div>
+                            <h2 className={`font-extrabold text-slate-900 leading-tight ${isA5 ? 'text-base' : 'text-xl'}`}>
+                              {activeSettings.storeName || 'فروشگاه سپهر'}
+                            </h2>
+                            {activeSettings.tagline && (
+                              <p className={`text-slate-600 mt-0.5 ${isA5 ? 'text-[10px]' : 'text-xs'}`}>
+                                {activeSettings.tagline}
+                              </p>
+                            )}
+                            {/* Seller Phone (آدرس از هدر حذف شد) */}
+                            <div className={`flex flex-wrap items-center gap-x-3 text-slate-600 pt-1 ${
+                              isA5 ? 'text-[9.5px]' : 'text-[11px]'
+                            }`}>
+                              {(activeSettings.phone || activeSettings.mobile) && (
+                                <span>
+                                  تلفن: <strong className="text-slate-800 font-semibold">{toPersianDigits(activeSettings.phone || activeSettings.mobile)}</strong>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Badge / Title */}
+                        <div className="text-center sm:text-left self-center sm:self-auto shrink-0">
+                          <h1 className={`font-black text-slate-900 tracking-wide border-b-2 border-slate-800 pb-0.5 ${isA5 ? 'text-sm' : 'text-lg'}`}>
+                            {invoice.isProforma
+                              ? 'پیش‌فاکتور فروش کالا'
+                              : 'فاکتور فروش کالا'}
+                          </h1>
+                          <div className={`flex flex-col items-center sm:items-start gap-1 mt-1 text-slate-600 ${isA5 ? 'text-[10px]' : 'text-xs'}`}>
+                            <div className="flex items-center gap-1.5">
+                              <span>تاریخ:</span>
+                              <strong className="text-slate-900 font-bold">
+                                {toPersianDigits(activeInvoice?.date || invoice.date || getCurrentJalaliDate())}
+                              </strong>
+                              <button
+                                type="button"
+                                onClick={() => setIsDateModalOpen(true)}
+                                className="no-print no-pdf p-0.5 hover:bg-emerald-50 hover:text-emerald-800 text-slate-400 rounded-md transition-colors cursor-pointer"
+                                title="کلیک برای تغییر تاریخ فاکتور"
+                              >
+                                <Pencil className="w-3 h-3 text-slate-400 hover:text-emerald-600" />
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-1.5 pt-0.5">
+                              <span>{invoice.isProforma ? 'شماره پیش‌فاکتور:' : 'شماره فاکتور:'}</span>
+                              <strong className={`text-slate-900 font-black tracking-wide ${isA5 ? 'text-xs' : 'text-sm'}`}>
+                                {toPersianDigits(invoice.invoiceNumber)}
+                              </strong>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
 
                   {/* Seller & Buyer Info Blocks */}
@@ -1132,9 +1175,6 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                             <Building2 className="w-3.5 h-3.5 text-emerald-700" />
                             <span>مشخصات فروشنده رسمی:</span>
                           </div>
-                          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
-                            فاکتور دارایی
-                          </span>
                         </div>
                         <div className="space-y-0.5 text-slate-700">
                           <p><strong>نام فروشنده / شرکت:</strong> {invoice.sellerName || settings.sellerName || settings.storeName || '---'}</p>
@@ -1282,6 +1322,23 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                             تخفیف
                           </th>
                         )}
+                        {isOfficial && (
+                          <th 
+                            className="border-l border-slate-300 text-center align-middle"
+                            style={{ 
+                              width: '65px',
+                              minWidth: '55px',
+                              paddingTop: `${liveRowPy}px`,
+                              paddingBottom: `${liveRowPy}px`,
+                              paddingLeft: `${liveCellPx}px`,
+                              paddingRight: `${liveCellPx}px`,
+                              height: `${liveHeaderH}px`,
+                              fontSize: `${liveTableHeaderFontSize}px`
+                            }}
+                          >
+                            ٪ ارزش افزوده
+                          </th>
+                        )}
                         <th 
                           className="text-left align-middle"
                           style={{ 
@@ -1295,40 +1352,30 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                             fontSize: `${liveTableHeaderFontSize}px`
                           }}
                         >
-                          مبلغ کل ({settings.currency})
+                          {isOfficial ? `مبلغ کل با ارزش افزوده (${settings.currency})` : `مبلغ کل (${settings.currency})`}
                         </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {invoice.items.map((item, idx) => (
-                        <tr
-                          key={item.id || idx}
-                          className={`border-b border-slate-200 ${
-                            idx % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'
-                          }`}
-                          style={{ height: `${liveRowMinH}px` }}
-                        >
-                          <td 
-                            className="border-l border-slate-200 text-center align-middle font-['Vazirmatn']"
-                            style={{
-                              width: `${liveColWidthIndex}px`,
-                              minWidth: `${liveColWidthIndex}px`,
-                              paddingTop: `${liveRowPy}px`,
-                              paddingBottom: `${liveRowPy}px`,
-                              paddingLeft: `${liveCellPx}px`,
-                              paddingRight: `${liveCellPx}px`,
-                              height: `${liveRowMinH}px`,
-                              fontSize: `${liveTableBodyFontSize}px`
-                            }}
+                      {invoice.items.map((item, idx) => {
+                        const itemNet = Math.max(0, item.total);
+                        const itemTotalWithTax = isOfficial
+                          ? Math.round(itemNet + (itemNet * effectiveTaxRate) / 100)
+                          : item.total;
+
+                        return (
+                          <tr
+                            key={item.id || idx}
+                            className={`border-b border-slate-200 ${
+                              idx % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'
+                            }`}
+                            style={{ height: `${liveRowMinH}px` }}
                           >
-                            {toPersianDigits(idx + 1)}
-                          </td>
-                          {currentPrintLayout.showItemCodeCol !== false && (
                             <td 
-                              className="border-l border-slate-200 text-slate-600 align-middle font-mono"
+                              className="border-l border-slate-200 text-center align-middle font-['Vazirmatn']"
                               style={{
-                                width: `${liveColWidthCode}px`,
-                                minWidth: `${liveColWidthCode}px`,
+                                width: `${liveColWidthIndex}px`,
+                                minWidth: `${liveColWidthIndex}px`,
                                 paddingTop: `${liveRowPy}px`,
                                 paddingBottom: `${liveRowPy}px`,
                                 paddingLeft: `${liveCellPx}px`,
@@ -1337,53 +1384,85 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                                 fontSize: `${liveTableBodyFontSize}px`
                               }}
                             >
-                              {toPersianDigits(item.productCode || '---')}
+                              {toPersianDigits(idx + 1)}
                             </td>
-                          )}
-                          <td 
-                            className="border-l border-slate-200 font-medium text-slate-900 align-middle"
-                            style={{
-                              paddingTop: `${liveRowPy}px`,
-                              paddingBottom: `${liveRowPy}px`,
-                              paddingLeft: `${liveCellPx}px`,
-                              paddingRight: `${liveCellPx}px`,
-                              height: `${liveRowMinH}px`,
-                              fontSize: `${liveTableBodyFontSize}px`
-                            }}
-                          >
-                            <div>{item.productName}</div>
-                            {item.variantName && (
-                              <div className="text-[10px] text-purple-700 mt-0.5">
-                                تنوع: {item.variantName}
-                              </div>
+                            {currentPrintLayout.showItemCodeCol !== false && (
+                              <td 
+                                className="border-l border-slate-200 text-slate-600 align-middle font-mono"
+                                style={{
+                                  width: `${liveColWidthCode}px`,
+                                  minWidth: `${liveColWidthCode}px`,
+                                  paddingTop: `${liveRowPy}px`,
+                                  paddingBottom: `${liveRowPy}px`,
+                                  paddingLeft: `${liveCellPx}px`,
+                                  paddingRight: `${liveCellPx}px`,
+                                  height: `${liveRowMinH}px`,
+                                  fontSize: `${liveTableBodyFontSize}px`
+                                }}
+                              >
+                                {toPersianDigits(item.productCode || '---')}
+                              </td>
                             )}
-                            {(item.description || item.notes) && (
-                              <div className="text-[10px] text-slate-500 font-normal mt-0.5 leading-snug whitespace-pre-wrap">
-                                <span className="text-slate-400">توضیح: </span>{item.description || item.notes}
-                              </div>
+                            <td 
+                              className="border-l border-slate-200 font-medium text-slate-900 align-middle"
+                              style={{
+                                paddingTop: `${liveRowPy}px`,
+                                paddingBottom: `${liveRowPy}px`,
+                                paddingLeft: `${liveCellPx}px`,
+                                paddingRight: `${liveCellPx}px`,
+                                height: `${liveRowMinH}px`,
+                                fontSize: `${liveTableBodyFontSize}px`
+                              }}
+                            >
+                              <div>{item.productName}</div>
+                              {item.variantName && (
+                                <div className="text-[10px] text-purple-700 mt-0.5">
+                                  تنوع: {item.variantName}
+                                </div>
+                              )}
+                              {(item.description || item.notes) && (
+                                <div className="text-[10px] text-slate-500 font-normal mt-0.5 leading-snug whitespace-pre-wrap">
+                                  <span className="text-slate-400">توضیح: </span>{item.description || item.notes}
+                                </div>
+                              )}
+                            </td>
+                            <td 
+                              className="border-l border-slate-200 text-center font-bold align-middle font-['Vazirmatn']"
+                              style={{
+                                width: `${liveColWidthQty}px`,
+                                minWidth: `${liveColWidthQty}px`,
+                                paddingTop: `${liveRowPy}px`,
+                                paddingBottom: `${liveRowPy}px`,
+                                paddingLeft: `${liveCellPx}px`,
+                                paddingRight: `${liveCellPx}px`,
+                                height: `${liveRowMinH}px`,
+                                fontSize: `${liveTableBodyFontSize}px`
+                              }}
+                            >
+                              {toPersianDigits(item.quantity)}
+                            </td>
+                            {currentPrintLayout.showItemUnitCol !== false && (
+                              <td 
+                                className="border-l border-slate-200 text-center text-slate-600 align-middle"
+                                style={{
+                                  width: `${liveColWidthUnit}px`,
+                                  minWidth: `${liveColWidthUnit}px`,
+                                  paddingTop: `${liveRowPy}px`,
+                                  paddingBottom: `${liveRowPy}px`,
+                                  paddingLeft: `${liveCellPx}px`,
+                                  paddingRight: `${liveCellPx}px`,
+                                  height: `${liveRowMinH}px`,
+                                  fontSize: `${liveTableBodyFontSize}px`
+                                }}
+                              >
+                                {item.unit || 'عدد'}
+                              </td>
                             )}
-                          </td>
-                          <td 
-                            className="border-l border-slate-200 text-center font-bold align-middle font-['Vazirmatn']"
-                            style={{
-                              width: `${liveColWidthQty}px`,
-                              minWidth: `${liveColWidthQty}px`,
-                              paddingTop: `${liveRowPy}px`,
-                              paddingBottom: `${liveRowPy}px`,
-                              paddingLeft: `${liveCellPx}px`,
-                              paddingRight: `${liveCellPx}px`,
-                              height: `${liveRowMinH}px`,
-                              fontSize: `${liveTableBodyFontSize}px`
-                            }}
-                          >
-                            {toPersianDigits(item.quantity)}
-                          </td>
-                          {currentPrintLayout.showItemUnitCol !== false && (
                             <td 
-                              className="border-l border-slate-200 text-center text-slate-600 align-middle"
+                              className="border-l border-slate-200 text-left font-['Vazirmatn'] align-middle"
                               style={{
-                                width: `${liveColWidthUnit}px`,
-                                minWidth: `${liveColWidthUnit}px`,
+                                width: `${liveColWidthPrice}px`,
+                                minWidth: `${liveColWidthPrice}px`,
                                 paddingTop: `${liveRowPy}px`,
                                 paddingBottom: `${liveRowPy}px`,
                                 paddingLeft: `${liveCellPx}px`,
@@ -1392,30 +1471,45 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                                 fontSize: `${liveTableBodyFontSize}px`
                               }}
                             >
-                              {item.unit || 'عدد'}
+                              {formatPrice(item.unitPrice, '', true)}
                             </td>
-                          )}
-                          <td 
-                            className="border-l border-slate-200 text-left font-['Vazirmatn'] align-middle"
-                            style={{
-                              width: `${liveColWidthPrice}px`,
-                              minWidth: `${liveColWidthPrice}px`,
-                              paddingTop: `${liveRowPy}px`,
-                              paddingBottom: `${liveRowPy}px`,
-                              paddingLeft: `${liveCellPx}px`,
-                              paddingRight: `${liveCellPx}px`,
-                              height: `${liveRowMinH}px`,
-                              fontSize: `${liveTableBodyFontSize}px`
-                            }}
-                          >
-                            {formatPrice(item.unitPrice, '', true)}
-                          </td>
-                          {currentPrintLayout.showItemDiscountCol !== false && (
+                            {currentPrintLayout.showItemDiscountCol !== false && (
+                              <td 
+                                className="border-l border-slate-200 text-left text-slate-600 font-['Vazirmatn'] align-middle"
+                                style={{
+                                  width: `${liveColWidthDiscount}px`,
+                                  minWidth: `${liveColWidthDiscount}px`,
+                                  paddingTop: `${liveRowPy}px`,
+                                  paddingBottom: `${liveRowPy}px`,
+                                  paddingLeft: `${liveCellPx}px`,
+                                  paddingRight: `${liveCellPx}px`,
+                                  height: `${liveRowMinH}px`,
+                                  fontSize: `${liveTableBodyFontSize}px`
+                                }}
+                              >
+                                {item.discount > 0 ? formatPrice(item.discount, '', true) : '۰'}
+                              </td>
+                            )}
+                            {isOfficial && (
+                              <td 
+                                className="border-l border-slate-200 text-center font-['Vazirmatn'] font-bold text-slate-700 align-middle"
+                                style={{
+                                  paddingTop: `${liveRowPy}px`,
+                                  paddingBottom: `${liveRowPy}px`,
+                                  paddingLeft: `${liveCellPx}px`,
+                                  paddingRight: `${liveCellPx}px`,
+                                  height: `${liveRowMinH}px`,
+                                  fontSize: `${liveTableBodyFontSize}px`
+                                }}
+                              >
+                                {toPersianDigits(effectiveTaxRate)}٪
+                              </td>
+                            )}
                             <td 
-                              className="border-l border-slate-200 text-left text-slate-600 font-['Vazirmatn'] align-middle"
+                              className="text-left font-bold text-slate-900 font-['Vazirmatn'] align-middle"
                               style={{
-                                width: `${liveColWidthDiscount}px`,
-                                minWidth: `${liveColWidthDiscount}px`,
+                                width: `${liveColWidthTotal}px`,
+                                minWidth: `${liveColWidthTotal}px`,
                                 paddingTop: `${liveRowPy}px`,
                                 paddingBottom: `${liveRowPy}px`,
                                 paddingLeft: `${liveCellPx}px`,
@@ -1424,26 +1518,11 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                                 fontSize: `${liveTableBodyFontSize}px`
                               }}
                             >
-                              {item.discount > 0 ? formatPrice(item.discount, '', true) : '۰'}
+                              {formatPrice(itemTotalWithTax, '', true)}
                             </td>
-                          )}
-                          <td 
-                            className="text-left font-bold text-slate-900 font-['Vazirmatn'] align-middle"
-                            style={{
-                              width: `${liveColWidthTotal}px`,
-                              minWidth: `${liveColWidthTotal}px`,
-                              paddingTop: `${liveRowPy}px`,
-                              paddingBottom: `${liveRowPy}px`,
-                              paddingLeft: `${liveCellPx}px`,
-                              paddingRight: `${liveCellPx}px`,
-                              height: `${liveRowMinH}px`,
-                              fontSize: `${liveTableBodyFontSize}px`
-                            }}
-                          >
-                            {formatPrice(item.total, '', true)}
-                          </td>
-                        </tr>
-                      ))}
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1511,43 +1590,57 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                         )}
                       </div>
 
-                      {invoice.notes && (
+                      {cleanInvoiceNotes(invoice.notes) && (
                         <div className="text-slate-800 leading-relaxed text-xs">
                           <strong className="text-slate-900 font-bold">توضیحات فاکتور:</strong>
-                          <p className="mt-0.5 whitespace-pre-line font-medium leading-relaxed">{invoice.notes}</p>
+                          <p className="mt-0.5 whitespace-pre-line font-medium leading-relaxed">{cleanInvoiceNotes(invoice.notes)}</p>
                         </div>
                       )}
-                      <p className="text-[11px] text-slate-600 leading-relaxed">
-                        {settings.invoiceFooterText || 'از اعتماد و همکاری شما صمیمانه متشکریم.'}
-                      </p>
+                      {cleanInvoiceNotes(settings.invoiceFooterText) && (
+                        <p className="text-[11px] text-slate-600 leading-relaxed">
+                          {cleanInvoiceNotes(settings.invoiceFooterText) || 'از اعتماد و همکاری شما صمیمانه متشکریم.'}
+                        </p>
+                      )}
                     </div>
 
                     {/* Calculations Table */}
                     <div className="border border-slate-300 rounded-xl overflow-hidden text-xs">
-                      <div className="p-2 flex justify-between border-b border-slate-200 bg-slate-50">
-                        <span className="text-slate-600">جمع ناخالص اقلام:</span>
-                        <span className="font-semibold text-slate-800">{formatPrice(invoice.subtotal, settings.currency)}</span>
-                      </div>
-                      {invoice.totalDiscount > 0 && (
-                        <div className="p-2 flex justify-between border-b border-slate-200 text-rose-700 bg-white">
-                          <span>مجموع تخفیفات:</span>
-                          <span>-{formatPrice(invoice.totalDiscount, settings.currency)}</span>
-                        </div>
-                      )}
-                      {effectiveTaxAmount > 0 && (
-                        <div className={`p-2 flex justify-between border-b border-slate-200 ${isOfficial ? 'bg-emerald-50/70 text-emerald-950 font-bold' : 'bg-slate-50'}`}>
-                          <span className={isOfficial ? 'text-emerald-900 font-extrabold' : 'text-slate-600'}>
-                            مالیات و ارزش افزوده ({toPersianDigits(effectiveTaxRate)}٪):
-                          </span>
-                          <span className="font-semibold text-slate-800">
-                            +{formatPrice(effectiveTaxAmount, settings.currency)}
+                      {isOfficial ? (
+                        /* در فاکتور رسمی: در قسمت جمع اعداد، قیمت فقط با ارزش افزوده نوشته شود */
+                        <div className="p-3 bg-slate-900 text-white font-bold flex justify-between items-center text-sm">
+                          <span>مبلغ قابل پرداخت با ارزش افزوده:</span>
+                          <span className="text-emerald-400 font-extrabold text-base">
+                            {formatPrice(effectiveFinalTotal, settings.currency)}
                           </span>
                         </div>
+                      ) : (
+                        <>
+                          <div className="p-2 flex justify-between border-b border-slate-200 bg-slate-50">
+                            <span className="text-slate-600">جمع ناخالص اقلام:</span>
+                            <span className="font-semibold text-slate-800">{formatPrice(invoice.subtotal, settings.currency)}</span>
+                          </div>
+                          {invoice.totalDiscount > 0 && (
+                            <div className="p-2 flex justify-between border-b border-slate-200 text-rose-700 bg-white">
+                              <span>مجموع تخفیفات:</span>
+                              <span>-{formatPrice(invoice.totalDiscount, settings.currency)}</span>
+                            </div>
+                          )}
+                          {effectiveTaxAmount > 0 && (
+                            <div className={`p-2 flex justify-between border-b border-slate-200 ${isOfficial ? 'bg-emerald-50/70 text-emerald-950 font-bold' : 'bg-slate-50'}`}>
+                              <span className={isOfficial ? 'text-emerald-900 font-extrabold' : 'text-slate-600'}>
+                                مالیات و ارزش افزوده ({toPersianDigits(effectiveTaxRate)}٪):
+                              </span>
+                              <span className="font-semibold text-slate-800">
+                                +{formatPrice(effectiveTaxAmount, settings.currency)}
+                              </span>
+                            </div>
+                          )}
+                          <div className="p-2.5 flex justify-between bg-slate-900 text-white font-bold text-sm">
+                            <span>مبلغ نهایی قابل پرداخت:</span>
+                            <span className="text-emerald-400 font-extrabold">{formatPrice(effectiveFinalTotal, settings.currency)}</span>
+                          </div>
+                        </>
                       )}
-                      <div className="p-2.5 flex justify-between bg-slate-900 text-white font-bold text-sm">
-                        <span>مبلغ نهایی قابل پرداخت:</span>
-                        <span className="text-emerald-400 font-extrabold">{formatPrice(effectiveFinalTotal, settings.currency)}</span>
-                      </div>
                       {invoice.paymentStatus === 'partial' && (
                         <div className="p-2 flex justify-between border-t border-slate-200 bg-amber-50 text-amber-900 font-medium">
                           <span>مبلغ پرداختی: {formatPrice(invoice.paidAmount, settings.currency)}</span>

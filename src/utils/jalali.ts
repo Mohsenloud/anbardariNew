@@ -384,3 +384,22 @@ export function getInvoiceDaysAge(dateStr?: string, createdAt?: string): number 
 
   return 0;
 }
+
+/**
+ * پاکسازی توضیحات فاکتور از جملات سیستمی تبدیل و مهلت تست
+ * حذف جملات:
+ * - تبدیل شده از پیش فاکتور ... توسط ...
+ * - کالای فروخته شده ... مهلت تست ...
+ */
+export function cleanInvoiceNotes(notes?: string | null): string {
+  if (!notes || typeof notes !== 'string') return '';
+  return notes
+    // حذف جملات تبدیل پیش‌فاکتور به صورت داخل پرانتز یا بدون پرانتز
+    .replace(/\(?\s*تبدیل[‌\s]*شده\s*از\s*پیش[‌\s]*فاکتور[^\n)]*\)?/gi, '')
+    // حذف جملات مهلت تست کالا
+    .replace(/[^\n]*مهلت\s*تست[^\n]*/gi, '')
+    // حذف خطوط و فاصله‌های خالی تکراری
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s*\n+/g, '\n')
+    .trim();
+}

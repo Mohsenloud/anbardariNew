@@ -8,7 +8,7 @@ import {
   PublicCustomerLedger,
   PublicCustomerLedgerEntry
 } from '../types';
-import { formatPrice, toPersianDigits, numberToPersianWords, getCurrentJalaliDate } from '../utils/jalali';
+import { formatPrice, toPersianDigits, numberToPersianWords, getCurrentJalaliDate, cleanInvoiceNotes } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
 import { printElementDirectly, generatePdfBlob, getInvoicePdfFilename, exportElementToPdf } from '../utils/pdfHelper';
 import { 
@@ -1250,10 +1250,10 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                     </span>
                   </div>
 
-                  {currInv.notes && (
+                  {cleanInvoiceNotes(currInv.notes) && (
                     <div className="bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200/80 text-xs text-amber-900">
                       <span className="font-bold block mb-1">یادداشت و شرایط فاکتور:</span>
-                      <p className="leading-relaxed whitespace-pre-line">{currInv.notes}</p>
+                      <p className="leading-relaxed whitespace-pre-line">{cleanInvoiceNotes(currInv.notes)}</p>
                     </div>
                   )}
 
@@ -1328,8 +1328,8 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
               {/* 5. Footer & Official Digital Seal */}
               <div className="pt-6 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="text-xs text-slate-500 text-center sm:text-right space-y-1">
-                  {settings?.invoiceFooterText && (
-                    <p className="font-medium text-slate-700">{settings.invoiceFooterText}</p>
+                  {cleanInvoiceNotes(settings?.invoiceFooterText) && (
+                    <p className="font-medium text-slate-700">{cleanInvoiceNotes(settings.invoiceFooterText)}</p>
                   )}
                   <p className="text-[11px] text-slate-400">
                     صادر شده توسط سامانه هوشمند فاکتور و انبارداری سپهر • تاریخ مشاهده: {toPersianDigits(new Date().toLocaleDateString('fa-IR'))}

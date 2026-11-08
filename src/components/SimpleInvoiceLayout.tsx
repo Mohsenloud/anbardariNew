@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Invoice, StoreSettings } from '../types';
-import { formatPrice, toPersianDigits } from '../utils/jalali';
+import { formatPrice, toPersianDigits, cleanInvoiceNotes } from '../utils/jalali';
 import { getPrintLayoutCssVariables } from '../utils/printLayoutHelper';
 import { StorageService } from '../utils/storage';
 
@@ -388,17 +388,17 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
             )}
 
             {/* توضیحات فاکتور */}
-            {invoice.notes && (
+            {cleanInvoiceNotes(invoice.notes) && (
               <div className="pt-0.5 text-slate-800 leading-relaxed whitespace-pre-line">
                 <span className="font-bold text-slate-900">توضیحات: </span>
-                <span className="text-slate-750 font-medium leading-relaxed whitespace-pre-line">{invoice.notes}</span>
+                <span className="text-slate-750 font-medium leading-relaxed whitespace-pre-line">{cleanInvoiceNotes(invoice.notes)}</span>
               </div>
             )}
 
             {/* متن پایانی و تشکر */}
             {settings.printLayout?.showTermsBlock !== false && (
               <div className="text-slate-500 pt-0.5 border-t border-slate-200 text-[8.5px] sm:text-[9.5px]">
-                {settings.printLayout?.customFooterNotes || settings.invoiceFooterText || 'از اعتماد و همکاری شما صمیمانه سپاسگزاریم.'}
+                {cleanInvoiceNotes(settings.printLayout?.customFooterNotes || settings.invoiceFooterText) || 'از اعتماد و همکاری شما صمیمانه سپاسگزاریم.'}
               </div>
             )}
           </div>

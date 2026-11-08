@@ -546,7 +546,7 @@ export const DEFAULT_PRINT_LAYOUT: PrintLayoutSettings = {
   showSignaturesBlock: true,
   showTermsBlock: true,
   compactMode: false,
-  customFooterNotes: 'کالای فروخته شده در صورت سلامت فیزیکی تا ۲۴ ساعت دارای مهلت تست می‌باشد.',
+  customFooterNotes: 'از حسن انتخاب و همکاری صمیمانه شما سپاسگزاریم.',
 };
 
 // بهینه‌ترین و متوازن‌ترین چیدمان فاکتور با تناسب طلایی (Auto-Optimized Best Layout)
@@ -594,7 +594,7 @@ export const OPTIMAL_PRINT_LAYOUT: PrintLayoutSettings = {
   showSignaturesBlock: true,
   showTermsBlock: true,
   compactMode: false,
-  customFooterNotes: 'کالای فروخته شده در صورت سلامت فیزیکی تا ۲۴ ساعت دارای مهلت تست می‌باشد.',
+  customFooterNotes: 'از حسن انتخاب و همکاری صمیمانه شما سپاسگزاریم.',
 };
 
 export type PdfQualityPreset = 'economy' | 'standard' | 'high' | 'ultra';

@@ -674,9 +674,7 @@ export default function App() {
         createdByRole: proformaInvoice.createdByRole || currentUser?.roleTitle,
         convertedById: currentUserId,
         convertedByName: currentUserName,
-        notes: proformaInvoice.notes 
-          ? `${proformaInvoice.notes} (تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today} توسط ${currentUserName})` 
-          : `تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today} توسط ${currentUserName}`,
+        notes: proformaInvoice.notes ? proformaInvoice.notes.trim() : undefined,
       };
 
       const updatedInvoices = invoices.map((inv) => inv.id === proformaInvoice.id ? convertedInvoice : inv);
@@ -709,9 +707,7 @@ export default function App() {
         createdByRole: proformaInvoice.createdByRole || currentUser?.roleTitle,
         convertedById: currentUserId,
         convertedByName: currentUserName,
-        notes: proformaInvoice.notes 
-          ? `${proformaInvoice.notes} (تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today} توسط ${currentUserName})` 
-          : `تبدیل‌شده از پیش‌فاکتور ${proformaInvoice.invoiceNumber} در تاریخ ${today} توسط ${currentUserName}`,
+        notes: proformaInvoice.notes ? proformaInvoice.notes.trim() : undefined,
       };
 
       const updatedInvoices = invoices.map((inv) => inv.id === proformaInvoice.id ? convertedInvoice : inv);

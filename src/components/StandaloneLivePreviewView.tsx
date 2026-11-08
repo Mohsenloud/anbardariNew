@@ -79,7 +79,7 @@ export const StandaloneLivePreviewView: React.FC<{ onBackToApp?: () => void }> =
   const isA5 = previewPageSize === 'a5';
   const isLandscape = previewOrientation === 'landscape';
   const currentLogo = config.customLogoUrl || settings.logo;
-  const currentNotes = config.customFooterNotes || settings.invoiceFooterText || 'کالای فروخته شده در صورت سلامت فیزیکی تا ۲۴ ساعت دارای مهلت تست می‌باشد.';
+  const currentNotes = config.customFooterNotes || settings.invoiceFooterText || 'از حسن انتخاب و همکاری صمیمانه شما سپاسگزاریم.';
 
   const isUsingDraft = activeSource === 'draft' && draftInvoice && draftInvoice.items.length > 0;
   

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Invoice, StoreSettings, AppUser } from '../types';
-import { formatPrice, toPersianDigits } from '../utils/jalali';
+import { formatPrice, toPersianDigits, cleanInvoiceNotes } from '../utils/jalali';
 import { 
   X, 
   Printer, 
@@ -457,10 +457,10 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
           </div>
 
           {/* Notes if present */}
-          {invoice.notes && (
+          {cleanInvoiceNotes(invoice.notes) && (
             <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs">
               <span className="text-slate-500 font-bold block mb-1">یادداشت و توضیحات فاکتور:</span>
-              <p className="text-slate-800 leading-relaxed whitespace-pre-line font-medium">{invoice.notes}</p>
+              <p className="text-slate-800 leading-relaxed whitespace-pre-line font-medium">{cleanInvoiceNotes(invoice.notes)}</p>
             </div>
           )}
         </div>

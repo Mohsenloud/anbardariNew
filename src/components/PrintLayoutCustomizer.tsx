@@ -154,7 +154,7 @@ export const LiveInvoicePreviewSheet: React.FC<LivePreviewSheetProps> = ({
   const isA5 = previewPageSize === 'a5';
   const isLandscape = previewOrientation === 'landscape';
   const currentLogo = config.customLogoUrl || settings.logo;
-  const currentNotes = config.customFooterNotes || settings.invoiceFooterText || 'کالای فروخته شده در صورت سلامت فیزیکی تا ۲۴ ساعت دارای مهلت تست می‌باشد.';
+  const currentNotes = config.customFooterNotes || settings.invoiceFooterText || 'از حسن انتخاب و همکاری صمیمانه شما سپاسگزاریم.';
 
   return (
     <div
@@ -1626,10 +1626,10 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
                     </button>
                   </div>
                   <textarea
-                    value={config.customFooterNotes ?? (settings.invoiceFooterText || 'کالای فروخته شده در صورت سلامت فیزیکی تا ۲۴ ساعت دارای مهلت تست می‌باشد.')}
+                    value={config.customFooterNotes ?? (settings.invoiceFooterText || 'از حسن انتخاب و همکاری صمیمانه شما سپاسگزاریم.')}
                     onChange={(e) => update('customFooterNotes', e.target.value)}
                     rows={3}
-                    placeholder="متن شروط گارانتی، مهلت تسویه، پیام تشکر..."
+                    placeholder="متن شروط، مهلت تسویه، پیام تشکر..."
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs leading-relaxed text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                 </div>
