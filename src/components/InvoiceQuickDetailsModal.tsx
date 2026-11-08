@@ -208,7 +208,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
               <div className="flex items-center justify-between pb-1.5 border-b border-emerald-200">
                 <div className="flex items-center gap-1.5 font-black text-slate-900 text-xs">
                   <Building2 className="w-4 h-4 text-emerald-700" />
-                  <span>مشخصات فروشنده رسمی (فاکتور دارایی):</span>
+                  <span>مشخصات فروشنده:</span>
                 </div>
                 <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-md">
                   سربرگ رسمی

@@ -1173,7 +1173,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                         <div className="font-bold text-slate-800 pb-1 mb-1 border-b border-slate-200 flex items-center justify-between">
                           <div className="flex items-center gap-1">
                             <Building2 className="w-3.5 h-3.5 text-emerald-700" />
-                            <span>مشخصات فروشنده رسمی:</span>
+                            <span>مشخصات فروشنده:</span>
                           </div>
                         </div>
                         <div className="space-y-0.5 text-slate-700">
