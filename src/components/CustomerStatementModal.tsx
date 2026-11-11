@@ -34,7 +34,15 @@ import {
   ShoppingBag,
   Send,
   Pencil,
-  Coins
+  Coins,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  SlidersHorizontal,
+  RotateCcw,
+  Hash,
+  FilterX,
+  Layers
 } from 'lucide-react';
 import { 
   Customer, 
@@ -47,7 +55,7 @@ import {
   CustomerPaymentMethod 
 } from '../types';
 import { StorageService } from '../utils/storage';
-import { formatPrice, toPersianDigits, getCurrentJalaliDate, numberToPersianWords } from '../utils/jalali';
+import { formatPrice, toPersianDigits, getCurrentJalaliDate, numberToPersianWords, addDaysToJalali } from '../utils/jalali';
 import { exportCustomerStatementToExcel } from '../utils/excelHelper';
 import { exportElementToPdf } from '../utils/pdfHelper';
 import { CustomerTransactionModal } from './CustomerTransactionModal';
@@ -72,6 +80,15 @@ interface CustomerStatementModalProps {
   initialFormType?: 'none' | 'deposit' | 'debt';
 }
 
+const STATEMENT_DOC_TYPES = [
+  { id: 'sales_goods', label: 'فروش (کالا)', fullName: 'فاکتورهای فروش کالا' },
+  { id: 'sales_service', label: 'خدمات', fullName: 'فاکتورهای خدمات' },
+  { id: 'deposit', label: 'واریزی‌ها', fullName: 'واریزی‌ها و دریافت‌ها' },
+  { id: 'debt', label: 'بدهی دستی', fullName: 'اسناد بدهی دستی' },
+  { id: 'purchase', label: 'خرید تامین‌کننده', fullName: 'فاکتور و پرداخت خرید' },
+  { id: 'cheque', label: 'چک / پیگیری', fullName: 'اسناد شامل چک یا شماره پیگیری' },
+] as const;
+
 export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   isOpen,
   onClose,
@@ -94,13 +111,76 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   );
   const [filterType, setFilterType] = useState<'all' | 'debt' | 'deposit'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState<'all' | '30days' | 'this_year'>('all');
+
+  // Advanced multi-condition filters (supports multi-select document types)
+  const [selectedDocTypes, setSelectedDocTypes] = useState<string[]>([]);
+  const [dateFilterMode, setDateFilterMode] = useState<'all' | '30days' | '90days' | 'this_year' | 'custom'>('all');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [minAmount, setMinAmount] = useState<number | ''>('');
+  const [maxAmount, setMaxAmount] = useState<number | ''>('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'unsettled' | 'debtor' | 'creditor'>('all');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
+
+  // Toggle single document type in multi-select
+  const handleToggleDocType = (typeId: string) => {
+    setSelectedDocTypes((prev) =>
+      prev.includes(typeId) ? prev.filter((t) => t !== typeId) : [...prev, typeId]
+    );
+  };
+
+  // Set quick document type presets (e.g. sales + services without deposits, or sales + deposits without services)
+  const handleSetDocTypePreset = (
+    preset: 'all' | 'sales_and_services' | 'sales_and_deposits' | 'only_services' | 'only_deposits' | 'only_goods'
+  ) => {
+    switch (preset) {
+      case 'sales_and_services':
+        setSelectedDocTypes(['sales_goods', 'sales_service']);
+        break;
+      case 'sales_and_deposits':
+        setSelectedDocTypes(['sales_goods', 'deposit']);
+        break;
+      case 'only_services':
+        setSelectedDocTypes(['sales_service']);
+        break;
+      case 'only_deposits':
+        setSelectedDocTypes(['deposit']);
+        break;
+      case 'only_goods':
+        setSelectedDocTypes(['sales_goods']);
+        break;
+      case 'all':
+      default:
+        setSelectedDocTypes([]);
+        break;
+    }
+  };
+
+  // Sorting state by table headers
+  const [sortField, setSortField] = useState<
+    'default' | 'date' | 'documentType' | 'documentNumber' | 'description' | 'debit' | 'credit' | 'balance'
+  >('default');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
   const [entriesPage, setEntriesPage] = useState(1);
   const [entriesPageSize, setEntriesPageSize] = useState(50);
 
   useEffect(() => {
     setEntriesPage(1);
-  }, [filterType, searchQuery, dateFilter, customer?.id]);
+  }, [
+    filterType,
+    searchQuery,
+    selectedDocTypes,
+    dateFilterMode,
+    customStartDate,
+    customEndDate,
+    minAmount,
+    maxAmount,
+    statusFilter,
+    sortField,
+    sortDirection,
+    customer?.id,
+  ]);
 
   const [transactionToEdit, setTransactionToEdit] = useState<CustomerTransaction | null>(null);
 
@@ -304,37 +384,221 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [activeInvoices, customer]);
 
-  // Filter ledger entries
+  // Sorting toggles
+  const handleToggleSort = (
+    field: 'date' | 'documentType' | 'documentNumber' | 'description' | 'debit' | 'credit' | 'balance'
+  ) => {
+    if (sortField === field) {
+      if (sortDirection === 'desc') {
+        setSortDirection('asc');
+      } else {
+        setSortField('default');
+        setSortDirection('desc');
+      }
+    } else {
+      setSortField(field);
+      if (field === 'description' || field === 'documentType' || field === 'documentNumber') {
+        setSortDirection('asc');
+      } else {
+        setSortDirection('desc');
+      }
+    }
+  };
+
+  const handleResetSort = () => {
+    setSortField('default');
+    setSortDirection('desc');
+  };
+
+  const handleResetAllFilters = () => {
+    setSearchQuery('');
+    setFilterType('all');
+    setSelectedDocTypes([]);
+    setDateFilterMode('all');
+    setCustomStartDate('');
+    setCustomEndDate('');
+    setMinAmount('');
+    setMaxAmount('');
+    setStatusFilter('all');
+    setSortField('default');
+    setSortDirection('desc');
+    setEntriesPage(1);
+  };
+
+  // Active conditions count for multi-condition search badge
+  const activeConditionsCount = useMemo(() => {
+    let count = 0;
+    if (searchQuery.trim()) count++;
+    if (filterType !== 'all') count++;
+    if (selectedDocTypes.length > 0) count++;
+    if (dateFilterMode !== 'all') count++;
+    if (minAmount !== '' && typeof minAmount === 'number' && minAmount > 0) count++;
+    if (maxAmount !== '' && typeof maxAmount === 'number' && maxAmount > 0) count++;
+    if (statusFilter !== 'all') count++;
+    return count;
+  }, [searchQuery, filterType, selectedDocTypes, dateFilterMode, minAmount, maxAmount, statusFilter]);
+
+  const isSearchOrFilterActive = activeConditionsCount > 0;
+
+  // Multi-condition filtering
   const filteredEntries = useMemo(() => {
+    const today = getCurrentJalaliDate();
+    const currentYear = today.substring(0, 4);
+
     return fullLedger.entries.filter((entry) => {
-      // Filter by type
+      // 1. Basic Type Tabs (all, debt, deposit)
       if (filterType === 'debt' && entry.debit === 0) return false;
       if (filterType === 'deposit' && entry.credit === 0) return false;
 
-      // Filter by date
-      if (dateFilter === 'this_year') {
-        const currentYear = getCurrentJalaliDate().substring(0, 4);
-        if (!entry.date.startsWith(currentYear)) return false;
+      // 2. Specific Document Type condition (Multi-Select)
+      // When selectedDocTypes has items, entry must match at least one selected type
+      if (selectedDocTypes.length > 0) {
+        const matchesAny = selectedDocTypes.some((typeId) => {
+          if (typeId === 'sales_goods') {
+            if (entry.documentType !== 'invoice') return false;
+            const srvInfo = getInvoiceServiceInfo(entry.rawInvoice);
+            // Must not be pure service (has goods/merchandise)
+            return !srvInfo.isOnlyService;
+          }
+          if (typeId === 'sales_service') {
+            if (entry.documentType !== 'invoice') return false;
+            const srvInfo = getInvoiceServiceInfo(entry.rawInvoice);
+            return srvInfo.hasService;
+          }
+          if (typeId === 'deposit') {
+            return entry.documentType === 'deposit' || entry.documentType === 'invoice_payment';
+          }
+          if (typeId === 'debt') {
+            return entry.documentType === 'debt';
+          }
+          if (typeId === 'purchase') {
+            return entry.documentType === 'purchase_invoice' || entry.documentType === 'purchase_payment';
+          }
+          if (typeId === 'cheque') {
+            return Boolean(
+              entry.trackingNumber || 
+              (entry.paymentMethod && (entry.paymentMethod.includes('cheque') || entry.paymentMethod.includes('چک'))) ||
+              (entry.rawInvoice?.paymentMethod === 'cheque')
+            );
+          }
+          return false;
+        });
+
+        if (!matchesAny) return false;
       }
 
-      // Filter by search query
+      // 3. Date range condition
+      if (dateFilterMode === 'this_year') {
+        if (!entry.date.startsWith(currentYear)) return false;
+      } else if (dateFilterMode === '30days') {
+        const threshold = addDaysToJalali(-30);
+        if (entry.date < threshold) return false;
+      } else if (dateFilterMode === '90days') {
+        const threshold = addDaysToJalali(-90);
+        if (entry.date < threshold) return false;
+      } else if (dateFilterMode === 'custom') {
+        const normStart = customStartDate.replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString()).trim();
+        const normEnd = customEndDate.replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString()).trim();
+        if (normStart && entry.date < normStart) return false;
+        if (normEnd && entry.date > normEnd) return false;
+      }
+
+      // 4. Amount range condition (evaluated on transaction debit or credit)
+      const entryAmount = Math.max(entry.debit, entry.credit);
+      if (minAmount !== '' && typeof minAmount === 'number' && minAmount > 0) {
+        if (entryAmount < minAmount) return false;
+      }
+      if (maxAmount !== '' && typeof maxAmount === 'number' && maxAmount > 0) {
+        if (entryAmount > maxAmount) return false;
+      }
+
+      // 5. Settlement / Status condition
+      if (statusFilter === 'unsettled') {
+        if (entry.rawInvoice && entry.rawInvoice.paymentStatus === 'paid') return false;
+        if (entry.balance === 0) return false;
+      } else if (statusFilter === 'debtor') {
+        if (entry.debit <= 0) return false;
+      } else if (statusFilter === 'creditor') {
+        if (entry.credit <= 0) return false;
+      }
+
+      // 6. Multi-term space-separated search query (AND search)
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const matchesDoc = entry.documentNumber.toLowerCase().includes(q);
-        const matchesDesc = entry.description.toLowerCase().includes(q);
-        const matchesNotes = entry.notes?.toLowerCase().includes(q);
-        const matchesTrack = entry.trackingNumber?.toLowerCase().includes(q);
-        if (!matchesDoc && !matchesDesc && !matchesNotes && !matchesTrack) return false;
+        const terms = searchQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
+        const searchableText = [
+          entry.documentNumber,
+          entry.description,
+          entry.notes || '',
+          entry.trackingNumber || '',
+          entry.paymentMethod || '',
+          entry.documentTypeLabel || '',
+          (entry.supplierNames || []).join(' '),
+          entry.date,
+          String(entry.debit),
+          String(entry.credit),
+          String(entry.balance),
+        ].join(' ').toLowerCase();
+
+        const allTermsMatch = terms.every((term) => searchableText.includes(term));
+        if (!allTermsMatch) return false;
       }
 
       return true;
     });
-  }, [fullLedger.entries, filterType, dateFilter, searchQuery]);
+  }, [
+    fullLedger.entries,
+    filterType,
+    selectedDocTypes,
+    dateFilterMode,
+    customStartDate,
+    customEndDate,
+    minAmount,
+    maxAmount,
+    statusFilter,
+    searchQuery,
+  ]);
 
-  // Is search or filter active?
-  const isSearchOrFilterActive = Boolean(
-    searchQuery.trim() || filterType !== 'all' || dateFilter !== 'all'
-  );
+  // Sort filtered ledger entries according to selected header
+  const sortedEntries = useMemo(() => {
+    if (sortField === 'default') {
+      return filteredEntries;
+    }
+
+    const items = [...filteredEntries];
+    items.sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case 'date':
+          comparison = a.date.localeCompare(b.date);
+          break;
+        case 'documentType':
+          comparison = (a.documentTypeLabel || '').localeCompare(b.documentTypeLabel || '', 'fa');
+          break;
+        case 'documentNumber': {
+          const numA = Number(a.documentNumber.replace(/\D/g, '')) || 0;
+          const numB = Number(b.documentNumber.replace(/\D/g, '')) || 0;
+          comparison = numA !== numB ? numA - numB : a.documentNumber.localeCompare(b.documentNumber);
+          break;
+        }
+        case 'description':
+          comparison = (a.description || '').localeCompare(b.description || '', 'fa');
+          break;
+        case 'debit':
+          comparison = a.debit - b.debit;
+          break;
+        case 'credit':
+          comparison = a.credit - b.credit;
+          break;
+        case 'balance':
+          comparison = a.balance - b.balance;
+          break;
+        default:
+          comparison = 0;
+      }
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+    return items;
+  }, [filteredEntries, sortField, sortDirection]);
 
   // Active totals calculated dynamically based on searched / filtered entries
   const activeTotals = useMemo(() => {
@@ -354,6 +618,56 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
     };
   }, [filteredEntries, isSearchOrFilterActive]);
 
+  // Friendly label for currently active sorting
+  const getSortLabel = () => {
+    if (sortField === 'default') return 'ترتیب اولیه دفتری';
+    const labels: Record<string, string> = {
+      date: 'تاریخ',
+      documentType: 'نوع سند',
+      documentNumber: 'شماره سند',
+      description: 'شرح',
+      debit: 'مبلغ بدهکار',
+      credit: 'مبلغ بستانکار',
+      balance: 'مانده جاری',
+    };
+    return `${labels[sortField] || sortField} (${sortDirection === 'asc' ? 'صعودی' : 'نزولی'})`;
+  };
+
+  // Helper to render sortable table headers with interactive indicator
+  const renderSortHeader = (
+    field: 'date' | 'documentType' | 'documentNumber' | 'description' | 'debit' | 'credit' | 'balance',
+    label: React.ReactNode,
+    className: string,
+    align: 'right' | 'left' | 'center' = 'right',
+    title?: string
+  ) => {
+    const isActive = sortField === field;
+    return (
+      <th
+        onClick={() => handleToggleSort(field)}
+        className={`${className} cursor-pointer hover:bg-slate-200/90 transition-colors select-none group`}
+        title={title || `مرتب‌سازی بر اساس ${typeof label === 'string' ? label : ''} (${isActive ? (sortDirection === 'desc' ? 'تغییر به صعودی' : 'بازنشانی') : 'کلیک کنید'})`}
+      >
+        <div className={`flex items-center gap-1.5 ${
+          align === 'left' ? 'justify-end flex-row-reverse' : align === 'center' ? 'justify-center' : 'justify-between'
+        }`}>
+          <span className="truncate">{label}</span>
+          <span className="shrink-0 inline-flex items-center">
+            {isActive ? (
+              sortDirection === 'asc' ? (
+                <ArrowUp className="w-3.5 h-3.5 text-emerald-700 stroke-[2.5]" />
+              ) : (
+                <ArrowDown className="w-3.5 h-3.5 text-emerald-700 stroke-[2.5]" />
+              )
+            ) : (
+              <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-30 group-hover:opacity-100 transition-opacity" />
+            )}
+          </span>
+        </div>
+      </th>
+    );
+  };
+
   // Copy helper
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard?.writeText(text);
@@ -368,11 +682,11 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
   // Export to Excel
   const handleExportExcel = () => {
-    // If search or filter is active, export the filtered ledger
-    const ledgerToExport = isSearchOrFilterActive
+    // If search, filter, or custom sort is active, export the sorted/filtered ledger
+    const ledgerToExport = (isSearchOrFilterActive || sortField !== 'default')
       ? {
           ...fullLedger,
-          entries: filteredEntries,
+          entries: sortedEntries,
           totalDebit: activeTotals.totalDebit,
           totalCredit: activeTotals.totalCredit,
           netBalance: activeTotals.netBalance,
@@ -837,83 +1151,510 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
           </div>
 
           {/* Bottom Row: Filters & Search */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Filter by Type Tabs */}
-            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs overflow-x-auto shrink-0">
-              <button
-                type="button"
-                onClick={() => setFilterType('all')}
-                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  filterType === 'all' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                همه ({toPersianDigits(fullLedger.entries.length)})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterType('debt')}
-                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  filterType === 'debt' ? 'bg-white text-rose-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                بدهی‌ها
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterType('deposit')}
-                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  filterType === 'deposit' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                واریزی‌ها
-              </button>
-            </div>
-
-            {/* Quick Search Input */}
-            <div className="relative flex-1 min-w-[150px]">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="جستجو در شرح، شماره، پیگیری..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-8 pl-7 py-1.5 text-xs text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-              />
-              {searchQuery && (
+          <div className="space-y-2.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Filter by Type Tabs */}
+              <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs overflow-x-auto shrink-0">
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                  onClick={() => setFilterType('all')}
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    filterType === 'all' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-700'
+                  }`}
                 >
-                  <X className="w-3 h-3" />
+                  همه ({toPersianDigits(fullLedger.entries.length)})
                 </button>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setFilterType('debt')}
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    filterType === 'debt' ? 'bg-white text-rose-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  بدهی‌ها
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterType('deposit')}
+                  className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    filterType === 'deposit' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  واریزی‌ها
+                </button>
+              </div>
+
+              {/* Multi-Condition Text Search Input */}
+              <div className="relative flex-1 min-w-[180px]">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="جستجوی چندشرطی (مثلاً: فاکتور نقد، چک، شماره سند...)"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-8 pl-7 py-1.5 text-xs text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                  title="می‌توانید چند کلمه را با فاصله وارد کنید تا تمام شروط همزمان اعمال شوند"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              {/* Multi-condition Filters Toggle Button */}
+              <button
+                type="button"
+                id="statement-advanced-filters-btn"
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                  showAdvancedFilters || (activeConditionsCount > (searchQuery ? 1 : 0))
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                }`}
+                title="فیلترهای پیشرفته چند شرطی (نوع سند، بازه تاریخ، محدوده مبلغ، وضعیت)"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">فیلترهای پیشرفته</span>
+                <span className="sm:hidden">فیلترها</span>
+                {activeConditionsCount > 0 && (
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                    showAdvancedFilters || (activeConditionsCount > (searchQuery ? 1 : 0))
+                      ? 'bg-white text-emerald-800'
+                      : 'bg-emerald-100 text-emerald-800'
+                  }`}>
+                    {toPersianDigits(activeConditionsCount)}
+                  </span>
+                )}
+                <ChevronDown className={`w-3 h-3 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Show/Hide Suppliers Toggle */}
+              <button
+                type="button"
+                onClick={() => setShowSuppliers(!showSuppliers)}
+                className={`px-2.5 py-1.5 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                  showSuppliers
+                    ? 'bg-amber-50 text-amber-900 border-amber-300 shadow-2xs'
+                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                }`}
+                title="نمایش یا عدم نمایش نام شخصی تامین‌کننده و فروشنده کالا در صورتحساب"
+              >
+                <Building2 className={`w-3.5 h-3.5 ${showSuppliers ? 'text-amber-600' : 'text-slate-400'}`} />
+                <span className="hidden sm:inline">نام تامین‌کننده:</span>
+                <span>{showSuppliers ? 'نمایش' : 'مخفی'}</span>
+              </button>
             </div>
 
-            {/* Show/Hide Suppliers Toggle */}
-            <button
-              type="button"
-              onClick={() => setShowSuppliers(!showSuppliers)}
-              className={`px-2.5 py-1.5 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
-                showSuppliers
-                  ? 'bg-amber-50 text-amber-900 border-amber-300 shadow-2xs'
-                  : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-              }`}
-              title="نمایش یا عدم نمایش نام شخصی تامین‌کننده و فروشنده کالا در صورتحساب"
-            >
-              <Building2 className={`w-3.5 h-3.5 ${showSuppliers ? 'text-amber-600' : 'text-slate-400'}`} />
-              <span className="hidden sm:inline">نام تامین‌کننده:</span>
-              <span>{showSuppliers ? 'نمایش' : 'مخفی'}</span>
-            </button>
+            {/* Advanced Multi-Condition Filter Panel (Collapsible) */}
+            {showAdvancedFilters && (
+              <div className="bg-slate-50/95 border border-slate-200 rounded-2xl p-3 sm:p-4 space-y-3 animate-fadeIn">
+                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                  <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>فیلتر همزمان بر اساس چند شرط مجزا:</span>
+                  </div>
+                  {isSearchOrFilterActive && (
+                    <button
+                      type="button"
+                      onClick={handleResetAllFilters}
+                      className="text-[11px] text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>پاکسازی همه شروط</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Condition 1: Specific Document Types (Multi-Select & Presets) */}
+                <div className="bg-white/90 rounded-xl p-3 border border-slate-200 shadow-2xs space-y-2.5">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-blue-600" />
+                      <span className="text-[11px] font-bold text-slate-800">
+                        شرط ۱: فیلتر همزمان نوع اسناد (چند انتخابی و میانبرهای ترکیبی)
+                      </span>
+                      {selectedDocTypes.length > 0 ? (
+                        <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
+                          {toPersianDigits(selectedDocTypes.length)} نوع انتخاب‌شده
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-normal">
+                          (تمام انواع اسناد نمایش داده می‌شوند)
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Presets */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-[10px] text-slate-400 font-medium">میانبرهای سریع:</span>
+                      <button
+                        type="button"
+                        onClick={() => handleSetDocTypePreset('all')}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] border transition-all cursor-pointer ${
+                          selectedDocTypes.length === 0
+                            ? 'bg-slate-800 text-white border-slate-800 font-bold'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        نمایش همه
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSetDocTypePreset('sales_and_services')}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] border transition-all cursor-pointer ${
+                          selectedDocTypes.length === 2 && selectedDocTypes.includes('sales_goods') && selectedDocTypes.includes('sales_service')
+                            ? 'bg-blue-600 text-white border-blue-600 font-bold shadow-2xs'
+                            : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 font-medium'
+                        }`}
+                        title="فقط فاکتورهای فروش کالا و خدمات نمایش داده شوند و واریزی‌ها مخفی شوند"
+                      >
+                        فقط فروش + خدمات (بدون واریز)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSetDocTypePreset('sales_and_deposits')}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] border transition-all cursor-pointer ${
+                          selectedDocTypes.length === 2 && selectedDocTypes.includes('sales_goods') && selectedDocTypes.includes('deposit')
+                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-2xs'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 font-medium'
+                        }`}
+                        title="فقط فاکتورهای فروش و واریزی‌ها نمایش داده شوند و خدمات مخفی شوند"
+                      >
+                        فروش + واریزی‌ها (بدون خدمات)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSetDocTypePreset('only_services')}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] border transition-all cursor-pointer ${
+                          selectedDocTypes.length === 1 && selectedDocTypes.includes('sales_service')
+                            ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-2xs'
+                            : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                        }`}
+                      >
+                        فقط خدمات
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSetDocTypePreset('only_deposits')}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] border transition-all cursor-pointer ${
+                          selectedDocTypes.length === 1 && selectedDocTypes.includes('deposit')
+                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-2xs'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                        }`}
+                      >
+                        فقط واریزی‌ها
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSetDocTypePreset('only_goods')}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] border transition-all cursor-pointer ${
+                          selectedDocTypes.length === 1 && selectedDocTypes.includes('sales_goods')
+                            ? 'bg-blue-600 text-white border-blue-600 font-bold shadow-2xs'
+                            : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                        }`}
+                      >
+                        فقط فروش کالا
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Multi-Select Toggle Badges */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-1.5">
+                    {STATEMENT_DOC_TYPES.map((opt) => {
+                      const isSelected = selectedDocTypes.includes(opt.id);
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => handleToggleDocType(opt.id)}
+                          className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-medium transition-all cursor-pointer text-right ${
+                            isSelected
+                              ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                              : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                          }`}
+                          title={opt.fullName}
+                        >
+                          <span className="truncate">{opt.label}</span>
+                          <span className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                            isSelected ? 'bg-white/20 text-white' : 'border border-slate-300 text-transparent'
+                          }`}>
+                            ✓
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Grid of conditions 2, 3, 4 */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                  {/* Condition 2: Date Range */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                      شرط ۲: بازه زمانی
+                    </label>
+                    <select
+                      value={dateFilterMode}
+                      onChange={(e) => setDateFilterMode(e.target.value as any)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer"
+                    >
+                      <option value="all">تمام تاریخچه</option>
+                      <option value="30days">۳۰ روز اخیر</option>
+                      <option value="90days">۳ ماه اخیر</option>
+                      <option value="this_year">سال جاری (امسال)</option>
+                      <option value="custom">بازه تاریخی دلخواه...</option>
+                    </select>
+                  </div>
+
+                  {/* Condition 3: Min Amount */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                      شرط ۳: حداقل مبلغ ({settings.currency})
+                    </label>
+                    <NumericInput
+                      value={minAmount}
+                      onChange={(val) => setMinAmount(val)}
+                      placeholder="مثلاً ۱,۰۰۰,۰۰۰"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {/* Condition 4: Max Amount */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                      شرط ۴: حداکثر مبلغ ({settings.currency})
+                    </label>
+                    <NumericInput
+                      value={maxAmount}
+                      onChange={(val) => setMaxAmount(val)}
+                      placeholder="مثلاً ۵۰,۰۰۰,۰۰۰"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Custom Date Range Inputs (when custom is selected) */}
+                {dateFilterMode === 'custom' && (
+                  <div className="p-2.5 bg-white border border-emerald-200 rounded-xl flex flex-wrap items-center gap-3 text-xs animate-fadeIn">
+                    <span className="font-bold text-slate-700">تعیین تاریخ دلخواه (شمسی):</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-500 text-[11px]">از تاریخ:</span>
+                      <input
+                        type="text"
+                        value={customStartDate}
+                        onChange={(e) => setCustomStartDate(e.target.value)}
+                        placeholder="۱۴۰۴/۰۱/۰۱"
+                        className="w-28 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-center font-mono text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-500 text-[11px]">تا تاریخ:</span>
+                      <input
+                        type="text"
+                        value={customEndDate}
+                        onChange={(e) => setCustomEndDate(e.target.value)}
+                        placeholder="۱۴۰۴/۱۲/۲۹"
+                        className="w-28 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-center font-mono text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Status & Quick Amount Chips */}
+                <div className="flex items-center justify-between gap-2 flex-wrap pt-1 text-[11px]">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-slate-500 font-bold">وضعیت تسویه ردیف:</span>
+                    {(['all', 'unsettled', 'debtor', 'creditor'] as const).map((st) => (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => setStatusFilter(st)}
+                        className={`px-2.5 py-0.5 rounded-lg border transition-all cursor-pointer ${
+                          statusFilter === st
+                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-2xs'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {st === 'all' ? 'همه' : st === 'unsettled' ? 'فقط تسویه نشده' : st === 'debtor' ? 'فقط بدهکار' : 'فقط بستانکار'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Quick Amount Chips */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-slate-400">مبالغ سریع:</span>
+                    <button
+                      type="button"
+                      onClick={() => { setMinAmount(10000000); setMaxAmount(''); }}
+                      className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 text-[10px] cursor-pointer"
+                    >
+                      بالای ۱۰ م
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setMinAmount(50000000); setMaxAmount(''); }}
+                      className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 text-[10px] cursor-pointer"
+                    >
+                      بالای ۵۰ م
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Active Filters & Sorting Chips Bar */}
+            {(isSearchOrFilterActive || sortField !== 'default') && (
+              <div className="flex items-center gap-1.5 flex-wrap pt-0.5 text-xs animate-fadeIn">
+                <span className="text-[11px] text-slate-500 font-bold flex items-center gap-1">
+                  <Filter className="w-3 h-3 text-emerald-600" />
+                  <span>شروط فعال:</span>
+                </span>
+
+                {searchQuery.trim() && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-[11px]">
+                    <span>جستجو: «{searchQuery}»</span>
+                    <button onClick={() => setSearchQuery('')} className="hover:text-rose-600 cursor-pointer" title="حذف شرط جستجو">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+
+                {selectedDocTypes.length > 0 && (
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 text-blue-800 border border-blue-200 rounded-lg text-[11px]">
+                    <span>نوع سند ({toPersianDigits(selectedDocTypes.length)} مورد): {
+                      selectedDocTypes.map(t => STATEMENT_DOC_TYPES.find(o => o.id === t)?.label || t).join(' + ')
+                    }</span>
+                    <button onClick={() => setSelectedDocTypes([])} className="hover:text-rose-600 cursor-pointer" title="حذف شرط نوع سند">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+
+                {dateFilterMode !== 'all' && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 text-purple-800 border border-purple-200 rounded-lg text-[11px]">
+                    <span>بازه تاریخ: {
+                      dateFilterMode === '30days' ? '۳۰ روز اخیر' :
+                      dateFilterMode === '90days' ? '۳ ماه اخیر' :
+                      dateFilterMode === 'this_year' ? 'سال جاری' :
+                      `از ${customStartDate || 'ابتدا'} تا ${customEndDate || 'امروز'}`
+                    }</span>
+                    <button onClick={() => { setDateFilterMode('all'); setCustomStartDate(''); setCustomEndDate(''); }} className="hover:text-rose-600 cursor-pointer" title="حذف شرط تاریخ">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+
+                {(minAmount !== '' || maxAmount !== '') && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-900 border border-amber-200 rounded-lg text-[11px]">
+                    <span>مبلغ: {minAmount ? `از ${formatPrice(minAmount)}` : ''} {maxAmount ? `تا ${formatPrice(maxAmount)}` : ''}</span>
+                    <button onClick={() => { setMinAmount(''); setMaxAmount(''); }} className="hover:text-rose-600 cursor-pointer" title="حذف شرط مبلغ">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+
+                {statusFilter !== 'all' && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 text-teal-800 border border-teal-200 rounded-lg text-[11px]">
+                    <span>وضعیت: {statusFilter === 'unsettled' ? 'تسویه نشده' : statusFilter === 'debtor' ? 'بدهکار' : 'بستانکار'}</span>
+                    <button onClick={() => setStatusFilter('all')} className="hover:text-rose-600 cursor-pointer" title="حذف شرط وضعیت">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+
+                {sortField !== 'default' && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-[11px]">
+                    <ArrowUpDown className="w-3 h-3 text-slate-500" />
+                    <span>مرتب‌سازی: {getSortLabel()}</span>
+                    <button onClick={handleResetSort} className="hover:text-rose-600 cursor-pointer" title="بازنشانی مرتب‌سازی">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleResetAllFilters}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer mr-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>پاکسازی همه شروط</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
         {/* LEDGER ENTRIES LIST (RESPONSIVE CARDS FOR MOBILE & TABLE FOR DESKTOP) */}
         <div className="no-print flex-1 overflow-y-auto p-2.5 sm:p-4 md:p-5">
+          {/* List Performance & Optimization Stats Toolbar */}
+          <div className="bg-slate-50/90 border border-slate-200 rounded-2xl px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs mb-3 shadow-2xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-slate-700">
+                تعداد: <strong className="text-emerald-700 font-mono text-sm">{toPersianDigits(sortedEntries.length)}</strong>
+                {isSearchOrFilterActive && (
+                  <span className="text-slate-400 font-normal mr-1"> (از کل {toPersianDigits(fullLedger.entries.length)})</span>
+                )}
+              </span>
+              <span className="text-slate-300 hidden sm:inline">|</span>
+              <span className="text-slate-600">
+                بدهکار: <strong className="text-rose-700 font-mono">{toPersianDigits(activeTotals.totalDebit.toLocaleString('en-US'))}</strong> {settings.currency}
+              </span>
+              <span className="text-slate-300 hidden sm:inline">|</span>
+              <span className="text-slate-600">
+                بستانکار: <strong className="text-emerald-700 font-mono">{toPersianDigits(activeTotals.totalCredit.toLocaleString('en-US'))}</strong> {settings.currency}
+              </span>
+              <span className="text-slate-300 hidden sm:inline">|</span>
+              <span className="font-bold">
+                مانده: <strong className={`font-mono ${activeTotals.netBalance > 0 ? 'text-rose-700' : activeTotals.netBalance < 0 ? 'text-blue-700' : 'text-emerald-700'}`}>
+                  {toPersianDigits(Math.abs(activeTotals.netBalance).toLocaleString('en-US'))}
+                </strong> {settings.currency} ({activeTotals.netBalance > 0 ? 'بدهکار' : activeTotals.netBalance < 0 ? 'بستانکار' : 'تسویه'})
+              </span>
+            </div>
+
+            {/* Mobile / Quick Sort Dropdown Control */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="text-[11px] text-slate-500 hidden md:inline">مرتب‌سازی:</span>
+              <select
+                value={sortField}
+                onChange={(e) => {
+                  const val = e.target.value as any;
+                  setSortField(val);
+                  if (val === 'default') setSortDirection('desc');
+                }}
+                className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] text-slate-700 font-medium outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                title="مرتب‌سازی لیست بر اساس ستون دلخواه"
+              >
+                <option value="default">پیش‌فرض (ترتیب دفتری)</option>
+                <option value="date">تاریخ سند</option>
+                <option value="documentType">نوع سند</option>
+                <option value="documentNumber">شماره سند/پیگیری</option>
+                <option value="description">شرح تراکنش</option>
+                <option value="debit">مبلغ بدهکار</option>
+                <option value="credit">مبلغ بستانکار</option>
+                <option value="balance">مانده جاری</option>
+              </select>
+              {sortField !== 'default' && (
+                <button
+                  type="button"
+                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                  className="p-1 bg-white border border-slate-200 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                  title={sortDirection === 'asc' ? 'صعودی (کلیک جهت معکوس کردن به نزولی)' : 'نزولی (کلیک جهت معکوس کردن به صعودی)'}
+                >
+                  {sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />}
+                </button>
+              )}
+            </div>
+          </div>
           {/* A. MOBILE CARDS VIEW (Clean, Touch-Friendly, High Contrast) */}
           {viewMode === 'cards' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {filteredEntries.length === 0 ? (
+              {sortedEntries.length === 0 ? (
                 <div className="col-span-full bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
                   <ReceiptText className="w-10 h-10 mx-auto mb-2 text-slate-300" />
                   <p className="text-xs">
@@ -923,7 +1664,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                   </p>
                 </div>
               ) : (
-                paginateArray(filteredEntries, entriesPage, entriesPageSize).map((entry) => {
+                paginateArray(sortedEntries, entriesPage, entriesPageSize).map((entry) => {
                   const isInvoice = entry.documentType === 'invoice';
                   const isPayment = entry.documentType === 'deposit' || entry.documentType === 'invoice_payment';
                   const isManualTxn = !!entry.rawTransaction;
@@ -1191,29 +1932,30 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                 <table className="w-full text-right text-xs border-collapse min-w-[880px]">
                   <thead className="sticky top-0 z-10 bg-slate-100 shadow-2xs">
                     <tr className="bg-slate-100 text-slate-700 border-b border-slate-200 font-bold">
-                      <th className="py-2.5 px-2 w-10 text-center font-bold text-slate-500 shrink-0">#</th>
-                      <th className="py-2.5 px-2.5 w-24 whitespace-nowrap text-right shrink-0">تاریخ</th>
-                      <th className="py-2.5 px-2.5 w-24 whitespace-nowrap text-right shrink-0">نوع سند</th>
-                      <th className="py-2.5 px-2.5 w-28 whitespace-nowrap text-right shrink-0">شماره سند/پیگیری</th>
-                      <th className="py-2.5 px-3 min-w-[200px] text-right">شرح تراکنش</th>
-                      <th className="py-2.5 px-3 w-32 whitespace-nowrap text-left text-rose-700 font-bold shrink-0">بدهکار ({settings.currency})</th>
-                      <th className="py-2.5 px-3 w-32 whitespace-nowrap text-left text-emerald-700 font-bold shrink-0">بستانکار ({settings.currency})</th>
-                      <th className="py-2.5 px-3 w-36 whitespace-nowrap text-left font-bold shrink-0" title="مانده لحظه‌ای حساب مشتری پس از اعمال هر ردیف">
-                        <div className="flex items-center justify-end gap-1.5 cursor-help">
-                          <span>مانده جاری</span>
-                          <span
-                            className="w-3.5 h-3.5 rounded-full bg-slate-200 text-slate-600 text-[10px] inline-flex items-center justify-center font-bold"
-                            title="مانده جاری: مانده لحظه‌ای بدهی یا طلب مشتری پس از این تراکنش"
-                          >
-                            ؟
-                          </span>
+                      <th
+                        onClick={handleResetSort}
+                        className="py-2.5 px-2 w-10 text-center font-bold text-slate-500 shrink-0 cursor-pointer hover:bg-slate-200/90 transition-colors select-none group"
+                        title="کلیک جهت بازنشانی به ترتیب تاریخی اولیه حساب"
+                      >
+                        <div className="flex items-center justify-center gap-0.5">
+                          <span>#</span>
+                          {sortField === 'default' && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" title="ترتیب استاندارد دفتری" />
+                          )}
                         </div>
                       </th>
+                      {renderSortHeader('date', 'تاریخ', 'py-2.5 px-2.5 w-24 whitespace-nowrap text-right shrink-0')}
+                      {renderSortHeader('documentType', 'نوع سند', 'py-2.5 px-2.5 w-24 whitespace-nowrap text-right shrink-0')}
+                      {renderSortHeader('documentNumber', 'شماره سند/پیگیری', 'py-2.5 px-2.5 w-28 whitespace-nowrap text-right shrink-0')}
+                      {renderSortHeader('description', 'شرح تراکنش', 'py-2.5 px-3 min-w-[200px] text-right')}
+                      {renderSortHeader('debit', `بدهکار (${settings.currency})`, 'py-2.5 px-3 w-32 whitespace-nowrap text-left text-rose-700 font-bold shrink-0', 'left')}
+                      {renderSortHeader('credit', `بستانکار (${settings.currency})`, 'py-2.5 px-3 w-32 whitespace-nowrap text-left text-emerald-700 font-bold shrink-0', 'left')}
+                      {renderSortHeader('balance', 'مانده جاری', 'py-2.5 px-3 w-36 whitespace-nowrap text-left font-bold shrink-0', 'left', 'مانده لحظه‌ای حساب مشتری پس از اعمال هر ردیف')}
                       <th className="py-2.5 px-2 w-24 text-center whitespace-nowrap shrink-0">عملیات</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredEntries.length === 0 ? (
+                    {sortedEntries.length === 0 ? (
                       <tr>
                         <td colSpan={9} className="py-12 text-center text-slate-400">
                           {fullLedger.entries.length === 0 
@@ -1222,7 +1964,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                         </td>
                       </tr>
                     ) : (
-                      paginateArray(filteredEntries, entriesPage, entriesPageSize).map((entry, index) => {
+                      paginateArray(sortedEntries, entriesPage, entriesPageSize).map((entry, index) => {
                         const globalIndex = entriesPageSize > 0 ? (entriesPage - 1) * entriesPageSize + index : index;
                         const isInvoice = entry.documentType === 'invoice';
                         const isManualTxn = !!entry.rawTransaction;
@@ -1428,7 +2170,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                     )}
                   </tbody>
                   {/* Table Footer Totals */}
-                  {filteredEntries.length > 0 && (
+                  {sortedEntries.length > 0 && (
                     <tfoot className="sticky bottom-0 z-10 bg-slate-100 shadow-2xs">
                       <tr className="bg-slate-100 font-bold text-slate-800 border-t-2 border-slate-300">
                         <td colSpan={5} className="py-2.5 px-4 text-left font-bold text-xs">
@@ -1456,11 +2198,11 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
             </div>
           )}
 
-          {filteredEntries.length > 0 && (
+          {sortedEntries.length > 0 && (
             <div className="mt-3">
               <SmartPagination
                 currentPage={entriesPage}
-                totalItems={filteredEntries.length}
+                totalItems={sortedEntries.length}
                 pageSize={entriesPageSize}
                 onPageChange={setEntriesPage}
                 onPageSizeChange={setEntriesPageSize}
@@ -1553,7 +2295,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
               </tr>
             </thead>
             <tbody>
-              {fullLedger.entries.map((item, idx) => (
+              {(isSearchOrFilterActive || sortField !== 'default' ? sortedEntries : fullLedger.entries).map((item, idx) => (
                 <tr key={item.id} className="bg-white border-b border-slate-300 text-[11px]">
                   <td className="py-1.5 px-2 border-l border-slate-300 text-center font-mono bg-white">{toPersianDigits(idx + 1)}</td>
                   <td className="py-1.5 px-2 border-l border-slate-300 font-mono bg-white">{toPersianDigits(item.date)}</td>
@@ -1961,7 +2703,9 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                             <span>
                               {searchQuery.trim() ? `جستجو: «${searchQuery.trim()}» ` : ''}
                               {filterType === 'debt' ? '• فقط اسناد بدهکاری ' : filterType === 'deposit' ? '• فقط اسناد واریزی ' : ''}
-                              {dateFilter === 'this_year' ? '• سال جاری' : ''}
+                              {dateFilterMode === 'this_year' ? '• سال جاری ' : dateFilterMode === '30days' ? '• ۳۰ روز اخیر ' : dateFilterMode === '90days' ? '• ۳ ماه اخیر ' : dateFilterMode === 'custom' ? `• از ${customStartDate || 'ابتدا'} تا ${customEndDate || 'امروز'} ` : ''}
+                              {selectedDocTypes.length > 0 ? `• نوع سند: ${selectedDocTypes.map(t => STATEMENT_DOC_TYPES.find(o => o.id === t)?.label || t).join(' + ')} ` : ''}
+                              {sortField !== 'default' ? `• مرتب‌سازی: ${getSortLabel()}` : ''}
                             </span>
                           </div>
                           <span style={{ color: '#475569', fontWeight: 'bold' }}>
@@ -2074,14 +2818,14 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
               </thead>
 
               <tbody style={{ backgroundColor: '#ffffff' }}>
-                {filteredEntries.length === 0 ? (
+                {sortedEntries.length === 0 ? (
                   <tr>
                     <td colSpan={9} style={{ textAlign: 'center', padding: '24px 10px', color: '#64748b', fontSize: '11px', border: '1px solid #94a3b8' }}>
                       هیچ سندی با معیارهای جستجو و فیلتر فعلی یافت نشد.
                     </td>
                   </tr>
                 ) : (
-                  filteredEntries.map((item, idx) => (
+                  sortedEntries.map((item, idx) => (
                     <tr
                       key={`pdf-${item.id}`}
                       style={{

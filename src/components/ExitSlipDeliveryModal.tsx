@@ -487,31 +487,6 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
                 </div>
               )}
 
-              {/* انتخاب سریع از ماشین‌های پرکاربرد (چیپ‌های یک کلیکی فشرده) */}
-              {!showSavedFleet && savedVehicles.length > 0 && (
-                <div className="flex flex-wrap gap-1 items-center pt-0.5">
-                  <span className="text-[10px] text-slate-400 font-medium ml-1">انتخاب سریع:</span>
-                  {savedVehicles.slice(0, 4).map((veh) => (
-                    <button
-                      key={veh.id}
-                      type="button"
-                      onClick={() => handleSelectSavedVehicle(veh)}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-300 rounded-md text-[11px] font-medium transition-all shadow-2xs cursor-pointer"
-                    >
-                      <span className="font-bold">{veh.vehicleType}</span>
-                      {veh.plateNumber && typeof veh.plateNumber === 'string' && (
-                        <span className="font-mono text-[9.5px] text-slate-500 bg-slate-100 px-1 py-0.2 rounded">
-                          {toPersianDigits(veh.plateNumber.split(' ').slice(0, 3).join(' '))}
-                        </span>
-                      )}
-                      {veh.driverName && (
-                        <span className="text-[10px] text-slate-400">({veh.driverName})</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-
               {/* پنل بازشونده مدیریت ناوگان */}
               {showSavedFleet && (
                 <div className="bg-white rounded-xl border border-blue-200 p-2.5 shadow-xs space-y-2 animate-fadeIn">
