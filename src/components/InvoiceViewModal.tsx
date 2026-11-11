@@ -1421,7 +1421,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                                 </div>
                               )}
                               {(item.description || item.notes) && (
-                                <div className="text-[10px] text-slate-500 font-normal mt-0.5 leading-snug whitespace-pre-wrap">
+                                <div className="text-[10px] text-slate-500 font-normal mt-0.5 leading-snug whitespace-pre-wrap item-description" data-item-description="true">
                                   <span className="text-slate-400">توضیح: </span>{item.description || item.notes}
                                 </div>
                               )}
@@ -1700,7 +1700,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                           <div className="text-[9px] text-purple-700">تنوع: {item.variantName}</div>
                         )}
                         {(item.description || item.notes) && (
-                          <div className="text-[9.5px] text-slate-500 leading-snug">
+                          <div className="text-[9.5px] text-slate-500 leading-snug item-description" data-item-description="true">
                             <span className="text-slate-400">توضیح: </span>{item.description || item.notes}
                           </div>
                         )}

@@ -151,6 +151,15 @@ export function getPrintLayoutCssRules(containerSelector = '#printable-invoice, 
     ${containerSelector} .invoice-footer-terms {
       font-size: var(--print-notes-size, 10px) !important;
     }
+    ${containerSelector} .item-description,
+    ${containerSelector} [data-item-description="true"] {
+      font-size: var(--print-notes-size, 9.5px) !important;
+      letter-spacing: normal !important;
+      word-spacing: normal !important;
+      line-height: 1.3 !important;
+      direction: rtl !important;
+      text-align: right !important;
+    }
     ${containerSelector} .invoice-signatures,
     ${containerSelector} .exit-slip-signatures {
       min-height: var(--print-sig-height, 65px) !important;

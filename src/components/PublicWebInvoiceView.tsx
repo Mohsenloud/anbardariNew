@@ -1139,7 +1139,7 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                               </span>
                             )}
                             {(item.description || item.notes) && (
-                              <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">
+                              <p className="text-[11px] text-slate-600 mt-0.5 leading-snug item-description" data-item-description="true">
                                 <span className="text-slate-400 font-medium">توضیح: </span>{item.description || item.notes}
                               </p>
                             )}
@@ -1210,7 +1210,7 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                               </span>
                             )}
                             {(item.description || item.notes) && (
-                              <span className="block text-[11px] text-slate-600 mt-0.5 leading-snug">
+                              <span className="block text-[11px] text-slate-600 mt-0.5 leading-snug item-description" data-item-description="true">
                                 <span className="text-slate-400 font-medium">توضیح: </span>{item.description || item.notes}
                               </span>
                             )}

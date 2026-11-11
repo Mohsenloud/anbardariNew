@@ -4,6 +4,7 @@ import { StorageService } from './storage';
 import { PdfQualityPreset, Invoice } from '../types';
 import { toPersianDigits } from './jalali';
 import { getPrintLayoutCssRules } from './printLayoutHelper';
+import { shapeClonedElementText } from './persianShaper';
 
 const PERSIAN_FEMALE_FIRST_NAMES = new Set([
   'مریم', 'سارا', 'فاطمه', 'زهرا', 'نرگس', 'مهسا', 'نیلوفر', 'زینب', 'بهاره', 'شیرین', 'پریسا', 'سپیده', 'الهام',
@@ -267,6 +268,10 @@ export function buildPdfDocumentFromCanvas(
     format: paperSize,
     compress: true,
   });
+
+  try {
+    (pdf as any).setR2L?.(true);
+  } catch {}
 
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
@@ -745,6 +750,16 @@ function setupClonedDocumentForPdfCapture(
       font-feature-settings: "liga" 1, "calt" 1 !important;
       text-rendering: optimizeLegibility !important;
     }
+
+    .item-description, [data-item-description="true"], .product-description {
+      letter-spacing: normal !important;
+      word-spacing: normal !important;
+      font-feature-settings: "liga" 1, "calt" 1 !important;
+      text-rendering: optimizeLegibility !important;
+      direction: rtl !important;
+      text-align: right !important;
+      font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    }
   `;
   clonedDoc.head.appendChild(pdfFixStyle);
 
@@ -826,6 +841,9 @@ function setupClonedDocumentForPdfCapture(
       el.style.setProperty('font-family', "'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", 'important');
     }
   });
+
+  // Arabic / Persian Shaping for all text elements to prevent broken disjointed letters in html2canvas Canvas.fillText
+  shapeClonedElementText(clonedElement);
 
   const rootLayouts = clonedElement.querySelectorAll(
     '.standard-exit-slip-layout, .simple-exit-slip-layout, .standard-invoice-layout, .simple-invoice-layout'

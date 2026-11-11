@@ -347,7 +347,7 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
                       </div>
                     )}
                     {(item.description || item.notes) && (
-                      <div className={`text-slate-600 font-normal mt-0.5 leading-snug whitespace-pre-wrap ${isA5 ? 'text-[8px]' : 'text-[9.5px]'}`}>
+                      <div className={`text-slate-600 font-normal mt-0.5 leading-snug whitespace-pre-wrap item-description ${isA5 ? 'text-[8px]' : 'text-[9.5px]'}`} data-item-description="true">
                         <span className="text-slate-400 font-medium">توضیح: </span>{item.description || item.notes}
                       </div>
                     )}

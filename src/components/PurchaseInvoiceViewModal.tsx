@@ -819,7 +819,7 @@ export const PurchaseInvoiceViewModal: React.FC<PurchaseInvoiceViewModalProps> =
                             )}
                           </div>
                           {item.description && (
-                            <div className="text-[10px] font-normal text-slate-500 mt-0.5">
+                            <div className="text-[10px] font-normal text-slate-500 mt-0.5 item-description" data-item-description="true">
                               {item.description}
                             </div>
                           )}

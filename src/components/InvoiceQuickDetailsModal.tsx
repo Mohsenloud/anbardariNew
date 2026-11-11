@@ -433,7 +433,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                             )}
                           </div>
                           {(item.description || item.notes) && (
-                            <div className="text-[11px] text-slate-600 mt-1 leading-snug">
+                            <div className="text-[11px] text-slate-600 mt-1 leading-snug item-description" data-item-description="true">
                               <span className="text-slate-400 font-medium">توضیح: </span>{item.description || item.notes}
                             </div>
                           )}
