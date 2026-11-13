@@ -808,181 +808,146 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
     >
       <div className="bg-white w-full max-w-[96vw] xl:max-w-7xl 2xl:max-w-[1440px] rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-200 print:border-0 print:shadow-none print:rounded-none print:max-w-none print:h-auto print:max-h-none print:overflow-visible overflow-hidden flex flex-col h-[100dvh] sm:h-[94vh] max-h-[100dvh] text-right">
         
-        {/* MODAL HEADER */}
-        <div className="no-print bg-slate-900 text-white px-3.5 py-3 sm:px-5 sm:py-4 flex items-center justify-between gap-2.5 border-b border-slate-800 shrink-0">
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-            <span className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center font-bold text-sm sm:text-base shrink-0 shadow-sm border border-white/10">
-              {customer.name ? customer.name.charAt(0) : <ReceiptText className="w-5 h-5" />}
+        {/* MODAL HEADER - Compact on Mobile & Desktop */}
+        <div className="no-print bg-slate-900 text-white px-3 py-2 sm:px-4 sm:py-2.5 flex items-center justify-between gap-2 border-b border-slate-800 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <span className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center font-bold text-xs sm:text-sm shrink-0 shadow-xs border border-white/10">
+              {customer.name ? customer.name.charAt(0) : <ReceiptText className="w-4 h-4" />}
             </span>
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                <h2 className="text-sm sm:text-base font-bold text-white truncate">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h2 className="text-xs sm:text-sm font-bold text-white truncate max-w-[180px] sm:max-w-none">
                   صورتحساب: {customer.name}
                 </h2>
-                {/* Mobile / Desktop Status Badge */}
-                {fullLedger.netBalance > 0 ? (
-                  <span className="text-[10px] sm:text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
-                    <span>بدهکار: {formatPrice(fullLedger.netBalance, settings.currency)}</span>
-                  </span>
-                ) : fullLedger.netBalance < 0 ? (
-                  <span className="text-[10px] sm:text-[11px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                    <span>طلبکار: {formatPrice(Math.abs(fullLedger.netBalance), settings.currency)}</span>
-                  </span>
-                ) : (
-                  <span className="text-[10px] sm:text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                    <span>تسویه کامل</span>
-                  </span>
-                )}
-              </div>
-              <div className="text-[11px] sm:text-xs text-slate-400 mt-0.5 flex items-center gap-2 sm:gap-3 flex-wrap">
                 {customer.phone && (
                   <a
                     href={`tel:${customer.phone}`}
-                    className="flex items-center gap-1 text-slate-300 hover:text-emerald-400 transition-colors"
+                    className="flex items-center gap-1 text-[10px] sm:text-[11px] text-slate-300 hover:text-emerald-400 transition-colors bg-white/5 px-1.5 py-0.5 rounded-md"
                     title="تماس تلفنی با مشتری"
                   >
-                    <PhoneCall className="w-3 h-3 text-emerald-400 shrink-0" />
+                    <PhoneCall className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
                     <span className="font-mono">{toPersianDigits(customer.phone)}</span>
                   </a>
                 )}
                 {customer.nationalId && (
-                  <span className="hidden sm:inline">کد ملی: <strong className="font-mono text-slate-300">{toPersianDigits(customer.nationalId)}</strong></span>
+                  <span className="hidden md:inline text-[11px] text-slate-400">
+                    کد ملی: <strong className="font-mono text-slate-300">{toPersianDigits(customer.nationalId)}</strong>
+                  </span>
                 )}
-                <span className="text-[10px] text-slate-400">({toPersianDigits(fullLedger.entries.length)} تراکنش)</span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] text-slate-400 hidden sm:inline">
+              ({toPersianDigits(fullLedger.entries.length)} تراکنش)
+            </span>
             <button
               type="button"
               onClick={onClose}
-              className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer shrink-0"
+              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer shrink-0"
               title="بستن پنجره (Esc)"
               aria-label="بستن"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
         {/* PDF Success Toast Banner */}
         {pdfSuccessMessage && (
-          <div className="no-print bg-emerald-600 text-white text-xs font-bold py-2 px-4 flex items-center justify-between gap-2 shadow-sm animate-in fade-in slide-in-from-top-1 shrink-0">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-100" />
+          <div className="no-print bg-emerald-600 text-white text-xs font-bold py-1.5 px-3 flex items-center justify-between gap-2 shadow-sm animate-in fade-in slide-in-from-top-1 shrink-0">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-100" />
               <span>{pdfSuccessMessage}</span>
             </div>
             <button
               type="button"
               onClick={() => setPdfSuccessMessage(null)}
-              className="text-white/80 hover:text-white p-1 rounded-lg cursor-pointer"
+              className="text-white/80 hover:text-white p-0.5 rounded-lg cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
 
-        {/* FINANCIAL SUMMARY: MOBILE HERO CARD + DESKTOP 4-COLUMN CARDS */}
-        {/* 1. Mobile Financial Banner (< sm) */}
-        <div className="no-print sm:hidden p-3 bg-gradient-to-b from-slate-900 to-slate-800 text-white shrink-0 border-b border-slate-700/60">
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/15">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-slate-300 font-medium flex items-center gap-1.5">
-                <Wallet className="w-3.5 h-3.5 text-emerald-400" />
-                {isSearchOrFilterActive ? 'مانده نتایج جستجو:' : 'مانده حساب جاری مشتری:'}
-              </span>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                activeTotals.netBalance > 0
-                  ? 'bg-rose-500 text-white'
-                  : activeTotals.netBalance < 0
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-emerald-500 text-white'
-              }`}>
-                {activeTotals.netBalance > 0
-                  ? 'مشتری بدهکار است'
-                  : activeTotals.netBalance < 0
-                    ? 'مشتری طلبکار است'
-                    : 'کاملاً بی‌حساب / تسویه'}
-                {isSearchOrFilterActive && ` (${toPersianDigits(activeTotals.entriesCount)} سند)`}
-              </span>
-            </div>
+        {/* FINANCIAL SUMMARY: COMPACT MOBILE BAR + COMPACT DESKTOP 4-COLUMN STRIP */}
+        {/* 1. Compact Mobile Financial Bar (< sm) */}
+        <div className="no-print sm:hidden px-2.5 py-1.5 bg-slate-900 text-white shrink-0 border-b border-slate-800">
+          <div className="bg-white/8 rounded-xl px-2.5 py-1.5 border border-white/10 space-y-1">
+            {/* Row 1: Current Balance Label + Status Pill + Balance Value */}
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Wallet className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="text-[11px] text-slate-300 font-bold truncate">
+                  {isSearchOrFilterActive ? 'مانده فیلتر:' : 'مانده حساب جاری:'}
+                </span>
+                <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
+                  activeTotals.netBalance > 0
+                    ? 'bg-rose-500/90 text-white'
+                    : activeTotals.netBalance < 0
+                      ? 'bg-blue-500/90 text-white'
+                      : 'bg-emerald-500/90 text-white'
+                }`}>
+                  {activeTotals.netBalance > 0
+                    ? 'بدهکار'
+                    : activeTotals.netBalance < 0
+                      ? 'طلبکار'
+                      : 'تسویه'}
+                </span>
+              </div>
 
-            <div className="flex items-baseline justify-between gap-2 mt-1">
-              <div className="text-xl font-black font-mono tracking-tight">
+              <div className="text-sm font-black font-mono tracking-tight text-white shrink-0">
                 {formatPrice(Math.abs(activeTotals.netBalance), settings.currency)}
               </div>
-              {activeTotals.netBalance > 0 && (
-                <button
-                  type="button"
-                  onClick={() => handleOpenTransactionModal('deposit')}
-                  className="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-[11px] font-bold px-2.5 py-1 rounded-xl shadow-xs flex items-center gap-1 cursor-pointer transition-all"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>ثبت واریز</span>
-                </button>
-              )}
             </div>
 
-            {/* Compact 3-metrics breakdown bar */}
-            <div className="grid grid-cols-3 gap-1.5 mt-2.5 pt-2 border-t border-white/10 text-center">
-              <div className="bg-white/5 rounded-xl py-1 px-1">
-                <span className="text-[9px] text-rose-300 block">
-                  {isSearchOrFilterActive ? 'بدهی جستجو' : 'کل بدهی (خرید)'}
-                </span>
-                <span className="text-[11px] font-bold font-mono text-rose-200">
-                  {formatPrice(activeTotals.totalDebit, '')}
-                </span>
+            {/* Row 2: Single-line 3-metrics summary strip */}
+            <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/10 text-[10px]">
+              <div className="flex items-center gap-1 truncate">
+                <span className="text-rose-300">بدهی:</span>
+                <span className="font-bold font-mono text-rose-200">{formatPrice(activeTotals.totalDebit, '')}</span>
               </div>
-              <div className="bg-white/5 rounded-xl py-1 px-1">
-                <span className="text-[9px] text-emerald-300 block">
-                  {isSearchOrFilterActive ? 'واریزی جستجو' : 'کل واریزی‌ها'}
-                </span>
-                <span className="text-[11px] font-bold font-mono text-emerald-200">
-                  {formatPrice(activeTotals.totalCredit, '')}
-                </span>
+              <span className="text-white/20">|</span>
+              <div className="flex items-center gap-1 truncate">
+                <span className="text-emerald-300">واریزی:</span>
+                <span className="font-bold font-mono text-emerald-200">{formatPrice(activeTotals.totalCredit, '')}</span>
               </div>
-              <div className="bg-white/5 rounded-xl py-1 px-1">
-                <span className="text-[9px] text-slate-300 block">
-                  {isSearchOrFilterActive ? 'اسناد یافت‌شده' : 'تراکنش‌ها'}
-                </span>
-                <span className="text-[11px] font-bold font-mono text-slate-100">
-                  {toPersianDigits(activeTotals.entriesCount)} سند
-                </span>
+              <span className="text-white/20">|</span>
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-slate-300">اسناد:</span>
+                <span className="font-bold font-mono text-slate-100">{toPersianDigits(activeTotals.entriesCount)}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* 2. Desktop 4-Column KPI Cards (>= sm) - Compact & Uncluttered */}
-        <div className="no-print hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-2 px-3.5 py-1.5 bg-slate-50/90 border-b border-slate-200/80 shrink-0">
+        {/* 2. Desktop 4-Column KPI Strip (>= sm) - Compact Single-Line */}
+        <div className="no-print hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-1.5 px-3 py-1 bg-slate-50/90 border-b border-slate-200/80 shrink-0">
           {/* 1. Total Debits (بدهکار) */}
-          <div className="bg-white px-2.5 py-1.5 rounded-xl border border-rose-100 flex items-center justify-between gap-2">
+          <div className="bg-white px-2.5 py-1 rounded-lg border border-rose-100 flex items-center justify-between gap-2">
             <span className="text-[11px] text-rose-600 font-bold flex items-center gap-1 shrink-0">
               <ArrowUpRight className="w-3 h-3 text-rose-500" />
               <span>{isSearchOrFilterActive ? 'بدهی فیلتر:' : 'جمع بدهی:'}</span>
             </span>
-            <span className="text-xs sm:text-sm font-black text-rose-700 font-mono truncate">
+            <span className="text-xs font-black text-rose-700 font-mono truncate">
               {formatPrice(activeTotals.totalDebit, settings.currency)}
             </span>
           </div>
 
           {/* 2. Total Credits (بستانکار) */}
-          <div className="bg-white px-2.5 py-1.5 rounded-xl border border-emerald-100 flex items-center justify-between gap-2">
+          <div className="bg-white px-2.5 py-1 rounded-lg border border-emerald-100 flex items-center justify-between gap-2">
             <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-1 shrink-0">
               <ArrowDownLeft className="w-3 h-3 text-emerald-500" />
               <span>{isSearchOrFilterActive ? 'واریزی فیلتر:' : 'جمع واریزی:'}</span>
             </span>
-            <span className="text-xs sm:text-sm font-black text-emerald-700 font-mono truncate">
+            <span className="text-xs font-black text-emerald-700 font-mono truncate">
               {formatPrice(activeTotals.totalCredit, settings.currency)}
             </span>
           </div>
 
-          {/* 3. Net Balance (مانده حساب) */}
-          <div className={`px-2.5 py-1.5 rounded-xl border flex items-center justify-between gap-2 ${
+          {/* 3. Net Balance (مانده حساب جاری) */}
+          <div className={`px-2.5 py-1 rounded-lg border flex items-center justify-between gap-2 ${
             activeTotals.netBalance > 0
               ? 'bg-rose-50/70 border-rose-200 text-rose-800'
               : activeTotals.netBalance < 0
@@ -993,19 +958,19 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
               <Wallet className="w-3 h-3" />
               <span>مانده ({activeTotals.netBalance > 0 ? 'بدهکار' : activeTotals.netBalance < 0 ? 'طلبکار' : 'تسویه'}):</span>
             </span>
-            <span className="text-xs sm:text-sm font-black font-mono truncate">
+            <span className="text-xs font-black font-mono truncate">
               {formatPrice(Math.abs(activeTotals.netBalance), settings.currency)}
             </span>
           </div>
 
           {/* 4. Total Entries & Invoices */}
-          <div className="bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
+          <div className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 flex items-center justify-between gap-2">
             <span className="text-[11px] text-slate-600 font-bold flex items-center gap-1 shrink-0">
               <FileText className="w-3 h-3 text-slate-400" />
               <span>{isSearchOrFilterActive ? 'اسناد فیلتر:' : 'کل اسناد:'}</span>
             </span>
             <div className="flex items-center gap-1 truncate">
-              <span className="text-xs sm:text-sm font-black text-slate-800 font-mono">
+              <span className="text-xs font-black text-slate-800 font-mono">
                 {toPersianDigits(activeTotals.entriesCount)}
               </span>
               <span className="text-[10px] text-slate-400">
@@ -1019,20 +984,20 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
           </div>
         </div>
 
-        {/* ACTION TOOLBAR & FILTERS - Optimized Button Layout */}
-        <div className="no-print px-3 py-2 border-b border-slate-200 bg-white space-y-2 shrink-0">
-          {/* Row 1: Structured 3-Zone Toolbar (Right: Actions & Tabs | Center: Search & Filter | Left: View & Export) */}
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            {/* Right Zone: Primary Transaction Buttons + Quick Type Segmented Tabs */}
-            <div className="flex items-center gap-1.5 flex-wrap">
+        {/* ACTION TOOLBAR & FILTERS - Mobile & Desktop Optimized */}
+        <div className="no-print px-2.5 py-1.5 sm:px-3 border-b border-slate-200 bg-white space-y-1.5 shrink-0">
+          {/* Main Toolbar: 2 clean rows on mobile, 1 row on desktop */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+            {/* Top Mobile Row / Right Desktop Zone: Actions + Quick Type Segmented Tabs */}
+            <div className="flex items-center justify-between sm:justify-start gap-1.5">
               <div className="flex items-center gap-1">
                 <button
                   type="button"
                   id="add-deposit-btn"
                   onClick={() => handleOpenTransactionModal('deposit')}
-                  className="h-8 px-3 flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-lg text-[11px] font-bold shadow-2xs transition-all cursor-pointer shrink-0"
+                  className="h-7 sm:h-8 px-2.5 sm:px-3 flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-lg text-[10px] sm:text-[11px] font-bold shadow-2xs transition-all cursor-pointer shrink-0"
                 >
-                  <Plus className="w-3.5 h-3.5 shrink-0" />
+                  <Plus className="w-3 h-3 shrink-0" />
                   <span>ثبت واریز</span>
                 </button>
 
@@ -1040,25 +1005,25 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                   type="button"
                   id="add-debt-btn"
                   onClick={() => handleOpenTransactionModal('debt')}
-                  className={`h-8 px-3 flex items-center gap-1 active:scale-95 text-white rounded-lg text-[11px] font-bold shadow-2xs transition-all cursor-pointer shrink-0 ${
+                  className={`h-7 sm:h-8 px-2.5 sm:px-3 flex items-center gap-1 active:scale-95 text-white rounded-lg text-[10px] sm:text-[11px] font-bold shadow-2xs transition-all cursor-pointer shrink-0 ${
                     fullLedger.netBalance < 0
                       ? 'bg-blue-600 hover:bg-blue-700'
                       : 'bg-rose-600 hover:bg-rose-700'
                   }`}
                 >
-                  <Plus className="w-3.5 h-3.5 shrink-0" />
+                  <Plus className="w-3 h-3 shrink-0" />
                   <span>{fullLedger.netBalance < 0 ? 'ثبت پرداخت' : 'ثبت بدهی'}</span>
                 </button>
               </div>
 
-              <span className="h-5 w-px bg-slate-200 hidden sm:inline-block" />
+              <span className="h-4 w-px bg-slate-200 hidden sm:inline-block" />
 
               {/* Segmented Quick Type Tabs */}
-              <div className="h-8 flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[11px] shrink-0">
+              <div className="h-7 sm:h-8 flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[10px] sm:text-[11px] shrink-0">
                 <button
                   type="button"
                   onClick={() => setFilterType('all')}
-                  className={`h-full px-2.5 rounded-md font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`h-full px-2 sm:px-2.5 rounded-md font-bold transition-all cursor-pointer whitespace-nowrap ${
                     filterType === 'all' ? 'bg-white text-slate-800 shadow-2xs' : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
@@ -1067,7 +1032,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setFilterType('debt')}
-                  className={`h-full px-2.5 rounded-md font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`h-full px-2 sm:px-2.5 rounded-md font-bold transition-all cursor-pointer whitespace-nowrap ${
                     filterType === 'debt' ? 'bg-white text-rose-700 shadow-2xs' : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
@@ -1076,7 +1041,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setFilterType('deposit')}
-                  className={`h-full px-2.5 rounded-md font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`h-full px-2 sm:px-2.5 rounded-md font-bold transition-all cursor-pointer whitespace-nowrap ${
                     filterType === 'deposit' ? 'bg-white text-emerald-700 shadow-2xs' : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
@@ -1085,22 +1050,22 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
               </div>
             </div>
 
-            {/* Center Zone: Search Input + Advanced Filters Toggle */}
-            <div className="flex items-center gap-1.5 flex-1 min-w-[220px]">
-              <div className="relative flex-1">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            {/* Bottom Mobile Row / Center+Left Desktop Zone: Search + Filters + View + Export */}
+            <div className="flex items-center gap-1 sm:gap-1.5 flex-1">
+              <div className="relative flex-1 min-w-0">
+                <Search className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="جستجو (کالا، شماره سند، چک...)"
-                  className="w-full h-8 bg-slate-50 border border-slate-200 rounded-lg pr-8 pl-6 text-[11px] text-slate-800 outline-none focus:bg-white focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+                  placeholder="جستجو در صورتحساب..."
+                  className="w-full h-7 sm:h-8 bg-slate-50 border border-slate-200 rounded-lg pr-6 pl-5 text-[11px] text-slate-800 outline-none focus:bg-white focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute left-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full cursor-pointer"
+                    className="absolute left-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full cursor-pointer"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -1111,17 +1076,17 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                 type="button"
                 id="statement-advanced-filters-btn"
                 onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                className={`h-8 px-2.5 text-[11px] font-bold rounded-lg border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                className={`h-7 sm:h-8 px-2 sm:px-2.5 text-[10px] sm:text-[11px] font-bold rounded-lg border flex items-center gap-1 transition-all cursor-pointer shrink-0 ${
                   showAdvancedFilters || (activeConditionsCount > (searchQuery ? 1 : 0))
                     ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                 }`}
                 title="فیلترهای پیشرفته (نوع سند، تاریخ، مبلغ)"
               >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-                <span>فیلترها</span>
+                <SlidersHorizontal className="w-3 h-3" />
+                <span className="hidden xs:inline sm:inline">فیلترها</span>
                 {activeConditionsCount > 0 && (
-                  <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
+                  <span className={`px-1 rounded-full text-[9px] font-bold ${
                     showAdvancedFilters || (activeConditionsCount > (searchQuery ? 1 : 0))
                       ? 'bg-white text-emerald-800'
                       : 'bg-emerald-100 text-emerald-800'
@@ -1129,16 +1094,13 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                     {toPersianDigits(activeConditionsCount)}
                   </span>
                 )}
-                <ChevronDown className={`w-3 h-3 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-2.5 h-2.5 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
               </button>
-            </div>
 
-            {/* Left Zone: Display Mode + Export Group */}
-            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
                 onClick={() => setShowSuppliers(!showSuppliers)}
-                className={`h-8 px-2.5 text-[11px] font-bold rounded-lg border flex items-center gap-1 transition-all cursor-pointer shrink-0 ${
+                className={`h-7 sm:h-8 px-2 text-[11px] font-bold rounded-lg border flex items-center gap-1 transition-all cursor-pointer shrink-0 ${
                   showSuppliers
                     ? 'bg-amber-50 text-amber-800 border-amber-200'
                     : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'
@@ -1146,15 +1108,15 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                 title={showSuppliers ? 'مخفی کردن نام تامین‌کننده' : 'نمایش نام تامین‌کننده'}
               >
                 <Building2 className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">تامین‌کننده</span>
+                <span className="hidden lg:inline">تامین‌کننده</span>
               </button>
 
               {/* View Switcher (Table vs Cards) */}
-              <div className="h-8 flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[11px] shrink-0">
+              <div className="h-7 sm:h-8 flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[11px] shrink-0">
                 <button
                   type="button"
                   onClick={() => setViewMode('table')}
-                  className={`h-full px-2 rounded-md flex items-center gap-1 font-bold transition-all cursor-pointer ${
+                  className={`h-full px-1.5 sm:px-2 rounded-md flex items-center gap-1 font-bold transition-all cursor-pointer ${
                     viewMode === 'table' ? 'bg-white text-emerald-700 shadow-2xs' : 'text-slate-500 hover:text-slate-700'
                   }`}
                   title="نمای جدولی"
@@ -1164,7 +1126,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setViewMode('cards')}
-                  className={`h-full px-2 rounded-md flex items-center gap-1 font-bold transition-all cursor-pointer ${
+                  className={`h-full px-1.5 sm:px-2 rounded-md flex items-center gap-1 font-bold transition-all cursor-pointer ${
                     viewMode === 'cards' ? 'bg-white text-emerald-700 shadow-2xs' : 'text-slate-500 hover:text-slate-700'
                   }`}
                   title="نمای کارتی"
@@ -1174,28 +1136,28 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
               </div>
 
               {/* Unified Export Buttons Group */}
-              <div className="h-8 flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 gap-0.5 shrink-0">
+              <div className="h-7 sm:h-8 flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 gap-0.5 shrink-0">
                 <button
                   type="button"
                   id="export-statement-pdf-btn"
                   onClick={handleExportPdf}
                   disabled={isExportingPdf}
-                  className="h-full px-2.5 flex items-center gap-1 bg-white hover:bg-rose-50 text-rose-700 rounded-md text-[11px] font-bold transition-all cursor-pointer disabled:opacity-60 shadow-2xs"
+                  className="h-full px-1.5 sm:px-2.5 flex items-center gap-1 bg-white hover:bg-rose-50 text-rose-700 rounded-md text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer disabled:opacity-60 shadow-2xs"
                   title="دریافت فایل PDF صورتحساب"
                 >
-                  {isExportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
-                  <span className="hidden sm:inline">PDF</span>
+                  {isExportingPdf ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileDown className="w-3 h-3" />}
+                  <span className="hidden md:inline">PDF</span>
                 </button>
 
                 <button
                   type="button"
                   id="export-statement-excel-btn"
                   onClick={handleExportExcel}
-                  className="h-full px-2.5 flex items-center gap-1 bg-white hover:bg-purple-50 text-purple-700 rounded-md text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
+                  className="h-full px-1.5 sm:px-2.5 flex items-center gap-1 bg-white hover:bg-purple-50 text-purple-700 rounded-md text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
                   title="خروجی اکسل"
                 >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">اکسل</span>
+                  <FileSpreadsheet className="w-3 h-3" />
+                  <span className="hidden md:inline">اکسل</span>
                 </button>
 
                 {settings?.telegramBotEnabled && (
@@ -1204,11 +1166,11 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                     id="send-statement-telegram-btn"
                     onClick={handleSendTelegramStatement}
                     disabled={isSendingTelegram}
-                    className="h-full px-2.5 flex items-center gap-1 bg-white hover:bg-sky-50 text-sky-700 rounded-md text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
+                    className="h-full px-1.5 sm:px-2.5 flex items-center gap-1 bg-white hover:bg-sky-50 text-sky-700 rounded-md text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
                     title="ارسال به تلگرام"
                   >
-                    {isSendingTelegram ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                    <span className="hidden sm:inline">تلگرام</span>
+                    {isSendingTelegram ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                    <span className="hidden md:inline">تلگرام</span>
                   </button>
                 )}
               </div>
@@ -1217,17 +1179,17 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
           {/* Collapsible Compact Multi-Condition Filter Panel (div:nth-of-type(2)) */}
           {showAdvancedFilters && (
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-2 text-[11px] animate-fadeIn">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 space-y-1.5 text-[11px] animate-fadeIn">
               {/* Row 1: Document Types Button Bar + Combined Presets Group */}
-              <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                 {/* Multi-select Document Types Group */}
-                <div className="flex items-center gap-1 flex-wrap">
-                  <span className="font-bold text-slate-700 ml-1">نوع سند:</span>
-                  <div className="flex items-center bg-white p-0.5 rounded-lg border border-slate-200 gap-0.5 flex-wrap">
+                <div className="flex items-center gap-1 overflow-x-auto pb-0.5 sm:pb-0 no-scrollbar">
+                  <span className="font-bold text-slate-700 ml-0.5 shrink-0 text-[10px] sm:text-[11px]">نوع سند:</span>
+                  <div className="flex items-center bg-white p-0.5 rounded-lg border border-slate-200 gap-0.5 shrink-0">
                     <button
                       type="button"
                       onClick={() => handleSetDocTypePreset('all')}
-                      className={`h-6 px-2.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                      className={`h-6 px-2 rounded-md text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap ${
                         selectedDocTypes.length === 0
                           ? 'bg-slate-800 text-white shadow-2xs'
                           : 'text-slate-600 hover:bg-slate-100'
@@ -1242,7 +1204,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                           key={opt.id}
                           type="button"
                           onClick={() => handleToggleDocType(opt.id)}
-                          className={`h-6 px-2.5 rounded-md text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1 ${
+                          className={`h-6 px-2 rounded-md text-[10px] font-medium transition-all cursor-pointer flex items-center gap-0.5 whitespace-nowrap ${
                             isSelected
                               ? 'bg-emerald-600 text-white font-bold shadow-2xs'
                               : 'text-slate-600 hover:bg-slate-100'
@@ -1258,12 +1220,12 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                 </div>
 
                 {/* Combined Presets Segmented Group */}
-                <div className="flex items-center bg-white p-0.5 rounded-lg border border-slate-200 gap-1">
-                  <span className="text-[10px] font-bold text-slate-400 px-1.5">ترکیبی:</span>
+                <div className="flex items-center bg-white p-0.5 rounded-lg border border-slate-200 gap-1 self-start sm:self-auto shrink-0">
+                  <span className="text-[10px] font-bold text-slate-400 px-1">ترکیبی:</span>
                   <button
                     type="button"
                     onClick={() => handleSetDocTypePreset('sales_and_services')}
-                    className={`h-6 px-2.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                    className={`h-6 px-2 rounded-md text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap ${
                       selectedDocTypes.length === 2 && selectedDocTypes.includes('sales_goods') && selectedDocTypes.includes('sales_service')
                         ? 'bg-blue-600 text-white shadow-2xs'
                         : 'bg-blue-50/70 text-blue-700 hover:bg-blue-100'
@@ -1275,7 +1237,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSetDocTypePreset('sales_and_deposits')}
-                    className={`h-6 px-2.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                    className={`h-6 px-2 rounded-md text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap ${
                       selectedDocTypes.length === 2 && selectedDocTypes.includes('sales_goods') && selectedDocTypes.includes('deposit')
                         ? 'bg-emerald-600 text-white shadow-2xs'
                         : 'bg-emerald-50/70 text-emerald-700 hover:bg-emerald-100'
@@ -1288,15 +1250,15 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
               </div>
 
               {/* Row 2: Date Range, Amount Inputs & Segmented Settlement Status */}
-              <div className="flex items-center justify-between gap-2 flex-wrap pt-1.5 border-t border-slate-200/80">
-                <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center justify-between gap-1.5 flex-wrap pt-1.5 border-t border-slate-200/80">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   {/* Date Control */}
                   <div className="flex items-center gap-1">
-                    <span className="font-bold text-slate-700">تاریخ:</span>
+                    <span className="font-bold text-slate-700 text-[10px] sm:text-[11px]">تاریخ:</span>
                     <select
                       value={dateFilterMode}
                       onChange={(e) => setDateFilterMode(e.target.value as any)}
-                      className="h-7 bg-white border border-slate-200 rounded-lg px-2 text-[11px] text-slate-800 outline-none cursor-pointer"
+                      className="h-6 sm:h-7 bg-white border border-slate-200 rounded-lg px-1.5 text-[10px] sm:text-[11px] text-slate-800 outline-none cursor-pointer"
                     >
                       <option value="all">همه زمان‌ها</option>
                       <option value="30days">۳۰ روز اخیر</option>
@@ -1312,14 +1274,14 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                           value={customStartDate}
                           onChange={(e) => setCustomStartDate(e.target.value)}
                           placeholder="از ۱۴۰۴/۰۱/۰۱"
-                          className="h-7 w-24 bg-white border border-slate-200 rounded-lg px-1.5 text-center font-mono text-[10px]"
+                          className="h-6 sm:h-7 w-20 sm:w-24 bg-white border border-slate-200 rounded-lg px-1 text-center font-mono text-[10px]"
                         />
                         <input
                           type="text"
                           value={customEndDate}
                           onChange={(e) => setCustomEndDate(e.target.value)}
                           placeholder="تا ۱۴۰۴/۱۲/۲۹"
-                          className="h-7 w-24 bg-white border border-slate-200 rounded-lg px-1.5 text-center font-mono text-[10px]"
+                          className="h-6 sm:h-7 w-20 sm:w-24 bg-white border border-slate-200 rounded-lg px-1 text-center font-mono text-[10px]"
                         />
                       </div>
                     )}
@@ -1329,18 +1291,18 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
                   {/* Amount Range Control */}
                   <div className="flex items-center gap-1">
-                    <span className="font-bold text-slate-700">مبلغ:</span>
+                    <span className="font-bold text-slate-700 text-[10px] sm:text-[11px]">مبلغ:</span>
                     <NumericInput
                       value={minAmount}
                       onChange={(val) => setMinAmount(val)}
                       placeholder="از مبلغ..."
-                      className="h-7 w-24 bg-white border border-slate-200 rounded-lg px-2 text-[10px] text-slate-800 outline-none"
+                      className="h-6 sm:h-7 w-20 sm:w-24 bg-white border border-slate-200 rounded-lg px-1.5 text-[10px] text-slate-800 outline-none"
                     />
                     <NumericInput
                       value={maxAmount}
                       onChange={(val) => setMaxAmount(val)}
                       placeholder="تا مبلغ..."
-                      className="h-7 w-24 bg-white border border-slate-200 rounded-lg px-2 text-[10px] text-slate-800 outline-none"
+                      className="h-6 sm:h-7 w-20 sm:w-24 bg-white border border-slate-200 rounded-lg px-1.5 text-[10px] text-slate-800 outline-none"
                     />
                   </div>
 
@@ -1348,14 +1310,14 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
                   {/* Settlement Status Segmented Buttons */}
                   <div className="flex items-center gap-1">
-                    <span className="font-bold text-slate-700">وضعیت:</span>
+                    <span className="font-bold text-slate-700 text-[10px] sm:text-[11px]">وضعیت:</span>
                     <div className="flex items-center bg-white p-0.5 rounded-lg border border-slate-200 gap-0.5">
                       {(['all', 'unsettled', 'debtor', 'creditor'] as const).map((st) => (
                         <button
                           key={st}
                           type="button"
                           onClick={() => setStatusFilter(st)}
-                          className={`h-6 px-2.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
+                          className={`h-5 sm:h-6 px-2 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
                             statusFilter === st
                               ? 'bg-slate-800 text-white shadow-2xs'
                               : 'text-slate-600 hover:bg-slate-100'
@@ -1372,10 +1334,10 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                   <button
                     type="button"
                     onClick={handleResetAllFilters}
-                    className="h-7 px-2.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                    className="h-6 sm:h-7 px-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
                   >
                     <RotateCcw className="w-3 h-3" />
-                    <span>پاکسازی شروط</span>
+                    <span>پاکسازی</span>
                   </button>
                 )}
               </div>
@@ -1440,35 +1402,29 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
         </div>
 
         {/* LEDGER ENTRIES LIST (RESPONSIVE CARDS FOR MOBILE & TABLE FOR DESKTOP) */}
-        <div className="no-print flex-1 overflow-y-auto p-2.5 sm:p-4 md:p-5">
-          {/* List Performance & Optimization Stats Toolbar */}
-          <div className="bg-slate-50/90 border border-slate-200 rounded-2xl px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs mb-3 shadow-2xs">
-            <div className="flex items-center gap-2 flex-wrap">
+        <div className="no-print flex-1 overflow-y-auto p-2 sm:p-3.5 md:p-4">
+          {/* Compact List Sort & Count Bar */}
+          <div className="bg-slate-50/90 border border-slate-200 rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2 text-[11px] mb-2 shadow-2xs">
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
               <span className="font-bold text-slate-700">
-                تعداد: <strong className="text-emerald-700 font-mono text-sm">{toPersianDigits(sortedEntries.length)}</strong>
+                تعداد اسناد: <strong className="text-emerald-700 font-mono">{toPersianDigits(sortedEntries.length)}</strong>
                 {isSearchOrFilterActive && (
-                  <span className="text-slate-400 font-normal mr-1"> (از کل {toPersianDigits(fullLedger.entries.length)})</span>
+                  <span className="text-slate-400 font-normal mr-0.5"> (از {toPersianDigits(fullLedger.entries.length)})</span>
                 )}
               </span>
-              <span className="text-slate-300 hidden sm:inline">|</span>
-              <span className="text-slate-600">
+              <span className="text-slate-300 hidden md:inline">|</span>
+              <span className="text-slate-600 hidden md:inline">
                 بدهکار: <strong className="text-rose-700 font-mono">{toPersianDigits(activeTotals.totalDebit.toLocaleString('en-US'))}</strong> {settings.currency}
               </span>
-              <span className="text-slate-300 hidden sm:inline">|</span>
-              <span className="text-slate-600">
+              <span className="text-slate-300 hidden md:inline">|</span>
+              <span className="text-slate-600 hidden md:inline">
                 بستانکار: <strong className="text-emerald-700 font-mono">{toPersianDigits(activeTotals.totalCredit.toLocaleString('en-US'))}</strong> {settings.currency}
-              </span>
-              <span className="text-slate-300 hidden sm:inline">|</span>
-              <span className="font-bold">
-                مانده: <strong className={`font-mono ${activeTotals.netBalance > 0 ? 'text-rose-700' : activeTotals.netBalance < 0 ? 'text-blue-700' : 'text-emerald-700'}`}>
-                  {toPersianDigits(Math.abs(activeTotals.netBalance).toLocaleString('en-US'))}
-                </strong> {settings.currency} ({activeTotals.netBalance > 0 ? 'بدهکار' : activeTotals.netBalance < 0 ? 'بستانکار' : 'تسویه'})
               </span>
             </div>
 
-            {/* Mobile / Quick Sort Dropdown Control */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className="text-[11px] text-slate-500 hidden md:inline">مرتب‌سازی:</span>
+            {/* Quick Sort Dropdown Control */}
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="text-[10px] text-slate-500 hidden sm:inline">مرتب‌سازی:</span>
               <select
                 value={sortField}
                 onChange={(e) => {
@@ -1476,26 +1432,26 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                   setSortField(val);
                   if (val === 'default') setSortDirection('desc');
                 }}
-                className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] text-slate-700 font-medium outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                className="bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-[10px] sm:text-[11px] text-slate-700 font-medium outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
                 title="مرتب‌سازی لیست بر اساس ستون دلخواه"
               >
-                <option value="default">پیش‌فرض (ترتیب دفتری)</option>
-                <option value="date">تاریخ سند</option>
-                <option value="documentType">نوع سند</option>
-                <option value="documentNumber">شماره سند/پیگیری</option>
-                <option value="description">شرح تراکنش</option>
-                <option value="debit">مبلغ بدهکار</option>
-                <option value="credit">مبلغ بستانکار</option>
-                <option value="balance">مانده جاری</option>
+                <option value="default">مرتب‌سازی: پیش‌فرض</option>
+                <option value="date">بر اساس تاریخ</option>
+                <option value="documentType">بر اساس نوع سند</option>
+                <option value="documentNumber">بر اساس شماره سند</option>
+                <option value="description">بر اساس شرح</option>
+                <option value="debit">بر اساس مبلغ بدهکار</option>
+                <option value="credit">بر اساس مبلغ بستانکار</option>
+                <option value="balance">بر اساس مانده</option>
               </select>
               {sortField !== 'default' && (
                 <button
                   type="button"
                   onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
                   className="p-1 bg-white border border-slate-200 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-slate-50 transition-colors cursor-pointer"
-                  title={sortDirection === 'asc' ? 'صعودی (کلیک جهت معکوس کردن به نزولی)' : 'نزولی (کلیک جهت معکوس کردن به صعودی)'}
+                  title={sortDirection === 'asc' ? 'صعودی' : 'نزولی'}
                 >
-                  {sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />}
+                  {sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
                 </button>
               )}
             </div>

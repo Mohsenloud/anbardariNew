@@ -792,21 +792,21 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
         </div>
 
         {/* Navigation Sub-Tabs: مشتریان | مانده حساب تامین‌کنندگان | یادداشت مذاکره و یادآور تماس */}
-        <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
           <button
             type="button"
             onClick={() => setActiveSubSection('customers')}
-            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs transition-all cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer ${
               activeSubSection === 'customers'
-                ? 'bg-purple-600 text-white font-black shadow-xs'
-                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold border border-slate-200/80'
+                ? 'bg-purple-600 text-white font-bold shadow-2xs'
+                : 'bg-slate-50 hover:bg-slate-100 text-slate-600 font-semibold border border-slate-200/80'
             }`}
           >
-            <Users className="w-4 h-4 shrink-0" />
-            <span>لیست مشتریان و خریداران</span>
+            <Users className="w-3.5 h-3.5 shrink-0" />
+            <span>مشتریان و خریداران</span>
             <span
-              className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono ${
-                activeSubSection === 'customers' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+              className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono ${
+                activeSubSection === 'customers' ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-700'
               }`}
             >
               {toPersianDigits(customers.length)}
@@ -816,16 +816,16 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
           <button
             type="button"
             onClick={() => setActiveSubSection('suppliers')}
-            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs transition-all cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer ${
               activeSubSection === 'suppliers'
-                ? 'bg-indigo-600 text-white font-black shadow-xs'
-                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold border border-slate-200/80'
+                ? 'bg-indigo-600 text-white font-bold shadow-2xs'
+                : 'bg-slate-50 hover:bg-slate-100 text-slate-600 font-semibold border border-slate-200/80'
             }`}
           >
-            <Building2 className="w-4 h-4 shrink-0" />
+            <Building2 className="w-3.5 h-3.5 shrink-0" />
             <span>مانده حساب تامین‌کنندگان</span>
             <span
-              className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono ${
+              className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono ${
                 activeSubSection === 'suppliers' ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-800'
               }`}
             >
@@ -836,16 +836,16 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
           <button
             type="button"
             onClick={() => setActiveSubSection('followups')}
-            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs transition-all cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer ${
               activeSubSection === 'followups'
-                ? 'bg-amber-600 text-white font-black shadow-xs'
-                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold border border-slate-200/80'
+                ? 'bg-amber-600 text-white font-bold shadow-2xs'
+                : 'bg-slate-50 hover:bg-slate-100 text-slate-600 font-semibold border border-slate-200/80'
             }`}
           >
-            <Bell className="w-4 h-4 shrink-0" />
-            <span>یادداشت مذاکره و یادآور تماس</span>
+            <Bell className="w-3.5 h-3.5 shrink-0" />
+            <span>مذاکرات و یادآور تماس</span>
             {dueFollowUpsCount > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black bg-rose-500 text-white">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black bg-rose-500 text-white">
                 {toPersianDigits(dueFollowUpsCount)}
               </span>
             )}
@@ -1056,7 +1056,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
               <MessageSquarePlus className="w-10 h-10 mx-auto text-slate-300" />
               <div className="text-sm font-bold text-slate-600">هیچ یادداشت مذاکره یا یادآور تماسی در این بخش وجود ندارد</div>
               <p className="text-xs text-slate-400 max-w-md mx-auto">
-                در لیست مشتریان بر روی دکمه «یادداشت مذاکره» کلیک کنید تا مذاکرات و تاریخ تماس بعدی را برای مشتری ثبت نمایید.
+                با باز کردن «جزئیات» هر مشتری می‌توانید یادداشت مذاکرات و تاریخ تماس بعدی را ثبت نمایید.
               </p>
             </div>
           ) : (
@@ -1164,95 +1164,40 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
       {/* Customer List Card */}
       {activeSubSection === 'customers' && (
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-        {/* Search, Sort, Filter & View Mode Toolbar (Decluttered & Mobile-Optimized) */}
-        <div className="p-2.5 sm:p-3.5 border-b border-slate-200/80 bg-slate-50/70 space-y-2 sm:space-y-2.5">
-          {/* Top Tier: Search, View Mode Toggle, and Sort */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-2.5">
-            {/* Search Input */}
-            <div className="relative flex-1 min-w-0">
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                id="customer-search-input"
-                placeholder="جستجوی مشتری (نام، شماره، کد ملی)..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white border border-slate-200/90 rounded-xl pr-9 pl-8 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none transition-all shadow-2xs"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
-                  title="پاک کردن جستجو"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Right Controls: Sort & View Mode Switcher */}
-            <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
-              {/* Sort Dropdown */}
-              <div className="relative flex-1 sm:flex-initial sm:w-40 min-w-0">
-                <select
-                  id="customer-sort-select"
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="w-full appearance-none bg-white border border-slate-200/90 rounded-xl pr-7 pl-6 py-1.5 text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none cursor-pointer shadow-2xs truncate"
-                >
-                  <option value="name-asc">نام (الفبا)</option>
-                  <option value="debt-desc">بیشترین بدهی</option>
-                  <option value="orders-desc">بیشترین سفارش</option>
-                  <option value="newest">جدیدترین</option>
-                </select>
-                <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-
-              {/* View Mode Toggle Switcher (Hidden on mobile) */}
-              <div className="hidden sm:flex items-center bg-slate-200/60 p-0.5 rounded-xl border border-slate-200/80 text-xs shadow-2xs shrink-0">
-                <button
-                  type="button"
-                  id="customers-view-table-btn"
-                  onClick={() => handleToggleViewMode('table')}
-                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg font-medium text-xs transition-all cursor-pointer ${
-                    viewMode === 'table'
-                      ? 'bg-white text-purple-800 shadow-2xs font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                  title="نمایش ردیفی (جدولی)"
-                >
-                  <List className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">ردیفی</span>
-                </button>
-                <button
-                  type="button"
-                  id="customers-view-grid-btn"
-                  onClick={() => handleToggleViewMode('grid')}
-                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg font-medium text-xs transition-all cursor-pointer ${
-                    viewMode === 'grid'
-                      ? 'bg-white text-purple-800 shadow-2xs font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                  title="نمایش کارتی"
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">کارتی</span>
-                </button>
-              </div>
-            </div>
+        {/* Compact Single-Bar Search, Filter, Sort & View Mode Toolbar */}
+        <div className="p-2.5 sm:p-3 border-b border-slate-200/80 bg-slate-50/70 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2">
+          {/* Search Input */}
+          <div className="relative flex-1 min-w-0">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              id="customer-search-input"
+              placeholder="جستجوی نام، شماره تماس یا کد ملی مشتری..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-white border border-slate-200/90 rounded-xl pr-8 pl-7 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none transition-all shadow-2xs"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                title="پاک کردن جستجو"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
-          {/* Bottom Tier: Streamlined Segmented Filter & Summary Count */}
-          <div className="flex items-center justify-between gap-2 pt-1.5 sm:pt-2 border-t border-slate-200/70 overflow-hidden">
-            {/* Unified Status Segmented Filter */}
-            <div className="flex items-center bg-slate-200/60 p-0.5 rounded-xl border border-slate-200/80 text-xs shadow-2xs overflow-x-auto no-scrollbar scroll-smooth flex-1 sm:flex-initial">
+          {/* Unified Status Filter + Sort + View Mode */}
+          <div className="flex items-center justify-between lg:justify-end gap-1.5 flex-wrap sm:flex-nowrap">
+            {/* Status Segmented Filter */}
+            <div className="flex items-center bg-slate-200/60 p-0.5 rounded-xl border border-slate-200/80 text-[11px] shadow-2xs overflow-x-auto no-scrollbar">
               <button
                 type="button"
                 id="filter-cust-all"
                 onClick={() => setStatusFilter('all')}
-                className={`px-2 sm:px-2.5 py-1 rounded-lg text-xs transition-all cursor-pointer whitespace-nowrap font-medium ${
+                className={`px-2 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap font-medium ${
                   statusFilter === 'all'
                     ? 'bg-white text-slate-900 shadow-2xs font-bold'
                     : 'text-slate-600 hover:text-slate-900'
@@ -1265,14 +1210,14 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                 type="button"
                 id="filter-cust-debtors"
                 onClick={() => setStatusFilter('debtors')}
-                className={`px-2 sm:px-2.5 py-1 rounded-lg text-xs transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap font-medium ${
+                className={`px-2 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap font-medium ${
                   statusFilter === 'debtors'
                     ? 'bg-rose-600 text-white shadow-2xs font-bold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <span>بدهکاران</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                <span>بدهکار</span>
+                <span className={`px-1 rounded-full text-[10px] font-mono ${
                   statusFilter === 'debtors' ? 'bg-white/25 text-white' : 'bg-rose-100 text-rose-700'
                 }`}>
                   {toPersianDigits(totalDebtorsCount)}
@@ -1283,14 +1228,14 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                 type="button"
                 id="filter-cust-creditors"
                 onClick={() => setStatusFilter('creditors')}
-                className={`px-2 sm:px-2.5 py-1 rounded-lg text-xs transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap font-medium ${
+                className={`px-2 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap font-medium ${
                   statusFilter === 'creditors'
                     ? 'bg-blue-600 text-white shadow-2xs font-bold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <span>بستانکاران</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                <span>بستانکار</span>
+                <span className={`px-1 rounded-full text-[10px] font-mono ${
                   statusFilter === 'creditors' ? 'bg-white/25 text-white' : 'bg-blue-100 text-blue-700'
                 }`}>
                   {toPersianDigits(totalCreditorsCount)}
@@ -1301,14 +1246,14 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                 type="button"
                 id="filter-cust-settled"
                 onClick={() => setStatusFilter('settled')}
-                className={`px-2 sm:px-2.5 py-1 rounded-lg text-xs transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap font-medium ${
+                className={`px-2 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap font-medium ${
                   statusFilter === 'settled'
                     ? 'bg-emerald-600 text-white shadow-2xs font-bold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <span>تسویه‌شده</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                <span>تسویه</span>
+                <span className={`px-1 rounded-full text-[10px] font-mono ${
                   statusFilter === 'settled' ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-700'
                 }`}>
                   {toPersianDigits(totalSettledCount)}
@@ -1316,9 +1261,51 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
               </button>
             </div>
 
-            {/* Total Counter */}
-            <div className="text-[10px] sm:text-[11px] text-slate-500 font-medium shrink-0 whitespace-nowrap hidden sm:block">
-              نمایش <strong className="text-slate-800 font-mono">{toPersianDigits(filteredCustomers.length)}</strong> از <strong className="text-slate-800 font-mono">{toPersianDigits(customers.length)}</strong>
+            {/* Sort Dropdown */}
+            <div className="relative w-32 sm:w-36 shrink-0">
+              <select
+                id="customer-sort-select"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="w-full appearance-none bg-white border border-slate-200/90 rounded-xl pr-6 pl-5 py-1.5 text-[11px] font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none cursor-pointer shadow-2xs truncate"
+              >
+                <option value="name-asc">نام (الفبا)</option>
+                <option value="debt-desc">بیشترین بدهی</option>
+                <option value="orders-desc">بیشترین سفارش</option>
+                <option value="newest">جدیدترین</option>
+              </select>
+              <ArrowUpDown className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-3 h-3 text-slate-400 absolute left-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* View Mode Toggle Switcher (Icon-only compact on desktop) */}
+            <div className="hidden sm:flex items-center bg-slate-200/60 p-0.5 rounded-xl border border-slate-200/80 text-xs shadow-2xs shrink-0">
+              <button
+                type="button"
+                id="customers-view-table-btn"
+                onClick={() => handleToggleViewMode('table')}
+                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                  viewMode === 'table'
+                    ? 'bg-white text-purple-800 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-900'
+                }`}
+                title="نمایش ردیفی (جدولی)"
+              >
+                <List className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                id="customers-view-grid-btn"
+                onClick={() => handleToggleViewMode('grid')}
+                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                  viewMode === 'grid'
+                    ? 'bg-white text-purple-800 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-900'
+                }`}
+                title="نمایش کارتی"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         </div>
@@ -1346,7 +1333,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
           </div>
         ) : viewMode === 'table' ? (
           /* ========================================================
-             ROW / TABLE VIEW (نمایش ردیفی مشتریان)
+             ROW / TABLE VIEW (نمایش ردیفی مشتریان - خلوت و بهینه)
              ======================================================== */
           <div>
             {/* Desktop Table View */}
@@ -1354,11 +1341,11 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
               <table className="w-full text-right border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-100/80 text-slate-700 border-b border-slate-200 select-none">
-                    <th className="py-3.5 px-3 font-bold text-center w-12">#</th>
-                    <th className="py-3.5 px-3 font-bold">نام خریدار / مشتری</th>
-                    <th className="py-3.5 px-3 font-bold">شماره تماس</th>
-                    <th className="py-3.5 px-3 font-bold text-left">مانده حساب و وضعیت مالی</th>
-                    <th className="py-3.5 px-3 font-bold text-center w-72">عملیات</th>
+                    <th className="py-3 px-3 font-bold text-center w-10">#</th>
+                    <th className="py-3 px-3 font-bold">نام خریدار / مشتری</th>
+                    <th className="py-3 px-3 font-bold">شماره تماس</th>
+                    <th className="py-3 px-3 font-bold text-left">مانده حساب و وضعیت مالی</th>
+                    <th className="py-3 px-3 font-bold text-center w-44">عملیات</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1366,7 +1353,6 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                     const globalIndex = customersPageSize > 0 ? (customersPage - 1) * customersPageSize + index : index;
                     const m = customerMetrics.get(cust.id);
                     const customerInvoices = m?.invoices || [];
-                    const totalSpent = m?.totalSpent || 0;
                     const custLedger = m?.ledger || StorageService.buildCustomerLedger(cust, invoices, transactions);
                     const hasDebt = m?.hasDebt ?? (custLedger.netBalance > 0);
                     const hasCredit = m?.hasCredit ?? (custLedger.netBalance < 0);
@@ -1380,18 +1366,18 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                         } hover:bg-purple-50/40 transition-colors group`}
                       >
                         {/* Index */}
-                        <td className="py-3.5 px-3 text-center text-slate-400 font-mono font-bold text-[11px]">
+                        <td className="py-2.5 px-3 text-center text-slate-400 font-mono font-bold text-[11px]">
                           {toPersianDigits(globalIndex + 1)}
                         </td>
 
                         {/* Customer Name & National ID (Clickable to open details) */}
-                        <td className="py-3.5 px-3">
+                        <td className="py-2.5 px-3">
                           <div 
                             onClick={() => setDetailCustomer(cust)}
                             className="flex items-center gap-2.5 cursor-pointer"
                             title="مشاهده جزئیات کامل مشتری"
                           >
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-100 to-indigo-100 text-purple-700 font-black text-xs flex items-center justify-center shrink-0 border border-purple-200/70 shadow-2xs group-hover:scale-105 transition-transform">
+                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-100 to-indigo-100 text-purple-700 font-black text-xs flex items-center justify-center shrink-0 border border-purple-200/70 shadow-2xs group-hover:scale-105 transition-transform">
                               {cust.name.trim().charAt(0) || 'م'}
                             </div>
                             <div>
@@ -1401,7 +1387,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                                 </span>
                                 {cust.customerType === 'colleague' && (
                                   <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
-                                    همکار / عمده
+                                    همکار
                                   </span>
                                 )}
                                 {cust.nextFollowUpDate && (
@@ -1418,7 +1404,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                                     title="یادآور تماس بعدی - کلیک برای مشاهده مذاکرات"
                                   >
                                     <Bell className="w-2.5 h-2.5" />
-                                    <span>تماس: {toPersianDigits(cust.nextFollowUpDate)}</span>
+                                    <span>{toPersianDigits(cust.nextFollowUpDate)}</span>
                                   </span>
                                 )}
                               </div>
@@ -1432,7 +1418,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                         </td>
 
                         {/* Phone Number */}
-                        <td className="py-3.5 px-3 whitespace-nowrap">
+                        <td className="py-2.5 px-3 whitespace-nowrap">
                           {cust.phone ? (
                             <div className="flex items-center gap-1.5">
                               <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -1449,7 +1435,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                         </td>
 
                         {/* Financial balance status */}
-                        <td className="py-3.5 px-3 text-left whitespace-nowrap">
+                        <td className="py-2.5 px-3 text-left whitespace-nowrap">
                           {hasDebt ? (
                             <button
                               type="button"
@@ -1489,123 +1475,32 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                           )}
                         </td>
 
-                        {/* Actions */}
-                        <td className="py-3.5 px-3 text-center whitespace-nowrap">
+                        {/* Decluttered Actions: فقط ۲ دکمه اصلی (صورتحساب + جزئیات و عملیات) */}
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1.5">
-                            {/* Primary Details Button */}
-                            <button
-                              type="button"
-                              id={`customer-details-btn-${cust.id}`}
-                              onClick={() => setDetailCustomer(cust)}
-                              title="مشاهده جزئیات کامل، آدرس، سوابق خرید و وضعیت مشتری"
-                              className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-800 border border-purple-300 shadow-2xs transition-all cursor-pointer"
-                            >
-                              <Eye className="w-3.5 h-3.5 text-purple-700" />
-                              <span>جزئیات</span>
-                            </button>
-
-                            {/* Follow-up & Negotiation Note Button */}
-                            <button
-                              type="button"
-                              onClick={() => handleOpenFollowUpModal(cust)}
-                              title="ثبت یادداشت مذاکره و تاریخ یادآوری تماس بعدی"
-                              className={`flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg border transition-all cursor-pointer ${
-                                cust.nextFollowUpDate
-                                  ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300'
-                                  : 'bg-slate-50 hover:bg-amber-50 text-slate-700 hover:text-amber-800 border-slate-200'
-                              }`}
-                            >
-                              <MessageSquarePlus className="w-3.5 h-3.5 text-amber-600" />
-                              <span className="hidden xl:inline">مذاکره</span>
-                            </button>
-
                             {/* Statement Button */}
                             <button
                               type="button"
                               id={`customer-statement-btn-${cust.id}`}
                               onClick={() => setStatementCustomer(cust)}
-                              title="مشاهده گردش حساب، ثبت بدهی و واریزی مشتری و چاپ صورتحساب"
-                              className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-all cursor-pointer"
+                              title="مشاهده گردش حساب، ثبت واریزی و چاپ صورتحساب"
+                              className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-purple-50 text-slate-700 hover:text-purple-800 border border-slate-200/90 hover:border-purple-200 transition-all cursor-pointer"
                             >
-                              <ReceiptText className="w-3.5 h-3.5 text-slate-500" />
-                              <span className="hidden xl:inline">صورتحساب</span>
+                              <ReceiptText className="w-3.5 h-3.5 text-purple-600" />
+                              <span>صورتحساب</span>
                             </button>
 
-                            {/* Public Web Link Button (پیوند عمومی نسخه تحت وب) */}
+                            {/* Primary Details & All Actions Button */}
                             <button
                               type="button"
-                              id={`customer-web-link-btn-${cust.id}`}
-                              onClick={() => handleOpenCustomerWebLink(cust)}
-                              title="پیوند عمومی نسخه تحت وب (ارسال لینک آنلاین فاکتور و صورتحساب مشتری)"
-                              className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 transition-all cursor-pointer"
+                              id={`customer-details-btn-${cust.id}`}
+                              onClick={() => setDetailCustomer(cust)}
+                              title="مشاهده جزئیات کامل، صدور فاکتور، ثبت واریزی، پیوند وب و سایر عملیات"
+                              className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white shadow-2xs transition-all cursor-pointer"
                             >
-                              <Globe className="w-3.5 h-3.5 text-sky-600" />
-                              <span className="hidden xl:inline">پیوند وب</span>
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>جزئیات</span>
                             </button>
-
-                            {/* Settle Debt Button if has debt */}
-                            {hasDebt && (
-                              <button
-                                type="button"
-                                id={`settle-customer-debt-${cust.id}`}
-                                onClick={() => handleOpenTransaction(cust, 'deposit')}
-                                title="ثبت واریزی به حساب مشتری"
-                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition-all cursor-pointer"
-                              >
-                                <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
-                                <span className="hidden xl:inline">واریزی</span>
-                              </button>
-                            )}
-
-                            {/* New Invoice Button */}
-                            {(!currentUser || currentUser.permissions.canCreateInvoice) && (
-                              <button
-                                type="button"
-                                onClick={() => onSelectCustomerForInvoice(cust)}
-                                title="صدور فاکتور جدید برای این مشتری"
-                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-all cursor-pointer"
-                              >
-                                <Plus className="w-3.5 h-3.5 text-emerald-600" />
-                                <span className="hidden xl:inline">فاکتور</span>
-                              </button>
-                            )}
-
-                            {/* Export Button */}
-                            <button
-                              type="button"
-                              id={`export-customer-excel-${cust.id}`}
-                              onClick={() => {
-                                setExportModalCustomer(cust);
-                                setIsExportModalOpen(true);
-                              }}
-                              title="خروجی اکسل فاکتورها و حواله‌های خروج"
-                              className="p-1.5 text-slate-400 hover:text-purple-700 hover:bg-purple-50 rounded-lg cursor-pointer transition-colors"
-                            >
-                              <FileSpreadsheet className="w-3.5 h-3.5" />
-                            </button>
-
-                            {/* Edit Button */}
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEdit(cust)}
-                              title="ویرایش مشخصات مشتری"
-                              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-
-                            {/* Delete Button */}
-                            {(!currentUser || currentUser.role === 'admin' || currentUser.permissions.canManageCustomers) && (
-                              <button
-                                id={`delete-customer-btn-${cust.id}`}
-                                type="button"
-                                onClick={() => setCustomerToDelete(cust)}
-                                title="حذف مشتری"
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
                           </div>
                         </td>
                       </tr>
@@ -1656,11 +1551,11 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
           </div>
         ) : (
           /* ========================================================
-             CARD / GRID VIEW (نمایش کارتی در صورت تمایل کاربر)
+             CARD / GRID VIEW (نمایش کارتی خلوت و بهینه)
              ======================================================== */
           <div>
             {/* Desktop Grid View */}
-            <div className="hidden sm:grid p-4 sm:p-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="hidden sm:grid p-4 sm:p-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {paginateArray(filteredCustomers, customersPage, customersPageSize).map((cust, index) => {
               const m = customerMetrics.get(cust.id);
               const customerInvoices = m?.invoices || [];
@@ -1673,79 +1568,62 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
               return (
                 <div
                   key={cust.id}
+                  onClick={() => setDetailCustomer(cust)}
                   className={`${
-                    index % 2 === 1 ? 'bg-slate-100/75' : 'bg-white'
-                  } border border-slate-200 rounded-2xl p-4 hover:border-slate-300 hover:shadow-xs transition-all flex flex-col justify-between space-y-3`}
+                    index % 2 === 1 ? 'bg-slate-50/80' : 'bg-white'
+                  } border border-slate-200/90 rounded-2xl p-3.5 hover:border-purple-300 hover:shadow-xs transition-all flex flex-col justify-between space-y-3 cursor-pointer`}
                 >
                   <div>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-bold text-slate-900 text-sm">{cust.name}</h3>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h3 className="font-bold text-slate-900 text-sm truncate">{cust.name}</h3>
+                          {cust.customerType === 'colleague' && (
+                            <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
+                              همکار
+                            </span>
+                          )}
+                        </div>
                         {cust.nationalId && (
-                          <span className="text-[10px] text-slate-400 font-mono">
+                          <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
                             کد ملی: {toPersianDigits(cust.nationalId)}
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleOpenEdit(cust)}
-                          title="ویرایش اطلاعات"
-                          className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg cursor-pointer transition-colors"
+                      {cust.phone && (
+                        <a
+                          href={`tel:${cust.phone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 px-2 py-0.5 rounded-lg shrink-0"
+                          title="تماس تلفنی"
                         >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        {(!currentUser || currentUser.role === 'admin' || currentUser.permissions.canManageCustomers) && (
-                          <button
-                            id={`delete-customer-btn-${cust.id}`}
-                            type="button"
-                            onClick={() => setCustomerToDelete(cust)}
-                            title="حذف مشتری"
-                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
+                          <Phone className="w-3 h-3" />
+                          <span>{toPersianDigits(cust.phone)}</span>
+                        </a>
+                      )}
                     </div>
 
-                    <div className="mt-3 space-y-1.5 text-xs text-slate-600">
-                      {cust.phone && (
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                            <a
-                              href={`tel:${cust.phone}`}
-                              className="font-mono text-slate-700 hover:text-emerald-700 hover:underline text-xs font-semibold"
-                            >
-                              {toPersianDigits(cust.phone)}
-                            </a>
-                          </div>
-                          <a
-                            href={`tel:${cust.phone}`}
-                            className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md font-medium hover:bg-emerald-100"
-                          >
-                            تماس
-                          </a>
-                        </div>
-                      )}
+                    <div className="mt-2.5 space-y-1.5 text-xs text-slate-600">
                       {cust.address && (
-                        <div className="flex items-start gap-2 text-[11px] text-slate-500">
+                        <div className="flex items-start gap-1.5 text-[11px] text-slate-500">
                           <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                          <span className="line-clamp-2">{cust.address}</span>
+                          <span className="line-clamp-1">{cust.address}</span>
                         </div>
                       )}
 
                       {/* Debt / Settle Status Banner */}
                       {hasDebt ? (
                         <div 
-                          onClick={() => setStatementCustomer(cust)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setStatementCustomer(cust);
+                          }}
                           title="کلیک برای باز کردن صورتحساب مالی و ثبت واریزی"
-                          className="mt-2 p-2 bg-rose-50 hover:bg-rose-100/80 border border-rose-200 rounded-xl flex items-center justify-between gap-1 text-[11px] cursor-pointer transition-all"
+                          className="mt-2 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100/80 border border-rose-200 rounded-xl flex items-center justify-between gap-1 text-[11px] cursor-pointer transition-all"
                         >
-                          <div className="flex items-center gap-1.5 text-rose-700 font-bold">
+                          <div className="flex items-center gap-1 text-rose-700 font-bold">
                             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                            <span>بدهی تسویه‌نشده:</span>
+                            <span>بدهکار:</span>
                           </div>
                           <span className="font-mono font-black text-rose-800">
                             {formatPrice(custLedger.netBalance, settings.currency)}
@@ -1753,13 +1631,16 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                         </div>
                       ) : hasCredit ? (
                         <div 
-                          onClick={() => setStatementCustomer(cust)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setStatementCustomer(cust);
+                          }}
                           title="کلیک برای باز کردن صورتحساب"
-                          className="mt-2 p-1.5 bg-blue-50 hover:bg-blue-100/80 border border-blue-200 rounded-xl flex items-center justify-between gap-1 text-[11px] cursor-pointer transition-all"
+                          className="mt-2 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100/80 border border-blue-200 rounded-xl flex items-center justify-between gap-1 text-[11px] cursor-pointer transition-all"
                         >
-                          <div className="flex items-center gap-1.5 text-blue-700 font-bold">
+                          <div className="flex items-center gap-1 text-blue-700 font-bold">
                             <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>طلبکار / بستانکار:</span>
+                            <span>بستانکار:</span>
                           </div>
                           <span className="font-mono font-black text-blue-800">
                             {formatPrice(Math.abs(custLedger.netBalance), settings.currency)}
@@ -1767,100 +1648,56 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                         </div>
                       ) : isSettled ? (
                         <div 
-                          onClick={() => setStatementCustomer(cust)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setStatementCustomer(cust);
+                          }}
                           title="کلیک برای باز کردن صورتحساب"
-                          className="mt-2 p-1.5 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 rounded-xl flex items-center justify-center gap-1 text-[11px] text-emerald-700 font-bold cursor-pointer transition-all"
+                          className="mt-2 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 rounded-xl flex items-center justify-center gap-1 text-[11px] text-emerald-700 font-bold cursor-pointer transition-all"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>تسویه حساب کامل (مشاهده صورتحساب)</span>
+                          <span>تسویه حساب کامل</span>
                         </div>
                       ) : null}
                     </div>
                   </div>
 
-                  {/* Summary & Action Buttons */}
-                  <div className="pt-3 border-t border-slate-200/80 flex items-center justify-between gap-2 flex-wrap">
-                    <div>
-                      <div className="text-[10px] text-slate-400">سفارشات:</div>
-                      <div className="text-xs font-bold text-slate-800">
-                        {toPersianDigits(customerInvoices.length)} فاکتور ({formatPrice(totalSpent, settings.currency)})
-                      </div>
+                  {/* Decluttered Card Footer: فقط خلاصه سفارش و ۲ دکمه اصلی */}
+                  <div
+                    className="pt-2.5 border-t border-slate-200/80 flex items-center justify-between gap-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="text-[11px] text-slate-500 truncate">
+                      <span className="font-bold text-slate-700 font-mono">{toPersianDigits(customerInvoices.length)}</span> فاکتور
+                      {totalSpent > 0 && (
+                        <span className="text-slate-400 mr-1">({formatPrice(totalSpent, settings.currency)})</span>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {/* Customer Details Button */}
-                      <button
-                        type="button"
-                        id={`customer-grid-details-btn-${cust.id}`}
-                        onClick={() => setDetailCustomer(cust)}
-                        title="مشاهده جزئیات کامل، آدرس و سوابق مشتری"
-                        className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-800 border border-purple-300 shadow-xs transition-all cursor-pointer"
-                      >
-                        <Eye className="w-3.5 h-3.5 text-purple-700" />
-                        <span>جزئیات</span>
-                      </button>
-
+                    <div className="flex items-center gap-1.5 shrink-0">
                       {/* Customer Statement Button */}
                       <button
                         type="button"
                         id={`customer-statement-btn-${cust.id}`}
                         onClick={() => setStatementCustomer(cust)}
-                        title="مشاهده گردش حساب، ثبت بدهی و واریزی مشتری و چاپ صورتحساب"
-                        className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white shadow-xs transition-all cursor-pointer"
+                        title="مشاهده گردش حساب، ثبت واریزی و چاپ صورتحساب"
+                        className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-purple-50 text-slate-700 hover:text-purple-800 border border-slate-200/90 transition-all cursor-pointer"
                       >
-                        <ReceiptText className="w-3.5 h-3.5" />
-                        <span>صورتحساب مالی</span>
+                        <ReceiptText className="w-3.5 h-3.5 text-purple-600" />
+                        <span>صورتحساب</span>
                       </button>
 
-                      {/* Public Web Link Button (پیوند عمومی نسخه تحت وب) */}
+                      {/* Customer Details & Actions Button */}
                       <button
                         type="button"
-                        id={`customer-grid-web-link-btn-${cust.id}`}
-                        onClick={() => handleOpenCustomerWebLink(cust)}
-                        title="پیوند عمومی نسخه تحت وب (مشاهده آنلاین فاکتور و صورتحساب مشتری)"
-                        className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 shadow-2xs transition-all cursor-pointer"
+                        id={`customer-grid-details-btn-${cust.id}`}
+                        onClick={() => setDetailCustomer(cust)}
+                        title="مشاهده جزئیات کامل، صدور فاکتور، ثبت واریزی و سایر عملیات"
+                        className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white shadow-2xs transition-all cursor-pointer"
                       >
-                        <Globe className="w-3.5 h-3.5 text-sky-600" />
-                        <span>پیوند عمومی نسخه تحت وب</span>
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>جزئیات</span>
                       </button>
-
-                      {/* Settle Debt / Deposit Button */}
-                      {hasDebt && (
-                        <button
-                          type="button"
-                          id={`settle-customer-debt-${cust.id}`}
-                          onClick={() => handleOpenTransaction(cust, 'deposit')}
-                          title="ثبت واریزی به حساب این مشتری"
-                          className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer"
-                        >
-                          <CreditCard className="w-3.5 h-3.5" />
-                          <span>ثبت واریزی</span>
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        id={`export-customer-excel-${cust.id}`}
-                        onClick={() => {
-                          setExportModalCustomer(cust);
-                          setIsExportModalOpen(true);
-                        }}
-                        title="خروجی اکسل فاکتورها و حواله‌های خروج این شخص با جزییات کامل"
-                        className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 transition-colors cursor-pointer"
-                      >
-                        <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600" />
-                        <span>اکسپورت اسناد</span>
-                      </button>
-
-                      {(!currentUser || currentUser.permissions.canCreateInvoice) && (
-                        <button
-                          onClick={() => onSelectCustomerForInvoice(cust)}
-                          className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>فاکتور جدید</span>
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>
