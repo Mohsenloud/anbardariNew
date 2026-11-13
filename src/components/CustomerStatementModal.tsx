@@ -957,637 +957,457 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
           </div>
         </div>
 
-        {/* 2. Desktop 4-Column KPI Cards (>= sm) */}
-        <div className="no-print hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 p-3.5 sm:p-4 bg-slate-50/90 border-b border-slate-200/80 shrink-0">
+        {/* 2. Desktop 4-Column KPI Cards (>= sm) - Compact & Uncluttered */}
+        <div className="no-print hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-2 px-3.5 py-1.5 bg-slate-50/90 border-b border-slate-200/80 shrink-0">
           {/* 1. Total Debits (بدهکار) */}
-          <div className="bg-white p-3 rounded-2xl border border-rose-100 shadow-xs flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-rose-600 font-bold mb-1">
-              <span>{isSearchOrFilterActive ? 'جمع بدهی‌های جستجو' : 'جمع کل بدهی‌ها'}</span>
-              <span className="p-1 bg-rose-50 rounded-lg">
-                <ArrowUpRight className="w-3.5 h-3.5 text-rose-600" />
-              </span>
-            </div>
-            <div className="text-sm sm:text-base font-black text-rose-700 font-mono truncate">
+          <div className="bg-white px-2.5 py-1.5 rounded-xl border border-rose-100 flex items-center justify-between gap-2">
+            <span className="text-[11px] text-rose-600 font-bold flex items-center gap-1 shrink-0">
+              <ArrowUpRight className="w-3 h-3 text-rose-500" />
+              <span>{isSearchOrFilterActive ? 'بدهی فیلتر:' : 'جمع بدهی:'}</span>
+            </span>
+            <span className="text-xs sm:text-sm font-black text-rose-700 font-mono truncate">
               {formatPrice(activeTotals.totalDebit, settings.currency)}
-            </div>
-            <div className="text-[10px] text-slate-400 mt-0.5 truncate">
-              {isSearchOrFilterActive
-                ? `محاسبه از ${toPersianDigits(activeTotals.entriesCount)} سند فیلترشده`
-                : 'فاکتورها و اسناد بدهکاری'}
-            </div>
+            </span>
           </div>
 
           {/* 2. Total Credits (بستانکار) */}
-          <div className="bg-white p-3 rounded-2xl border border-emerald-100 shadow-xs flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-emerald-600 font-bold mb-1">
-              <span>{isSearchOrFilterActive ? 'جمع واریزی‌های جستجو' : 'جمع کل واریزی‌ها'}</span>
-              <span className="p-1 bg-emerald-50 rounded-lg">
-                <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-600" />
-              </span>
-            </div>
-            <div className="text-sm sm:text-base font-black text-emerald-700 font-mono truncate">
+          <div className="bg-white px-2.5 py-1.5 rounded-xl border border-emerald-100 flex items-center justify-between gap-2">
+            <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-1 shrink-0">
+              <ArrowDownLeft className="w-3 h-3 text-emerald-500" />
+              <span>{isSearchOrFilterActive ? 'واریزی فیلتر:' : 'جمع واریزی:'}</span>
+            </span>
+            <span className="text-xs sm:text-sm font-black text-emerald-700 font-mono truncate">
               {formatPrice(activeTotals.totalCredit, settings.currency)}
-            </div>
-            <div className="text-[10px] text-slate-400 mt-0.5 truncate">
-              {isSearchOrFilterActive
-                ? `واریزی‌های منطبق با جستجو`
-                : 'نقدی، کارت و واریزی‌ها'}
-            </div>
+            </span>
           </div>
 
           {/* 3. Net Balance (مانده حساب) */}
-          <div className={`p-3 rounded-2xl border shadow-xs flex flex-col justify-between ${
+          <div className={`px-2.5 py-1.5 rounded-xl border flex items-center justify-between gap-2 ${
             activeTotals.netBalance > 0
-              ? 'bg-rose-50/80 border-rose-200 text-rose-800'
+              ? 'bg-rose-50/70 border-rose-200 text-rose-800'
               : activeTotals.netBalance < 0
-                ? 'bg-blue-50/80 border-blue-200 text-blue-800'
-                : 'bg-emerald-50/80 border-emerald-200 text-emerald-800'
+                ? 'bg-blue-50/70 border-blue-200 text-blue-800'
+                : 'bg-emerald-50/70 border-emerald-200 text-emerald-800'
           }`}>
-            <div className="flex items-center justify-between text-xs font-bold mb-1">
-              <span>{isSearchOrFilterActive ? 'مانده نتایج جستجو' : 'مانده حساب جاری'}</span>
-              <span className="p-1 bg-white/80 rounded-lg">
-                <Wallet className="w-3.5 h-3.5" />
-              </span>
-            </div>
-            <div className="text-sm sm:text-base font-black font-mono truncate">
+            <span className="text-[11px] font-bold flex items-center gap-1 shrink-0">
+              <Wallet className="w-3 h-3" />
+              <span>مانده ({activeTotals.netBalance > 0 ? 'بدهکار' : activeTotals.netBalance < 0 ? 'طلبکار' : 'تسویه'}):</span>
+            </span>
+            <span className="text-xs sm:text-sm font-black font-mono truncate">
               {formatPrice(Math.abs(activeTotals.netBalance), settings.currency)}
-            </div>
-            <div className="text-[10px] font-bold mt-0.5 truncate">
-              {activeTotals.netBalance > 0
-                ? 'مشتری بدهکار است'
-                : activeTotals.netBalance < 0
-                  ? 'مشتری طلبکار است'
-                  : 'حساب کاملاً تسویه است'}
-              {isSearchOrFilterActive && ' (بر اساس جستجو)'}
-            </div>
+            </span>
           </div>
 
           {/* 4. Total Entries & Invoices */}
-          <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-            <div className="flex items-center justify-between text-xs text-slate-600 font-bold mb-1">
-              <span>{isSearchOrFilterActive ? 'اسناد یافت‌شده' : 'تعداد کل اسناد'}</span>
-              <span className="p-1 bg-slate-100 rounded-lg text-slate-600">
-                <FileText className="w-3.5 h-3.5" />
+          <div className="bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
+            <span className="text-[11px] text-slate-600 font-bold flex items-center gap-1 shrink-0">
+              <FileText className="w-3 h-3 text-slate-400" />
+              <span>{isSearchOrFilterActive ? 'اسناد فیلتر:' : 'کل اسناد:'}</span>
+            </span>
+            <div className="flex items-center gap-1 truncate">
+              <span className="text-xs sm:text-sm font-black text-slate-800 font-mono">
+                {toPersianDigits(activeTotals.entriesCount)}
               </span>
-            </div>
-            <div className="text-sm sm:text-base font-black text-slate-800 font-mono truncate">
-              {toPersianDigits(activeTotals.entriesCount)} تراکنش
-            </div>
-            <div className="text-[10px] text-slate-500 mt-0.5 truncate">
-              {isSearchOrFilterActive
-                ? `از کل ${toPersianDigits(fullLedger.entries.length)} تراکنش پرونده`
-                : `${toPersianDigits(unpaidInvoices.length)} فاکتور تسویه‌نشده`}
+              <span className="text-[10px] text-slate-400">
+                {isSearchOrFilterActive
+                  ? `از ${toPersianDigits(fullLedger.entries.length)}`
+                  : unpaidInvoices.length > 0
+                    ? `(${toPersianDigits(unpaidInvoices.length)} باز)`
+                    : 'تراکنش'}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* ACTION TOOLBAR & FILTERS */}
-        <div className="no-print p-2.5 sm:p-3.5 border-b border-slate-200 bg-white space-y-2.5 shrink-0">
-          {/* Top Row: Primary Actions & View Controls */}
-          <div className="flex items-center justify-between gap-2 flex-wrap">
+        {/* ACTION TOOLBAR & FILTERS - Compact Single-Row Layout */}
+        <div className="no-print px-3 py-1.5 border-b border-slate-200 bg-white space-y-1.5 shrink-0">
+          {/* Unified Single Row: Actions + Tabs + Search + Filter/Export Tools */}
+          <div className="flex items-center gap-1.5 flex-wrap">
             {/* Primary Action Buttons */}
-            <div className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:flex-initial">
-              <button
-                type="button"
-                id="add-deposit-btn"
-                onClick={() => handleOpenTransactionModal('deposit')}
-                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 sm:px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5 shrink-0" />
-                <span>ثبت واریز</span>
-              </button>
+            <button
+              type="button"
+              id="add-deposit-btn"
+              onClick={() => handleOpenTransactionModal('deposit')}
+              className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-2.5 py-1 rounded-lg text-[11px] font-bold shadow-2xs transition-all cursor-pointer shrink-0"
+            >
+              <Plus className="w-3 h-3 shrink-0" />
+              <span>ثبت واریز</span>
+            </button>
 
+            <button
+              type="button"
+              id="add-debt-btn"
+              onClick={() => handleOpenTransactionModal('debt')}
+              className={`flex items-center gap-1 active:scale-95 text-white px-2.5 py-1 rounded-lg text-[11px] font-bold shadow-2xs transition-all cursor-pointer shrink-0 ${
+                fullLedger.netBalance < 0
+                  ? 'bg-blue-600 hover:bg-blue-700'
+                  : 'bg-rose-600 hover:bg-rose-700'
+              }`}
+            >
+              <Plus className="w-3 h-3 shrink-0" />
+              <span>{fullLedger.netBalance < 0 ? 'ثبت پرداخت' : 'ثبت بدهی'}</span>
+            </button>
+
+            <span className="h-4 w-px bg-slate-200 hidden sm:inline-block" />
+
+            {/* Quick Type Tabs */}
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[11px] shrink-0">
               <button
                 type="button"
-                id="add-debt-btn"
-                onClick={() => handleOpenTransactionModal('debt')}
-                className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 active:scale-95 text-white px-3 sm:px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer ${
-                  fullLedger.netBalance < 0
-                    ? 'bg-blue-600 hover:bg-blue-700'
-                    : 'bg-rose-600 hover:bg-rose-700'
+                onClick={() => setFilterType('all')}
+                className={`px-2 py-0.5 rounded-md font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  filterType === 'all' ? 'bg-white text-slate-800 shadow-2xs' : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
-                <Plus className="w-3.5 h-3.5 shrink-0" />
-                <span>{fullLedger.netBalance < 0 ? 'پرداخت وجه به طرف‌حساب' : 'ثبت بدهی'}</span>
+                همه
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterType('debt')}
+                className={`px-2 py-0.5 rounded-md font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  filterType === 'debt' ? 'bg-white text-rose-700 shadow-2xs' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                بدهی‌ها
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterType('deposit')}
+                className={`px-2 py-0.5 rounded-md font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  filterType === 'deposit' ? 'bg-white text-emerald-700 shadow-2xs' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                واریزی‌ها
               </button>
             </div>
 
-            {/* Secondary Buttons & View Switch */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              {/* View Switcher (Table vs Cards) */}
-              <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs">
+            {/* Compact Search Input */}
+            <div className="relative flex-1 min-w-[140px]">
+              <Search className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="جستجو (کالا، شماره سند، چک...)"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg pr-6 pl-6 py-1 text-[11px] text-slate-800 outline-none focus:bg-white focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+              />
+              {searchQuery && (
                 <button
                   type="button"
-                  onClick={() => setViewMode('table')}
-                  className={`p-1.5 sm:px-2.5 sm:py-1 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                    viewMode === 'table' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                  title="نمای جدولی (پیش‌فرض)"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute left-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full cursor-pointer"
                 >
-                  <LayoutList className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">جدول</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('cards')}
-                  className={`p-1.5 sm:px-2.5 sm:py-1 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                    viewMode === 'cards' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                  title="نمای کارتی"
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">کارتی</span>
-                </button>
-              </div>
-
-              {/* Export to PDF */}
-              <button
-                type="button"
-                id="export-statement-pdf-btn"
-                onClick={handleExportPdf}
-                disabled={isExportingPdf}
-                className="p-2 sm:px-3 sm:py-1.5 flex items-center gap-1 bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-60"
-                title="دریافت فایل PDF رسمی صورتحساب"
-              >
-                {isExportingPdf ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
-                ) : (
-                  <FileDown className="w-3.5 h-3.5 text-rose-600" />
-                )}
-                <span className="hidden sm:inline">{isExportingPdf ? 'در حال صدور...' : 'PDF'}</span>
-              </button>
-
-              {/* Export to Excel */}
-              <button
-                type="button"
-                id="export-statement-excel-btn"
-                onClick={handleExportExcel}
-                className="p-2 sm:px-3 sm:py-1.5 flex items-center gap-1 bg-purple-50 hover:bg-purple-100 active:scale-95 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                title="خروجی فایل اکسل صورتحساب"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600" />
-                <span className="hidden sm:inline">اکسل</span>
-              </button>
-
-              {/* Send to Telegram */}
-              {settings?.telegramBotEnabled && (
-                <button
-                  type="button"
-                  id="send-statement-telegram-btn"
-                  onClick={handleSendTelegramStatement}
-                  disabled={isSendingTelegram}
-                  className="p-2 sm:px-3 sm:py-1.5 flex items-center gap-1 bg-sky-50 hover:bg-sky-100 active:scale-95 text-sky-700 border border-sky-300 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
-                  title="ارسال خلاصه صورتحساب به تلگرام"
-                >
-                  {isSendingTelegram ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#229ED9]" />
-                  ) : (
-                    <Send className="w-3.5 h-3.5 text-[#229ED9]" />
-                  )}
-                  <span className="hidden sm:inline">تلگرام</span>
+                  <X className="w-3 h-3" />
                 </button>
               )}
             </div>
-          </div>
 
-          {/* Bottom Row: Filters & Search */}
-          <div className="space-y-2.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Filter by Type Tabs */}
-              <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs overflow-x-auto shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setFilterType('all')}
-                  className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer whitespace-nowrap ${
-                    filterType === 'all' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  همه ({toPersianDigits(fullLedger.entries.length)})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilterType('debt')}
-                  className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer whitespace-nowrap ${
-                    filterType === 'debt' ? 'bg-white text-rose-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  بدهی‌ها
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilterType('deposit')}
-                  className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer whitespace-nowrap ${
-                    filterType === 'deposit' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  واریزی‌ها
-                </button>
-              </div>
-
-              {/* Multi-Condition Text Search Input */}
-              <div className="relative flex-1 min-w-[180px]">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="جستجوی چندشرطی (مثلاً: فاکتور نقد، چک، شماره سند...)"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-8 pl-7 py-1.5 text-xs text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                  title="می‌توانید چند کلمه را با فاصله وارد کنید تا تمام شروط همزمان اعمال شوند"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full cursor-pointer"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-
-              {/* Multi-condition Filters Toggle Button */}
-              <button
-                type="button"
-                id="statement-advanced-filters-btn"
-                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+            {/* Advanced Filters Toggle */}
+            <button
+              type="button"
+              id="statement-advanced-filters-btn"
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+              className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border flex items-center gap-1 transition-all cursor-pointer shrink-0 ${
+                showAdvancedFilters || (activeConditionsCount > (searchQuery ? 1 : 0))
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+              }`}
+              title="فیلترهای پیشرفته (نوع سند، تاریخ، مبلغ)"
+            >
+              <SlidersHorizontal className="w-3 h-3" />
+              <span>فیلترها</span>
+              {activeConditionsCount > 0 && (
+                <span className={`px-1 rounded-full text-[9px] font-bold ${
                   showAdvancedFilters || (activeConditionsCount > (searchQuery ? 1 : 0))
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                }`}
-                title="فیلترهای پیشرفته چند شرطی (نوع سند، بازه تاریخ، محدوده مبلغ، وضعیت)"
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">فیلترهای پیشرفته</span>
-                <span className="sm:hidden">فیلترها</span>
-                {activeConditionsCount > 0 && (
-                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                    showAdvancedFilters || (activeConditionsCount > (searchQuery ? 1 : 0))
-                      ? 'bg-white text-emerald-800'
-                      : 'bg-emerald-100 text-emerald-800'
-                  }`}>
-                    {toPersianDigits(activeConditionsCount)}
-                  </span>
-                )}
-                <ChevronDown className={`w-3 h-3 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
-              </button>
+                    ? 'bg-white text-emerald-800'
+                    : 'bg-emerald-100 text-emerald-800'
+                }`}>
+                  {toPersianDigits(activeConditionsCount)}
+                </span>
+              )}
+              <ChevronDown className={`w-2.5 h-2.5 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+            </button>
 
-              {/* Show/Hide Suppliers Toggle */}
+            {/* Show/Hide Suppliers Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowSuppliers(!showSuppliers)}
+              className={`px-2 py-1 text-[11px] font-bold rounded-lg border flex items-center gap-1 transition-all cursor-pointer shrink-0 ${
+                showSuppliers
+                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                  : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'
+              }`}
+              title={showSuppliers ? 'مخفی کردن نام تامین‌کننده' : 'نمایش نام تامین‌کننده'}
+            >
+              <Building2 className="w-3 h-3" />
+              <span className="hidden md:inline">تامین‌کننده</span>
+            </button>
+
+            {/* View Switcher (Table vs Cards) */}
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[11px] shrink-0">
               <button
                 type="button"
-                onClick={() => setShowSuppliers(!showSuppliers)}
-                className={`px-2.5 py-1.5 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
-                  showSuppliers
-                    ? 'bg-amber-50 text-amber-900 border-amber-300 shadow-2xs'
-                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                onClick={() => setViewMode('table')}
+                className={`p-1 rounded-md transition-all cursor-pointer ${
+                  viewMode === 'table' ? 'bg-white text-emerald-700 shadow-2xs' : 'text-slate-500 hover:text-slate-700'
                 }`}
-                title="نمایش یا عدم نمایش نام شخصی تامین‌کننده و فروشنده کالا در صورتحساب"
+                title="نمای جدولی"
               >
-                <Building2 className={`w-3.5 h-3.5 ${showSuppliers ? 'text-amber-600' : 'text-slate-400'}`} />
-                <span className="hidden sm:inline">نام تامین‌کننده:</span>
-                <span>{showSuppliers ? 'نمایش' : 'مخفی'}</span>
+                <LayoutList className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('cards')}
+                className={`p-1 rounded-md transition-all cursor-pointer ${
+                  viewMode === 'cards' ? 'bg-white text-emerald-700 shadow-2xs' : 'text-slate-500 hover:text-slate-700'
+                }`}
+                title="نمای کارتی"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
               </button>
             </div>
 
-            {/* Advanced Multi-Condition Filter Panel (Collapsible) */}
-            {showAdvancedFilters && (
-              <div className="bg-slate-50/95 border border-slate-200 rounded-2xl p-3 sm:p-4 space-y-3 animate-fadeIn">
-                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-                  <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs">
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>فیلتر همزمان بر اساس چند شرط مجزا:</span>
-                  </div>
-                  {isSearchOrFilterActive && (
+            {/* Export Actions */}
+            <button
+              type="button"
+              id="export-statement-pdf-btn"
+              onClick={handleExportPdf}
+              disabled={isExportingPdf}
+              className="px-2 py-1 flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold transition-all cursor-pointer disabled:opacity-60 shrink-0"
+              title="دریافت فایل PDF صورتحساب"
+            >
+              {isExportingPdf ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileDown className="w-3 h-3" />}
+              <span className="hidden sm:inline">PDF</span>
+            </button>
+
+            <button
+              type="button"
+              id="export-statement-excel-btn"
+              onClick={handleExportExcel}
+              className="px-2 py-1 flex items-center gap-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-[11px] font-bold transition-all cursor-pointer shrink-0"
+              title="خروجی اکسل"
+            >
+              <FileSpreadsheet className="w-3 h-3" />
+              <span className="hidden sm:inline">اکسل</span>
+            </button>
+
+            {settings?.telegramBotEnabled && (
+              <button
+                type="button"
+                id="send-statement-telegram-btn"
+                onClick={handleSendTelegramStatement}
+                disabled={isSendingTelegram}
+                className="px-2 py-1 flex items-center gap-1 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                title="ارسال به تلگرام"
+              >
+                {isSendingTelegram ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                <span className="hidden sm:inline">تلگرام</span>
+              </button>
+            )}
+          </div>
+
+          {/* Collapsible Compact Multi-Condition Filter Panel */}
+          {showAdvancedFilters && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 space-y-1.5 text-[11px] animate-fadeIn">
+              {/* Row 1: Document Types Multi-Select + Quick Presets */}
+              <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                <div className="flex items-center gap-1 flex-wrap">
+                  <span className="font-bold text-slate-600 ml-0.5">نوع سند:</span>
+                  {STATEMENT_DOC_TYPES.map((opt) => {
+                    const isSelected = selectedDocTypes.includes(opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => handleToggleDocType(opt.id)}
+                        className={`px-2 py-0.5 rounded-lg border text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1 ${
+                          isSelected
+                            ? 'bg-slate-900 text-white border-slate-900 font-bold'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                        title={opt.fullName}
+                      >
+                        <span>{opt.label}</span>
+                        {isSelected && <span className="text-[9px]">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Compact Presets */}
+                <div className="flex items-center gap-1 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => handleSetDocTypePreset('sales_and_services')}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] border transition-all cursor-pointer ${
+                      selectedDocTypes.length === 2 && selectedDocTypes.includes('sales_goods') && selectedDocTypes.includes('sales_service')
+                        ? 'bg-blue-600 text-white border-blue-600 font-bold'
+                        : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                    }`}
+                  >
+                    فروش + خدمات (بدون واریز)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetDocTypePreset('sales_and_deposits')}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] border transition-all cursor-pointer ${
+                      selectedDocTypes.length === 2 && selectedDocTypes.includes('sales_goods') && selectedDocTypes.includes('deposit')
+                        ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                    }`}
+                  >
+                    فروش + واریز (بدون خدمات)
+                  </button>
+                  {selectedDocTypes.length > 0 && (
                     <button
                       type="button"
-                      onClick={handleResetAllFilters}
-                      className="text-[11px] text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                      onClick={() => handleSetDocTypePreset('all')}
+                      className="px-1.5 py-0.5 rounded-lg text-[10px] bg-white text-slate-500 border border-slate-200 hover:bg-slate-100 cursor-pointer"
                     >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>پاکسازی همه شروط</span>
+                      همه اسناد
                     </button>
                   )}
                 </div>
+              </div>
 
-                {/* Condition 1: Specific Document Types (Multi-Select & Presets) */}
-                <div className="bg-white/90 rounded-xl p-3 border border-slate-200 shadow-2xs space-y-2.5">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5 text-blue-600" />
-                      <span className="text-[11px] font-bold text-slate-800">
-                        شرط ۱: فیلتر همزمان نوع اسناد (چند انتخابی و میانبرهای ترکیبی)
-                      </span>
-                      {selectedDocTypes.length > 0 ? (
-                        <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
-                          {toPersianDigits(selectedDocTypes.length)} نوع انتخاب‌شده
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 font-normal">
-                          (تمام انواع اسناد نمایش داده می‌شوند)
-                        </span>
-                      )}
-                    </div>
+              {/* Row 2: Date, Amount Range, Status & Reset */}
+              <div className="flex items-center justify-between gap-2 flex-wrap pt-1 border-t border-slate-200/70">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="font-bold text-slate-600">تاریخ:</span>
+                  <select
+                    value={dateFilterMode}
+                    onChange={(e) => setDateFilterMode(e.target.value as any)}
+                    className="bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-[11px] text-slate-800 outline-none cursor-pointer"
+                  >
+                    <option value="all">همه زمان‌ها</option>
+                    <option value="30days">۳۰ روز اخیر</option>
+                    <option value="90days">۳ ماه اخیر</option>
+                    <option value="this_year">سال جاری</option>
+                    <option value="custom">بازه دلخواه...</option>
+                  </select>
 
-                    {/* Presets */}
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <span className="text-[10px] text-slate-400 font-medium">میانبرهای سریع:</span>
-                      <button
-                        type="button"
-                        onClick={() => handleSetDocTypePreset('all')}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] border transition-all cursor-pointer ${
-                          selectedDocTypes.length === 0
-                            ? 'bg-slate-800 text-white border-slate-800 font-bold'
-                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                        }`}
-                      >
-                        نمایش همه
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSetDocTypePreset('sales_and_services')}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] border transition-all cursor-pointer ${
-                          selectedDocTypes.length === 2 && selectedDocTypes.includes('sales_goods') && selectedDocTypes.includes('sales_service')
-                            ? 'bg-blue-600 text-white border-blue-600 font-bold shadow-2xs'
-                            : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 font-medium'
-                        }`}
-                        title="فقط فاکتورهای فروش کالا و خدمات نمایش داده شوند و واریزی‌ها مخفی شوند"
-                      >
-                        فقط فروش + خدمات (بدون واریز)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSetDocTypePreset('sales_and_deposits')}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] border transition-all cursor-pointer ${
-                          selectedDocTypes.length === 2 && selectedDocTypes.includes('sales_goods') && selectedDocTypes.includes('deposit')
-                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-2xs'
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 font-medium'
-                        }`}
-                        title="فقط فاکتورهای فروش و واریزی‌ها نمایش داده شوند و خدمات مخفی شوند"
-                      >
-                        فروش + واریزی‌ها (بدون خدمات)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSetDocTypePreset('only_services')}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] border transition-all cursor-pointer ${
-                          selectedDocTypes.length === 1 && selectedDocTypes.includes('sales_service')
-                            ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-2xs'
-                            : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
-                        }`}
-                      >
-                        فقط خدمات
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSetDocTypePreset('only_deposits')}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] border transition-all cursor-pointer ${
-                          selectedDocTypes.length === 1 && selectedDocTypes.includes('deposit')
-                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-2xs'
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                        }`}
-                      >
-                        فقط واریزی‌ها
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSetDocTypePreset('only_goods')}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] border transition-all cursor-pointer ${
-                          selectedDocTypes.length === 1 && selectedDocTypes.includes('sales_goods')
-                            ? 'bg-blue-600 text-white border-blue-600 font-bold shadow-2xs'
-                            : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                        }`}
-                      >
-                        فقط فروش کالا
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Multi-Select Toggle Badges */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-1.5">
-                    {STATEMENT_DOC_TYPES.map((opt) => {
-                      const isSelected = selectedDocTypes.includes(opt.id);
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => handleToggleDocType(opt.id)}
-                          className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-medium transition-all cursor-pointer text-right ${
-                            isSelected
-                              ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
-                              : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                          }`}
-                          title={opt.fullName}
-                        >
-                          <span className="truncate">{opt.label}</span>
-                          <span className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
-                            isSelected ? 'bg-white/20 text-white' : 'border border-slate-300 text-transparent'
-                          }`}>
-                            ✓
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Grid of conditions 2, 3, 4 */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-                  {/* Condition 2: Date Range */}
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
-                      شرط ۲: بازه زمانی
-                    </label>
-                    <select
-                      value={dateFilterMode}
-                      onChange={(e) => setDateFilterMode(e.target.value as any)}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer"
-                    >
-                      <option value="all">تمام تاریخچه</option>
-                      <option value="30days">۳۰ روز اخیر</option>
-                      <option value="90days">۳ ماه اخیر</option>
-                      <option value="this_year">سال جاری (امسال)</option>
-                      <option value="custom">بازه تاریخی دلخواه...</option>
-                    </select>
-                  </div>
-
-                  {/* Condition 3: Min Amount */}
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
-                      شرط ۳: حداقل مبلغ ({settings.currency})
-                    </label>
-                    <NumericInput
-                      value={minAmount}
-                      onChange={(val) => setMinAmount(val)}
-                      placeholder="مثلاً ۱,۰۰۰,۰۰۰"
-                      className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                    />
-                  </div>
-
-                  {/* Condition 4: Max Amount */}
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
-                      شرط ۴: حداکثر مبلغ ({settings.currency})
-                    </label>
-                    <NumericInput
-                      value={maxAmount}
-                      onChange={(val) => setMaxAmount(val)}
-                      placeholder="مثلاً ۵۰,۰۰۰,۰۰۰"
-                      className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Custom Date Range Inputs (when custom is selected) */}
-                {dateFilterMode === 'custom' && (
-                  <div className="p-2.5 bg-white border border-emerald-200 rounded-xl flex flex-wrap items-center gap-3 text-xs animate-fadeIn">
-                    <span className="font-bold text-slate-700">تعیین تاریخ دلخواه (شمسی):</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-slate-500 text-[11px]">از تاریخ:</span>
+                  {dateFilterMode === 'custom' && (
+                    <div className="flex items-center gap-1">
                       <input
                         type="text"
                         value={customStartDate}
                         onChange={(e) => setCustomStartDate(e.target.value)}
-                        placeholder="۱۴۰۴/۰۱/۰۱"
-                        className="w-28 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-center font-mono text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        placeholder="از ۱۴۰۴/۰۱/۰۱"
+                        className="w-24 bg-white border border-slate-200 rounded-lg px-1.5 py-0.5 text-center font-mono text-[10px]"
                       />
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-slate-500 text-[11px]">تا تاریخ:</span>
                       <input
                         type="text"
                         value={customEndDate}
                         onChange={(e) => setCustomEndDate(e.target.value)}
-                        placeholder="۱۴۰۴/۱۲/۲۹"
-                        className="w-28 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-center font-mono text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        placeholder="تا ۱۴۰۴/۱۲/۲۹"
+                        className="w-24 bg-white border border-slate-200 rounded-lg px-1.5 py-0.5 text-center font-mono text-[10px]"
                       />
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Status & Quick Amount Chips */}
-                <div className="flex items-center justify-between gap-2 flex-wrap pt-1 text-[11px]">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-slate-500 font-bold">وضعیت تسویه ردیف:</span>
+                  <span className="text-slate-300">|</span>
+                  <span className="font-bold text-slate-600">مبلغ:</span>
+                  <NumericInput
+                    value={minAmount}
+                    onChange={(val) => setMinAmount(val)}
+                    placeholder="حداقل"
+                    className="w-24 bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-[10px] text-slate-800 outline-none"
+                  />
+                  <NumericInput
+                    value={maxAmount}
+                    onChange={(val) => setMaxAmount(val)}
+                    placeholder="حداکثر"
+                    className="w-24 bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-[10px] text-slate-800 outline-none"
+                  />
+
+                  <span className="text-slate-300">|</span>
+                  <div className="flex items-center gap-1">
                     {(['all', 'unsettled', 'debtor', 'creditor'] as const).map((st) => (
                       <button
                         key={st}
                         type="button"
                         onClick={() => setStatusFilter(st)}
-                        className={`px-2.5 py-0.5 rounded-lg border transition-all cursor-pointer ${
+                        className={`px-2 py-0.5 rounded-lg border text-[10px] transition-all cursor-pointer ${
                           statusFilter === st
-                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-2xs'
+                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
                             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
                         }`}
                       >
-                        {st === 'all' ? 'همه' : st === 'unsettled' ? 'فقط تسویه نشده' : st === 'debtor' ? 'فقط بدهکار' : 'فقط بستانکار'}
+                        {st === 'all' ? 'همه وضعیت‌ها' : st === 'unsettled' ? 'تسویه‌نشده' : st === 'debtor' ? 'بدهکار' : 'بستانکار'}
                       </button>
                     ))}
                   </div>
-
-                  {/* Quick Amount Chips */}
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-slate-400">مبالغ سریع:</span>
-                    <button
-                      type="button"
-                      onClick={() => { setMinAmount(10000000); setMaxAmount(''); }}
-                      className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 text-[10px] cursor-pointer"
-                    >
-                      بالای ۱۰ م
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setMinAmount(50000000); setMaxAmount(''); }}
-                      className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 text-[10px] cursor-pointer"
-                    >
-                      بالای ۵۰ م
-                    </button>
-                  </div>
                 </div>
-              </div>
-            )}
 
-            {/* Active Filters & Sorting Chips Bar */}
-            {(isSearchOrFilterActive || sortField !== 'default') && (
-              <div className="flex items-center gap-1.5 flex-wrap pt-0.5 text-xs animate-fadeIn">
-                <span className="text-[11px] text-slate-500 font-bold flex items-center gap-1">
-                  <Filter className="w-3 h-3 text-emerald-600" />
-                  <span>شروط فعال:</span>
+                {isSearchOrFilterActive && (
+                  <button
+                    type="button"
+                    onClick={handleResetAllFilters}
+                    className="text-[10px] text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>پاکسازی شروط</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Compact Active Filters Chips (only when filters/sort active) */}
+          {(isSearchOrFilterActive || sortField !== 'default') && (
+            <div className="flex items-center gap-1 flex-wrap text-[10px]">
+              {searchQuery.trim() && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-md">
+                  <span>جستجو: {searchQuery}</span>
+                  <button onClick={() => setSearchQuery('')} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
                 </span>
+              )}
 
-                {searchQuery.trim() && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-[11px]">
-                    <span>جستجو: «{searchQuery}»</span>
-                    <button onClick={() => setSearchQuery('')} className="hover:text-rose-600 cursor-pointer" title="حذف شرط جستجو">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
+              {selectedDocTypes.length > 0 && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 text-blue-800 border border-blue-200 rounded-md">
+                  <span>نوع: {selectedDocTypes.map(t => STATEMENT_DOC_TYPES.find(o => o.id === t)?.label || t).join(' + ')}</span>
+                  <button onClick={() => setSelectedDocTypes([])} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+                </span>
+              )}
 
-                {selectedDocTypes.length > 0 && (
-                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 text-blue-800 border border-blue-200 rounded-lg text-[11px]">
-                    <span>نوع سند ({toPersianDigits(selectedDocTypes.length)} مورد): {
-                      selectedDocTypes.map(t => STATEMENT_DOC_TYPES.find(o => o.id === t)?.label || t).join(' + ')
-                    }</span>
-                    <button onClick={() => setSelectedDocTypes([])} className="hover:text-rose-600 cursor-pointer" title="حذف شرط نوع سند">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
+              {dateFilterMode !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-50 text-purple-800 border border-purple-200 rounded-md">
+                  <span>تاریخ: {dateFilterMode === '30days' ? '۳۰ روز' : dateFilterMode === '90days' ? '۳ ماه' : dateFilterMode === 'this_year' ? 'امسال' : `${customStartDate || '...'} تا ${customEndDate || '...'}`}</span>
+                  <button onClick={() => { setDateFilterMode('all'); setCustomStartDate(''); setCustomEndDate(''); }} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+                </span>
+              )}
 
-                {dateFilterMode !== 'all' && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 text-purple-800 border border-purple-200 rounded-lg text-[11px]">
-                    <span>بازه تاریخ: {
-                      dateFilterMode === '30days' ? '۳۰ روز اخیر' :
-                      dateFilterMode === '90days' ? '۳ ماه اخیر' :
-                      dateFilterMode === 'this_year' ? 'سال جاری' :
-                      `از ${customStartDate || 'ابتدا'} تا ${customEndDate || 'امروز'}`
-                    }</span>
-                    <button onClick={() => { setDateFilterMode('all'); setCustomStartDate(''); setCustomEndDate(''); }} className="hover:text-rose-600 cursor-pointer" title="حذف شرط تاریخ">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
+              {(minAmount !== '' || maxAmount !== '') && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-900 border border-amber-200 rounded-md">
+                  <span>مبلغ: {minAmount ? `از ${formatPrice(minAmount)}` : ''} {maxAmount ? `تا ${formatPrice(maxAmount)}` : ''}</span>
+                  <button onClick={() => { setMinAmount(''); setMaxAmount(''); }} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+                </span>
+              )}
 
-                {(minAmount !== '' || maxAmount !== '') && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-900 border border-amber-200 rounded-lg text-[11px]">
-                    <span>مبلغ: {minAmount ? `از ${formatPrice(minAmount)}` : ''} {maxAmount ? `تا ${formatPrice(maxAmount)}` : ''}</span>
-                    <button onClick={() => { setMinAmount(''); setMaxAmount(''); }} className="hover:text-rose-600 cursor-pointer" title="حذف شرط مبلغ">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
+              {statusFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-teal-50 text-teal-800 border border-teal-200 rounded-md">
+                  <span>وضعیت: {statusFilter === 'unsettled' ? 'تسویه‌نشده' : statusFilter === 'debtor' ? 'بدهکار' : 'بستانکار'}</span>
+                  <button onClick={() => setStatusFilter('all')} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+                </span>
+              )}
 
-                {statusFilter !== 'all' && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 text-teal-800 border border-teal-200 rounded-lg text-[11px]">
-                    <span>وضعیت: {statusFilter === 'unsettled' ? 'تسویه نشده' : statusFilter === 'debtor' ? 'بدهکار' : 'بستانکار'}</span>
-                    <button onClick={() => setStatusFilter('all')} className="hover:text-rose-600 cursor-pointer" title="حذف شرط وضعیت">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
+              {sortField !== 'default' && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-300 rounded-md">
+                  <span>مرتب‌سازی: {getSortLabel()}</span>
+                  <button onClick={handleResetSort} className="hover:text-rose-600 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+                </span>
+              )}
 
-                {sortField !== 'default' && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-[11px]">
-                    <ArrowUpDown className="w-3 h-3 text-slate-500" />
-                    <span>مرتب‌سازی: {getSortLabel()}</span>
-                    <button onClick={handleResetSort} className="hover:text-rose-600 cursor-pointer" title="بازنشانی مرتب‌سازی">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleResetAllFilters}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer mr-1"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>پاکسازی همه شروط</span>
-                </button>
-              </div>
-            )}
-          </div>
+              <button
+                type="button"
+                onClick={handleResetAllFilters}
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 font-bold text-rose-600 hover:underline cursor-pointer"
+              >
+                <RotateCcw className="w-2.5 h-2.5" />
+                <span>پاکسازی</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* LEDGER ENTRIES LIST (RESPONSIVE CARDS FOR MOBILE & TABLE FOR DESKTOP) */}
