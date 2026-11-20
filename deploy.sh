@@ -81,9 +81,11 @@ ls -1t ./data/backups/pre_deploy_pg_*.sql.gz 2>/dev/null | tail -n +11 | xargs -
 
 # ۴. دریافت آخرین تغییرات کد از گیت (در صورت وجود مخزن Git)
 if [ -d ".git" ]; then
+  git config core.filemode false || true
   CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD || echo "main")
   echo "📥 دریافت آخرین تغییرات از مخزن Git (شاخه: ${CURRENT_BRANCH})..."
   git pull origin "${CURRENT_BRANCH}"
+  chmod +x deploy.sh 2>/dev/null || true
 fi
 
 # ۵. بیلد سریع و بروزرسانی کانتینرها بدون خاموش کردن دیتابیس
