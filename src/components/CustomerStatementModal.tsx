@@ -682,6 +682,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
   // Export to Excel
   const handleExportExcel = () => {
+    if (!customer) return;
     // If search, filter, or custom sort is active, export the sorted/filtered ledger
     const ledgerToExport = (isSearchOrFilterActive || sortField !== 'default')
       ? {
@@ -699,7 +700,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
   // Export to PDF
   const handleExportPdf = async () => {
-    if (isExportingPdf) return;
+    if (isExportingPdf || !customer) return;
     try {
       setIsExportingPdf(true);
       await new Promise((resolve) => setTimeout(resolve, 25));
@@ -738,6 +739,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   // Send Statement Report to Telegram
   const [isSendingTelegram, setIsSendingTelegram] = useState(false);
   const handleSendTelegramStatement = async () => {
+    if (!customer) return;
     if (!settings?.telegramBotEnabled) {
       setPdfSuccessMessage('ربات تلگرام در تنظیمات سیستم فعال نیست.');
       setTimeout(() => setPdfSuccessMessage(null), 5000);

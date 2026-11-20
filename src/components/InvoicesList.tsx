@@ -1879,11 +1879,11 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           setQuickDetailsInvoice(null);
           handleOpenConvertModal(inv);
         } : undefined}
-        onReturnInvoiceToStock={canDelete && onReturnInvoiceToStock ? (inv) => {
+        onReturnInvoiceToStock={canDelete ? (inv) => {
           setQuickDetailsInvoice(null);
           setInvoiceToReturn(inv);
         } : undefined}
-        onDeleteInvoice={canDelete && onDeleteInvoice ? (invId) => {
+        onDeleteInvoice={canDelete ? (invId) => {
           const inv = invoices.find((i) => i.id === invId);
           setQuickDetailsInvoice(null);
           if (inv) setInvoiceToDelete(inv);

@@ -21,6 +21,7 @@ import {
 import { DirectTransfer, DirectTransferReturnRecord, StoreSettings, SavedVehicle } from '../types';
 import { getCurrentJalaliDate, getCurrentJalaliTime, toPersianDigits } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
+import { confirmAction } from '../utils/confirmDialog';
 import { IranPlatePicker } from './IranPlatePicker';
 import { VehicleFleetModal } from './VehicleFleetModal';
 import { NumericInput } from './NumericInput';
@@ -91,9 +92,14 @@ export const DirectTransferReturnModal: React.FC<DirectTransferReturnModalProps>
 
   if (!isOpen || !transfer) return null;
 
-  const handleDeleteSavedVehicle = (id: string, vehicleInfo?: string, e?: React.MouseEvent) => {
+  const handleDeleteSavedVehicle = async (id: string, vehicleInfo?: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (window.confirm('آیا از حذف این خودرو از فهرست ناوگان اطمینان دارید؟')) {
+    const confirmed = await confirmAction('آیا از حذف این خودرو از فهرست ناوگان اطمینان دارید؟', {
+      title: 'حذف خودرو از ناوگان',
+      confirmLabel: 'بله، حذف شود',
+      variant: 'danger',
+    });
+    if (confirmed) {
       StorageService.deleteSavedVehicle(id, vehicleInfo);
       setSavedVehicles(StorageService.getExitSlipVehicles());
     }

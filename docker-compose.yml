@@ -5,12 +5,13 @@ services:
     container_name: mana_postgres_db
     restart: unless-stopped
     shm_size: 256mb
-    stop_grace_period: 10s
+    stop_grace_period: 15s
     environment:
       TZ: Asia/Tehran
       PGTZ: Asia/Tehran
       POSTGRES_DB: ${POSTGRES_DB:-mana_db}
       POSTGRES_USER: ${POSTGRES_USER:-mana_user}
+      # در نصب جدید حتماً مقدار POSTGRES_PASSWORD را در فایل .env تنظیم کنید (اسکریپت deploy.sh به‌صورت خودکار می‌سازد)
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ManaSecurePass_2026!}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
@@ -19,14 +20,14 @@ services:
       # ساخت خودکار جداول mana_db در اولین اجرا
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     expose:
-      # پورت 5432 در شبکه داخلی داکر برای کانتینر app قابل دسترسی است و با هاست تداخل ایجاد نمی‌کند
+      # پورت 5432 فقط در شبکه داخلی داکر برای کانتینر app قابل دسترسی است و روی اینترنت باز نمی‌شود
       - "5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-mana_user} -d $${POSTGRES_DB:-mana_db}"]
-      interval: 2s
-      timeout: 2s
+      interval: 3s
+      timeout: 3s
       retries: 15
-      start_period: 1s
+      start_period: 3s
     logging:
       driver: "json-file"
       options:
@@ -40,12 +41,12 @@ services:
       dockerfile: Dockerfile
     container_name: mana_factor_app
     restart: unless-stopped
-    stop_grace_period: 3s
+    stop_grace_period: 10s
     depends_on:
       postgres:
         condition: service_healthy
     expose:
-      # پورت 3000 در شبکه داخلی داکر در اختیار سرویس Nginx قرار می‌گیرد
+      # پورت 3000 فقط در شبکه داخلی داکر در اختیار سرویس Nginx قرار می‌گیرد
       - "3000"
     extra_hosts:
       # امکان دسترسی کانتینر به پورت‌های پروکسی/فیلترشکن روی سیستم میزبان (Host)
@@ -54,7 +55,7 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     volumes:
-      # بکاپ‌ها و اسنپ‌شات‌های محلی
+      # بکاپ‌ها، اسنپ‌شات‌های محلی و کلید نشست خودکار
       - ./data:/app/data
     environment:
       - TZ=Asia/Tehran
@@ -62,6 +63,11 @@ services:
       - NODE_OPTIONS=--dns-result-order=ipv4first --max-old-space-size=512
       - PORT=3000
       - DATA_DIR=/app/data
+      - APP_URL=${APP_URL:-}
+      # امنیت احراز هویت و CORS (توصیه می‌شود در فایل .env مقداردهی شوند)
+      - SESSION_SECRET=${SESSION_SECRET:-}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      # اتصال به پایگاه‌داده PostgreSQL
       - DATABASE_URL=postgresql://${POSTGRES_USER:-mana_user}:${POSTGRES_PASSWORD:-ManaSecurePass_2026!}@postgres:5432/${POSTGRES_DB:-mana_db}
       - PGDATABASE=${POSTGRES_DB:-mana_db}
       - PGUSER=${POSTGRES_USER:-mana_user}
@@ -77,11 +83,11 @@ services:
       - HTTP_PROXY=${HTTP_PROXY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 5s
       timeout: 3s
       retries: 6
-      start_period: 2s
+      start_period: 10s
     logging:
       driver: "json-file"
       options:
@@ -93,22 +99,23 @@ services:
     image: nginx:1.27-alpine
     container_name: mana_nginx_proxy
     restart: unless-stopped
-    stop_grace_period: 2s
+    stop_grace_period: 3s
     depends_on:
       app:
-        condition: service_started
+        condition: service_healthy
     ports:
-      # پورت پیش‌فرض 3000 روی سرور (سازگار با تنظیمات فعلی Cloudflare / VPS شما)
-      - "${APP_PORT:-3000}:3000"
-      # پورت وب جایگزین (در صورتی که پورت 80 سرور آزاد است می‌توانید NGINX_HTTP_PORT=80 قرار دهید)
-      - "${NGINX_HTTP_PORT:-8080}:80"
+      # پورت پیش‌فرض 3000 روی سرور (در صورت استفاده از Nginx روی هاست + SSL، مقدار BIND_IP=127.0.0.1 در .env قرار دهید)
+      - "${BIND_IP:-0.0.0.0}:${APP_PORT:-3000}:3000"
+      # پورت وب جایگزین (در صورت نبود Nginx روی هاست می‌توانید NGINX_HTTP_PORT=80 قرار دهید)
+      - "${BIND_IP:-0.0.0.0}:${NGINX_HTTP_PORT:-8080}:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/nginx-health || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/nginx-health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
+      start_period: 3s
     logging:
       driver: "json-file"
       options:

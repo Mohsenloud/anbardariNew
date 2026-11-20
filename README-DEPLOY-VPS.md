@@ -1,194 +1,159 @@
-# راهنمای کامل راه‌اندازی و توسعه برنامه روی سرور لینوکس (VPS) از طریق GitHub
+# راهنمای کامل نصب، امن‌سازی و نگهداری روی سرور لینوکس (VPS)
 
-این راهنما گام‌به‌گام نحوه انتقال، راه‌اندازی با **Docker**، تنظیم **دامنه و SSL رایگان**، استراتژی **حفظ دائمی اطلاعات** و روش **به‌روزرسانی با یک دستور** را شرح می‌دهد.
-
----
-
-## فهرست مطالب
-1. [پیش‌نیازها](#۱-پیشنیازها)
-2. [مرحله ۱: انتقال پروژه به GitHub](#مرحله-۱-انتقال-پروژه-به-github)
-3. [مرحله ۲: آماده‌سازی سرور VPS (نصب داکر و گیت)](#مرحله-۲-آمادهسازی-سرور-vps)
-4. [مرحله ۳: کلون و اجرای برنامه با Docker Compose](#مرحله-۳-کلون-و-اجرای-برنامه-با-docker-compose)
-5. [مرحله ۴: تنظیم دامنه و SSL رایگان (Let's Encrypt)](#مرحله-۴-تنظیم-دامنه-و-ssl-رایگان)
-6. [مرحله ۵: استراتژی حفظ اطلاعات و عدم از دست رفتن داده‌ها](#مرحله-۵-استراتژی-حفظ-اطلاعات-و-عدم-از-دست-رفتن-دادهها)
-7. [مرحله ۶: نحوه توسعه و آپدیت‌های بعدی بدون قطعی](#مرحله-۶-نحوه-توسعه-و-آپدیتهای-بعدی)
+این راهنما نحوه استقرار امن سامانه با معماری **۳ کانتینر Docker** (`PostgreSQL 16` + `Express/React App` + `Nginx Proxy`)، تنظیم **دامنه و SSL رایگان**، **فایروال سرور**، **پشتیبان‌گیری خودکار** و **بروزرسانی با یک دستور** را شرح می‌دهد.
 
 ---
 
 ## ۱. پیش‌نیازها
-- یک سرور مجازی (VPS) با سیستم‌عامل **Ubuntu 22.04 LTS** یا **Ubuntu 24.04 LTS**
-- دسترسی SSH به سرور (با کاربر `root` یا کاربری با دسترسی `sudo`)
-- حساب کاربری در [GitHub](https://github.com)
-- یک دامنه یا ساب‌دامنه متصل به IP سرور (مثال: `factor.yourdomain.com`)
+- سرور مجازی (VPS) با **Ubuntu 22.04 LTS** یا **Ubuntu 24.04 LTS** (حداقل ۱ گیگابایت رم و ۱۰ گیگابایت فضای دیسک)
+- دسترسی SSH با `root` یا کاربر دارای `sudo`
+- دامنه یا ساب‌دامنه متصل به IP سرور (مثال: `factor.yourdomain.com`)
 
 ---
 
-## مرحله ۱: انتقال پروژه به GitHub
+## ۲. آماده‌سازی سرور VPS (نصب Docker، Git و فایروال)
 
-اگر فایل‌های این پروژه را در سیستم خود دارید یا از خروجی گیت‌هاب استفاده می‌کنید:
-
-1. در سایت گیت‌هاب یک مخزن جدید (New Repository) با نام دلخواه (مثلاً `sepehr-invoice`) ایجاد کنید.
-2. در ترمینال سیستم خود داخل پوشه پروژه دستورات زیر را وارد کنید:
-
-```bash
-git init
-git add .
-git commit -m "Initial commit for VPS deployment"
-git branch -M main
-git remote add origin https://github.com/USERNAME/sepehr-invoice.git
-git push -u origin main
-```
-*(به جای `USERNAME/sepehr-invoice` آدرس مخزن خود را قرار دهید)*
-
----
-
-## مرحله ۲: آماده‌سازی سرور VPS
-
-با دستور SSH به سرور متصل شوید:
 ```bash
 ssh root@YOUR_SERVER_IP
-```
 
-دستورات زیر را برای به‌روزرسانی و نصب سریع و رسمی **Docker**، **Docker Compose** و **Git** اجرا کنید:
-
-```bash
-# بروزرسانی مخازن
+# بروزرسانی بسته‌ها و نصب ابزارهای پایه
 apt update && apt upgrade -y
+apt install -y curl git openssl ufw
 
-# نصب بستههای مورد نیاز
-apt install -y curl apt-transport-https ca-certificates gnupg lsb-release
-
-# نصب سریع و رسمی Docker با اسکریپت رسمی
-curl -fsSL https://get.docker.com -o get-docker.sh
-sh get-docker.sh
-
-# نصب پلاگین docker compose (نسخه ۲)
+# نصب رسمی Docker و پلاگین Docker Compose v2
+curl -fsSL https://get.docker.com | sh
 apt install -y docker-compose-plugin
 
-# نصب گیت
-apt update && apt install -y git
+# بررسی نصب صحیح
+docker --version
+docker compose version
+```
+
+### فعال‌سازی فایروال UFW (توصیه‌شده)
+```bash
+ufw allow OpenSSH
+ufw allow 80/tcp
+ufw allow 443/tcp
+# اگر قصد استفاده از Nginx روی هاست + SSL دارید، پورت 3000 را روی اینترنت باز نکنید.
+# (فقط در صورتی که مستقیم بدون SSL روی پورت 3000 دسترسی می‌خواهید: ufw allow 3000/tcp)
+ufw --force enable
+ufw status
 ```
 
 ---
 
-## مرحله ۳: کلون و اجرای برنامه با Docker Compose
+## ۳. کلون پروژه و پیکربندی امن `.env`
 
-۱. ساخت دایرکتوری و کلون مخزن گیت‌هاب:
 ```bash
 mkdir -p /var/www/app
 cd /var/www/app
-git clone https://github.com/Mohsenloud/anbardariNew.git .
+git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git .
+chmod +x deploy.sh
 ```
 
-۲. استقرار، بیلد و راه‌اندازی با Docker Compose:
+### ساخت فایل `.env`
+شما دو روش دارید:
+- **روش خودکار (پیشنهادی برای نصب اول):** کافیست `./deploy.sh` را اجرا کنید تا فایل `.env` به‌صورت خودکار از روی `.env.example` با رمزهای تصادفی امن (`POSTGRES_PASSWORD` و `SESSION_SECRET`) ساخته شود.
+- **روش دستی:**
 ```bash
-docker compose down && git pull origin main && docker compose up -d --build
+cp .env.example .env
+nano .env
 ```
-
-یا اجرای تفکیک‌شده دستورات:
-```bash
-docker compose down
-git pull origin main
-docker compose up -d --build
-```
-
-اکنون برنامه شما بیلد شده و داخل یک کانتینر سبک Nginx روی پورت ۳۰۰۰ در حال کار است.
-برای بررسی وضعیت:
-```bash
-docker compose ps
+مقادیر کلیدی در `.env`:
+```env
+APP_URL="https://factor.yourdomain.com"
+POSTGRES_PASSWORD="یک_رمز_طولانی_و_تصادفی"
+SESSION_SECRET="خروجی_openssl_rand_-hex_32"
+# اگر از Nginx روی هاست + SSL استفاده می‌کنید، پورت داکر را به لوکال‌هاست محدود کنید:
+BIND_IP="127.0.0.1"
+APP_PORT="3000"
 ```
 
 ---
 
-## مرحله ۴: تنظیم دامنه و SSL رایگان
-
-برای اینکه کاربران بدون وارد کردن پورت ۳۰۰۰ و با آدرس امن `https://factor.yourdomain.com` به برنامه دسترسی داشته باشند:
-
-### ۱. نصب Nginx روی سرور میزبان:
-```bash
-sudo apt install -y nginx certbot python3-certbot-nginx
-```
-
-### ۲. تنظیم Reverse Proxy:
-فایل پیکربندی ایجاد کنید:
-```bash
-sudo nano /etc/nginx/sites-available/factor.conf
-```
-محتوای زیر را داخل آن قرار دهید (دامنه خود را جایگزین کنید):
-
-```nginx
-server {
-    listen 80;
-    server_name factor.yourdomain.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-    }
-
-    client_max_body_size 50M;
-}
-```
-
-### ۳. فعال‌سازی و راه‌اندازی Nginx:
-```bash
-sudo ln -s /etc/nginx/sites-available/factor.conf /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl restart nginx
-```
-
-### ۴. دریافت گواهی‌نامه رایگان SSL با Let's Encrypt:
-```bash
-sudo certbot --nginx -d factor.yourdomain.com
-```
-*ایمیل خود را وارد کرده و شرایط را تایید کنید. Certbot به طور خودکار HTTPS را فعال و تمدید خودکار آن را تنظیم می‌کند.*
-
----
-
-## مرحله ۵: استراتژی پایگاه‌داده متمرکز و حفظ دائمی اطلاعات (Multi-User & Multi-Device)
-
-با توجه به اینکه چندین کاربر (صندوق‌دار، انباردار، حسابدار و مدیر) از کامپیوترها و گوشی‌های مختلف به این سامانه متصل می‌شوند:
-
-1. **پایگاه‌داده متمرکز سرور (Docker Volume):**
-   - تمامی داده‌ها (فاکتورها، انبار، کاردکس، مشتریان و کاربران) به صورت متمرکز در پوشه `/var/www/app/data/database.json` روی هارد سرور ذخیره می‌شوند.
-   - این پوشه در فایل `docker-compose.yml` به صورت **Volume** نگاشت شده است (`./data:/app/data`). بنابراین حتی با حذف، آپدیت یا ریستارت کانتینر، اطلاعات به هیچ عنوان پاک نمی‌شوند.
-
-2. **همگام‌سازی زنده بین تمام دستگاه‌ها:**
-   - به محض اینکه صندوق‌دار فاکتور صادر کند، کسری انبار بلافاصله برای انباردار و گزارش سود برای مدیر و حسابدار همگام می‌شود.
-   - نیازی به نصب پایگاه داده خارجی (MySQL یا PostgreSQL) ندارید؛ سامانه به صورت خودکار، سبک و پایدار این کار را انجام می‌دهد.
-
-3. **پشتیبان‌گیری منظم:**
-   - در منوی **پنل مدیریت ⬅ مرکز داده و پشتیبان‌گیری**، دکمه **«دانلود نسخه پشتیبان (JSON)»** وجود دارد.
-   - همچنین می‌توانید مستقیماً از فایل `/var/www/app/data/database.json` سرور بکاپ تهیه کنید.
-
----
-
-## مرحله ۶: نحوه توسعه و آپدیت‌های بعدی
-
-هر زمان که فیچر جدیدی در برنامه توسعه دادید و آن را به گیت‌هاب Push کردید:
-
-```bash
-git add .
-git commit -m "اضافه شدن امکانات جدید"
-git push origin main
-```
-
-کافی است به سرور خود SSH بزنید و اسکریپت آماده را اجرا کنید:
+## ۴. اجرا و بررسی سلامت سرویس‌ها
 
 ```bash
 cd /var/www/app
 ./deploy.sh
 ```
 
-**این اسکریپت به صورت خودکار:**
-1. آخرین تغییرات را از گیت‌هاب دریافت می‌کند (`git fetch & reset`).
-2. برنامه را با جدیدترین کدها بازسازی می‌کند (`docker compose build`).
-3. کانتینر جدید را بدون اختلال جایگزین قبلی می‌کند (`docker compose up -d`).
-4. ایمیج‌های موقت قدیمی را پاک می‌کند تا حافظه سرور تمیز بماند.
+بررسی وضعیت کانتینرها و سلامت سرور:
+```bash
+docker compose ps
+curl -s http://127.0.0.1:3000/api/health
+```
+
+در حالت سالم، هر ۳ کانتینر زیر باید `healthy` باشند:
+1. `mana_postgres_db` (پایگاه‌داده PostgreSQL 16، ایزوله در شبکه داخلی داکر)
+2. `mana_factor_app` (بک‌اند Node.js + فرانت‌اند بیلدشده، با زمان تهران `Asia/Tehran`)
+3. `mana_nginx_proxy` (Reverse Proxy داخلی با فشرده‌سازی Gzip و مدیریت کش PWA)
+
+---
+
+## ۵. تنظیم دامنه و SSL رایگان (Nginx هاست + Let's Encrypt)
+
+برای دسترسی امن با `https://factor.yourdomain.com` و فعال‌سازی وبهوک تلگرام:
+
+```bash
+apt install -y nginx certbot python3-certbot-nginx
+
+# کپی نمونه کانفیگ آماده و جایگزینی نام دامنه
+cp /var/www/app/nginx-vps-host.conf.example /etc/nginx/sites-available/factor.conf
+sed -i 's/factor.yourdomain.com/YOUR_DOMAIN_HERE/g' /etc/nginx/sites-available/factor.conf
+
+ln -sf /etc/nginx/sites-available/factor.conf /etc/nginx/sites-enabled/factor.conf
+rm -f /etc/nginx/sites-enabled/default
+
+nginx -t && systemctl reload nginx
+
+# صدور و تنظیم خودکار گواهی SSL رایگان
+certbot --nginx -d YOUR_DOMAIN_HERE
+```
+
+> **نکته امنیتی:** پس از فعال شدن HTTPS، مقدار `BIND_IP="127.0.0.1"` و `APP_URL="https://YOUR_DOMAIN_HERE"` را در `.env` قرار داده و مجدداً `docker compose up -d` بزنید تا ترافیک فقط از مسیر رمزنگاری‌شده HTTPS عبور کند.
+
+---
+
+## ۶. نگهداری اطلاعات، پایگاه‌داده و پشتیبان‌گیری
+
+داده‌های سامانه به‌صورت همزمان و امن در دو لایه نگهداری می‌شوند:
+1. **پایگاه‌داده PostgreSQL 16:** در Volume دائمی `postgres_data` داکر ذخیره می‌شود و با آپدیت یا ریستارت کانتینرها از بین نمی‌رود.
+2. **فایل پشتیبان و اسنپ‌شات محلی:** در مسیر `/var/www/app/data/` (`database.json`، پوشه `backups/` و کلید نشست `.session_secret`) ذخیره می‌شود.
+
+### گرفتن بکاپ دستی از PostgreSQL در ترمینال VPS:
+```bash
+docker exec mana_postgres_db pg_dump -U mana_user -d mana_db | gzip > /var/www/app/data/backups/manual_$(date +%Y%m%d_%H%M%S).sql.gz
+```
+
+---
+
+## ۷. بروزرسانی نسخه‌های بعدی (بدون قطعی و همراه با بکاپ خودکار)
+
+پس از پوش کردن تغییرات جدید به گیت‌هاب، روی سرور فقط اجرا کنید:
+
+```bash
+cd /var/www/app
+./deploy.sh
+```
+
+اسکریپت `deploy.sh` به‌صورت خودکار:
+1. از فایل `data/database.json` و پایگاه‌داده PostgreSQL (`pg_dump`) پشتیبان اضطراری می‌گیرد (و ۱۰ نسخه آخر را نگه می‌دارد).
+2. آخرین کدها را از شاخه فعلی Git دریافت می‌کند (`git pull`).
+3. کانتینر اپلیکیشن را بیلد و بدون خاموش کردن دیتابیس جایگزین می‌کند.
+4. تنظیمات Nginx را ریلود کرده، سلامت `/api/health` را بررسی و ایمیج‌های قدیمی بلااستفاده را پاکسازی می‌کند.
+
+---
+
+## ۸. دستورات عیب‌یابی سریع
+
+```bash
+# مشاهده لاگ زنده اپلیکیشن
+docker compose logs -f --tail=100 app
+
+# مشاهده لاگ Nginx و PostgreSQL
+docker compose logs -f --tail=100 nginx postgres
+
+# ریستارت سریع فقط اپلیکیشن
+docker compose restart app
+```

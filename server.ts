@@ -52,20 +52,38 @@ app.use(
 app.use(express.json({ limit: '30mb' }));
 app.use(express.urlencoded({ extended: true, limit: '30mb' }));
 
-// Simple CORS header support for direct external API access if needed
+// Hardened CORS policy: same-origin by default, optional explicit ALLOWED_ORIGINS allowlist
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  const host = req.headers.host;
+  const forwardedHost = typeof req.headers['x-forwarded-host'] === 'string'
+    ? req.headers['x-forwarded-host'].split(',')[0].trim()
+    : '';
+  const isSameOrigin = Boolean(
+    origin &&
+      (
+        (host && (origin === `https://${host}` || origin === `http://${host}`)) ||
+        (forwardedHost && (origin === `https://${forwardedHost}` || origin === `http://${forwardedHost}`))
+      )
+  );
+  const isAllowedExternal = Boolean(origin && ALLOWED_ORIGINS.includes(origin));
+
+  if (origin && (isSameOrigin || isAllowedExternal)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Vary', 'Origin');
+    res.header('Access-Control-Allow-Credentials', 'true');
+  }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+    return res.sendStatus(204);
   }
   next();
-});
-
-// Lightweight healthcheck endpoint for Docker & Nginx Reverse Proxy
-app.get('/api/health', (_req, res) => {
-  res.status(200).json({ ok: true, status: 'healthy', timestamp: Date.now() });
 });
 
 // Hardening: Rate Limiting
@@ -93,6 +111,19 @@ const dbWriteLimiter = rateLimit({
   message: {
     success: false,
     message: 'نرخ ذخیره‌سازی اطلاعات فراتر از حد مجاز است. لطفاً چند لحظه صبر نمایید.',
+  },
+});
+
+// 3. Dedicated rate limiter for authentication endpoints
+const authLoginLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 25,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: false,
+  message: {
+    success: false,
+    message: 'تعداد تلاش‌های ورود بیش از حد مجاز است. لطفاً یک دقیقه صبر نمایید.',
   },
 });
 
@@ -325,7 +356,7 @@ const DEFAULT_INITIAL_DATA = {
     telegramCaptionTemplate: '',
     aiProvider: 'gemini',
     aiApiKey: '',
-    aiModel: 'gemini-3.8-flash',
+    aiModel: 'gemini-2.5-flash',
     aiBaseUrl: '',
     aiVoiceInboundEnabled: true,
     aiVoiceAutoMatchProducts: true,
@@ -342,10 +373,14 @@ const DEFAULT_INITIAL_DATA = {
       permissions: {
         canCreateInvoice: true,
         canViewInvoices: true,
+        canCreatePurchaseInvoice: true,
+        canViewPurchaseInvoices: true,
+        canSettleInvoices: true,
         canDeleteInvoice: true,
         canManageInventory: true,
         canManageCustomers: true,
         canViewReports: true,
+        canViewBuyPrices: true,
         canAccessAdmin: true,
         canManageUsers: true,
       },
@@ -353,7 +388,34 @@ const DEFAULT_INITIAL_DATA = {
       avatarColor: 'emerald',
       phone: '۰۹۱۲۰۰۰۰۰۰۰',
       pin: '1234',
-      password: 'admin',
+      password: '1234',
+      createdAt: '۱۴۰۳/۰۱/۰۱',
+    },
+    {
+      id: 'user-5',
+      username: 'supervisor1',
+      fullName: 'رضا کرمی',
+      role: 'supervisor',
+      roleTitle: 'سرپرست فروش و عملیات',
+      permissions: {
+        canCreateInvoice: true,
+        canViewInvoices: true,
+        canCreatePurchaseInvoice: true,
+        canViewPurchaseInvoices: true,
+        canSettleInvoices: true,
+        canDeleteInvoice: true,
+        canManageInventory: true,
+        canManageCustomers: true,
+        canViewReports: true,
+        canViewBuyPrices: false,
+        canAccessAdmin: false,
+        canManageUsers: false,
+      },
+      isActive: true,
+      avatarColor: 'teal',
+      phone: '۰۹۱۲۳۳۳۴۴۵۵',
+      pin: '1234',
+      password: '1234',
       createdAt: '۱۴۰۳/۰۱/۰۱',
     },
     {
@@ -365,10 +427,14 @@ const DEFAULT_INITIAL_DATA = {
       permissions: {
         canCreateInvoice: true,
         canViewInvoices: true,
+        canCreatePurchaseInvoice: false,
+        canViewPurchaseInvoices: false,
+        canSettleInvoices: true,
         canDeleteInvoice: false,
         canManageInventory: false,
         canManageCustomers: true,
         canViewReports: false,
+        canViewBuyPrices: false,
         canAccessAdmin: false,
         canManageUsers: false,
       },
@@ -388,10 +454,14 @@ const DEFAULT_INITIAL_DATA = {
       permissions: {
         canCreateInvoice: false,
         canViewInvoices: true,
+        canCreatePurchaseInvoice: true,
+        canViewPurchaseInvoices: true,
+        canSettleInvoices: false,
         canDeleteInvoice: false,
         canManageInventory: true,
         canManageCustomers: false,
         canViewReports: false,
+        canViewBuyPrices: false,
         canAccessAdmin: false,
         canManageUsers: false,
       },
@@ -411,10 +481,14 @@ const DEFAULT_INITIAL_DATA = {
       permissions: {
         canCreateInvoice: false,
         canViewInvoices: true,
+        canCreatePurchaseInvoice: true,
+        canViewPurchaseInvoices: true,
+        canSettleInvoices: true,
         canDeleteInvoice: false,
         canManageInventory: false,
         canManageCustomers: true,
         canViewReports: true,
+        canViewBuyPrices: true,
         canAccessAdmin: false,
         canManageUsers: false,
       },
@@ -859,43 +933,616 @@ function writeDatabase(data: any, allowAutoSnapshot = true, autoIncrementRev = f
 }
 
 // -------------------------------------------------------------
+// AUTHENTICATION, PASSWORD HASHING (SCRYPT), SESSION & RBAC
+// -------------------------------------------------------------
+
+const SESSION_COOKIE_NAME = 'mana_session';
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const SESSION_SECRET_FILE = path.join(DATA_DIR, '.session_secret');
+
+function loadOrCreateSessionSecret(): string {
+  const envSecret = (process.env.SESSION_SECRET || '').trim();
+  if (envSecret.length >= 16) return envSecret;
+  try {
+    if (fs.existsSync(SESSION_SECRET_FILE)) {
+      const existing = fs.readFileSync(SESSION_SECRET_FILE, 'utf-8').trim();
+      if (existing.length >= 32) return existing;
+    }
+    const generated = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(SESSION_SECRET_FILE, generated, { encoding: 'utf-8', mode: 0o600 });
+    return generated;
+  } catch {
+    return crypto.randomBytes(32).toString('hex');
+  }
+}
+
+const SESSION_SECRET = loadOrCreateSessionSecret();
+
+function isHashedSecret(val?: string): boolean {
+  return typeof val === 'string' && val.startsWith('scrypt$') && val.split('$').length === 3;
+}
+
+function hashSecret(plain: string): string {
+  const clean = String(plain || '').trim();
+  if (!clean) return '';
+  if (isHashedSecret(clean)) return clean;
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(clean, salt, 64).toString('hex');
+  return `scrypt$${salt}$${derived}`;
+}
+
+function verifySecret(plain: string, stored?: string): boolean {
+  const candidate = String(plain || '').trim();
+  const target = String(stored || '').trim();
+  if (!candidate || !target) return false;
+
+  if (isHashedSecret(target)) {
+    const parts = target.split('$');
+    const salt = parts[1];
+    const hashHex = parts[2];
+    if (!salt || !hashHex) return false;
+    try {
+      const derived = crypto.scryptSync(candidate, salt, 64);
+      const storedBuf = Buffer.from(hashHex, 'hex');
+      if (derived.length !== storedBuf.length) return false;
+      return crypto.timingSafeEqual(derived, storedBuf);
+    } catch {
+      return false;
+    }
+  }
+
+  // Backward-compatible verification for legacy plaintext passwords (upgraded on login/startup)
+  const candBuf = Buffer.from(candidate, 'utf-8');
+  const targetBuf = Buffer.from(target, 'utf-8');
+  if (candBuf.length !== targetBuf.length) return false;
+  return crypto.timingSafeEqual(candBuf, targetBuf);
+}
+
+function ensureUsersPasswordsHashed(users: any[]): { users: any[]; changed: boolean } {
+  if (!Array.isArray(users)) return { users: [], changed: false };
+  let changed = false;
+  const updated = users.map((u) => {
+    if (!u || typeof u !== 'object') return u;
+    const clone = { ...u };
+    const rawPass = clone.password || clone.pin;
+    if (rawPass && !isHashedSecret(rawPass)) {
+      clone.password = hashSecret(rawPass);
+      changed = true;
+    }
+    if (clone.pin && !isHashedSecret(clone.pin)) {
+      clone.pin = clone.password || hashSecret(clone.pin);
+      changed = true;
+    }
+    return clone;
+  });
+  return { users: updated, changed };
+}
+
+function sanitizeUserForClient(u: any): any {
+  if (!u || typeof u !== 'object') return u;
+  const { password, pin, ...safe } = u;
+  return {
+    ...safe,
+    hasPassword: Boolean(password || pin),
+  };
+}
+
+interface AuthSessionPayload {
+  userId: string;
+  username: string;
+  role: string;
+  permissions: Record<string, boolean>;
+  exp: number;
+}
+
+interface AuthenticatedRequest extends express.Request {
+  authUser?: AuthSessionPayload;
+}
+
+function isAdminUser(user?: { role?: string; permissions?: Record<string, boolean> } | null): boolean {
+  return Boolean(user && (user.role === 'admin' || user.permissions?.canAccessAdmin === true));
+}
+
+function sanitizeDbForClient(data: any, authUser?: AuthSessionPayload): any {
+  if (!data || typeof data !== 'object') return data;
+  const isAdmin = isAdminUser(authUser);
+  const safeUsers = Array.isArray(data.users) ? data.users.map(sanitizeUserForClient) : [];
+  let safeSettings = data.settings;
+  if (safeSettings && typeof safeSettings === 'object' && !isAdmin) {
+    safeSettings = {
+      ...safeSettings,
+      telegramBotToken: '',
+      aiApiKey: '',
+    };
+  }
+  return {
+    ...data,
+    users: safeUsers,
+    ...(safeSettings ? { settings: safeSettings } : {}),
+  };
+}
+
+function signSessionToken(user: any): string {
+  const payload: AuthSessionPayload = {
+    userId: String(user.id || ''),
+    username: String(user.username || ''),
+    role: String(user.role || 'cashier'),
+    permissions: user.permissions && typeof user.permissions === 'object' ? user.permissions : {},
+    exp: Date.now() + SESSION_TTL_MS,
+  };
+  const encoded = Buffer.from(JSON.stringify(payload), 'utf-8').toString('base64url');
+  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(encoded).digest('base64url');
+  return `${encoded}.${sig}`;
+}
+
+function verifySessionToken(token?: string | null): AuthSessionPayload | null {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [encoded, sig] = parts;
+  if (!encoded || !sig) return null;
+  const expectedSig = crypto.createHmac('sha256', SESSION_SECRET).update(encoded).digest('base64url');
+  const sigBuf = Buffer.from(sig, 'utf-8');
+  const expBuf = Buffer.from(expectedSig, 'utf-8');
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf-8')) as AuthSessionPayload;
+    if (!parsed || !parsed.userId || !parsed.exp || Date.now() > parsed.exp) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function parseCookies(cookieHeader?: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!cookieHeader) return result;
+  for (const part of cookieHeader.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx === -1) continue;
+    const key = part.slice(0, idx).trim();
+    const val = part.slice(idx + 1).trim();
+    if (key) {
+      try {
+        result[key] = decodeURIComponent(val);
+      } catch {
+        result[key] = val;
+      }
+    }
+  }
+  return result;
+}
+
+function extractAuthToken(req: express.Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7).trim();
+    if (token) return token;
+  }
+  const cookies = parseCookies(req.headers.cookie);
+  if (cookies[SESSION_COOKIE_NAME]) {
+    return cookies[SESSION_COOKIE_NAME];
+  }
+  return null;
+}
+
+function setSessionCookie(req: express.Request, res: express.Response, token: string) {
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  const attrs = [
+    `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
+  ];
+  if (isSecure) attrs.push('Secure');
+  res.setHeader('Set-Cookie', attrs.join('; '));
+}
+
+function clearSessionCookie(res: express.Response) {
+  res.setHeader(
+    'Set-Cookie',
+    `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`
+  );
+}
+
+// Server-side brute-force lockout tracker (5 consecutive failures -> 60s lockout)
+interface LoginAttemptState {
+  count: number;
+  lockedUntil: number;
+}
+const loginAttemptsMap = new Map<string, LoginAttemptState>();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 60 * 1000;
+
+function getLoginAttemptKey(req: express.Request, username: string): string {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  return `${ip}:${username.trim().toLowerCase()}`;
+}
+
+function checkLoginLockout(key: string): number {
+  const rec = loginAttemptsMap.get(key);
+  if (!rec) return 0;
+  if (rec.lockedUntil > Date.now()) {
+    return Math.ceil((rec.lockedUntil - Date.now()) / 1000);
+  }
+  if (rec.lockedUntil > 0 && rec.lockedUntil <= Date.now()) {
+    loginAttemptsMap.delete(key);
+  }
+  return 0;
+}
+
+function recordFailedLoginAttempt(key: string): { attemptsLeft: number; lockedSeconds: number } {
+  const rec = loginAttemptsMap.get(key) || { count: 0, lockedUntil: 0 };
+  rec.count += 1;
+  if (rec.count >= MAX_LOGIN_ATTEMPTS) {
+    rec.lockedUntil = Date.now() + LOCKOUT_DURATION_MS;
+    loginAttemptsMap.set(key, rec);
+    return { attemptsLeft: 0, lockedSeconds: Math.ceil(LOCKOUT_DURATION_MS / 1000) };
+  }
+  loginAttemptsMap.set(key, rec);
+  return { attemptsLeft: MAX_LOGIN_ATTEMPTS - rec.count, lockedSeconds: 0 };
+}
+
+function clearLoginAttempts(key: string) {
+  loginAttemptsMap.delete(key);
+}
+
+// Safe HTML escaping for Telegram Bot HTML parse_mode messages
+function escapeTelegramHtml(val: any): string {
+  return String(val ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// Merge helper for stale-revision concurrent POST /api/db requests
+function mergeCollectionById(currentArr: any[], incomingArr: any[], delSet: Set<string>): any[] {
+  const map = new Map<string, any>();
+  for (const item of Array.isArray(currentArr) ? currentArr : []) {
+    if (item && item.id && !delSet.has(item.id)) {
+      map.set(item.id, item);
+    }
+  }
+  for (const item of Array.isArray(incomingArr) ? incomingArr : []) {
+    if (item && item.id && !delSet.has(item.id)) {
+      map.set(item.id, item);
+    }
+  }
+  return Array.from(map.values());
+}
+
+// -------------------------------------------------------------
 // REST API ENDPOINTS
 // -------------------------------------------------------------
 
-// 1. Health check & status with backup metrics & PostgreSQL status
-app.get('/api/health', (req, res) => {
+// 1. Unified fast healthcheck & status endpoint for Docker, Nginx & monitoring
+app.get('/api/health', (_req, res) => {
   const exists = fs.existsSync(DB_FILE);
-  let dbStats = { exists, sizeBytes: 0, revision: 1, checksum: '' };
+  let dbStats = { exists, sizeBytes: 0 };
   if (exists) {
     try {
       const stat = fs.statSync(DB_FILE);
       dbStats.sizeBytes = stat.size;
-      const current = readDatabaseRaw();
-      dbStats.revision = current.revision || 1;
-      dbStats.checksum = current.checksum || '';
     } catch {}
   }
 
-  const backups = getBackupsList();
+  let backupsTotal = 0;
+  try {
+    if (fs.existsSync(BACKUPS_DIR)) {
+      backupsTotal = fs.readdirSync(BACKUPS_DIR).filter((f) => f.endsWith('.json')).length;
+    }
+  } catch {}
+
   const pgStatus = getPostgresStatus();
 
-  res.json({
+  res.status(200).json({
+    ok: true,
     status: 'ok',
     mode: process.env.NODE_ENV || 'development',
+    timestamp: Date.now(),
     serverTime: new Date().toISOString(),
-    dataDir: DATA_DIR,
     database: dbStats,
     postgres: pgStatus,
     backups: {
-      total: backups.length,
+      total: backupsTotal,
       autoBackupIntervalHours: 4,
-      lastBackup: backups[0] || null,
     },
   });
 });
 
+// 1.0 Public Auth Bootstrap (non-sensitive login screen branding only)
+app.get('/api/auth/bootstrap', async (_req, res) => {
+  try {
+    setNoCacheHeaders(res);
+    const { data } = await getLatestConvergedDatabase();
+    const s = data?.settings || {};
+    res.json({
+      success: true,
+      requiresAuth: true,
+      branding: {
+        appName: s.appName || DEFAULT_INITIAL_DATA.settings.appName,
+        storeName: s.storeName || DEFAULT_INITIAL_DATA.settings.storeName,
+        tagline: s.tagline || DEFAULT_INITIAL_DATA.settings.tagline,
+        showStoreEditionBadge: s.showStoreEditionBadge !== false,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 1.0.1 Public Login Endpoint with server-side scrypt verification & brute-force lockout
+app.post('/api/auth/login', authLoginLimiter, async (req, res) => {
+  try {
+    setNoCacheHeaders(res);
+    const rawUsername = String(req.body?.username || '').trim().toLowerCase();
+    const rawPassword = String(req.body?.password || '').trim();
+
+    if (!rawUsername || !rawPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'لطفاً نام کاربری و رمز عبور را وارد نمایید.',
+      });
+    }
+
+    const attemptKey = getLoginAttemptKey(req, rawUsername);
+    const lockedSeconds = checkLoginLockout(attemptKey);
+    if (lockedSeconds > 0) {
+      return res.status(429).json({
+        success: false,
+        retryAfterSeconds: lockedSeconds,
+        message: `به دلیل ۵ تلاش ناموفق پیاپی، دسترسی ورود به مدت ${toPersianDigitsServer(lockedSeconds)} ثانیه مسدود است.`,
+      });
+    }
+
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const usersList = Array.isArray(dbData?.users) && dbData.users.length > 0
+      ? dbData.users
+      : DEFAULT_INITIAL_DATA.users;
+
+    const matchedUser = usersList.find(
+      (u: any) => String(u?.username || '').trim().toLowerCase() === rawUsername
+    );
+
+    if (!matchedUser) {
+      const fail = recordFailedLoginAttempt(attemptKey);
+      return res.status(fail.lockedSeconds > 0 ? 429 : 401).json({
+        success: false,
+        attemptsLeft: fail.attemptsLeft,
+        retryAfterSeconds: fail.lockedSeconds,
+        message:
+          fail.lockedSeconds > 0
+            ? 'به دلیل ۵ تلاش ناموفق پیاپی، دسترسی ورود موقتاً به مدت ۶۰ ثانیه مسدود گردید.'
+            : `نام کاربری یا رمز عبور اشتباه است. (${toPersianDigitsServer(fail.attemptsLeft)} تلاش باقی‌مانده)`,
+      });
+    }
+
+    if (matchedUser.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'این حساب کاربری غیرفعال شده است. لطفاً با مدیر سیستم تماس بگیرید.',
+      });
+    }
+
+    const storedPass = matchedUser.password || matchedUser.pin || '1234';
+    const isPasswordMatch =
+      verifySecret(rawPassword, storedPass) ||
+      (matchedUser.pin && matchedUser.pin !== storedPass && verifySecret(rawPassword, matchedUser.pin));
+
+    if (!isPasswordMatch) {
+      const fail = recordFailedLoginAttempt(attemptKey);
+      return res.status(fail.lockedSeconds > 0 ? 429 : 401).json({
+        success: false,
+        attemptsLeft: fail.attemptsLeft,
+        retryAfterSeconds: fail.lockedSeconds,
+        message:
+          fail.lockedSeconds > 0
+            ? 'به دلیل ۵ تلاش ناموفق پیاپی، دسترسی ورود موقتاً به مدت ۶۰ ثانیه مسدود گردید.'
+            : `نام کاربری یا رمز عبور اشتباه است. (${toPersianDigitsServer(fail.attemptsLeft)} تلاش باقی‌مانده)`,
+      });
+    }
+
+    clearLoginAttempts(attemptKey);
+
+    // Transparently upgrade legacy plaintext password to scrypt hash on login
+    if (!isHashedSecret(matchedUser.password)) {
+      enqueueDbWrite(async () => {
+        const { data: latestDb } = await getLatestConvergedDatabase();
+        const hashedResult = ensureUsersPasswordsHashed(latestDb.users || []);
+        if (hashedResult.changed) {
+          latestDb.users = hashedResult.users;
+          writeDatabase(latestDb, false, false);
+          if (getPostgresStatus().connected) {
+            saveStateToPostgres(latestDb).catch(() => {});
+          }
+        }
+      }).catch(() => {});
+    }
+
+    const token = signSessionToken(matchedUser);
+    setSessionCookie(req, res, token);
+
+    return res.json({
+      success: true,
+      token,
+      user: sanitizeUserForClient(matchedUser),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 1.0.2 Public Logout Endpoint
+app.post('/api/auth/logout', (_req, res) => {
+  clearSessionCookie(res);
+  res.json({ success: true });
+});
+
+// 1.0.3 Central Authentication Middleware for all protected /api/* routes
+const authGuardMiddleware: express.RequestHandler = (req, res, next) => {
+  if (req.method === 'OPTIONS') return next();
+  const p = req.path;
+  if (
+    p === '/health' ||
+    p === '/auth/bootstrap' ||
+    p === '/auth/login' ||
+    p === '/auth/logout' ||
+    p === '/telegram/webhook' ||
+    p.startsWith('/public/invoice/')
+  ) {
+    return next();
+  }
+
+  const token = extractAuthToken(req);
+  const payload = verifySessionToken(token);
+  if (!payload) {
+    return res.status(401).json({
+      success: false,
+      code: 'UNAUTHORIZED',
+      message: 'نشست کاربری معتبر نیست یا منقضی شده است. لطفاً مجدداً وارد سیستم شوید.',
+    });
+  }
+
+  (req as AuthenticatedRequest).authUser = payload;
+  next();
+};
+
+app.use('/api', authGuardMiddleware);
+
+// Admin RBAC middleware verifying live DB role & active state
+const requireAdmin: express.RequestHandler = async (req, res, next) => {
+  try {
+    const authUser = (req as AuthenticatedRequest).authUser;
+    if (!authUser) {
+      return res.status(401).json({ success: false, message: 'احراز هویت الزامی است.' });
+    }
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const liveUser = (dbData?.users || []).find((u: any) => u.id === authUser.userId);
+    if (!liveUser || liveUser.isActive === false || !isAdminUser(liveUser)) {
+      return res.status(403).json({
+        success: false,
+        message: 'این عملیات منحصراً برای مدیر سیستم مجاز است.',
+      });
+    }
+    next();
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// 1.0.4 Authenticated Session Verification Endpoint
+app.get('/api/auth/me', async (req, res) => {
+  try {
+    setNoCacheHeaders(res);
+    const authUser = (req as AuthenticatedRequest).authUser!;
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const liveUser = (dbData?.users || []).find((u: any) => u.id === authUser.userId);
+    if (!liveUser || liveUser.isActive === false) {
+      clearSessionCookie(res);
+      return res.status(401).json({
+        success: false,
+        code: 'UNAUTHORIZED',
+        message: 'حساب کاربری غیرفعال یا حذف شده است.',
+      });
+    }
+    // Issue refreshed token if role/permissions changed
+    const refreshedToken = signSessionToken(liveUser);
+    setSessionCookie(req, res, refreshedToken);
+    return res.json({
+      success: true,
+      token: refreshedToken,
+      user: sanitizeUserForClient(liveUser),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 1.0.5 Authenticated Switch-User Endpoint
+app.post('/api/auth/switch-user', authLoginLimiter, async (req, res) => {
+  try {
+    setNoCacheHeaders(res);
+    const authUser = (req as AuthenticatedRequest).authUser!;
+    const { targetUserId, username, password, directAdminSwitch } = req.body || {};
+
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const usersList = Array.isArray(dbData?.users) ? dbData.users : DEFAULT_INITIAL_DATA.users;
+    const callerUser = usersList.find((u: any) => u.id === authUser.userId);
+    const callerIsAdmin = Boolean(callerUser && callerUser.isActive !== false && callerUser.role === 'admin');
+
+    let targetUser: any = null;
+    if (targetUserId) {
+      targetUser = usersList.find((u: any) => u.id === targetUserId);
+    } else if (username) {
+      const cleanU = String(username).trim().toLowerCase();
+      targetUser = usersList.find((u: any) => String(u?.username || '').trim().toLowerCase() === cleanU);
+    }
+
+    if (!targetUser) {
+      return res.status(401).json({ success: false, message: 'نام کاربری یا رمز عبور اشتباه است.' });
+    }
+    if (targetUser.isActive === false) {
+      return res.status(403).json({ success: false, message: 'این حساب کاربری غیرفعال است.' });
+    }
+
+    // Admin switching directly from UsersManager without re-typing password
+    if (directAdminSwitch === true) {
+      if (!callerIsAdmin) {
+        return res.status(403).json({ success: false, message: 'فقط مدیر کل مجاز به تغییر مستقیم نشست است.' });
+      }
+    } else {
+      const rawPass = String(password || '').trim();
+      const attemptKey = getLoginAttemptKey(req, targetUser.username || String(targetUserId || 'switch'));
+      const lockedSeconds = checkLoginLockout(attemptKey);
+      if (lockedSeconds > 0) {
+        return res.status(429).json({
+          success: false,
+          retryAfterSeconds: lockedSeconds,
+          message: `به دلیل تلاش‌های ناموفق پیاپی، ورود به مدت ${toPersianDigitsServer(lockedSeconds)} ثانیه قفل است.`,
+        });
+      }
+
+      const targetPass = targetUser.password || targetUser.pin || '1234';
+      const matchesTarget = verifySecret(rawPass, targetPass);
+      const matchesCallerAdmin =
+        callerIsAdmin && callerUser
+          ? verifySecret(rawPass, callerUser.password || callerUser.pin || '1234')
+          : false;
+
+      if (!matchesTarget && !matchesCallerAdmin) {
+        const fail = recordFailedLoginAttempt(attemptKey);
+        return res.status(fail.lockedSeconds > 0 ? 429 : 401).json({
+          success: false,
+          attemptsLeft: fail.attemptsLeft,
+          retryAfterSeconds: fail.lockedSeconds,
+          message:
+            fail.lockedSeconds > 0
+              ? 'به دلیل ۵ تلاش ناموفق پیاپی، ورود به مدت ۶۰ ثانیه قفل گردید.'
+              : `رمز عبور وارد شده نادرست است. (${toPersianDigitsServer(fail.attemptsLeft)} تلاش باقی‌مانده)`,
+        });
+      }
+      clearLoginAttempts(attemptKey);
+    }
+
+    const token = signSessionToken(targetUser);
+    setSessionCookie(req, res, token);
+    return res.json({
+      success: true,
+      token,
+      user: sanitizeUserForClient(targetUser),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // 1.1 Detailed Database Diagnostic & Status
-app.get('/api/database/status', async (req, res) => {
+app.get('/api/database/status', requireAdmin, async (req, res) => {
   try {
     const diag = await testPostgresConnectionDetails();
     const exists = fs.existsSync(DB_FILE);
@@ -922,7 +1569,7 @@ app.get('/api/database/status', async (req, res) => {
 });
 
 // 1.2 Test PostgreSQL Connection manually on demand
-app.post('/api/database/test', async (req, res) => {
+app.post('/api/database/test', requireAdmin, async (req, res) => {
   try {
     const result = await testPostgresConnectionDetails();
     res.json(result);
@@ -932,7 +1579,7 @@ app.post('/api/database/test', async (req, res) => {
 });
 
 // 1.3 Force Synchronization from Local to PostgreSQL or vice versa
-app.post('/api/database/force-sync', async (req, res) => {
+app.post('/api/database/force-sync', requireAdmin, async (req, res) => {
   try {
     const { data: dbData } = await getLatestConvergedDatabase();
     const dataToSync = dbData || await loadStateFromPostgres() || readDatabase();
@@ -988,11 +1635,11 @@ const handleSecureDatabaseDump = async (req: express.Request, res: express.Respo
   }
 };
 
-app.get('/api/database/dump-sql', handleSecureDatabaseDump);
-app.all('/api/database/export-sql', handleSecureDatabaseDump);
+app.get('/api/database/dump-sql', requireAdmin, handleSecureDatabaseDump);
+app.all('/api/database/export-sql', requireAdmin, handleSecureDatabaseDump);
 
 // 1.5 Import SQL Script or Raw Data directly into PostgreSQL mana_db
-app.post('/api/database/import-sql', express.text({ type: ['application/sql', 'text/plain'], limit: '50mb' }), async (req, res) => {
+app.post('/api/database/import-sql', requireAdmin, express.text({ type: ['application/sql', 'text/plain'], limit: '50mb' }), async (req, res) => {
   try {
     const rawSql = typeof req.body === 'string' ? req.body : req.body?.sql;
     if (!rawSql || typeof rawSql !== 'string' || rawSql.trim().length === 0) {
@@ -1029,7 +1676,7 @@ app.post('/api/database/import-sql', express.text({ type: ['application/sql', 't
 });
 
 // 1.6 Create direct snapshot record in PostgreSQL db_backups table
-app.post('/api/database/snapshot', async (req, res) => {
+app.post('/api/database/snapshot', requireAdmin, async (req, res) => {
   try {
     const label = req.body?.label || 'نسخه پشتیبان مستقیم دیتابیس';
     let data = await loadStateFromPostgres();
@@ -1110,9 +1757,10 @@ app.get('/api/db', async (req, res) => {
   try {
     setNoCacheHeaders(res);
     const { data, source } = await getLatestConvergedDatabase();
+    const authUser = (req as AuthenticatedRequest).authUser;
     res.json({
       success: true,
-      data,
+      data: sanitizeDbForClient(data, authUser),
       source,
       database: 'mana_db',
       serverTime: new Date().toISOString(),
@@ -1127,6 +1775,9 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
   try {
     setNoCacheHeaders(res);
     const incomingData = req.body;
+    const authUser = (req as AuthenticatedRequest).authUser;
+    const callerIsAdmin = isAdminUser(authUser);
+    const callerCanManageUsers = callerIsAdmin || Boolean(authUser?.permissions?.canManageUsers);
     
     // Schema and structure validation
     const validation = validateDatabaseSchema(incomingData);
@@ -1148,8 +1799,13 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
       const { data: currentDb } = await getLatestConvergedDatabase();
       const currentRev = typeof currentDb.revision === 'number' ? currentDb.revision : 1;
       const nowIso = new Date().toISOString();
+      const isStaleRevision =
+        typeof incomingData.baseRevision === 'number' &&
+        incomingData.baseRevision > 0 &&
+        incomingData.baseRevision < currentRev;
       
       // Deep merge settings if provided so partial updates don't destroy existing settings
+      // Protect sensitive secrets (telegramBotToken, aiApiKey) from being cleared by non-admin clients
       let mergedSettings = currentDb.settings;
       if (incomingData.settings && typeof incomingData.settings === 'object') {
         mergedSettings = {
@@ -1159,6 +1815,10 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         };
         if (Array.isArray(incomingData.settings.warehouses)) {
           mergedSettings.warehouses = incomingData.settings.warehouses;
+        }
+        if (!callerIsAdmin) {
+          mergedSettings.telegramBotToken = currentDb.settings?.telegramBotToken || '';
+          mergedSettings.aiApiKey = currentDb.settings?.aiApiKey || '';
         }
       }
 
@@ -1194,50 +1854,83 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         directTransfers: mergeTombstoneList('directTransfers'),
         savedVehicles: mergeTombstoneList('savedVehicles'),
         customerTransactions: mergeTombstoneList('customerTransactions'),
-        users: mergeTombstoneList('users'),
+        users: callerCanManageUsers ? mergeTombstoneList('users') : (Array.isArray(prevTombstones.users) ? prevTombstones.users.map(String) : []),
         categories: mergeTombstoneList('categories').filter(
           (c: string) => !revivedCatSet.has(c.trim().toLowerCase())
         ),
       };
 
-      const invoiceDelSet = new Set(combinedTombstones.invoices);
-      const productDelSet = new Set(combinedTombstones.products);
-      const customerDelSet = new Set(combinedTombstones.customers);
-      const purchaseDelSet = new Set(combinedTombstones.purchaseInvoices);
-      const inboundDelSet = new Set(combinedTombstones.inboundReceipts);
-      const transferDelSet = new Set(combinedTombstones.directTransfers);
-      const vehicleDelSet = new Set(combinedTombstones.savedVehicles);
-      const transactionDelSet = new Set(combinedTombstones.customerTransactions || []);
-      const userDelSet = new Set(combinedTombstones.users);
-      const categoryDelSet = new Set(combinedTombstones.categories.map((c: string) => c.trim().toLowerCase()));
+      const invoiceDelSet = new Set<string>(combinedTombstones.invoices);
+      const productDelSet = new Set<string>(combinedTombstones.products);
+      const customerDelSet = new Set<string>(combinedTombstones.customers);
+      const purchaseDelSet = new Set<string>(combinedTombstones.purchaseInvoices);
+      const inboundDelSet = new Set<string>(combinedTombstones.inboundReceipts);
+      const transferDelSet = new Set<string>(combinedTombstones.directTransfers);
+      const vehicleDelSet = new Set<string>(combinedTombstones.savedVehicles);
+      const transactionDelSet = new Set<string>(combinedTombstones.customerTransactions || []);
+      const userDelSet = new Set<string>(combinedTombstones.users);
+      const categoryDelSet = new Set<string>(combinedTombstones.categories.map((c: string) => c.trim().toLowerCase()));
 
-      // Safe collections handling: filter out any tombstones so stale clients cannot resurrect deleted records
-      let finalInvoices = Array.isArray(incomingData.invoices) ? incomingData.invoices : (currentDb.invoices || []);
-      finalInvoices = finalInvoices.filter((inv: any) => !invoiceDelSet.has(inv.id));
+      const resolveCollection = (currentArr: any[], incomingArr: any, delSet: Set<string>): any[] => {
+        if (!Array.isArray(incomingArr)) {
+          return (Array.isArray(currentArr) ? currentArr : []).filter((item: any) => !delSet.has(item?.id));
+        }
+        if (isStaleRevision) {
+          return mergeCollectionById(currentArr, incomingArr, delSet);
+        }
+        return incomingArr.filter((item: any) => !delSet.has(item?.id));
+      };
 
-      let finalProducts = Array.isArray(incomingData.products) ? incomingData.products : (currentDb.products || []);
-      finalProducts = finalProducts.filter((p: any) => !productDelSet.has(p.id));
+      // Safe collections handling: filter tombstones & merge concurrent stale writes without losing peer records
+      const finalInvoices = resolveCollection(currentDb.invoices, incomingData.invoices, invoiceDelSet);
+      const finalProducts = resolveCollection(currentDb.products, incomingData.products, productDelSet);
+      const finalCustomers = resolveCollection(currentDb.customers, incomingData.customers, customerDelSet);
+      const finalPurchases = resolveCollection(currentDb.purchaseInvoices, incomingData.purchaseInvoices, purchaseDelSet);
+      const finalInbound = resolveCollection(currentDb.inboundReceipts, incomingData.inboundReceipts, inboundDelSet);
+      const finalTransfers = resolveCollection(currentDb.directTransfers, incomingData.directTransfers, transferDelSet);
+      const finalVehicles = resolveCollection(currentDb.savedVehicles, incomingData.savedVehicles, vehicleDelSet);
+      const finalTransactions = resolveCollection(currentDb.customerTransactions, incomingData.customerTransactions, transactionDelSet);
 
-      let finalCustomers = Array.isArray(incomingData.customers) ? incomingData.customers : (currentDb.customers || []);
-      finalCustomers = finalCustomers.filter((c: any) => !customerDelSet.has(c.id));
+      // Protect users array: only admin / canManageUsers may alter users; always preserve & scrypt-hash passwords
+      const existingUsersById = new Map<string, any>();
+      (Array.isArray(currentDb.users) ? currentDb.users : []).forEach((u: any) => {
+        if (u?.id) existingUsersById.set(u.id, u);
+      });
 
-      let finalPurchases = Array.isArray(incomingData.purchaseInvoices) ? incomingData.purchaseInvoices : (currentDb.purchaseInvoices || []);
-      finalPurchases = finalPurchases.filter((p: any) => !purchaseDelSet.has(p.id));
+      let finalUsers: any[];
+      if (!callerCanManageUsers || !Array.isArray(incomingData.users)) {
+        finalUsers = Array.isArray(currentDb.users) ? currentDb.users : [];
+      } else {
+        const candidateUsers = isStaleRevision
+          ? mergeCollectionById(currentDb.users, incomingData.users, userDelSet)
+          : incomingData.users.filter((u: any) => !userDelSet.has(u?.id));
 
-      let finalInbound = Array.isArray(incomingData.inboundReceipts) ? incomingData.inboundReceipts : (currentDb.inboundReceipts || []);
-      finalInbound = finalInbound.filter((r: any) => !inboundDelSet.has(r.id));
-
-      let finalTransfers = Array.isArray(incomingData.directTransfers) ? incomingData.directTransfers : (currentDb.directTransfers || []);
-      finalTransfers = finalTransfers.filter((t: any) => !transferDelSet.has(t.id));
-
-      let finalVehicles = Array.isArray(incomingData.savedVehicles) ? incomingData.savedVehicles : (currentDb.savedVehicles || []);
-      finalVehicles = finalVehicles.filter((v: any) => !vehicleDelSet.has(v.id));
-
-      let finalTransactions = Array.isArray(incomingData.customerTransactions) ? incomingData.customerTransactions : (currentDb.customerTransactions || []);
-      finalTransactions = finalTransactions.filter((t: any) => !transactionDelSet.has(t.id));
-
-      let finalUsers = Array.isArray(incomingData.users) ? incomingData.users : (currentDb.users || []);
-      finalUsers = finalUsers.filter((u: any) => !userDelSet.has(u.id));
+        finalUsers = candidateUsers.map((u: any) => {
+          const prev = existingUsersById.get(u.id);
+          const incomingPass = typeof u.password === 'string' && u.password.trim() ? u.password.trim() : '';
+          const incomingPin = typeof u.pin === 'string' && u.pin.trim() ? u.pin.trim() : '';
+          const nextPassword = incomingPass
+            ? hashSecret(incomingPass)
+            : incomingPin
+            ? hashSecret(incomingPin)
+            : prev?.password
+            ? (isHashedSecret(prev.password) ? prev.password : hashSecret(prev.password))
+            : hashSecret('1234');
+          const nextPin = incomingPin
+            ? hashSecret(incomingPin)
+            : incomingPass
+            ? nextPassword
+            : prev?.pin
+            ? (isHashedSecret(prev.pin) ? prev.pin : hashSecret(prev.pin))
+            : nextPassword;
+          const { hasPassword: _hp, ...cleanUser } = u;
+          return {
+            ...cleanUser,
+            password: nextPassword,
+            pin: nextPin,
+          };
+        });
+      }
 
       let finalCategories = Array.isArray(incomingData.categories) ? incomingData.categories : (currentDb.categories || []);
       finalCategories = finalCategories.filter((c: string) => !categoryDelSet.has(String(c).trim().toLowerCase()));
@@ -1269,6 +1962,7 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         updatedAt: nowIso,
       };
       delete updatedDb.reviveCategories;
+      delete updatedDb.baseRevision;
 
       // Calculate checksum
       const rawContent = JSON.stringify(updatedDb, null, 2);
@@ -1296,6 +1990,7 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         revision: updatedDb.revision,
         checksum: updatedDb.checksum,
         updatedAt: updatedDb.updatedAt,
+        mergedConcurrentWrite: isStaleRevision,
         storage: {
           local: successLocal,
           postgresql: pgSaved,
@@ -1315,9 +2010,16 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
 app.post('/api/db/delete-item', dbWriteLimiter, async (req, res) => {
   try {
     setNoCacheHeaders(res);
+    const authUser = (req as AuthenticatedRequest).authUser;
     const { type, id } = req.body;
     if (!type || !id || typeof id !== 'string') {
       return res.status(400).json({ success: false, message: 'نوع موجودیت و شناسه برای حذف الزامی است.' });
+    }
+    if (type === 'user' && !isAdminUser(authUser) && !authUser?.permissions?.canManageUsers) {
+      return res.status(403).json({ success: false, message: 'شما مجوز حذف کاربران را ندارید.' });
+    }
+    if (type === 'invoice' && !isAdminUser(authUser) && !authUser?.permissions?.canDeleteInvoice) {
+      return res.status(403).json({ success: false, message: 'شما مجوز حذف فاکتور را ندارید.' });
     }
 
     const cleanId = id.trim();
@@ -1432,12 +2134,16 @@ app.get('/api/security/status', (req, res) => {
     security: {
       helmet: true,
       hidePoweredBy: true,
+      serverAuthentication: 'HMAC-SHA256 Session + HttpOnly Cookie',
+      passwordHashing: 'scrypt (per-user salt + timingSafeEqual)',
+      corsPolicy: ALLOWED_ORIGINS.length > 0 ? 'Explicit Origin Allowlist' : 'Same-Origin Only',
       rateLimiting: {
         generalApi: '300 req/min',
-        databaseWrite: '60 req/min',
+        databaseWrite: '300 req/min',
+        authLogin: '25 req/min',
       },
       prototypePollutionGuard: true,
-      bruteForceProtection: 'Active (5 attempts lockout)',
+      bruteForceProtection: 'Server-Side Active (5 attempts -> 60s lockout)',
       databaseHardening: {
         atomicWrites: true,
         schemaValidation: true,
@@ -1531,7 +2237,7 @@ app.get('/api/backups/inspect/:filename', (req, res) => {
 });
 
 // 6.6. Backups API: Prune old auto backups while keeping manual/important ones
-app.post('/api/backups/prune', (req, res) => {
+app.post('/api/backups/prune', requireAdmin, (req, res) => {
   try {
     const keepAutoCount = typeof req.body?.keepAutoCount === 'number' ? Math.max(1, req.body.keepAutoCount) : 5;
     if (!fs.existsSync(BACKUPS_DIR)) {
@@ -1571,7 +2277,7 @@ app.post('/api/backups/prune', (req, res) => {
 });
 
 // 7. Backups API: Restore a specific backup (Full or Selective Modules)
-app.post('/api/backups/restore', async (req, res) => {
+app.post('/api/backups/restore', requireAdmin, async (req, res) => {
   try {
     const rawFilename = req.body?.filename;
     const selectedModules: string[] | undefined = Array.isArray(req.body?.modules) ? req.body.modules : undefined;
@@ -1604,6 +2310,10 @@ app.post('/api/backups/restore', async (req, res) => {
       createBackup('pre-restore', `پشتیبان خودکار اضطراری قبل از بازیابی نسخه ${safeFilename}`, currentDb);
 
       const finalState = prepareRestoredDatabaseState(currentDb, targetData, selectedModules);
+      if (Array.isArray(finalState.users)) {
+        const hashed = ensureUsersPasswordsHashed(finalState.users);
+        finalState.users = hashed.users;
+      }
 
       // Overwrite database with target backup
       const ok = writeDatabase(finalState, false);
@@ -1632,7 +2342,7 @@ app.post('/api/backups/restore', async (req, res) => {
           ? 'بخش‌های انتخاب‌شده با موفقیت از نسخه پشتیبان بازیابی شدند.'
           : 'پایگاه‌داده با موفقیت به نسخه انتخاب‌شده بازگردانی شد.',
       restoredFrom: safeFilename,
-      data: restoreResult,
+      data: sanitizeDbForClient(restoreResult, (req as AuthenticatedRequest).authUser),
       backups,
     });
   } catch (error: any) {
@@ -1641,7 +2351,7 @@ app.post('/api/backups/restore', async (req, res) => {
 });
 
 // 8. Backups API: Download a specific backup file
-app.get('/api/backups/download/:filename', (req, res) => {
+app.get('/api/backups/download/:filename', requireAdmin, (req, res) => {
   try {
     const safeFilename = path.basename(req.params.filename);
     const backupFilePath = path.join(BACKUPS_DIR, safeFilename);
@@ -1660,7 +2370,7 @@ app.get('/api/backups/download/:filename', (req, res) => {
 });
 
 // 9. Backups API: Delete a backup file
-app.delete('/api/backups/:filename', (req, res) => {
+app.delete('/api/backups/:filename', requireAdmin, (req, res) => {
   try {
     const safeFilename = path.basename(req.params.filename);
     const backupFilePath = path.join(BACKUPS_DIR, safeFilename);
@@ -1683,7 +2393,7 @@ app.delete('/api/backups/:filename', (req, res) => {
 });
 
 // 10. Backups API: Upload & Import external backup file (with optional selective module restore)
-app.post('/api/backups/upload', async (req, res) => {
+app.post('/api/backups/upload', requireAdmin, async (req, res) => {
   try {
     const { backupContent, restoreNow, label, modules } = req.body;
     const selectedModules: string[] | undefined = Array.isArray(modules) ? modules : undefined;
@@ -1731,6 +2441,10 @@ app.post('/api/backups/upload', async (req, res) => {
         createBackup('pre-restore', 'پشتیبان خودکار قبل از اعمال فایل بارگذاری‌شده', currentDb);
 
         const finalState = prepareRestoredDatabaseState(currentDb, actualData, selectedModules);
+        if (Array.isArray(finalState.users)) {
+          const hashed = ensureUsersPasswordsHashed(finalState.users);
+          finalState.users = hashed.users;
+        }
         writeDatabase(finalState, false);
         if (getPostgresStatus().connected) {
           try {
@@ -1760,7 +2474,7 @@ app.post('/api/backups/upload', async (req, res) => {
 });
 
 // 11. Download live converged backup JSON with full envelope & checksum
-app.get('/api/backup', async (req, res) => {
+app.get('/api/backup', requireAdmin, async (req, res) => {
   try {
     setNoCacheHeaders(res);
     const { data } = await getLatestConvergedDatabase();
@@ -2323,9 +3037,9 @@ async function checkAndSendServerProformaReminders(overrides?: {
             itemsSummary.push(`📦 <b>اقلام پیش‌فاکتور (${toPersianDigitsServer(inv.items.length)} قلم):</b>`);
             inv.items.slice(0, 10).forEach((item: any, idx: number) => {
               const num = toPersianDigitsServer(idx + 1);
-              const name = item.productName || item.name || 'کالای بدون عنوان';
+              const name = escapeTelegramHtml(item.productName || item.name || 'کالای بدون عنوان');
               const qty = toPersianDigitsServer(item.quantity);
-              const unit = item.unit ? ` ${item.unit}` : '';
+              const unit = item.unit ? ` ${escapeTelegramHtml(item.unit)}` : '';
               itemsSummary.push(`  ▫️ ${num}. ${name}: ${qty}${unit}`);
             });
             if (inv.items.length > 10) {
@@ -2336,16 +3050,16 @@ async function checkAndSendServerProformaReminders(overrides?: {
           const messageLines = [
             `⚠️ <b>هشدار پیگیری پیش‌فاکتور (گذشت ${toPersianDigitsServer(days)} روز)</b>`,
             `━━━━━━━━━━━━━━━━━━━━`,
-            `📋 <b>پیش‌فاکتور شماره:</b> <code>#${toPersianDigitsServer(inv.invoiceNumber)}</code>`,
-            `👤 <b>مشتری / طرف حساب:</b> <b>${inv.customerName}</b>`,
-            inv.customerPhone ? `📞 <b>شماره تماس:</b> <code>${toPersianDigitsServer(inv.customerPhone)}</code>` : '',
-            `📅 <b>تاریخ صدور:</b> ${toPersianDigitsServer(inv.date)} (<b>${toPersianDigitsServer(days)} روز گذشته</b>)`,
-            `💰 <b>مبلغ کل:</b> <b>${toPersianDigitsServer(formatPriceServer(inv.finalTotal))} ${currency}</b>`,
+            `📋 <b>پیش‌فاکتور شماره:</b> <code>#${escapeTelegramHtml(toPersianDigitsServer(inv.invoiceNumber))}</code>`,
+            `👤 <b>مشتری / طرف حساب:</b> <b>${escapeTelegramHtml(inv.customerName)}</b>`,
+            inv.customerPhone ? `📞 <b>شماره تماس:</b> <code>${escapeTelegramHtml(toPersianDigitsServer(inv.customerPhone))}</code>` : '',
+            `📅 <b>تاریخ صدور:</b> ${escapeTelegramHtml(toPersianDigitsServer(inv.date))} (<b>${toPersianDigitsServer(days)} روز گذشته</b>)`,
+            `💰 <b>مبلغ کل:</b> <b>${toPersianDigitsServer(formatPriceServer(inv.finalTotal))} ${escapeTelegramHtml(currency)}</b>`,
             ...(itemsSummary.length > 0 ? itemsSummary : [`📦 تعداد اقلام: ${toPersianDigitsServer(inv.items?.length || 0)} قلم`]),
             `━━━━━━━━━━━━━━━━━━━━`,
             `🔔 <b>اقدام لازم:</b>`,
             `بیش از ۷ روز از صدور این پیش‌فاکتور سپری شده است. لطفاً جهت پیگیری سفارش با خریدار تماس حاصل نموده تا در صورت تایید نهایی، به <b>فاکتور فروش</b> تبدیل شود.`,
-            store ? `🏪 <i>${store}</i>` : '',
+            store ? `🏪 <i>${escapeTelegramHtml(store)}</i>` : '',
           ].filter(Boolean);
 
           const messageText = messageLines.join('\n');
@@ -2579,16 +3293,16 @@ async function checkAndSendCustomerFollowUpReminders(overrides?: {
       const messageLines = [
         `🔔 <b>یادآوری تماس با مشتری (موعد پیگیری مذاکره)</b>`,
         `━━━━━━━━━━━━━━━━━━━━`,
-        `👤 <b>نام مشتری / طرف‌حساب:</b> <b>${cust.name}</b>${cust.customerType === 'colleague' ? ' (همکار / عمده)' : ''}`,
-        cust.phone ? `📞 <b>شماره تماس:</b> <code>${toPersianDigitsServer(cust.phone)}</code>` : '',
-        `📅 <b>تاریخ یادآور تماس:</b> <b>${toPersianDigitsServer(dueLabel)}</b>${isTodayDue ? ' (موعد امروز)' : ''}`,
+        `👤 <b>نام مشتری / طرف‌حساب:</b> <b>${escapeTelegramHtml(cust.name)}</b>${cust.customerType === 'colleague' ? ' (همکار / عمده)' : ''}`,
+        cust.phone ? `📞 <b>شماره تماس:</b> <code>${escapeTelegramHtml(toPersianDigitsServer(cust.phone))}</code>` : '',
+        `📅 <b>تاریخ یادآور تماس:</b> <b>${escapeTelegramHtml(toPersianDigitsServer(dueLabel))}</b>${isTodayDue ? ' (موعد امروز)' : ''}`,
         `📝 <b>متن یادداشت مذاکره:</b>`,
-        `<i>«${noteText}»</i>`,
-        `🗓️ <b>تاریخ ثبت مذاکره:</b> ${toPersianDigitsServer(noteDate)}`,
-        createdBy ? `👨‍💼 <b>ثبت‌کننده:</b> ${createdBy}` : '',
+        `<i>«${escapeTelegramHtml(noteText)}»</i>`,
+        `🗓️ <b>تاریخ ثبت مذاکره:</b> ${escapeTelegramHtml(toPersianDigitsServer(noteDate))}`,
+        createdBy ? `👨‍💼 <b>ثبت‌کننده:</b> ${escapeTelegramHtml(createdBy)}` : '',
         `━━━━━━━━━━━━━━━━━━━━`,
-        `📌 <b>اقدام لازم:</b> زمان یادآوری تماس با <b>${cust.name}</b> فرا رسیده است. لطفاً جهت پیگیری مذاکرات و هماهنگی سفارش با مشتری تماس حاصل فرمایید.`,
-        store ? `🏪 <i>${store}</i>` : '',
+        `📌 <b>اقدام لازم:</b> زمان یادآوری تماس با <b>${escapeTelegramHtml(cust.name)}</b> فرا رسیده است. لطفاً جهت پیگیری مذاکرات و هماهنگی سفارش با مشتری تماس حاصل فرمایید.`,
+        store ? `🏪 <i>${escapeTelegramHtml(store)}</i>` : '',
       ].filter(Boolean);
 
       const messageText = messageLines.join('\n');
@@ -3006,7 +3720,7 @@ app.post('/api/ai/test-connection', async (req, res) => {
 
     const provider = req.body?.provider || settings?.aiProvider || 'gemini';
     const apiKey = (req.body?.apiKey || settings?.aiApiKey || (provider === 'gemini' ? process.env.GEMINI_API_KEY : '') || '').trim();
-    const model = (req.body?.model || settings?.aiModel || (provider === 'gemini' ? 'gemini-3.8-flash' : 'whisper-1')).trim();
+    const model = (req.body?.model || settings?.aiModel || (provider === 'gemini' ? 'gemini-2.5-flash' : 'whisper-1')).trim();
     const baseUrl = (req.body?.baseUrl || settings?.aiBaseUrl || '').trim();
 
     if (!apiKey && provider !== 'custom') {
@@ -3018,7 +3732,7 @@ app.post('/api/ai/test-connection', async (req, res) => {
 
     if (provider === 'gemini') {
       const aiClient = new GoogleGenAI({ apiKey });
-      const testModel = model || 'gemini-3.8-flash';
+      const testModel = model || 'gemini-2.5-flash';
       const prompt = 'پاسخ بسیار کوتاه یک کلمه‌ای فقط به صورت JSON: {"status": "ok", "provider": "gemini"}';
       const response = await aiClient.models.generateContent({
         model: testModel,
@@ -3090,7 +3804,7 @@ async function processVoiceWithAI(audioBuffer: Buffer, mimeType: string, setting
 }> {
   const provider = settings?.aiProvider || 'gemini';
   const apiKey = (settings?.aiApiKey || (provider === 'gemini' ? process.env.GEMINI_API_KEY : '') || '').trim();
-  const model = (settings?.aiModel || (provider === 'gemini' ? 'gemini-3.8-flash' : 'whisper-1')).trim();
+  const model = (settings?.aiModel || (provider === 'gemini' ? 'gemini-2.5-flash' : 'whisper-1')).trim();
   const baseUrl = (settings?.aiBaseUrl || '').trim();
 
   // Create list of known products for AI fuzzy matching
@@ -3133,7 +3847,7 @@ ${settings?.aiCustomPrompt ? `دستورالعمل اختصاصی کاربر: ${
       throw new Error('کلید Gemini API در تنظیمات یا متغیرهای محیطی یافت نشد.');
     }
     const aiClient = new GoogleGenAI({ apiKey });
-    const targetModel = model || 'gemini-3.8-flash';
+    const targetModel = model || 'gemini-2.5-flash';
 
     const base64Audio = audioBuffer.toString('base64');
     const audioPart = {
@@ -3351,7 +4065,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
         body: {
           chat_id: chatId,
           reply_to_message_id: message.message_id,
-          text: `⚠️ <b>متن پیاده‌سازی شده:</b>\n<i>«${aiResult.transcript}»</i>\n\nهیچ قلم کالایی در این پیام صوتی تشخیص داده نشد. لطفاً مجدداً با ذکر دقیق نام و تعداد کالا پیام صوتی بفرستید.`,
+          text: `⚠️ <b>متن پیاده‌سازی شده:</b>\n<i>«${escapeTelegramHtml(aiResult.transcript)}»</i>\n\nهیچ قلم کالایی در این پیام صوتی تشخیص داده نشد. لطفاً مجدداً با ذکر دقیق نام و تعداد کالا پیام صوتی بفرستید.`,
           parse_mode: 'HTML',
         },
       });
@@ -3416,21 +4130,21 @@ app.post('/api/telegram/webhook', async (req, res) => {
       currentReceipts.unshift(newReceipt);
       currentDb.inboundReceipts = currentReceipts;
       await writeDatabase(currentDb);
-      if (getPostgresStatus()) {
+      if (getPostgresStatus().connected) {
         await saveStateToPostgres(currentDb);
       }
     });
 
     // 5. Send success confirmation message back to Telegram
     const itemsSummary = inboundItems
-      .map((it, idx) => `  ${idx + 1}. <b>${it.productName}</b>: ${it.expectedQuantity} ${it.unit}`)
+      .map((it, idx) => `  ${idx + 1}. <b>${escapeTelegramHtml(it.productName)}</b>: ${it.expectedQuantity} ${escapeTelegramHtml(it.unit)}`)
       .join('\n');
 
     const replyText = [
-      `✅ <b>رسید ورود کالا با موفقیت ثبت شد (شماره: ${receiptCode})</b>`,
+      `✅ <b>رسید ورود کالا با موفقیت ثبت شد (شماره: ${escapeTelegramHtml(receiptCode)})</b>`,
       '',
       `🎙️ <b>متن پیاده‌سازی شده صوت:</b>`,
-      `<i>«${aiResult.transcript}»</i>`,
+      `<i>«${escapeTelegramHtml(aiResult.transcript)}»</i>`,
       '',
       `📦 <b>اقلام استخراج‌شده:</b>`,
       itemsSummary,
@@ -3455,7 +4169,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
 });
 
 // 12.4.4 Set Webhook or Polling helper endpoint
-app.post('/api/telegram/set-webhook', async (req, res) => {
+app.post('/api/telegram/set-webhook', requireAdmin, async (req, res) => {
   try {
     const { data: dbData } = await getLatestConvergedDatabase();
     const settings = dbData?.settings || {};
@@ -4300,6 +5014,14 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
+    // Security: never expose compiled server bundle or source maps over HTTP
+    app.use((req, res, next) => {
+      const reqPath = (req.path || '').toLowerCase();
+      if (reqPath === '/server.cjs' || reqPath.endsWith('.cjs') || reqPath.endsWith('.map')) {
+        return res.status(404).end();
+      }
+      next();
+    });
     app.use(
       express.static(distPath, {
         setHeaders: (res, filePath) => {
@@ -4332,15 +5054,22 @@ async function startServer() {
       console.warn('[PostgreSQL Bootstrap Warning]:', err.message);
     });
 
-    // Initial check: if no backup exists, create startup baseline
+    // One-time transparent password hashing migration on startup (no plaintext left at rest)
     setTimeout(() => {
       try {
+        const current = readDatabase();
+        const migrated = ensureUsersPasswordsHashed(current.users || []);
+        if (migrated.changed) {
+          current.users = migrated.users;
+          writeDatabase(current, false, false);
+          console.log('[Security] Migrated legacy plaintext user passwords to scrypt hashes.');
+        }
         const existingBackups = getBackupsList();
         if (existingBackups.length === 0) {
           createBackup('startup', 'نسخه اولیه راه‌اندازی سیستم و دیتابیس');
         }
       } catch (e) {
-        console.error('[Backup Engine] Failed initial startup backup:', e);
+        console.error('[Backup Engine] Failed initial startup tasks:', e);
       }
     }, 1000);
 
@@ -4354,13 +5083,23 @@ async function startServer() {
     }, 4 * 60 * 60 * 1000);
   });
 
-  // Fast & clean shutdown when running as PID 1 in Docker (prevents 15s-30s stop delay on docker compose down)
+  // Clean shutdown when running as PID 1 in Docker (waits briefly for in-flight DB writes)
+  let isShuttingDown = false;
   const handleShutdown = (signal: string) => {
-    console.log(`[Factor Server] Received ${signal}, shutting down immediately...`);
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`[Factor Server] Received ${signal}, draining in-flight writes and shutting down...`);
+    const forceExitTimer = setTimeout(() => process.exit(0), 3000);
+    forceExitTimer.unref();
+
     server.close(() => {
-      process.exit(0);
+      dbWriteQueue
+        .catch(() => {})
+        .finally(() => {
+          clearTimeout(forceExitTimer);
+          process.exit(0);
+        });
     });
-    setTimeout(() => process.exit(0), 500).unref();
   };
 
   process.on('SIGTERM', () => handleShutdown('SIGTERM'));

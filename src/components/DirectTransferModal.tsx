@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { confirmAction } from '../utils/confirmDialog';
 import {
   X,
   ArrowUpRight,
@@ -362,9 +363,14 @@ export const DirectTransferModal: React.FC<DirectTransferModalProps> = ({
     setTimeout(() => setVehicleFeedback(null), 3500);
   };
 
-  const handleDeleteSavedVehicle = (id: string, vehicleInfo?: string, e?: React.MouseEvent) => {
+  const handleDeleteSavedVehicle = async (id: string, vehicleInfo?: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (window.confirm('آیا از حذف این خودرو از فهرست ذخیره‌شده‌ها اطمینان دارید؟')) {
+    const confirmed = await confirmAction('آیا از حذف این خودرو از فهرست ذخیره‌شده‌ها اطمینان دارید؟', {
+      title: 'حذف خودرو از ناوگان',
+      variant: 'danger',
+      confirmLabel: 'حذف خودرو',
+    });
+    if (confirmed) {
       StorageService.deleteSavedVehicle(id, vehicleInfo);
       setSavedVehicles(StorageService.getExitSlipVehicles());
     }

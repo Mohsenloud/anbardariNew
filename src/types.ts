@@ -290,6 +290,7 @@ export interface Invoice {
   updatedByName?: string; // نام آخرین کاربری که فاکتور را ویرایش کرده است
   convertedById?: string; // شناسه کاربری که پیش‌فاکتور را به فاکتور تبدیل کرده است
   convertedByName?: string; // نام کاربری که پیش‌فاکتور را به فاکتور تبدیل کرده است
+  exitSlip?: ExitSlipData; // اطلاعات حواله خروج انبار مرتبط با فاکتور
 }
 
 export type StockMovementType = 'sale' | 'purchase' | 'adjustment' | 'return' | 'direct_out' | 'direct_in';
@@ -440,7 +441,7 @@ export interface StoreSettings {
   // تنظیمات هوش مصنوعی (AI Engine) جهت تبدیل ویس تلگرام و ثبت خودکار ورودی کالا
   aiProvider?: 'gemini' | 'openai' | 'custom'; // ارائه‌دهنده سرویس هوش مصنوعی (جمینای، اوپن‌ای‌آی یا سرور شخصی)
   aiApiKey?: string; // کلید دسترسی API هوش مصنوعی (Gemini API Key یا OpenAI Key)
-  aiModel?: string; // مدل هوش مصنوعی (پیش‌فرض جمینای: gemini-3.8-flash)
+  aiModel?: string; // مدل هوش مصنوعی (پیش‌فرض جمینای: gemini-2.5-flash)
   aiBaseUrl?: string; // آدرس سفارشی سرور هوش مصنوعی برای داکر / لوکال / ارائه‌دهنده‌های ایرانی
   aiVoiceInboundEnabled?: boolean; // فعال بودن پردازش پیام‌های صوتی تلگرام و ثبت حواله ورود
   aiVoiceAutoMatchProducts?: boolean; // تطبیق هوشمند نام کالا در ویس با انبار موجود
@@ -628,6 +629,7 @@ export interface AppUser {
   phone?: string;
   pin?: string;
   password?: string;
+  hasPassword?: boolean;
   avatarColor?: string;
   createdAt: string;
   lastLogin?: string;

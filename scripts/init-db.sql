@@ -48,21 +48,29 @@ CREATE TABLE IF NOT EXISTS customers (
 
 CREATE TABLE IF NOT EXISTS invoices (
   id VARCHAR(100) PRIMARY KEY,
-  invoice_number VARCHAR(100) NOT NULL UNIQUE,
+  invoice_number VARCHAR(100) NOT NULL,
   date VARCHAR(50) NOT NULL,
   customer_id VARCHAR(100),
   customer_name VARCHAR(250) NOT NULL,
   customer_phone VARCHAR(50),
   items JSONB NOT NULL,
   total_amount NUMERIC(15, 2) NOT NULL,
-  payment_status VARCHAR(50) DEFAULT 'unpaid',
-  paid_amount NUMERIC(15, 2) DEFAULT 0,
-  is_proforma BOOLEAN DEFAULT FALSE,
-  tax_percent NUMERIC(5, 2) DEFAULT 0,
-  discount_amount NUMERIC(15, 2) DEFAULT 0,
-  notes TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  discount NUMERIC(15, 2) DEFAULT 0,
+  tax NUMERIC(15, 2) DEFAULT 0,
+  final_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+  status VARCHAR(50) DEFAULT 'completed',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS db_backups (
+  id SERIAL PRIMARY KEY,
+  filename VARCHAR(255) NOT NULL,
+  trigger_type VARCHAR(50) NOT NULL,
+  label VARCHAR(255),
+  size_bytes INT DEFAULT 0,
+  checksum VARCHAR(100),
+  data JSONB NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS activity_logs (
@@ -80,7 +88,7 @@ CREATE TABLE IF NOT EXISTS activity_logs (
 );
 
 CREATE TABLE IF NOT EXISTS deleted_tombstones (
-  entity_type VARCHAR(50) NOT NULL,
+  entity_type VARCHAR(100) NOT NULL,
   entity_id VARCHAR(150) NOT NULL,
   deleted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (entity_type, entity_id)

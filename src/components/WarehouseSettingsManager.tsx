@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { StoreSettings, WarehouseInfo, Product, StockMovement, SavedVehicle } from '../types';
 import { toPersianDigits } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
+import { confirmAction } from '../utils/confirmDialog';
 import {
   Warehouse,
   Plus,
@@ -934,8 +935,16 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
                     </span>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (window.confirm(`آیا از حذف خودروی «${veh.vehicleType || veh.vehicleInfo}» اطمینان دارید؟`)) {
+                      onClick={async () => {
+                        const confirmed = await confirmAction(
+                          `آیا از حذف خودروی «${veh.vehicleType || veh.vehicleInfo}» اطمینان دارید؟`,
+                          {
+                            title: 'حذف خودرو از ناوگان',
+                            confirmLabel: 'بله، حذف شود',
+                            variant: 'danger',
+                          }
+                        );
+                        if (confirmed) {
                           StorageService.deleteSavedVehicle(veh.id, veh.vehicleInfo);
                           setSavedVehicles(StorageService.getExitSlipVehicles());
                           showNotification('خودروی مورد نظر با موفقیت از ناوگان حذف گردید.');
@@ -974,8 +983,16 @@ export const WarehouseSettingsManager: React.FC<WarehouseSettingsManagerProps> =
                   <span>{veh.sourceLabel || 'ناوگان ثبت‌شده'}</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (window.confirm(`آیا از حذف خودروی «${veh.vehicleType || veh.vehicleInfo}» اطمینان دارید؟`)) {
+                    onClick={async () => {
+                      const confirmed = await confirmAction(
+                        `آیا از حذف خودروی «${veh.vehicleType || veh.vehicleInfo}» اطمینان دارید؟`,
+                        {
+                          title: 'حذف خودرو از ناوگان',
+                          confirmLabel: 'بله، حذف شود',
+                          variant: 'danger',
+                        }
+                      );
+                      if (confirmed) {
                         StorageService.deleteSavedVehicle(veh.id, veh.vehicleInfo);
                         setSavedVehicles(StorageService.getExitSlipVehicles());
                         showNotification('خودروی مورد نظر با موفقیت از ناوگان حذف گردید.');

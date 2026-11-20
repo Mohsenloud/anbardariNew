@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppUser } from '../types';
 import { toPersianDigits } from '../utils/jalali';
+import { switchUserWithServer } from '../utils/authClient';
 import {
   Lock,
   User,
@@ -58,98 +59,78 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
 
   const isTargetMode = !!targetUser && currentUser?.role === 'admin';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (lockoutSeconds > 0) return;
+    if (lockoutSeconds > 0 || isLoading) return;
     setErrorMessage('');
+
+    const cleanPassword = password.trim();
+    const cleanUsername = username.trim().toLowerCase();
+
+    if (!isTargetMode && !cleanUsername) {
+      setErrorMessage('لطفاً نام کاربری را وارد کنید.');
+      return;
+    }
+
+    if (!cleanPassword) {
+      setErrorMessage('لطفاً رمز عبور را وارد کنید.');
+      return;
+    }
+
     setIsLoading(true);
 
-    setTimeout(() => {
-      if (isTargetMode && targetUser) {
-        // Admin switching to specific target user
-        const targetPass = (targetUser.password || targetUser.pin || '1234').trim();
-        const currentAdminPass = (currentUser?.password || currentUser?.pin || '1234').trim();
-        const entered = password.trim();
+    const serverRes = await switchUserWithServer(
+      isTargetMode && targetUser
+        ? { targetUserId: targetUser.id, password: cleanPassword }
+        : { username: cleanUsername, password: cleanPassword }
+    );
 
-        if (entered === targetPass || entered === currentAdminPass) {
-          setFailedAttempts(0);
-          onLoginSuccess(targetUser);
-          setPassword('');
-          setUsername('');
-          onClose();
-        } else {
-          const nextAttempts = failedAttempts + 1;
-          setFailedAttempts(nextAttempts);
-          if (nextAttempts >= 5) {
-            setLockoutSeconds(60);
-            setErrorMessage('به دلیل ۵ تلاش ناموفق پیاپی، ورود به مدت ۶۰ ثانیه قفل گردید.');
-          } else {
-            setErrorMessage(`رمز عبور وارد شده نادرست است. (${toPersianDigits(5 - nextAttempts)} تلاش باقی‌مانده)`);
-          }
-        }
-      } else {
-        // General credential login (Username + Password)
-        const cleanUsername = username.trim().toLowerCase();
-        const cleanPassword = password.trim();
-
-        if (!cleanUsername) {
-          setErrorMessage('لطفاً نام کاربری را وارد کنید.');
-          setIsLoading(false);
-          return;
-        }
-
-        if (!cleanPassword) {
-          setErrorMessage('لطفاً رمز عبور را وارد کنید.');
-          setIsLoading(false);
-          return;
-        }
-
-        const foundUser = users.find(
-          (u) => u.username.trim().toLowerCase() === cleanUsername
-        );
-
-        if (!foundUser) {
-          const nextAttempts = failedAttempts + 1;
-          setFailedAttempts(nextAttempts);
-          if (nextAttempts >= 5) {
-            setLockoutSeconds(60);
-            setErrorMessage('به دلیل ۵ تلاش ناموفق پیاپی، ورود به مدت ۶۰ ثانیه قفل گردید.');
-          } else {
-            setErrorMessage(`نام کاربری یا رمز عبور اشتباه است. (${toPersianDigits(5 - nextAttempts)} تلاش باقی‌مانده)`);
-          }
-          setIsLoading(false);
-          return;
-        }
-
-        if (!foundUser.isActive) {
-          setErrorMessage('این حساب کاربری غیرفعال شده است. لطفاً با مدیر تماس بگیرید.');
-          setIsLoading(false);
-          return;
-        }
-
-        const userPass = (foundUser.password || foundUser.pin || '1234').trim();
-        if (cleanPassword !== userPass) {
-          const nextAttempts = failedAttempts + 1;
-          setFailedAttempts(nextAttempts);
-          if (nextAttempts >= 5) {
-            setLockoutSeconds(60);
-            setErrorMessage('به دلیل ۵ تلاش ناموفق پیاپی، ورود به مدت ۶۰ ثانیه قفل گردید.');
-          } else {
-            setErrorMessage(`نام کاربری یا رمز عبور اشتباه است. (${toPersianDigits(5 - nextAttempts)} تلاش باقی‌مانده)`);
-          }
-          setIsLoading(false);
-          return;
-        }
-
-        setFailedAttempts(0);
-        onLoginSuccess(foundUser);
-        setUsername('');
-        setPassword('');
-        onClose();
-      }
-
+    if (serverRes.success && serverRes.user) {
+      setFailedAttempts(0);
+      setLockoutSeconds(0);
+      onLoginSuccess(serverRes.user);
+      setPassword('');
+      setUsername('');
       setIsLoading(false);
-    }, 200);
+      onClose();
+      return;
+    }
+
+    if (!serverRes.networkError) {
+      if (typeof serverRes.retryAfterSeconds === 'number' && serverRes.retryAfterSeconds > 0) {
+        setLockoutSeconds(serverRes.retryAfterSeconds);
+      }
+      setErrorMessage(serverRes.message || 'نام کاربری یا رمز عبور اشتباه است.');
+      setIsLoading(false);
+      return;
+    }
+
+    // Offline fallback only if network is genuinely unavailable
+    const foundUser =
+      isTargetMode && targetUser
+        ? targetUser
+        : users.find((u) => u.username.trim().toLowerCase() === cleanUsername);
+
+    const expectedPass = (foundUser?.password || foundUser?.pin || '').trim();
+    if (!foundUser || !foundUser.isActive || !expectedPass || cleanPassword !== expectedPass) {
+      const nextAttempts = failedAttempts + 1;
+      setFailedAttempts(nextAttempts);
+      if (nextAttempts >= 5) {
+        setLockoutSeconds(60);
+        setErrorMessage('به دلیل ۵ تلاش ناموفق پیاپی، ورود به مدت ۶۰ ثانیه قفل گردید.');
+      } else {
+        setErrorMessage('ارتباط با سرور برقرار نیست یا رمز عبور نادرست است.');
+      }
+      setIsLoading(false);
+      return;
+    }
+
+    setFailedAttempts(0);
+    onLoginSuccess(foundUser);
+    setUsername('');
+    setPassword('');
+    setIsLoading(false);
+    onClose();
   };
 
   return (

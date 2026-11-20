@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Invoice, ExitSlipData, AppUser, StoreSettings, SavedVehicle } from '../types';
 import { getCurrentJalaliDate, getCurrentJalaliTime, toPersianDigits } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
+import { confirmAction } from '../utils/confirmDialog';
 import {
   Truck,
   X,
@@ -188,9 +189,14 @@ export const ExitSlipDeliveryModal: React.FC<ExitSlipDeliveryModalProps> = ({
   };
 
   // حذف ماشین از لیست ذخیره‌شده‌ها
-  const handleDeleteSavedVehicle = (id: string, vehicleInfo?: string, e?: React.MouseEvent) => {
+  const handleDeleteSavedVehicle = async (id: string, vehicleInfo?: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (window.confirm('آیا از حذف این مشخصات ماشین از لیست ذخیره‌شده‌ها اطمینان دارید؟')) {
+    const confirmed = await confirmAction('آیا از حذف این مشخصات ماشین از لیست ذخیره‌شده‌ها اطمینان دارید؟', {
+      title: 'حذف خودرو از ناوگان',
+      confirmLabel: 'بله، حذف شود',
+      variant: 'danger',
+    });
+    if (confirmed) {
       StorageService.deleteSavedVehicle(id, vehicleInfo);
       setSavedVehicles(StorageService.getExitSlipVehicles());
       setVehicleFeedback({

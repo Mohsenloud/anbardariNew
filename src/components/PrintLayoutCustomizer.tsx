@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PrintLayoutSettings, DEFAULT_PRINT_LAYOUT, OPTIMAL_PRINT_LAYOUT, StoreSettings } from '../types';
 import { toPersianDigits, formatPrice } from '../utils/jalali';
+import { confirmAction } from '../utils/confirmDialog';
 import { getPrintLayoutCssVariables } from '../utils/printLayoutHelper';
 import { printElementInNewWindow, exportElementToPdf } from '../utils/pdfHelper';
 import { broadcastLivePreview } from '../utils/livePreviewSync';
@@ -490,8 +491,12 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
     });
   };
 
-  const handleReset = () => {
-    if (window.confirm('آیا مایلید تمام ابعاد، سایز فونت‌ها، عرض ستون‌ها و فاصله‌های چاپ به مقادیر پیش‌فرض اولیه بازنشانی شوند؟')) {
+  const handleReset = async () => {
+    const confirmed = await confirmAction(
+      'آیا مایلید تمام ابعاد، سایز فونت‌ها، عرض ستون‌ها و فاصله‌های چاپ به مقادیر پیش‌فرض اولیه بازنشانی شوند؟',
+      { title: 'بازنشانی تنظیمات چاپ', variant: 'warning' }
+    );
+    if (confirmed) {
       onChange(DEFAULT_PRINT_LAYOUT);
     }
   };

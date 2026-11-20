@@ -151,6 +151,7 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
 
   // Helper: auto set PIN from last 4 digits of customer phone
   const handleSetPinFromPhone = () => {
+    if (!invoice) return;
     const cleanPhone = (invoice.customerPhone || '').replace(/[^0-9]/g, '');
     if (cleanPhone.length >= 4) {
       const last4 = cleanPhone.slice(-4);
@@ -179,6 +180,7 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
 
   // Formatted message text for SMS / Messengers
   const getShareMessageText = (): string => {
+    if (!invoice) return '';
     const storeTitle = settings.storeName || 'فروشگاه سپهر';
     const pinPart = pinRequired && pinCode ? `\n🔑 رمز عبور: ${toPersianDigits(pinCode)}` : '';
 
@@ -224,12 +226,14 @@ export const InvoiceShareLinkModal: React.FC<InvoiceShareLinkModalProps> = ({
   };
 
   const handleSendSms = () => {
+    if (!invoice) return;
     const text = encodeURIComponent(getShareMessageText());
     const phone = invoice.customerPhone ? invoice.customerPhone.replace(/[^0-9]/g, '') : '';
     window.open(`sms:${phone}?body=${text}`, '_self');
   };
 
   const handleSendWhatsApp = () => {
+    if (!invoice) return;
     const text = encodeURIComponent(getShareMessageText());
     const phone = invoice.customerPhone ? invoice.customerPhone.replace(/[^0-9]/g, '') : '';
     const intlPhone = phone.startsWith('09') ? `98${phone.slice(1)}` : phone;

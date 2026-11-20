@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Product, ProductVariant, Customer, Invoice, InvoiceItem, StoreSettings, PaymentMethod, DEFAULT_PRINT_LAYOUT, AppUser } from '../types';
 import { getCurrentJalaliDate, formatPrice, toPersianDigits, toEnglishDigits, formatNumber, formatThousands } from '../utils/jalali';
+import { confirmAction } from '../utils/confirmDialog';
 import { canUserViewBuyPrices } from '../utils/storage';
 import { NumericInput } from './NumericInput';
 import { 
@@ -948,7 +949,7 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   };
 
   // Confirmed execution of final save with user's selected type (Invoice vs Proforma)
-  const handleConfirmSaveWithType = (asProforma: boolean, shouldPrint: boolean) => {
+  const handleConfirmSaveWithType = async (asProforma: boolean, shouldPrint: boolean) => {
     setSaveTypePromptModal({ isOpen: false, shouldPrint: false });
 
     // Stock check if saving as official Invoice (deducting stock)
@@ -970,8 +971,9 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
           );
           return;
         }
-        const confirmContinue = window.confirm(
-          `هشدار کسری موجودی:\n${stockIssues.join('\n')}\n\nآیا با وجود کسری موجودی، فاکتور ثبت گردد؟`
+        const confirmContinue = await confirmAction(
+          `هشدار کسری موجودی:\n${stockIssues.join('\n')}\n\nآیا با وجود کسری موجودی، فاکتور ثبت گردد؟`,
+          { title: 'هشدار کسری موجودی انبار', variant: 'warning', confirmLabel: 'ثبت با وجود کسری' }
         );
         if (!confirmContinue) return;
       }
@@ -1285,9 +1287,14 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   };
 
   // Clear all items
-  const handleClearAllItems = () => {
+  const handleClearAllItems = async () => {
     if (items.length === 0) return;
-    if (window.confirm('آیا از حذف کلیه اقلام فاکتور جاری اطمینان دارید؟')) {
+    const confirmed = await confirmAction('آیا از حذف کلیه اقلام فاکتور جاری اطمینان دارید؟', {
+      title: 'حذف اقلام فاکتور',
+      variant: 'danger',
+      confirmLabel: 'حذف همه اقلام',
+    });
+    if (confirmed) {
       setItems([]);
       try {
         localStorage.removeItem(DRAFT_KEY);

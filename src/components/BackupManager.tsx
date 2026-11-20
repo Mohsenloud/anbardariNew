@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { StorageService } from '../utils/storage';
+import { downloadAuthenticatedFile } from '../utils/authClient';
 import { ServerBackupInfo, AppUser, RestoreModuleKey } from '../types';
 import { toPersianDigits } from '../utils/jalali';
 import { exportInvoicesToCsv } from '../utils/csvExport';
@@ -2566,14 +2567,19 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
 
               {/* Secondary Actions Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <a
-                  href={`/api/backups/download/${encodeURIComponent(selectedBackupModal.filename)}`}
-                  download={selectedBackupModal.filename}
+                <button
+                  type="button"
+                  onClick={() => {
+                    downloadAuthenticatedFile(
+                      `/api/backups/download/${encodeURIComponent(selectedBackupModal.filename)}`,
+                      selectedBackupModal.filename
+                    );
+                  }}
                   className="py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Download className="w-4 h-4 text-emerald-600" />
                   <span>دانلود فایل JSON</span>
-                </a>
+                </button>
 
                 <button
                   type="button"

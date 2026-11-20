@@ -5,6 +5,7 @@ import { Invoice, ExitSlipData, StoreSettings, AppUser, InboundReceipt, Purchase
 import { toPersianDigits, formatPrice, getCurrentJalaliTime, getCurrentJalaliDate, getInvoiceDaysAge } from './jalali';
 import { generatePdfBlob, getInvoicePdfFilename } from './pdfHelper';
 import { StorageService } from './storage';
+import { apiFetch } from './authClient';
 import { SimpleInvoiceLayout } from '../components/SimpleInvoiceLayout';
 import { StandardInvoiceLayout } from '../components/StandardInvoiceLayout';
 import { SimpleExitSlipLayout } from '../components/SimpleExitSlipLayout';
@@ -111,7 +112,7 @@ export async function testTelegramBotConnection(
   }
 
   try {
-    const res = await fetch('/api/telegram/test-connection', {
+    const res = await apiFetch('/api/telegram/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -187,7 +188,7 @@ export async function testTelegramMessage(
     `✅ <b>تست اتصال سامانه حسابداری و انبارداری</b>\n\nارتباط با ربات تلگرام با موفقیت برقرار گردید.\n🕒 زمان: ${getCurrentJalaliDate()} - ${getCurrentJalaliTime()}`;
 
   try {
-    const res = await fetch('/api/telegram/test-message', {
+    const res = await apiFetch('/api/telegram/test-message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -278,7 +279,7 @@ export async function sendTelegramTextMessage(params: {
   const parseMode = params.parseMode || 'HTML';
 
   try {
-    const res = await fetch('/api/telegram/send-message', {
+    const res = await apiFetch('/api/telegram/send-message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -390,7 +391,7 @@ export async function sendPdfToTelegram(params: {
 
   try {
     const pdfBase64 = await blobToBase64(params.pdfBlob);
-    const res = await fetch('/api/telegram/send-pdf', {
+    const res = await apiFetch('/api/telegram/send-pdf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1976,7 +1977,7 @@ export async function testAiConnection(params: {
   model?: string;
 }> {
   try {
-    const res = await fetch('/api/ai/test-connection', {
+    const res = await apiFetch('/api/ai/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
@@ -2001,7 +2002,7 @@ export async function setTelegramWebhook(botToken: string, webhookUrl: string): 
 }> {
   const cleanToken = sanitizeTelegramToken(botToken);
   try {
-    const res = await fetch('/api/telegram/set-webhook', {
+    const res = await apiFetch('/api/telegram/set-webhook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ botToken: cleanToken, webhookUrl }),
@@ -2040,7 +2041,7 @@ export async function getTelegramWebhookInfo(botToken: string): Promise<{
 }> {
   const cleanToken = sanitizeTelegramToken(botToken);
   try {
-    const res = await fetch(`/api/telegram/webhook-info?botToken=${encodeURIComponent(cleanToken)}`);
+    const res = await apiFetch(`/api/telegram/webhook-info?botToken=${encodeURIComponent(cleanToken)}`);
     const data = await res.json();
     if (data?.ok) return data;
 
@@ -2076,7 +2077,7 @@ export async function processVoiceDirectly(audioBase64: string, mimeType = 'audi
   error?: string;
 }> {
   try {
-    const res = await fetch('/api/ai/process-voice', {
+    const res = await apiFetch('/api/ai/process-voice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ audioBase64, mimeType }),
@@ -2100,7 +2101,7 @@ export async function sendDatabaseBackupToTelegram(params?: {
   error?: string;
 }> {
   try {
-    const res = await fetch('/api/telegram/send-backup', {
+    const res = await apiFetch('/api/telegram/send-backup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params || {}),
@@ -2211,7 +2212,7 @@ export async function checkDueFollowUpRemindersOnTelegram(params?: {
   };
 }> {
   try {
-    const res = await fetch('/api/telegram/check-followup-reminders', {
+    const res = await apiFetch('/api/telegram/check-followup-reminders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params || {}),

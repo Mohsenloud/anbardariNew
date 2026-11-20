@@ -125,11 +125,6 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
   const [actionError, setActionError] = useState<string>('');
   const [actionSuccess, setActionSuccess] = useState<string>('');
   const [showFormPassword, setShowFormPassword] = useState(false);
-  const [showCardPasswords, setShowCardPasswords] = useState<{ [userId: string]: boolean }>({});
-
-  const toggleCardPassword = (id: string) => {
-    setShowCardPasswords((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
 
   // Form State for Add / Edit
   const [formData, setFormData] = useState<{
@@ -195,7 +190,7 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
       role: user.role,
       roleTitle: user.roleTitle || ROLE_LABELS[user.role] || '',
       phone: user.phone || '',
-      pin: user.password || user.pin || '1234',
+      pin: '',
       isActive: user.isActive,
       avatarColor: user.avatarColor || 'emerald',
       permissions: { ...user.permissions },
@@ -279,7 +274,7 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
       return;
     }
 
-    const rawPass = formData.pin.trim() || '1234';
+    const enteredPass = formData.pin.trim();
 
     if (editingUser) {
       const updatedUser: AppUser = {
@@ -289,28 +284,32 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
         role: formData.role,
         roleTitle: formData.roleTitle.trim() || ROLE_LABELS[formData.role],
         phone: formData.phone.trim() || undefined,
-        pin: rawPass,
-        password: rawPass,
+        ...(enteredPass ? { pin: enteredPass, password: enteredPass } : {}),
         isActive: formData.isActive,
         avatarColor: formData.avatarColor,
         permissions: formData.permissions,
       };
       onUpdateUser(updatedUser);
-      showSuccess(`اطلاعات، رمز ورود و دسترسی‌های کاربر «${updatedUser.fullName}» به‌روزرسانی شد.`);
+      showSuccess(
+        enteredPass
+          ? `اطلاعات، رمز ورود جدید و دسترسی‌های کاربر «${updatedUser.fullName}» به‌روزرسانی شد.`
+          : `اطلاعات و دسترسی‌های کاربر «${updatedUser.fullName}» به‌روزرسانی شد (رمز عبور قبلی حفظ گردید).`
+      );
     } else {
+      const initialPass = enteredPass || '1234';
       onAddUser({
         fullName: formData.fullName.trim(),
         username: formData.username.trim(),
         role: formData.role,
         roleTitle: formData.roleTitle.trim() || ROLE_LABELS[formData.role],
         phone: formData.phone.trim() || undefined,
-        pin: rawPass,
-        password: rawPass,
+        pin: initialPass,
+        password: initialPass,
         isActive: formData.isActive,
         avatarColor: formData.avatarColor,
         permissions: formData.permissions,
       });
-      showSuccess(`کاربر جدید «${formData.fullName}» با رمز «${rawPass}» با موفقیت تعریف شد.`);
+      showSuccess(`کاربر جدید «${formData.fullName}» با موفقیت تعریف و رمزنگاری شد.`);
     }
 
     setIsModalOpen(false);
@@ -617,21 +616,21 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                   </div>
                 </div>
 
-                  {/* User Password Info for Admin */}
+                  {/* User Password Security Status for Admin */}
                   <div className="bg-slate-50 rounded-xl p-2.5 mb-3 border border-slate-100 flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       <span className="text-[11px] text-slate-500 font-medium">رمز ورود:</span>
-                      <span className="font-mono font-bold text-slate-800 bg-white px-2 py-0.5 rounded-md border border-slate-200 text-xs">
-                        {showCardPasswords[user.id] ? (user.password || user.pin || '1234') : '••••'}
+                      <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 text-[10px]">
+                        رمزنگاری‌شده (امن)
                       </span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => toggleCardPassword(user.id)}
+                      onClick={() => handleOpenEdit(user)}
                       className="text-[11px] text-emerald-700 hover:text-emerald-800 font-semibold cursor-pointer shrink-0"
                     >
-                      {showCardPasswords[user.id] ? 'مخفی' : 'مشاهده رمز'}
+                      تغییر رمز
                     </button>
                   </div>
 
@@ -845,7 +844,7 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                         onChange={(e) =>
                           setFormData((p) => ({ ...p, pin: e.target.value }))
                         }
-                        placeholder="رمز عبور کاربر (پیش‌فرض: 1234)"
+                        placeholder={editingUser ? 'برای حفظ رمز فعلی خالی بگذارید' : 'رمز عبور کاربر (پیش‌فرض: 1234)'}
                         dir="ltr"
                         className="w-full pl-10 pr-3 py-2 rounded-xl text-xs bg-slate-50 border border-slate-200 font-mono focus:outline-hidden focus:ring-2 focus:ring-emerald-500 text-slate-800"
                       />

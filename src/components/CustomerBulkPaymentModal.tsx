@@ -146,6 +146,7 @@ export const CustomerBulkPaymentModal: React.FC<CustomerBulkPaymentModalProps> =
   // Submit handler
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!customer) return;
 
     // 1. Direct deposit to customer account (NO invoice splitting)
     if (settleMode === 'custom_amount') {

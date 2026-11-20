@@ -1329,7 +1329,7 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
               <div className="pt-6 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="text-xs text-slate-500 text-center sm:text-right space-y-1">
                   {cleanInvoiceNotes(settings?.invoiceFooterText) && (
-                    <p className="font-medium text-slate-700">{cleanInvoiceNotes(settings.invoiceFooterText)}</p>
+                    <p className="font-medium text-slate-700">{cleanInvoiceNotes(settings?.invoiceFooterText)}</p>
                   )}
                   <p className="text-[11px] text-slate-400">
                     صادر شده توسط سامانه هوشمند فاکتور و انبارداری سپهر • تاریخ مشاهده: {toPersianDigits(new Date().toLocaleDateString('fa-IR'))}

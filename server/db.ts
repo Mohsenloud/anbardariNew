@@ -164,8 +164,13 @@ async function initSchema(client: pg.PoolClient) {
     );
 
     -- Ensure legacy unique constraint on invoice_number does not block multiple pre-invoices/drafts
+    -- and auto-heal missing columns if volume was initialized by an older init-db.sql
     DO $$ BEGIN
       ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_invoice_number_key;
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount NUMERIC(15, 2) DEFAULT 0;
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tax NUMERIC(15, 2) DEFAULT 0;
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS final_amount NUMERIC(15, 2) NOT NULL DEFAULT 0;
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'completed';
     EXCEPTION
       WHEN undefined_table THEN NULL;
       WHEN undefined_object THEN NULL;

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { StoreSettings, Product, Customer, Invoice, StockMovement, AppUser, PdfQualityPreset } from '../types';
 import { StorageService } from '../utils/storage';
+import { apiFetch } from '../utils/authClient';
+import { confirmAction } from '../utils/confirmDialog';
 import { formatPrice, toPersianDigits } from '../utils/jalali';
 import { exportInvoicesToCsv } from '../utils/csvExport';
 import { PDF_QUALITY_PRESETS } from '../utils/pdfHelper';
@@ -337,7 +339,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setIsCheckingProformaReminders(true);
     setProformaReminderCheckMsg(null);
     try {
-      const res = await fetch('/api/telegram/check-proforma-reminders', {
+      const res = await apiFetch('/api/telegram/check-proforma-reminders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -438,8 +440,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   // Clear invoices only
-  const handleClearInvoices = () => {
-    if (window.confirm('آیا از حذف تمامی فاکتورهای صادر شده اطمینان دارید؟ (کالاها و مشتریان حفظ خواهند شد)')) {
+  const handleClearInvoices = async () => {
+    const confirmed = await confirmAction(
+      'آیا از حذف تمامی فاکتورهای صادر شده اطمینان دارید؟ (کالاها و مشتریان حفظ خواهند شد)',
+      { title: 'حذف کلیه فاکتورها', variant: 'danger', confirmLabel: 'حذف فاکتورها' }
+    );
+    if (confirmed) {
       StorageService.clearInvoices();
       onReloadData();
       setImportStatus('تمامی فاکتورها پاک شدند.');
@@ -448,8 +454,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   // Reset to initial store demo
-  const handleResetDemoData = () => {
-    if (window.confirm('آیا مطمئن هستید؟ تمامی داده‌ها با اطلاعات نمونه اولیه فروشگاه جایگزین خواهد شد.')) {
+  const handleResetDemoData = async () => {
+    const confirmed = await confirmAction(
+      'آیا مطمئن هستید؟ تمامی داده‌ها با اطلاعات نمونه اولیه فروشگاه جایگزین خواهد شد.',
+      { title: 'بازنشانی به داده‌های نمونه', variant: 'warning', confirmLabel: 'جایگزینی داده‌ها' }
+    );
+    if (confirmed) {
       StorageService.resetToDefaults();
       onReloadData();
       setFormData(StorageService.getSettings());
@@ -459,8 +469,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   // Factory reset
-  const handleFactoryReset = () => {
-    if (window.confirm('هشدار قطعی: کلیه اطلاعات کالاها، مشتریان و فاکتورها به طور کامل پاک خواهند شد. آیا ادامه می‌دهید؟')) {
+  const handleFactoryReset = async () => {
+    const confirmed = await confirmAction(
+      'هشدار قطعی: کلیه اطلاعات کالاها، مشتریان و فاکتورها به طور کامل پاک خواهند شد. آیا ادامه می‌دهید؟',
+      { title: 'بازنشانی کارخانه (پاکسازی کامل)', variant: 'danger', confirmLabel: 'پاکسازی کامل' }
+    );
+    if (confirmed) {
       StorageService.clearAllData();
       const defaultSettings = StorageService.resetSettingsToDefault();
       setFormData(defaultSettings);
@@ -3700,7 +3714,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   <button
                     type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, aiProvider: 'gemini', aiModel: 'gemini-3.8-flash' }))}
+                    onClick={() => setFormData(prev => ({ ...prev, aiProvider: 'gemini', aiModel: 'gemini-2.5-flash' }))}
                     className={`p-3 rounded-xl border text-right transition-all cursor-pointer flex flex-col gap-1 ${
                       (formData.aiProvider || 'gemini') === 'gemini'
                         ? 'bg-purple-50 border-purple-400 text-purple-950 ring-1 ring-purple-300 shadow-xs'
@@ -3837,13 +3851,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       type="text"
                       name="aiModel"
                       dir="ltr"
-                      placeholder={(formData.aiProvider || 'gemini') === 'gemini' ? 'gemini-3.8-flash' : 'gpt-4o-mini'}
+                      placeholder={(formData.aiProvider || 'gemini') === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o-mini'}
                       value={formData.aiModel || ''}
                       onChange={(e) => setFormData(prev => ({ ...prev, aiModel: e.target.value }))}
                       className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left text-slate-800 outline-none focus:border-purple-500"
                     />
                     <span className="text-[10px] text-slate-400 mt-1 block">
-                      {(formData.aiProvider || 'gemini') === 'gemini' ? 'پیش‌فرض جمینای: gemini-3.8-flash' : 'پیش‌فرض: gpt-4o-mini'}
+                      {(formData.aiProvider || 'gemini') === 'gemini' ? 'پیش‌فرض جمینای: gemini-2.5-flash' : 'پیش‌فرض: gpt-4o-mini'}
                     </span>
                   </div>
 

@@ -757,8 +757,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     notifyToast('اطلاعات حواله امانی / تعمیرات با موفقیت ویرایش شد.', 'success');
   };
 
-  const handleCompleteDirectTransferWithoutReturn = (transferId: string, reasonNote: string) => {
-    StorageService.completeDirectTransferWithoutReturn(transferId, reasonNote);
+  const handleCompleteDirectTransferWithoutReturn = (transferId: string, reasonNote?: string) => {
+    StorageService.completeDirectTransferWithoutReturn(transferId, reasonNote || '');
     setDirectTransfers(StorageService.getDirectTransfers());
     notifyToast('حواله به عنوان مختومه (بدون بازگشت به انبار) ثبت شد.', 'info');
   };
@@ -783,8 +783,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     const log: Partial<ExitSlipData> = exitSlipLogs[inv.id] || { printCount: 0, isDelivered: false };
     if (exitSlipFilter === 'pending_delivery' && log.isDelivered) return false;
     if (exitSlipFilter === 'delivered' && !log.isDelivered) return false;
-    if (exitSlipFilter === 'unprinted' && log.printCount > 0) return false;
-    if (exitSlipFilter === 'printed' && log.printCount === 0) return false;
+    if (exitSlipFilter === 'unprinted' && (log.printCount || 0) > 0) return false;
+    if (exitSlipFilter === 'printed' && (log.printCount || 0) === 0) return false;
 
     if (exitSlipSearch.trim()) {
       const q = exitSlipSearch.toLowerCase();

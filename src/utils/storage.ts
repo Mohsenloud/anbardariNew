@@ -43,6 +43,38 @@ import {
   generateNextPurchaseInvoiceNumber,
   generateNextTransferNumber,
 } from './codeGenerator';
+import { apiFetch, hasAuthToken } from './authClient';
+
+function safeLocalStorageSet(key: string, value: string): boolean {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (err: any) {
+    // Handle QuotaExceededError by trimming old activity logs and retrying once
+    if (
+      err &&
+      (err.name === 'QuotaExceededError' ||
+        err.code === 22 ||
+        err.code === 1014 ||
+        err.name === 'NS_ERROR_DOM_QUOTA_REACHED')
+    ) {
+      try {
+        const logsRaw = localStorage.getItem('factor_app_activity_logs_v1');
+        if (logsRaw) {
+          const parsed = JSON.parse(logsRaw);
+          if (Array.isArray(parsed) && parsed.length > 80) {
+            localStorage.setItem('factor_app_activity_logs_v1', JSON.stringify(parsed.slice(0, 80)));
+          }
+        }
+        localStorage.setItem(key, value);
+        return true;
+      } catch {
+        console.warn(`[Storage] Quota exceeded while writing key "${key}". Data will still sync to server.`);
+      }
+    }
+    return false;
+  }
+}
 import { isPureServiceInvoice } from './serviceHelper';
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -660,7 +692,7 @@ const initialSettings: StoreSettings = {
   // تنظیمات هوش مصنوعی و ویس تلگرام
   aiProvider: 'gemini',
   aiApiKey: '',
-  aiModel: 'gemini-3.8-flash',
+  aiModel: 'gemini-2.5-flash',
   aiBaseUrl: '',
   aiVoiceInboundEnabled: true,
   aiVoiceAutoMatchProducts: true,
@@ -870,7 +902,7 @@ export const StorageService = {
       };
 
       ids.forEach((itemId) => {
-        fetch('/api/db/delete-item', {
+        apiFetch('/api/db/delete-item', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
           body: JSON.stringify({ type: apiTypeMap[entityType] || entityType, id: itemId }),
@@ -991,10 +1023,14 @@ export const StorageService = {
 
   // Asynchronously sync local changes to centralized server database
   async pushToServer(customPayload?: any): Promise<boolean> {
+    if (!hasAuthToken()) {
+      return false;
+    }
     try {
       const tombstones = this.getDeletedTombstones();
+      const baseRevision = this._lastServerRevision > 0 ? this._lastServerRevision : undefined;
       const payload = customPayload
-        ? { deletedInvoiceIds: tombstones.invoices, tombstones, ...customPayload }
+        ? { deletedInvoiceIds: tombstones.invoices, tombstones, ...(baseRevision ? { baseRevision } : {}), ...customPayload }
         : {
             products: this.getProducts(),
             customers: this.getCustomers(),
@@ -1012,8 +1048,9 @@ export const StorageService = {
             categories: this.getCategories(),
             deletedInvoiceIds: tombstones.invoices,
             tombstones,
+            ...(baseRevision ? { baseRevision } : {}),
           };
-      const res = await fetch('/api/db', {
+      const res = await apiFetch('/api/db', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
         body: JSON.stringify(payload),
@@ -1035,8 +1072,11 @@ export const StorageService = {
 
   // Fetch updated records from server and sync into local storage with Zero-Loss Protection & Cache Busting
   async syncFromServer(force: boolean = false, isRestore: boolean = false): Promise<boolean> {
+    if (!hasAuthToken()) {
+      return false;
+    }
     try {
-      const res = await fetch(`/api/db?_t=${Date.now()}`, {
+      const res = await apiFetch(`/api/db?_t=${Date.now()}`, {
         cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache',
@@ -1145,8 +1185,8 @@ export const StorageService = {
         }
 
         if (tombstonesUpdated) {
-          localStorage.setItem(STORAGE_KEYS.TOMBSTONES, JSON.stringify(localTombstones));
-          localStorage.setItem(STORAGE_KEYS.DELETED_INVOICES, JSON.stringify(localTombstones.invoices));
+          safeLocalStorageSet(STORAGE_KEYS.TOMBSTONES, JSON.stringify(localTombstones));
+          safeLocalStorageSet(STORAGE_KEYS.DELETED_INVOICES, JSON.stringify(localTombstones.invoices));
         }
 
         const invDelSet = new Set(localTombstones.invoices);
@@ -1163,60 +1203,60 @@ export const StorageService = {
         // 2. Authoritative Data Synchronization with Tombstone Filtering
         if (Array.isArray(d.products)) {
           const cleanProducts = d.products.filter((p: Product) => !prodDelSet.has(p.id));
-          localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(cleanProducts));
+          safeLocalStorageSet(STORAGE_KEYS.PRODUCTS, JSON.stringify(cleanProducts));
           hasAnyUpdate = true;
         }
 
         if (Array.isArray(d.customers)) {
           const cleanCustomers = d.customers.filter((c: Customer) => !custDelSet.has(c.id));
-          localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(cleanCustomers));
+          safeLocalStorageSet(STORAGE_KEYS.CUSTOMERS, JSON.stringify(cleanCustomers));
           hasAnyUpdate = true;
         }
 
         if (Array.isArray(d.invoices)) {
           const finalInvoices = d.invoices.filter((inv: Invoice) => !invDelSet.has(inv.id));
-          localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(finalInvoices));
+          safeLocalStorageSet(STORAGE_KEYS.INVOICES, JSON.stringify(finalInvoices));
           hasAnyUpdate = true;
         }
 
         if (Array.isArray(d.purchaseInvoices)) {
           const cleanPurchases = d.purchaseInvoices.filter((p: PurchaseInvoice) => !purchDelSet.has(p.id));
-          localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(cleanPurchases));
+          safeLocalStorageSet(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(cleanPurchases));
           hasAnyUpdate = true;
         }
 
         if (Array.isArray(d.inboundReceipts)) {
           const cleanInbound = d.inboundReceipts.filter((r: InboundReceipt) => !inbDelSet.has(r.id));
-          localStorage.setItem(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(cleanInbound));
+          safeLocalStorageSet(STORAGE_KEYS.INBOUND_RECEIPTS, JSON.stringify(cleanInbound));
           hasAnyUpdate = true;
         }
 
         if (Array.isArray(d.movements)) {
-          localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(d.movements));
+          safeLocalStorageSet(STORAGE_KEYS.MOVEMENTS, JSON.stringify(d.movements));
           hasAnyUpdate = true;
         }
 
         if (Array.isArray(d.users)) {
           const cleanUsers = d.users.filter((u: AppUser) => !usrDelSet.has(u.id));
-          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(cleanUsers));
+          safeLocalStorageSet(STORAGE_KEYS.USERS, JSON.stringify(cleanUsers));
           hasAnyUpdate = true;
         }
 
         if (Array.isArray(d.directTransfers)) {
           const cleanTransfers = d.directTransfers.filter((t: DirectTransfer) => !transDelSet.has(t.id));
-          localStorage.setItem(STORAGE_KEYS.DIRECT_TRANSFERS, JSON.stringify(cleanTransfers));
+          safeLocalStorageSet(STORAGE_KEYS.DIRECT_TRANSFERS, JSON.stringify(cleanTransfers));
           hasAnyUpdate = true;
         }
 
         if (Array.isArray(d.savedVehicles)) {
           const cleanVehicles = d.savedVehicles.filter((v: any) => !vehDelSet.has(v.id));
-          localStorage.setItem(STORAGE_KEYS.SAVED_VEHICLES, JSON.stringify(cleanVehicles));
+          safeLocalStorageSet(STORAGE_KEYS.SAVED_VEHICLES, JSON.stringify(cleanVehicles));
           hasAnyUpdate = true;
         }
 
         if (Array.isArray(d.customerTransactions)) {
           const cleanTransactions = d.customerTransactions.filter((t: CustomerTransaction) => !txnDelSet.has(t.id));
-          localStorage.setItem(STORAGE_KEYS.CUSTOMER_TRANSACTIONS, JSON.stringify(cleanTransactions));
+          safeLocalStorageSet(STORAGE_KEYS.CUSTOMER_TRANSACTIONS, JSON.stringify(cleanTransactions));
           hasAnyUpdate = true;
         }
 
@@ -1235,7 +1275,7 @@ export const StorageService = {
             if (Array.isArray(currentLocal.warehouses) && currentLocal.warehouses.length > 0) {
               preservedSettings.warehouses = currentLocal.warehouses;
             }
-            localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(preservedSettings));
+            safeLocalStorageSet(STORAGE_KEYS.SETTINGS, JSON.stringify(preservedSettings));
             if (!isRecentSave) {
               this.pushToServer({ settings: preservedSettings });
             }
@@ -1250,7 +1290,7 @@ export const StorageService = {
             } else if (Array.isArray(currentLocal.warehouses) && currentLocal.warehouses.length > 0) {
               mergedSettings.warehouses = currentLocal.warehouses;
             }
-            localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(mergedSettings));
+            safeLocalStorageSet(STORAGE_KEYS.SETTINGS, JSON.stringify(mergedSettings));
             hasAnyUpdate = true;
           }
         }
@@ -1264,18 +1304,18 @@ export const StorageService = {
               cleaned[invId] = slip;
             }
           }
-          localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(cleaned));
+          safeLocalStorageSet(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(cleaned));
           hasAnyUpdate = true;
         }
 
         if (Array.isArray(d.activityLogs)) {
-          localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(d.activityLogs));
+          safeLocalStorageSet(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(d.activityLogs));
           hasAnyUpdate = true;
         }
 
         if (Array.isArray(d.categories)) {
           const cleanCats = d.categories.filter((c: string) => !catDelSet.has(String(c).trim().toLowerCase()));
-          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(cleanCats));
+          safeLocalStorageSet(STORAGE_KEYS.CATEGORIES, JSON.stringify(cleanCats));
           hasAnyUpdate = true;
         }
 
@@ -1302,7 +1342,7 @@ export const StorageService = {
     backups: ServerBackupInfo[];
   }> {
     try {
-      const res = await fetch('/api/backups', { cache: 'no-store' });
+      const res = await apiFetch('/api/backups', { cache: 'no-store' });
       if (!res.ok) return { success: false, total: 0, autoBackupIntervalHours: 4, backups: [] };
       return await res.json();
     } catch {
@@ -1324,7 +1364,7 @@ export const StorageService = {
     message?: string;
   }> {
     try {
-      const res = await fetch(`/api/backups/inspect/${encodeURIComponent(filename)}`, { cache: 'no-store' });
+      const res = await apiFetch(`/api/backups/inspect/${encodeURIComponent(filename)}`, { cache: 'no-store' });
       return await res.json();
     } catch (e: any) {
       return { success: false, message: e.message || 'خطا در بررسی مشخصات نسخه پشتیبان' };
@@ -1338,7 +1378,7 @@ export const StorageService = {
     backups?: ServerBackupInfo[];
   }> {
     try {
-      const res = await fetch('/api/backups/prune', {
+      const res = await apiFetch('/api/backups/prune', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keepAutoCount }),
@@ -1356,7 +1396,7 @@ export const StorageService = {
         await this.pushToServer();
       } catch {}
 
-      const res = await fetch('/api/backups/create', {
+      const res = await apiFetch('/api/backups/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ label }),
@@ -1369,7 +1409,7 @@ export const StorageService = {
 
   async restoreServerBackup(filename: string, modules?: string[]): Promise<{ success: boolean; message?: string; backups?: ServerBackupInfo[] }> {
     try {
-      const res = await fetch('/api/backups/restore', {
+      const res = await apiFetch('/api/backups/restore', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename, modules }),
@@ -1386,7 +1426,7 @@ export const StorageService = {
 
   async deleteServerBackup(filename: string): Promise<{ success: boolean; message?: string; backups?: ServerBackupInfo[] }> {
     try {
-      const res = await fetch(`/api/backups/${encodeURIComponent(filename)}`, {
+      const res = await apiFetch(`/api/backups/${encodeURIComponent(filename)}`, {
         method: 'DELETE',
       });
       return await res.json();
@@ -1402,7 +1442,7 @@ export const StorageService = {
     modules?: string[]
   ): Promise<{ success: boolean; message?: string; backups?: ServerBackupInfo[] }> {
     try {
-      const res = await fetch('/api/backups/upload', {
+      const res = await apiFetch('/api/backups/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ backupContent: fileContent, restoreNow, label, modules }),
@@ -1450,7 +1490,7 @@ export const StorageService = {
         payload = { ...payload, ...optionsOrFilename };
       }
 
-      const res = await fetch('/api/telegram/send-backup', {
+      const res = await apiFetch('/api/telegram/send-backup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -1509,7 +1549,7 @@ export const StorageService = {
   // -------------------------------------------------------------
   async getDatabaseStatus(): Promise<any> {
     try {
-      const res = await fetch('/api/database/status');
+      const res = await apiFetch('/api/database/status');
       if (!res.ok) return { success: false, message: 'عدم پاسخگویی سرور' };
       return await res.json();
     } catch (e: any) {
@@ -1519,7 +1559,7 @@ export const StorageService = {
 
   async testDatabaseConnection(): Promise<any> {
     try {
-      const res = await fetch('/api/database/test', { method: 'POST' });
+      const res = await apiFetch('/api/database/test', { method: 'POST' });
       return await res.json();
     } catch (e: any) {
       return { success: false, message: e.message || 'خطا در تست اتصال دیتابیس' };
@@ -1528,7 +1568,7 @@ export const StorageService = {
 
   async forceSyncToPostgres(): Promise<{ success: boolean; message: string }> {
     try {
-      const res = await fetch('/api/database/force-sync', { method: 'POST' });
+      const res = await apiFetch('/api/database/force-sync', { method: 'POST' });
       return await res.json();
     } catch (e: any) {
       return { success: false, message: e.message || 'خطا در اجرای همگام‌سازی با PostgreSQL' };
@@ -1538,12 +1578,12 @@ export const StorageService = {
   async downloadPostgresSqlDump(): Promise<{ success: boolean; message?: string }> {
     try {
       // Use the dedicated non-blocking dump endpoint with fallback to export-sql
-      let res = await fetch('/api/database/dump-sql', {
+      let res = await apiFetch('/api/database/dump-sql', {
         method: 'GET',
         headers: { 'Cache-Control': 'no-cache' },
       });
       if (!res.ok) {
-        res = await fetch('/api/database/export-sql', {
+        res = await apiFetch('/api/database/export-sql', {
           method: 'GET',
           headers: { 'Cache-Control': 'no-cache' },
         });
@@ -1588,7 +1628,7 @@ export const StorageService = {
         return { success: false, message: 'عملیات نامعتبر: فایل حاوی دستور حذف کل دیتابیس (DROP DATABASE) است و به دلایل امنیتی مسدود گردید.' };
       }
 
-      const res = await fetch('/api/database/import-sql', {
+      const res = await apiFetch('/api/database/import-sql', {
         method: 'POST',
         headers: { 'Content-Type': 'application/sql' },
         body: sqlContent,
@@ -1606,7 +1646,7 @@ export const StorageService = {
 
   async createPostgresSnapshot(label?: string): Promise<{ success: boolean; message: string }> {
     try {
-      const res = await fetch('/api/database/snapshot', {
+      const res = await apiFetch('/api/database/snapshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ label: label || 'نسخه پشتیبان دستی دیتابیس PostgreSQL' }),
@@ -2764,7 +2804,7 @@ export const StorageService = {
 
     // Call server API for centralized backend sync
     try {
-      const res = await fetch(`/api/invoices/${encodeURIComponent(invoiceId)}/share-link`, {
+      const res = await apiFetch(`/api/invoices/${encodeURIComponent(invoiceId)}/share-link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2817,7 +2857,7 @@ export const StorageService = {
     }
 
     try {
-      await fetch(`/api/invoices/${encodeURIComponent(invoiceId)}/share-link`, {
+      await apiFetch(`/api/invoices/${encodeURIComponent(invoiceId)}/share-link`, {
         method: 'DELETE',
       });
     } catch {}
@@ -2846,7 +2886,7 @@ export const StorageService = {
   }> {
     try {
       const pinParam = pin ? `?pin=${encodeURIComponent(pin.trim())}` : '';
-      const res = await fetch(`/api/public/invoice/${encodeURIComponent(token.trim())}${pinParam}`);
+      const res = await apiFetch(`/api/public/invoice/${encodeURIComponent(token.trim())}${pinParam}`);
       const data = await res.json();
       return data;
     } catch (err: any) {

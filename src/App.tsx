@@ -3,11 +3,19 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Product, Customer, Invoice, StockMovement, StoreSettings, AppUser, PurchaseInvoice, InboundReceipt, InboundReceiptItem, InboundReceiptStatus, CustomerTransaction } from './types';
 import { StorageService } from './utils/storage';
+import {
+  AUTH_EXPIRED_EVENT,
+  fetchAuthBootstrap,
+  hasAuthToken,
+  logoutFromServer,
+  verifySessionWithServer,
+} from './utils/authClient';
 import { getCurrentJalaliDate } from './utils/jalali';
 import { isTabPermitted, getDefaultTabForUser, getRoleBadgeConfig } from './utils/permissions';
+import { ConfirmDialogHost } from './components/ConfirmDialogHost';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { InvoiceBuilder } from './components/InvoiceBuilder';
@@ -119,6 +127,7 @@ export default function App() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [loginTargetUser, setLoginTargetUser] = useState<AppUser | null>(null);
   const [toastMessage, setToastMessage] = useState<string>('');
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState<boolean>(() => {
     try {
@@ -196,7 +205,7 @@ export default function App() {
   }, [editingInvoice]);
 
   useEffect(() => {
-    // Initial app opening: restore authenticated user session if present
+    // Initial app opening: load cached data & verify server auth session
     loadData(true);
 
     // Subscribe to all local/sync changes
@@ -205,13 +214,48 @@ export default function App() {
     });
 
     const triggerSync = () => {
+      if (!hasAuthToken()) return;
       StorageService.syncFromServer().then((updated) => {
         if (updated) loadData(true);
       });
     };
 
-    // Initial server sync
-    triggerSync();
+    // Listen for server 401 session expiration events
+    const onAuthExpired = () => {
+      StorageService.logout();
+      setCurrentUser(null);
+      setIsLoginModalOpen(false);
+      setLoginTargetUser(null);
+      showToast('نشست کاربری شما منقضی شده است. لطفاً مجدداً وارد شوید.');
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
+
+    // Verify existing session with server (or load public branding for login screen)
+    const cachedUser = StorageService.getLoggedInUser();
+    if (cachedUser) {
+      verifySessionWithServer().then((res) => {
+        if (res.valid && res.user) {
+          setCurrentUser(res.user);
+          StorageService.setCurrentUser(res.user);
+          StorageService.syncFromServer(true).then(() => loadData(true));
+        } else if (!res.networkError) {
+          // Stale or pre-hardening localStorage session without valid server token
+          StorageService.logout();
+          setCurrentUser(null);
+          fetchAuthBootstrap().then((branding) => {
+            if (branding) {
+              setSettings((prev) => ({ ...prev, ...branding }));
+            }
+          });
+        }
+      });
+    } else {
+      fetchAuthBootstrap().then((branding) => {
+        if (branding) {
+          setSettings((prev) => ({ ...prev, ...branding }));
+        }
+      });
+    }
 
     // Fast background synchronization every 4 seconds for instant multi-device collaboration
     const syncInterval = setInterval(triggerSync, 4000);
@@ -228,27 +272,13 @@ export default function App() {
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('online', onOnline);
 
-    // Periodic check for 7-day proforma follow-up reminders & due customer call reminders on Telegram
-    const runTelegramRemindersCheck = () => {
-      fetch('/api/telegram/check-proforma-reminders', { method: 'POST' }).catch(() => {});
-      fetch('/api/telegram/check-followup-reminders', { method: 'POST' })
-        .then((r) => r.json())
-        .then((data) => {
-          if (data?.result?.sentCount > 0) {
-            triggerSync();
-          }
-        })
-        .catch(() => {});
-    };
-
-    const proformaTimer = setTimeout(runTelegramRemindersCheck, 5000);
-    const proformaInterval = setInterval(runTelegramRemindersCheck, 10 * 60 * 1000);
-
     return () => {
       unsubStorage();
-      clearTimeout(proformaTimer);
-      clearInterval(proformaInterval);
       clearInterval(syncInterval);
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+      window.removeEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('online', onOnline);
@@ -269,8 +299,12 @@ export default function App() {
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = setTimeout(() => {
       setToastMessage('');
+      toastTimerRef.current = null;
     }, 3500);
   };
 
@@ -384,7 +418,7 @@ export default function App() {
           });
         }
         if (hasGoods && (liveSettings.telegramAutoSendExitSlip || liveSettings.telegramAutoSendExitSlipIssue)) {
-          autoSendExitSlipReportToTelegram(newInvoice, null, false, liveSettings, currentUser, {
+          autoSendExitSlipReportToTelegram(newInvoice, null, false, liveSettings, currentUser || undefined, {
             onStart: () => showToast('در حال ارسال گزارش صدور حواله خروج به تلگرام...'),
             onSuccess: (msg) => showToast(msg || '✈️ گزارش صدور حواله خروج به تلگرام ارسال شد.'),
             onError: (err) => showToast('⚠️ خطا در ارسال حواله خروج به تلگرام: ' + err),
@@ -1633,6 +1667,11 @@ export default function App() {
     setIsLoginModalOpen(false);
     setLoginTargetUser(null);
 
+    // Pull authoritative server state right after login
+    StorageService.syncFromServer(true).then(() => {
+      loadData(true);
+    });
+
     // Intelligently route user to the primary view matching their granted permissions
     const landingTab = getDefaultTabForUser(user, settings);
     setActiveTab(landingTab);
@@ -1665,6 +1704,7 @@ export default function App() {
       });
     }
 
+    logoutFromServer();
     StorageService.logout();
     setCurrentUser(null);
     setLoginTargetUser(null);
@@ -1735,6 +1775,7 @@ export default function App() {
           users={users}
           onLoginSuccess={handleLoginSuccess}
         />
+        <ConfirmDialogHost />
       </div>
     );
   }
@@ -2100,6 +2141,7 @@ export default function App() {
         onOpenSidebar={() => setIsMobileSidebarOpen(true)}
       />
       </div>
+      <ConfirmDialogHost />
     </div>
   );
 }

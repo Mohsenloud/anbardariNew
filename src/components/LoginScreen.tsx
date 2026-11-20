@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StoreSettings, AppUser } from '../types';
 import { getCurrentJalaliDate, getCurrentJalaliTime, toPersianDigits } from '../utils/jalali';
+import { loginWithServer } from '../utils/authClient';
 import {
   Lock,
   User,
@@ -62,9 +63,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     return () => clearInterval(timer);
   }, [lockoutSeconds]);
 
-  const handleLogin = (e?: React.FormEvent) => {
+  const handleLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (lockoutSeconds > 0) return;
+    if (lockoutSeconds > 0 || isLoading) return;
     setErrorMessage('');
 
     const cleanUsername = username.trim().toLowerCase();
@@ -82,49 +83,61 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      const foundUser = users.find(
-        (u) => u.username.trim().toLowerCase() === cleanUsername
-      );
+    const serverRes = await loginWithServer(cleanUsername, cleanPassword);
 
-      if (!foundUser) {
-        const nextAttempts = failedAttempts + 1;
-        setFailedAttempts(nextAttempts);
-        if (nextAttempts >= 5) {
-          setLockoutSeconds(60);
-          setErrorMessage('به دلیل ۵ تلاش ناموفق پیاپی، دسترسی ورود موقتاً به مدت ۶۰ ثانیه مسدود گردید.');
-        } else {
-          setErrorMessage(`نام کاربری یا رمز عبور اشتباه است. (${toPersianDigits(5 - nextAttempts)} تلاش باقی‌مانده)`);
-        }
-        setIsLoading(false);
-        return;
-      }
-
-      if (!foundUser.isActive) {
-        setErrorMessage('این حساب کاربری غیرفعال شده است. لطفاً با مدیر سیستم تماس بگیرید.');
-        setIsLoading(false);
-        return;
-      }
-
-      const expectedPass = (foundUser.password || foundUser.pin || '1234').trim();
-      if (cleanPassword !== expectedPass) {
-        const nextAttempts = failedAttempts + 1;
-        setFailedAttempts(nextAttempts);
-        if (nextAttempts >= 5) {
-          setLockoutSeconds(60);
-          setErrorMessage('به دلیل ۵ تلاش ناموفق پیاپی، دسترسی ورود موقتاً به مدت ۶۰ ثانیه مسدود گردید.');
-        } else {
-          setErrorMessage(`رمز عبور وارد شده نادرست است. (${toPersianDigits(5 - nextAttempts)} تلاش باقی‌مانده)`);
-        }
-        setIsLoading(false);
-        return;
-      }
-
-      // Success
+    if (serverRes.success && serverRes.user) {
       setFailedAttempts(0);
+      setLockoutSeconds(0);
       setIsLoading(false);
-      onLoginSuccess(foundUser);
-    }, 250);
+      onLoginSuccess(serverRes.user);
+      return;
+    }
+
+    // Server explicitly responded with auth error / lockout
+    if (!serverRes.networkError) {
+      if (typeof serverRes.retryAfterSeconds === 'number' && serverRes.retryAfterSeconds > 0) {
+        setLockoutSeconds(serverRes.retryAfterSeconds);
+      }
+      setErrorMessage(serverRes.message || 'نام کاربری یا رمز عبور اشتباه است.');
+      setIsLoading(false);
+      return;
+    }
+
+    // Offline fallback ONLY when server is genuinely unreachable
+    const foundUser = users.find(
+      (u) => u.username.trim().toLowerCase() === cleanUsername
+    );
+
+    if (!foundUser || !foundUser.isActive) {
+      const nextAttempts = failedAttempts + 1;
+      setFailedAttempts(nextAttempts);
+      if (nextAttempts >= 5) {
+        setLockoutSeconds(60);
+        setErrorMessage('به دلیل ۵ تلاش ناموفق پیاپی، دسترسی ورود موقتاً به مدت ۶۰ ثانیه مسدود گردید.');
+      } else {
+        setErrorMessage('ارتباط با سرور برقرار نیست. لطفاً اتصال شبکه را بررسی کنید.');
+      }
+      setIsLoading(false);
+      return;
+    }
+
+    const expectedPass = (foundUser.password || foundUser.pin || '').trim();
+    if (!expectedPass || cleanPassword !== expectedPass) {
+      const nextAttempts = failedAttempts + 1;
+      setFailedAttempts(nextAttempts);
+      if (nextAttempts >= 5) {
+        setLockoutSeconds(60);
+        setErrorMessage('به دلیل ۵ تلاش ناموفق پیاپی، دسترسی ورود موقتاً به مدت ۶۰ ثانیه مسدود گردید.');
+      } else {
+        setErrorMessage(`رمز عبور وارد شده نادرست است. (${toPersianDigits(5 - nextAttempts)} تلاش باقی‌مانده)`);
+      }
+      setIsLoading(false);
+      return;
+    }
+
+    setFailedAttempts(0);
+    setIsLoading(false);
+    onLoginSuccess(foundUser);
   };
 
   const displayStoreName = settings?.appName || settings?.storeName || 'سامانه صدور فاکتور و مدیریت فروشگاه';

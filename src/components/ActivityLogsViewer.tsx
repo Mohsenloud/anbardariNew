@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ActivityLog, ActivityActionCategory, AppUser } from '../types';
 import { StorageService } from '../utils/storage';
+import { confirmAction } from '../utils/confirmDialog';
 import { toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
 import {
   History,
@@ -259,8 +260,16 @@ ${selectedLogForDetails.details}`;
   };
 
   // Clear Logs
-  const handleClearLogs = () => {
-    if (window.confirm('آیا از پاکسازی تاریخچه رویدادها و لاگ‌های کاربران اطمینان دارید؟ این عملیات غیرقابل بازگشت است.')) {
+  const handleClearLogs = async () => {
+    const confirmed = await confirmAction(
+      'آیا از پاکسازی تاریخچه رویدادها و لاگ‌های کاربران اطمینان دارید؟ این عملیات غیرقابل بازگشت است.',
+      {
+        title: 'پاکسازی تاریخچه لاگ‌ها',
+        confirmLabel: 'بله، پاکسازی شود',
+        variant: 'danger',
+      }
+    );
+    if (confirmed) {
       StorageService.clearActivityLogs();
       StorageService.logActivity({
         category: 'system',

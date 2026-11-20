@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { StoreSettings } from '../types';
 import { StorageService } from '../utils/storage';
+import { apiFetch } from '../utils/authClient';
+import { confirmAction } from '../utils/confirmDialog';
 import { 
   Settings as SettingsIcon, 
   X, 
@@ -231,7 +233,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setIsCheckingProformaReminders(true);
     setProformaReminderCheckMsg(null);
     try {
-      const res = await fetch('/api/telegram/check-proforma-reminders', {
+      const res = await apiFetch('/api/telegram/check-proforma-reminders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -342,12 +344,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   // Reset to default sample data
-  const handleResetDefaults = () => {
-    if (
-      window.confirm(
-        'آیا مطمئنید؟ تمامی داده‌ها با اطلاعات نمونه اولیه فروشگاه جایگزین خواهد شد.'
-      )
-    ) {
+  const handleResetDefaults = async () => {
+    const confirmed = await confirmAction(
+      'آیا مطمئنید؟ تمامی داده‌ها با اطلاعات نمونه اولیه فروشگاه جایگزین خواهد شد.',
+      { title: 'بازنشانی به داده‌های نمونه', variant: 'warning', confirmLabel: 'جایگزینی داده‌ها' }
+    );
+    if (confirmed) {
       StorageService.resetToDefaults();
       onReloadData();
       onClose();
@@ -1906,7 +1908,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <button
                         type="button"
-                        onClick={() => setFormData(prev => ({ ...prev, aiProvider: 'gemini', aiModel: 'gemini-3.8-flash' }))}
+                        onClick={() => setFormData(prev => ({ ...prev, aiProvider: 'gemini', aiModel: 'gemini-2.5-flash' }))}
                         className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
                           (formData.aiProvider || 'gemini') === 'gemini'
                             ? 'bg-purple-100/70 border-purple-400 text-purple-900 font-bold'
@@ -1999,7 +2001,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <input
                         type="text"
                         dir="ltr"
-                        placeholder={(formData.aiProvider || 'gemini') === 'gemini' ? 'gemini-3.8-flash' : 'gpt-4o-mini'}
+                        placeholder={(formData.aiProvider || 'gemini') === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o-mini'}
                         value={formData.aiModel || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, aiModel: e.target.value }))}
                         className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-mono outline-none focus:border-purple-500"
