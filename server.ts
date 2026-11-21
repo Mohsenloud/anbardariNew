@@ -998,19 +998,31 @@ function verifySecret(plain: string, stored?: string): boolean {
   return crypto.timingSafeEqual(candBuf, targetBuf);
 }
 
+function normalizePersianDigitsServer(input: string): string {
+  return String(input || '')
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
+}
+
 function ensureUsersPasswordsHashed(users: any[]): { users: any[]; changed: boolean } {
   if (!Array.isArray(users)) return { users: [], changed: false };
   let changed = false;
   const updated = users.map((u) => {
     if (!u || typeof u !== 'object') return u;
     const clone = { ...u };
-    const rawPass = clone.password || clone.pin;
+    const rawPass = typeof clone.password === 'string' ? clone.password.trim() : '';
+    const rawPin = typeof clone.pin === 'string' ? clone.pin.trim() : '';
+
     if (rawPass && !isHashedSecret(rawPass)) {
       clone.password = hashSecret(rawPass);
       changed = true;
+    } else if (!rawPass && rawPin) {
+      clone.password = isHashedSecret(rawPin) ? rawPin : hashSecret(rawPin);
+      changed = true;
     }
-    if (clone.pin && !isHashedSecret(clone.pin)) {
-      clone.pin = clone.password || hashSecret(clone.pin);
+
+    if (rawPin && !isHashedSecret(rawPin)) {
+      clone.pin = rawPin === rawPass && clone.password ? clone.password : hashSecret(rawPin);
       changed = true;
     }
     return clone;
@@ -1255,12 +1267,14 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-// 1.0 Public Auth Bootstrap (non-sensitive login screen branding only)
+// 1.0 Public Auth Bootstrap (non-sensitive login screen branding & recovery availability only)
 app.get('/api/auth/bootstrap', async (_req, res) => {
   try {
     setNoCacheHeaders(res);
     const { data } = await getLatestConvergedDatabase();
     const s = data?.settings || {};
+    const tgToken = sanitizeTelegramBotToken(s.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN);
+    const tgChatId = String(s.telegramChatId || process.env.TELEGRAM_CHAT_ID || '').trim();
     res.json({
       success: true,
       requiresAuth: true,
@@ -1270,9 +1284,231 @@ app.get('/api/auth/bootstrap', async (_req, res) => {
         tagline: s.tagline || DEFAULT_INITIAL_DATA.settings.tagline,
         showStoreEditionBadge: s.showStoreEditionBadge !== false,
       },
+      recovery: {
+        telegramEnabled: Boolean(tgToken && tgChatId),
+      },
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Admin Telegram OTP recovery state (in-memory, short-lived, single-use)
+const adminRecoveryCodesMap = new Map<
+  string,
+  { codeHash: string; expiresAt: number; attempts: number; lastSentAt: number }
+>();
+const ADMIN_RECOVERY_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const ADMIN_RECOVERY_COOLDOWN_MS = 60 * 1000; // 60 seconds between sends
+const ADMIN_RECOVERY_MAX_ATTEMPTS = 5;
+
+// 1.0.0a Public Admin Recovery Step 1: Send 6-digit OTP to configured Admin Telegram Chat
+app.post('/api/auth/recovery/request-telegram', authLoginLimiter, async (req, res) => {
+  try {
+    setNoCacheHeaders(res);
+    const rawUsername = String(req.body?.username || 'admin').trim().toLowerCase();
+    if (!rawUsername) {
+      return res.status(400).json({ success: false, message: 'لطفاً نام کاربری ادمین را وارد نمایید.' });
+    }
+
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const usersList = Array.isArray(dbData?.users) && dbData.users.length > 0
+      ? dbData.users
+      : DEFAULT_INITIAL_DATA.users;
+
+    const targetAdmin = usersList.find(
+      (u: any) => String(u?.username || '').trim().toLowerCase() === rawUsername && isAdminUser(u)
+    );
+
+    if (!targetAdmin) {
+      return res.status(404).json({
+        success: false,
+        message: 'حساب مدیر (Admin) با این نام کاربری یافت نشد.',
+      });
+    }
+
+    const serverSettings = dbData?.settings || {};
+    const botToken = sanitizeTelegramBotToken(
+      serverSettings?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN
+    );
+    const adminChatId = String(
+      serverSettings?.telegramChatId || process.env.TELEGRAM_CHAT_ID || ''
+    ).trim();
+
+    if (!botToken || !adminChatId) {
+      return res.status(400).json({
+        success: false,
+        message: 'ربات تلگرام یا شناسه چت مدیر در سیستم پیکربندی نشده است. لطفاً از طریق ترمینال سرور (./reset-admin.sh) اقدام کنید.',
+      });
+    }
+
+    const existing = adminRecoveryCodesMap.get(rawUsername);
+    const now = Date.now();
+    if (existing && now - existing.lastSentAt < ADMIN_RECOVERY_COOLDOWN_MS) {
+      const waitSec = Math.ceil((ADMIN_RECOVERY_COOLDOWN_MS - (now - existing.lastSentAt)) / 1000);
+      return res.status(429).json({
+        success: false,
+        retryAfterSeconds: waitSec,
+        message: `لطفاً ${toPersianDigitsServer(waitSec)} ثانیه دیگر برای ارسال مجدد کد صبر کنید.`,
+      });
+    }
+
+    const otpCode = String(crypto.randomInt(100000, 1000000));
+    const storeName = escapeTelegramHtml(serverSettings?.storeName || serverSettings?.appName || 'سامانه فاکتور و انبارداری');
+    const safeUser = escapeTelegramHtml(targetAdmin.username || rawUsername);
+    const tgMessage = [
+      `🔐 <b>کد بازیابی رمز عبور مدیر سیستم</b>`,
+      `🏪 سامانه: <b>${storeName}</b>`,
+      `👤 نام کاربری: <code>${safeUser}</code>`,
+      ``,
+      `🔑 کد تأیید ۶ رقمی شما:`,
+      `<code>${otpCode}</code>`,
+      ``,
+      `⏱ اعتبار این کد <b>۵ دقیقه</b> است و فقط یک بار قابل استفاده می‌باشد.`,
+      `⚠️ اگر این درخواست توسط شما انجام نشده، این پیام را نادیده بگیرید.`,
+    ].join('\n');
+
+    const tgResult = await callTelegramApi('sendMessage', {
+      token: botToken,
+      body: {
+        chat_id: adminChatId,
+        text: tgMessage,
+        parse_mode: 'HTML',
+      },
+    });
+
+    if (!tgResult.ok || tgResult.data?.ok === false) {
+      return res.status(502).json({
+        success: false,
+        message: 'ارسال پیام به تلگرام با خطا مواجه شد. لطفاً اتصال ربات تلگرام را بررسی کرده یا از دستور ./reset-admin.sh در ترمینال VPS استفاده کنید.',
+      });
+    }
+
+    adminRecoveryCodesMap.set(rawUsername, {
+      codeHash: hashSecret(otpCode),
+      expiresAt: now + ADMIN_RECOVERY_TTL_MS,
+      attempts: 0,
+      lastSentAt: now,
+    });
+
+    return res.json({
+      success: true,
+      expiresInSeconds: Math.floor(ADMIN_RECOVERY_TTL_MS / 1000),
+      message: 'کد تأیید ۶ رقمی با موفقیت به تلگرام مدیر سیستم ارسال شد.',
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: err?.message || 'خطا در ارسال کد بازیابی به تلگرام.',
+    });
+  }
+});
+
+// 1.0.0b Public Admin Recovery Step 2: Verify OTP and set new scrypt-hashed admin password
+app.post('/api/auth/recovery/confirm-telegram', authLoginLimiter, async (req, res) => {
+  try {
+    setNoCacheHeaders(res);
+    const rawUsername = String(req.body?.username || 'admin').trim().toLowerCase();
+    const rawCode = normalizePersianDigitsServer(String(req.body?.code || '')).replace(/\s+/g, '');
+    const rawNewPassword = String(req.body?.newPassword || '').trim();
+
+    if (!rawUsername || !rawCode || !rawNewPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'لطفاً نام کاربری، کد تأیید ۶ رقمی و رمز عبور جدید را کامل وارد نمایید.',
+      });
+    }
+
+    if (rawNewPassword.length < 4) {
+      return res.status(400).json({
+        success: false,
+        message: 'رمز عبور جدید باید حداقل ۴ کاراکتر باشد.',
+      });
+    }
+
+    const record = adminRecoveryCodesMap.get(rawUsername);
+    if (!record || Date.now() > record.expiresAt) {
+      adminRecoveryCodesMap.delete(rawUsername);
+      return res.status(400).json({
+        success: false,
+        message: 'کد تأیید منقضی شده یا نامعتبر است. لطفاً مجدداً درخواست ارسال کد دهید.',
+      });
+    }
+
+    if (!verifySecret(rawCode, record.codeHash)) {
+      record.attempts += 1;
+      if (record.attempts >= ADMIN_RECOVERY_MAX_ATTEMPTS) {
+        adminRecoveryCodesMap.delete(rawUsername);
+        return res.status(429).json({
+          success: false,
+          message: 'تعداد تلاش‌های اشتباه بیش از حد مجاز شد. کد قبلی باطل گردید؛ لطفاً کد جدید دریافت کنید.',
+        });
+      }
+      adminRecoveryCodesMap.set(rawUsername, record);
+      return res.status(401).json({
+        success: false,
+        message: `کد تأیید اشتباه است. (${toPersianDigitsServer(ADMIN_RECOVERY_MAX_ATTEMPTS - record.attempts)} تلاش باقی‌مانده)`,
+      });
+    }
+
+    // Consume OTP immediately (single-use)
+    adminRecoveryCodesMap.delete(rawUsername);
+
+    const newHash = hashSecret(rawNewPassword);
+    let updatedAdminName = rawUsername;
+
+    await enqueueDbWrite(async () => {
+      const { data: currentDb } = await getLatestConvergedDatabase();
+      const users = Array.isArray(currentDb.users) && currentDb.users.length > 0
+        ? [...currentDb.users]
+        : [...DEFAULT_INITIAL_DATA.users];
+
+      const idx = users.findIndex(
+        (u: any) => String(u?.username || '').trim().toLowerCase() === rawUsername && isAdminUser(u)
+      );
+      if (idx === -1) {
+        throw new Error('حساب مدیر با این نام کاربری یافت نشد.');
+      }
+
+      updatedAdminName = users[idx].fullName || users[idx].username;
+      users[idx] = {
+        ...users[idx],
+        password: newHash,
+        pin: newHash,
+        isActive: true,
+      };
+
+      const nextRev = (typeof currentDb.revision === 'number' ? currentDb.revision : 1) + 1;
+      const nextDb = {
+        ...currentDb,
+        users,
+        revision: nextRev,
+        lastUpdated: Date.now(),
+      };
+
+      writeDatabase(nextDb, false, false);
+      if (getPostgresStatus().connected) {
+        await saveStateToPostgres(nextDb);
+      }
+    });
+
+    // Clear any brute-force lockout entries for this username across all IPs
+    for (const key of Array.from(loginAttemptsMap.keys())) {
+      if (key.endsWith(`:${rawUsername}`)) {
+        loginAttemptsMap.delete(key);
+      }
+    }
+
+    console.log(`[Security Recovery] Admin password reset via Telegram OTP for user: ${rawUsername} (${updatedAdminName})`);
+    return res.json({
+      success: true,
+      message: 'رمز عبور مدیر با موفقیت بازنشانی شد. اکنون می‌توانید با رمز جدید وارد شوید.',
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: err?.message || 'خطا در ثبت رمز عبور جدید.',
+    });
   }
 });
 
@@ -1329,10 +1565,15 @@ app.post('/api/auth/login', authLoginLimiter, async (req, res) => {
       });
     }
 
+    const normalizedPassword = normalizePersianDigitsServer(rawPassword);
     const storedPass = matchedUser.password || matchedUser.pin || '1234';
     const isPasswordMatch =
       verifySecret(rawPassword, storedPass) ||
-      (matchedUser.pin && matchedUser.pin !== storedPass && verifySecret(rawPassword, matchedUser.pin));
+      (normalizedPassword !== rawPassword && verifySecret(normalizedPassword, storedPass)) ||
+      (matchedUser.pin && matchedUser.pin !== storedPass && (
+        verifySecret(rawPassword, matchedUser.pin) ||
+        (normalizedPassword !== rawPassword && verifySecret(normalizedPassword, matchedUser.pin))
+      ));
 
     if (!isPasswordMatch) {
       const fail = recordFailedLoginAttempt(attemptKey);
@@ -1392,6 +1633,8 @@ const authGuardMiddleware: express.RequestHandler = (req, res, next) => {
     p === '/auth/bootstrap' ||
     p === '/auth/login' ||
     p === '/auth/logout' ||
+    p === '/auth/recovery/request-telegram' ||
+    p === '/auth/recovery/confirm-telegram' ||
     p === '/telegram/webhook' ||
     p.startsWith('/public/invoice/')
   ) {
@@ -5055,13 +5298,16 @@ async function startServer() {
     });
 
     // One-time transparent password hashing migration on startup (no plaintext left at rest)
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
-        const current = readDatabase();
+        const { data: current } = await getLatestConvergedDatabase();
         const migrated = ensureUsersPasswordsHashed(current.users || []);
         if (migrated.changed) {
           current.users = migrated.users;
           writeDatabase(current, false, false);
+          if (getPostgresStatus().connected) {
+            await saveStateToPostgres(current).catch(() => {});
+          }
           console.log('[Security] Migrated legacy plaintext user passwords to scrypt hashes.');
         }
         const existingBackups = getBackupsList();
@@ -5071,7 +5317,7 @@ async function startServer() {
       } catch (e) {
         console.error('[Backup Engine] Failed initial startup tasks:', e);
       }
-    }, 1000);
+    }, 1500);
 
     // Schedule automated periodic backup check (every 4 hours)
     setInterval(() => {

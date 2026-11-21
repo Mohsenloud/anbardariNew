@@ -85,7 +85,7 @@ if [ -d ".git" ]; then
   CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD || echo "main")
   echo "📥 دریافت آخرین تغییرات از مخزن Git (شاخه: ${CURRENT_BRANCH})..."
   git pull origin "${CURRENT_BRANCH}"
-  chmod +x deploy.sh 2>/dev/null || true
+  chmod +x deploy.sh reset-admin.sh 2>/dev/null || true
 fi
 
 # ۵. بیلد سریع و بروزرسانی کانتینرها بدون خاموش کردن دیتابیس

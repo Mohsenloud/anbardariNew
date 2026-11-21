@@ -24,10 +24,11 @@ ENV TZ=Asia/Tehran
 ENV PORT=3000
 ENV DATA_DIR=/app/data
 
-# Copy package metadata, pruned production node_modules, and compiled dist from builder
+# Copy package metadata, pruned production node_modules, compiled dist, and recovery script
 COPY package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/scripts/reset-admin-password.mjs ./scripts/reset-admin-password.mjs
 
 VOLUME ["/app/data"]
 

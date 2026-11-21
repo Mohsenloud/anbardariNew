@@ -107,6 +107,7 @@ export interface AuthBootstrapBranding {
   storeName?: string;
   tagline?: string;
   showStoreEditionBadge?: boolean;
+  telegramRecoveryEnabled?: boolean;
 }
 
 export async function fetchAuthBootstrap(): Promise<AuthBootstrapBranding | null> {
@@ -114,9 +115,70 @@ export async function fetchAuthBootstrap(): Promise<AuthBootstrapBranding | null
     const res = await apiFetch('/api/auth/bootstrap', { cache: 'no-store' });
     if (!res.ok) return null;
     const data = await res.json();
-    return data?.success && data?.branding ? data.branding : null;
+    if (data?.success && data?.branding) {
+      return {
+        ...data.branding,
+        telegramRecoveryEnabled: Boolean(data?.recovery?.telegramEnabled),
+      };
+    }
+    return null;
   } catch {
     return null;
+  }
+}
+
+export async function requestAdminTelegramRecovery(username: string): Promise<{
+  success: boolean;
+  message: string;
+  expiresInSeconds?: number;
+  retryAfterSeconds?: number;
+}> {
+  try {
+    const res = await apiFetch('/api/auth/recovery/request-telegram', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username.trim() || 'admin' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return {
+      success: Boolean(res.ok && data?.success),
+      message: data?.message || (res.ok ? 'کد تأیید ارسال شد.' : 'خطا در ارسال کد بازیابی.'),
+      expiresInSeconds: data?.expiresInSeconds,
+      retryAfterSeconds: data?.retryAfterSeconds,
+    };
+  } catch {
+    return {
+      success: false,
+      message: 'ارتباط با سرور برقرار نشد.',
+    };
+  }
+}
+
+export async function confirmAdminTelegramRecovery(
+  username: string,
+  code: string,
+  newPassword: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const res = await apiFetch('/api/auth/recovery/confirm-telegram', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: username.trim() || 'admin',
+        code: code.trim(),
+        newPassword: newPassword.trim(),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return {
+      success: Boolean(res.ok && data?.success),
+      message: data?.message || (res.ok ? 'رمز عبور با موفقیت تغییر یافت.' : 'خطا در تأیید کد بازیابی.'),
+    };
+  } catch {
+    return {
+      success: false,
+      message: 'ارتباط با سرور برقرار نشد.',
+    };
   }
 }
 
