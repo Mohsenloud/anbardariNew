@@ -89,7 +89,9 @@ function applyAdminResetToState(state, targetUsername, newHash) {
 
   next.users = users;
   next.revision = (typeof next.revision === 'number' ? next.revision : 1) + 1;
+  next.updatedAt = new Date().toISOString();
   next.lastUpdated = Date.now();
+  next.checksum = crypto.createHash('sha256').update(JSON.stringify(next, null, 2)).digest('hex');
   return { state: next, updatedUser: users[idx] };
 }
 
@@ -130,7 +132,7 @@ async function main() {
     console.log(`ℹ️ فایل محلی (${dbFile}) یافت نشد؛ بررسی PostgreSQL...`);
   }
 
-  // 2. Update PostgreSQL system_state if configured
+  // 2. Update PostgreSQL system_state if configured (matches server/db.ts row id 'main_store_data')
   const hasPgEnv = Boolean(process.env.DATABASE_URL || process.env.PGHOST || process.env.PGDATABASE);
   if (hasPgEnv) {
     try {
@@ -149,20 +151,24 @@ async function main() {
       );
 
       try {
-        const res = await pool.query("SELECT data, revision FROM system_state WHERE id = 'main'");
+        const res = await pool.query(
+          "SELECT id, data, revision FROM system_state WHERE id IN ('main_store_data', 'main') ORDER BY updated_at DESC LIMIT 1"
+        );
         if (res.rows.length > 0 && res.rows[0].data) {
+          const rowId = res.rows[0].id;
           const pgState = res.rows[0].data;
           const { state: nextState, updatedUser } = applyAdminResetToState(pgState, username, newHash);
           updatedUsername = updatedUser.username || updatedUsername;
           const nextRev = Math.max(Number(res.rows[0].revision || 1) + 1, Number(nextState.revision || 1));
           nextState.revision = nextRev;
+          nextState.checksum = crypto.createHash('sha256').update(JSON.stringify(nextState, null, 2)).digest('hex');
 
           await pool.query(
-            "UPDATE system_state SET data = $1::jsonb, revision = $2, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'",
-            [JSON.stringify(nextState), nextRev]
+            "UPDATE system_state SET data = $1::jsonb, revision = $2, checksum = $3, updated_at = NOW() WHERE id = $4",
+            [JSON.stringify(nextState), nextRev, nextState.checksum, rowId]
           );
           updatedPg = true;
-          console.log(`✅ پایگاه‌داده PostgreSQL (system_state) برای کاربر «${updatedUsername}» به‌روزرسانی شد (revision=${nextRev}).`);
+          console.log(`✅ پایگاه‌داده PostgreSQL (system_state:${rowId}) برای کاربر «${updatedUsername}» به‌روزرسانی شد (revision=${nextRev}).`);
 
           // Keep local file revision synced with PostgreSQL if local file exists
           if (fs.existsSync(dbFile)) {
@@ -171,7 +177,7 @@ async function main() {
             fs.renameSync(tmpFile, dbFile);
           }
         } else {
-          console.log('ℹ️ رکورد main در جدول system_state پایگاه‌داده PostgreSQL یافت نشد.');
+          console.log('ℹ️ رکورد main_store_data در جدول system_state پایگاه‌داده PostgreSQL یافت نشد.');
         }
       } finally {
         await pool.end();

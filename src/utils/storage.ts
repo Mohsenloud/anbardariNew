@@ -3549,38 +3549,39 @@ export const StorageService = {
     const tombstones = this.getDeletedTombstones();
     const userDelSet = new Set(tombstones.users || []);
 
+    const sanitizeInitial = () =>
+      initialUsers
+        .filter((u) => !userDelSet.has(u.id))
+        .map(({ password: _p, pin: _pin, ...u }) => ({ ...u, hasPassword: true }));
+
     if (!data) {
-      const clean = initialUsers.filter((u) => !userDelSet.has(u.id));
-      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(clean));
+      const clean = sanitizeInitial();
+      safeLocalStorageSet(STORAGE_KEYS.USERS, JSON.stringify(clean));
       return clean;
     }
     try {
       const users: AppUser[] = JSON.parse(data);
       if (!Array.isArray(users) || users.length === 0) {
-        const clean = initialUsers.filter((u) => !userDelSet.has(u.id));
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(clean));
+        const clean = sanitizeInitial();
+        safeLocalStorageSet(STORAGE_KEYS.USERS, JSON.stringify(clean));
         return clean;
       }
       // Ensure all users have valid unique IDs and exclude deleted users
+      // IMPORTANT: Never fabricate default passwords or push to server from a read getter!
       const seenIds = new Set<string>();
-      let needsSave = false;
+      let needsLocalRepair = false;
       const sanitized: AppUser[] = users
         .filter((u) => !userDelSet.has(u.id))
         .map((u, idx): AppUser => {
         let validId = u.id && u.id.trim() ? u.id.trim() : `user-migrated-${idx}-${Date.now()}`;
         if (seenIds.has(validId)) {
           validId = `${validId}-${idx}`;
-          needsSave = true;
+          needsLocalRepair = true;
         }
         if (!u.id) {
-          needsSave = true;
+          needsLocalRepair = true;
         }
         seenIds.add(validId);
-        const userPassword = u.password || u.pin || '1234';
-        const userPin = u.pin || u.password || '1234';
-        if (!u.password || !u.pin) {
-          needsSave = true;
-        }
         const normalizedPerms = normalizeUserPermissions(u.role, u.permissions);
         if (
           !u.permissions ||
@@ -3589,15 +3590,18 @@ export const StorageService = {
           u.permissions.canSettleInvoices === undefined ||
           (u.role === 'accountant' && (u.permissions.canCreatePurchaseInvoice || u.permissions.canCreateInvoice))
         ) {
-          needsSave = true;
+          needsLocalRepair = true;
+        }
+        const { password: _rawPass, pin: _rawPin, ...restUser } = u;
+        if (_rawPass || _rawPin) {
+          needsLocalRepair = true;
         }
         return {
-          ...u,
+          ...restUser,
           id: validId,
           fullName: u.fullName || u.name || u.username,
           name: u.fullName || u.name || u.username,
-          password: userPassword,
-          pin: userPin,
+          hasPassword: Boolean(u.hasPassword || _rawPass || _rawPin),
           permissions: normalizedPerms,
         };
       });
@@ -3605,22 +3609,35 @@ export const StorageService = {
       if (!sanitized.some((u) => u.role === 'supervisor') && !userDelSet.has('user-5')) {
         const sup = initialUsers.find((u) => u.id === 'user-5');
         if (sup) {
-          sanitized.push(sup);
-          needsSave = true;
+          const { password: _p, pin: _pin, ...safeSup } = sup;
+          sanitized.push({ ...safeSup, hasPassword: true });
+          needsLocalRepair = true;
         }
       }
 
-      if (needsSave) {
-        this.saveUsers(sanitized);
+      if (needsLocalRepair) {
+        safeLocalStorageSet(STORAGE_KEYS.USERS, JSON.stringify(sanitized));
       }
       return sanitized;
     } catch {
-      return initialUsers.filter((u) => !userDelSet.has(u.id));
+      return initialUsers.filter((u) => !userDelSet.has(u.id)).map(({ password: _p, pin: _pin, ...u }) => ({
+        ...u,
+        hasPassword: true,
+      }));
     }
   },
 
   saveUsers(users: AppUser[]) {
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    // Store sanitized users (no plaintext password/pin) locally so secrets never linger or get re-pushed
+    const sanitizedLocal: AppUser[] = users.map((u) => {
+      const { password, pin, ...safe } = u;
+      return {
+        ...safe,
+        hasPassword: Boolean(u.hasPassword || password || pin),
+      };
+    });
+    safeLocalStorageSet(STORAGE_KEYS.USERS, JSON.stringify(sanitizedLocal));
+    // Push payload containing ONLY the explicitly edited password/pin (if any) to the server for scrypt hashing
     this.pushToServer({ users });
   },
 

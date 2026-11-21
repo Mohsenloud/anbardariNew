@@ -1479,12 +1479,15 @@ app.post('/api/auth/recovery/confirm-telegram', authLoginLimiter, async (req, re
       };
 
       const nextRev = (typeof currentDb.revision === 'number' ? currentDb.revision : 1) + 1;
-      const nextDb = {
+      const nowIso = new Date().toISOString();
+      const nextDb: any = {
         ...currentDb,
         users,
         revision: nextRev,
+        updatedAt: nowIso,
         lastUpdated: Date.now(),
       };
+      nextDb.checksum = crypto.createHash('sha256').update(JSON.stringify(nextDb, null, 2)).digest('hex');
 
       writeDatabase(nextDb, false, false);
       if (getPostgresStatus().connected) {
@@ -2152,6 +2155,14 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
           const prev = existingUsersById.get(u.id);
           const incomingPass = typeof u.password === 'string' && u.password.trim() ? u.password.trim() : '';
           const incomingPin = typeof u.pin === 'string' && u.pin.trim() ? u.pin.trim() : '';
+          if ((incomingPass || incomingPin) && u.username) {
+            const targetUserLower = String(u.username).trim().toLowerCase();
+            for (const key of Array.from(loginAttemptsMap.keys())) {
+              if (key.endsWith(`:${targetUserLower}`)) {
+                loginAttemptsMap.delete(key);
+              }
+            }
+          }
           const nextPassword = incomingPass
             ? hashSecret(incomingPass)
             : incomingPin
