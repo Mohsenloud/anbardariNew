@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Invoice, StoreSettings, AppUser } from '../types';
 import { formatPrice, toPersianDigits, cleanInvoiceNotes } from '../utils/jalali';
+import { canUserSettleInvoice, isReadOnlyUser } from '../utils/permissions';
 import { 
   X, 
   Printer, 
@@ -83,15 +84,10 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
 
   if (!isOpen || !invoice) return null;
 
-  const canCreate = !currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions?.canCreateInvoice);
-  const canSettle =
-    !currentUser ||
-    currentUser.role === 'admin' ||
-    Boolean(
-      currentUser.permissions?.canSettleInvoices ??
-        (currentUser.permissions?.canCreateInvoice || currentUser.permissions?.canViewReports)
-    );
-  const canDelete = !currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions?.canDeleteInvoice);
+  const isReadOnly = isReadOnlyUser(currentUser);
+  const canCreate = !isReadOnly && (!currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions?.canCreateInvoice));
+  const canSettle = !isReadOnly && (!currentUser || canUserSettleInvoice(currentUser));
+  const canDelete = !isReadOnly && (!currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions?.canDeleteInvoice));
   const isPaid = invoice.paymentStatus === 'paid';
   const isPartial = invoice.paymentStatus === 'partial';
   const isUnpaid = invoice.paymentStatus === 'unpaid';
@@ -580,7 +576,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
                   )}
 
                   {/* Public Web Link for Customer */}
-                  {onOpenShareLinkModal && (
+                  {onOpenShareLinkModal && !isReadOnly && (
                     <button
                       type="button"
                       onClick={() => {

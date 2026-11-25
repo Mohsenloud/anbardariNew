@@ -959,7 +959,7 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                     }`}
                   >
                     <div className="text-xs font-bold text-slate-800">حسابدار</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">گزارش و تسویه (بدون ثبت فاکتور)</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">فقط مشاهده و گزارش‌گیری (بدون ثبت/تغییر/حذف)</div>
                   </button>
                 </div>
               </div>

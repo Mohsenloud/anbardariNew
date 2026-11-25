@@ -65,15 +65,29 @@ export function isTabPermitted(
 }
 
 /**
+ * Checks whether the user is a strict read-only accountant (view & export only — no create/edit/delete/settle).
+ */
+export function isReadOnlyUser(user?: AppUser | null): boolean {
+  return user?.role === 'accountant';
+}
+
+/**
+ * Checks whether the user is allowed to create, edit, delete, import, or record transactions/follow-ups for customers.
+ * Note: 'accountant' can view the customers/suppliers ledger & statements, but cannot modify anything.
+ */
+export function canUserModifyCustomers(user?: AppUser | null): boolean {
+  if (!user || user.role === 'accountant') return false;
+  return user.role === 'admin' || Boolean(user.permissions?.canManageCustomers);
+}
+
+/**
  * Checks whether the user is allowed to create or edit purchase/service invoices.
- * Note: 'accountant' role by default cannot create/edit purchase or service invoices.
+ * Note: 'accountant' role is strictly read-only and cannot create/edit purchase or service invoices.
  */
 export function canUserCreatePurchase(user?: AppUser | null): boolean {
   if (!user) return false;
   if (user.role === 'admin') return true;
-  if (user.role === 'accountant' && user.permissions.canCreatePurchaseInvoice !== true) {
-    return false;
-  }
+  if (user.role === 'accountant') return false;
   if (user.permissions.canCreatePurchaseInvoice !== undefined) {
     return Boolean(user.permissions.canCreatePurchaseInvoice);
   }
@@ -98,10 +112,12 @@ export function canUserViewPurchases(user?: AppUser | null): boolean {
 
 /**
  * Checks whether the user is allowed to register payments / settle sales & purchase invoices.
+ * Note: 'accountant' role is strictly read-only and cannot register payments or settle invoices.
  */
 export function canUserSettleInvoice(user?: AppUser | null): boolean {
   if (!user) return false;
   if (user.role === 'admin') return true;
+  if (user.role === 'accountant') return false;
   if (user.permissions.canSettleInvoices !== undefined) {
     return Boolean(user.permissions.canSettleInvoices);
   }
@@ -118,9 +134,7 @@ export function canUserSettleInvoice(user?: AppUser | null): boolean {
 export function canUserCreateSalesInvoice(user?: AppUser | null): boolean {
   if (!user) return false;
   if (user.role === 'admin') return true;
-  if (user.role === 'accountant' && user.permissions.canCreateInvoice !== true) {
-    return false;
-  }
+  if (user.role === 'accountant') return false;
   return Boolean(user.permissions.canCreateInvoice);
 }
 
@@ -130,6 +144,7 @@ export function canUserCreateSalesInvoice(user?: AppUser | null): boolean {
 export function canUserDeleteInvoice(user?: AppUser | null): boolean {
   if (!user) return false;
   if (user.role === 'admin') return true;
+  if (user.role === 'accountant') return false;
   return Boolean(user.permissions.canDeleteInvoice);
 }
 
@@ -218,7 +233,7 @@ export function getRoleBadgeConfig(role: UserRole): {
       };
     case 'accountant':
       return {
-        label: 'حسابدار و تحلیلگر مالی',
+        label: 'حسابدار (فقط مشاهده)',
         badgeBg: 'bg-purple-100',
         badgeText: 'text-purple-800',
         borderColor: 'border-purple-200',

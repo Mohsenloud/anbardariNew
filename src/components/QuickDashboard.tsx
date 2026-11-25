@@ -141,15 +141,17 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
     };
   }, [currentUser]);
 
+  const isReadOnly = currentUser?.role === 'accountant';
   const canReports = Boolean(userPerms.canViewReports && settings.enableReports !== false);
-  const canInvoice = Boolean(userPerms.canCreateInvoice);
+  const canInvoice = Boolean(!isReadOnly && userPerms.canCreateInvoice);
   const canInvoicesList = Boolean(userPerms.canViewInvoices);
-  const canInventory = Boolean(userPerms.canManageInventory && settings.enableInventory !== false);
+  const canInventory = Boolean(!isReadOnly && userPerms.canManageInventory && settings.enableInventory !== false);
   const canCustomers = Boolean(userPerms.canManageCustomers && settings.enableCustomers !== false);
-  const canAdmin = Boolean(userPerms.canAccessAdmin || userPerms.canManageUsers);
+  const canRecordCustomerDeposit = Boolean(!isReadOnly && (canCustomers || canInvoice || userPerms.canAccessAdmin));
+  const canAdmin = Boolean(!isReadOnly && (userPerms.canAccessAdmin || userPerms.canManageUsers));
   const canCreatePurchase = Boolean(
     currentUser?.role === 'admin' ||
-    (currentUser?.role !== 'accountant' && userPerms.canCreatePurchaseInvoice)
+    (!isReadOnly && userPerms.canCreatePurchaseInvoice)
   );
   const canPurchases = Boolean(
     isTabPermitted('purchases', currentUser, settings) ||
@@ -486,7 +488,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
       });
     }
 
-    if (canCustomers || canInvoice || canAdmin) {
+    if (canRecordCustomerDeposit) {
       items.push({
         id: 'feat-customer-deposit',
         title: 'ثبت واریزی و دریافت وجه از مشتری',
@@ -505,8 +507,8 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
     if (canInvoicesList) {
       items.push({
         id: 'feat-invoices-list',
-        title: 'مدیریت و لیست فاکتورها',
-        subtitle: 'مشاهده سفارشات، جستجو، تسویه، چاپ و فاکتور رسمی',
+        title: isReadOnly ? 'مشاهده لیست فاکتورها' : 'مدیریت و لیست فاکتورها',
+        subtitle: isReadOnly ? 'مشاهده سفارشات، جستجو، چاپ و خروجی اکسل' : 'مشاهده سفارشات، جستجو، تسویه، چاپ و فاکتور رسمی',
         icon: ReceiptText,
         colorClass: 'text-teal-600',
         bgClass: 'bg-teal-50/80 border-teal-200 hover:bg-teal-100/90',
@@ -521,10 +523,12 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
     if (canPurchases) {
       items.push({
         id: 'feat-purchases',
-        title: canCreatePurchase ? 'فاکتور خرید و ورود کالا' : 'مشاهده و تسویه فاکتورهای خرید',
+        title: canCreatePurchase ? 'فاکتور خرید و ورود کالا' : isReadOnly ? 'مشاهده فاکتورهای خرید' : 'مشاهده و تسویه فاکتورهای خرید',
         subtitle: canCreatePurchase
           ? 'ثبت ورود اقلام از تامین‌کنندگان و افزایش موجودی انبار'
-          : 'مشاهده اسناد خرید کالا و خدمات، آمار خرید و ثبت پرداخت‌ها',
+          : isReadOnly
+            ? 'مشاهده اسناد خرید کالا و خدمات و آمار خرید (فقط مشاهده)'
+            : 'مشاهده اسناد خرید کالا و خدمات، آمار خرید و ثبت پرداخت‌ها',
         icon: ShoppingCart,
         colorClass: 'text-orange-600',
         bgClass: 'bg-orange-50/80 border-orange-200 hover:bg-orange-100/90',
@@ -824,7 +828,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                     </button>
                   )}
 
-                  {(canCustomers || canInvoice || canAdmin) && (
+                  {canRecordCustomerDeposit && (
                     <button
                       type="button"
                       id="hub-btn-customer-deposit"
@@ -1093,13 +1097,15 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
             {/* KPI 3: مطالبات از مشتریان (بدهی طرف‌حساب‌ها) */}
             <div
               onClick={() => {
-                if (canCustomers || canInvoice || canAdmin) {
+                if (canRecordCustomerDeposit) {
                   setDepositFilterOnlyDebtors(true);
                   setIsDepositPickerOpen(true);
+                } else if (canCustomers) {
+                  onNavigate('customers');
                 }
               }}
               className={`bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between transition-all ${
-                (canCustomers || canInvoice || canAdmin) ? 'cursor-pointer hover:border-rose-300 hover:shadow-sm active:scale-99' : ''
+                (canRecordCustomerDeposit || canCustomers) ? 'cursor-pointer hover:border-rose-300 hover:shadow-sm active:scale-99' : ''
               }`}
             >
               <div className="flex items-center justify-between">
@@ -1114,7 +1120,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                 </span>
                 <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mt-1">
                   <span>{toPersianDigits(debtorCustomersCount)} طرف‌حساب بدهکار</span>
-                  <span className="text-rose-600 font-bold">تسویه سریع ←</span>
+                  <span className="text-rose-600 font-bold">{isReadOnly ? 'مشاهده دفتر ←' : 'تسویه سریع ←'}</span>
                 </div>
               </div>
             </div>
@@ -1438,7 +1444,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                     </div>
                   </div>
 
-                  {(canCustomers || canInvoice || canAdmin) && (
+                  {canRecordCustomerDeposit && (
                     <button
                       type="button"
                       onClick={() => {
@@ -1476,7 +1482,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
                           <span className="text-xs font-black text-rose-700 block font-mono tabular-nums">
                             {formatPrice(balance)}
                           </span>
-                          {(canCustomers || canInvoice || canAdmin) && (
+                          {canRecordCustomerDeposit && (
                             <button
                               type="button"
                               onClick={() => setDepositSelectedCustomer(cust)}

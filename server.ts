@@ -477,13 +477,13 @@ const DEFAULT_INITIAL_DATA = {
       username: 'accountant1',
       fullName: 'مریم احمدی',
       role: 'accountant',
-      roleTitle: 'حسابدار و تحلیلگر مالی',
+      roleTitle: 'حسابدار (فقط مشاهده)',
       permissions: {
         canCreateInvoice: false,
         canViewInvoices: true,
-        canCreatePurchaseInvoice: true,
+        canCreatePurchaseInvoice: false,
         canViewPurchaseInvoices: true,
-        canSettleInvoices: true,
+        canSettleInvoices: false,
         canDeleteInvoice: false,
         canManageInventory: false,
         canManageCustomers: true,
@@ -1033,8 +1033,23 @@ function ensureUsersPasswordsHashed(users: any[]): { users: any[]; changed: bool
 function sanitizeUserForClient(u: any): any {
   if (!u || typeof u !== 'object') return u;
   const { password, pin, ...safe } = u;
+  const normalizedPerms =
+    safe.role === 'accountant'
+      ? {
+          ...(safe.permissions || {}),
+          canCreateInvoice: false,
+          canCreatePurchaseInvoice: false,
+          canSettleInvoices: false,
+          canDeleteInvoice: false,
+          canManageInventory: false,
+          canAccessAdmin: false,
+          canManageUsers: false,
+          canViewBuyPrices: true,
+        }
+      : safe.permissions;
   return {
     ...safe,
+    ...(normalizedPerms ? { permissions: normalizedPerms } : {}),
     hasPassword: Boolean(password || pin),
   };
 }
@@ -1053,6 +1068,10 @@ interface AuthenticatedRequest extends express.Request {
 
 function isAdminUser(user?: { role?: string; permissions?: Record<string, boolean> } | null): boolean {
   return Boolean(user && (user.role === 'admin' || user.permissions?.canAccessAdmin === true));
+}
+
+function isReadOnlyAccountant(user?: { role?: string } | null): boolean {
+  return Boolean(user && user.role === 'accountant');
 }
 
 function sanitizeDbForClient(data: any, authUser?: AuthSessionPayload): any {
@@ -1660,6 +1679,56 @@ const authGuardMiddleware: express.RequestHandler = (req, res, next) => {
 
 app.use('/api', authGuardMiddleware);
 
+// Strict read-only guard for 'accountant' role on all mutating /api/* endpoints (verifying live DB role)
+const readOnlyAccountantGuard: express.RequestHandler = async (req, res, next) => {
+  try {
+    const method = req.method.toUpperCase();
+    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+      return next();
+    }
+    const p = req.path;
+    if (
+      p === '/auth/login' ||
+      p === '/auth/logout' ||
+      p === '/auth/switch-user' ||
+      p === '/auth/recovery/request-telegram' ||
+      p === '/auth/recovery/confirm-telegram' ||
+      p === '/telegram/webhook' ||
+      p.startsWith('/public/invoice/')
+    ) {
+      return next();
+    }
+
+    const authUser = (req as AuthenticatedRequest).authUser;
+    if (!authUser) return next();
+
+    if (isReadOnlyAccountant(authUser)) {
+      return res.status(403).json({
+        success: false,
+        code: 'READ_ONLY_ACCOUNTANT',
+        message: 'حساب کاربری با سطح دسترسی حسابدار فقط مجاز به مشاهده اطلاعات است و امکان ثبت، ویرایش یا حذف ندارد.',
+      });
+    }
+
+    // Re-verify live DB role in case the user was changed to 'accountant' while their session was active
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const liveUser = (dbData?.users || []).find((u: any) => u.id === authUser.userId);
+    if (liveUser && isReadOnlyAccountant(liveUser)) {
+      return res.status(403).json({
+        success: false,
+        code: 'READ_ONLY_ACCOUNTANT',
+        message: 'حساب کاربری با سطح دسترسی حسابدار فقط مجاز به مشاهده اطلاعات است و امکان ثبت، ویرایش یا حذف ندارد.',
+      });
+    }
+
+    return next();
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+app.use('/api', readOnlyAccountantGuard);
+
 // Admin RBAC middleware verifying live DB role & active state
 const requireAdmin: express.RequestHandler = async (req, res, next) => {
   try {
@@ -2022,6 +2091,13 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
     setNoCacheHeaders(res);
     const incomingData = req.body;
     const authUser = (req as AuthenticatedRequest).authUser;
+    if (isReadOnlyAccountant(authUser)) {
+      return res.status(403).json({
+        success: false,
+        code: 'READ_ONLY_ACCOUNTANT',
+        message: 'کاربر حسابدار فقط مجاز به مشاهده اطلاعات است و امکان تغییر داده‌ها را ندارد.',
+      });
+    }
     const callerIsAdmin = isAdminUser(authUser);
     const callerCanManageUsers = callerIsAdmin || Boolean(authUser?.permissions?.canManageUsers);
     
@@ -2265,6 +2341,13 @@ app.post('/api/db/delete-item', dbWriteLimiter, async (req, res) => {
   try {
     setNoCacheHeaders(res);
     const authUser = (req as AuthenticatedRequest).authUser;
+    if (isReadOnlyAccountant(authUser)) {
+      return res.status(403).json({
+        success: false,
+        code: 'READ_ONLY_ACCOUNTANT',
+        message: 'کاربر حسابدار فقط مجاز به مشاهده اطلاعات است و امکان حذف آیتم‌ها را ندارد.',
+      });
+    }
     const { type, id } = req.body;
     if (!type || !id || typeof id !== 'string') {
       return res.status(400).json({ success: false, message: 'نوع موجودیت و شناسه برای حذف الزامی است.' });

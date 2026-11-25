@@ -14,7 +14,7 @@ import {
   verifySessionWithServer,
 } from './utils/authClient';
 import { getCurrentJalaliDate } from './utils/jalali';
-import { isTabPermitted, getDefaultTabForUser, getRoleBadgeConfig } from './utils/permissions';
+import { isTabPermitted, getDefaultTabForUser, getRoleBadgeConfig, isReadOnlyUser } from './utils/permissions';
 import { ConfirmDialogHost } from './components/ConfirmDialogHost';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -852,6 +852,7 @@ export default function App() {
 
   // 3. DELETE INVOICE (بدون بازگردانی کالا)
   const handleDeleteInvoice = (invoiceId: string) => {
+    if (isReadOnlyUser(currentUser)) return;
     const inv = invoices.find((i) => i.id === invoiceId);
     StorageService.markInvoiceDeleted(invoiceId);
     StorageService.deleteExitSlipLog(invoiceId);
@@ -876,6 +877,7 @@ export default function App() {
     status: 'paid' | 'unpaid' | 'partial',
     paidAmount?: number
   ) => {
+    if (isReadOnlyUser(currentUser)) return;
     const updated = invoices.map((inv) => {
       if (inv.id === invoiceId) {
         return {
@@ -942,6 +944,7 @@ export default function App() {
     updates: { invoiceId: string; status: 'paid' | 'unpaid' | 'partial'; paidAmount: number }[],
     details?: string
   ) => {
+    if (isReadOnlyUser(currentUser)) return;
     const updateMap = new Map(updates.map((u) => [u.invoiceId, u]));
     const updated = invoices.map((inv) => {
       const up = updateMap.get(inv.id);
@@ -1247,6 +1250,7 @@ export default function App() {
 
   // 6.2 IMPORT CUSTOMERS FROM EXCEL
   const handleImportCustomers = (importedCustomers: Customer[], mode: 'merge' | 'replace') => {
+    if (isReadOnlyUser(currentUser)) return;
     let updated: Customer[];
     if (mode === 'replace') {
       updated = importedCustomers;
@@ -1270,6 +1274,7 @@ export default function App() {
 
   // 7. CUSTOMERS MANAGEMENT
   const handleSaveCustomer = (customer: Customer) => {
+    if (isReadOnlyUser(currentUser)) return;
     let updated: Customer[];
     const exists = customers.some((c) => c.id === customer.id);
     if (exists) {
@@ -1296,6 +1301,7 @@ export default function App() {
       id: `cust-${Date.now()}`,
       createdAt: getCurrentJalaliDate(),
     };
+    if (isReadOnlyUser(currentUser)) return newCust;
     const updated = [newCust, ...customers];
     setCustomers(updated);
     StorageService.saveCustomers(updated);
@@ -1304,6 +1310,7 @@ export default function App() {
   };
 
   const handleDeleteCustomer = (customerId: string) => {
+    if (isReadOnlyUser(currentUser)) return;
     const cust = customers.find((c) => c.id === customerId);
     StorageService.deleteCustomer(customerId);
     const updated = StorageService.getCustomers();
@@ -1320,11 +1327,13 @@ export default function App() {
   };
 
   const handleSelectCustomerForInvoice = (customer: Customer) => {
+    if (isReadOnlyUser(currentUser)) return;
     setActiveTab('new-invoice');
   };
 
   // 7.1 CUSTOMER TRANSACTIONS (صورتحساب، ثبت واریزی و بدهی مشتری)
   const handleSaveCustomerTransaction = (txn: CustomerTransaction) => {
+    if (isReadOnlyUser(currentUser)) return;
     StorageService.addCustomerTransaction(txn);
     const updatedTxns = StorageService.getCustomerTransactions();
     setCustomerTransactions(updatedTxns);
@@ -1344,6 +1353,7 @@ export default function App() {
   };
 
   const handleDeleteCustomerTransaction = (txnId: string) => {
+    if (isReadOnlyUser(currentUser)) return;
     const txn = customerTransactions.find((t) => t.id === txnId);
     StorageService.deleteCustomerTransaction(txnId);
     const updated = StorageService.getCustomerTransactions();
@@ -1907,18 +1917,18 @@ export default function App() {
             settings={settings}
             currentUser={currentUser || undefined}
             onViewInvoice={(inv) => setViewingInvoice(inv)}
-            onEditInvoice={handleStartEditInvoice}
+            onEditInvoice={isReadOnlyUser(currentUser) ? undefined : handleStartEditInvoice}
             onDeleteInvoice={handleDeleteInvoice}
             onReturnInvoiceToStock={handleReturnInvoiceToStock}
             onUpdatePaymentStatus={handleUpdatePaymentStatus}
             onNewInvoice={() => {
-              if (currentUser?.permissions.canCreateInvoice) {
+              if (!isReadOnlyUser(currentUser) && currentUser?.permissions.canCreateInvoice) {
                 setEditingInvoice(null);
                 setActiveTab('new-invoice');
               }
             }}
             onConvertProforma={handleConvertProforma}
-            onOpenShareLinkModal={(inv) => setAppShareLinkInvoice(inv)}
+            onOpenShareLinkModal={isReadOnlyUser(currentUser) ? undefined : (inv) => setAppShareLinkInvoice(inv)}
             onBatchUpdatePaymentStatus={handleBatchUpdatePaymentStatus}
           />
         )}
@@ -1978,10 +1988,11 @@ export default function App() {
             onSaveTransaction={handleSaveCustomerTransaction}
             onDeleteTransaction={handleDeleteCustomerTransaction}
             onViewInvoice={(inv) => setViewingInvoice(inv)}
-            onEditInvoice={handleStartEditInvoice}
+            onEditInvoice={isReadOnlyUser(currentUser) ? undefined : handleStartEditInvoice}
             onDeleteInvoice={handleDeleteInvoice}
             onUpdatePaymentStatus={handleUpdatePaymentStatus}
             onUpdatePurchaseInvoice={(updatedPi) => {
+              if (isReadOnlyUser(currentUser)) return;
               StorageService.savePurchaseInvoice(updatedPi);
               setPurchaseInvoices(StorageService.getPurchaseInvoices());
               showToast(`وضعیت پرداخت فاکتور خرید «${updatedPi.invoiceNumber}» بروزرسانی شد.`);

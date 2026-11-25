@@ -4,6 +4,7 @@ import { formatPrice, toPersianDigits, formatNumber, getInvoiceDaysAge } from '.
 import { exportInvoicesToCsv } from '../utils/csvExport';
 import { exportInvoicesListToExcel } from '../utils/excelHelper';
 import { StorageService } from '../utils/storage';
+import { canUserSettleInvoice, isReadOnlyUser } from '../utils/permissions';
 import { sendProformaFollowUpReminder } from '../utils/telegramService';
 import { CustomerExportModal } from './CustomerExportModal';
 import { InvoiceQuickDetailsModal } from './InvoiceQuickDetailsModal';
@@ -159,7 +160,10 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   const [proformaToConvert, setProformaToConvert] = useState<Invoice | null>(null);
   const [conversionNewNumber, setConversionNewNumber] = useState<string>('');
 
+  const isReadOnly = isReadOnlyUser(currentUser);
+
   const handleOpenShareModal = (inv: Invoice) => {
+    if (isReadOnly) return;
     if (onOpenShareLinkModal) {
       onOpenShareLinkModal(inv);
     } else {
@@ -173,6 +177,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
 
   const handleSendTelegramReminder = async (e: React.MouseEvent, inv: Invoice) => {
     e.stopPropagation();
+    if (isReadOnly) return;
     if (sendingReminderId) return;
     setSendingReminderId(inv.id);
     setReminderToast(null);
@@ -399,19 +404,14 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   }, [invoices, customersList]);
 
   // Permission checks
-  const canCreate = !currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions.canCreateInvoice);
-  const canDelete = !currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions.canDeleteInvoice);
-  const canSettle =
-    !currentUser ||
-    currentUser.role === 'admin' ||
-    Boolean(
-      currentUser.permissions.canSettleInvoices ??
-        (currentUser.permissions.canCreateInvoice || currentUser.permissions.canViewReports)
-    );
-  const canAccessAdmin = !currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions.canAccessAdmin);
+  const canCreate = !isReadOnly && (!currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions.canCreateInvoice));
+  const canDelete = !isReadOnly && (!currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions.canDeleteInvoice));
+  const canSettle = !isReadOnly && (!currentUser || canUserSettleInvoice(currentUser));
+  const canAccessAdmin = !isReadOnly && (!currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions.canAccessAdmin));
 
   // Conversion Handlers
   const handleOpenConvertModal = (inv: Invoice) => {
+    if (isReadOnly || !canCreate) return;
     setProformaToConvert(inv);
     const existingInvoices = StorageService.getInvoices();
     let defaultNum = StorageService.getNextInvoiceNumber(false);
@@ -427,6 +427,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   };
 
   const handleConfirmConvert = () => {
+    if (isReadOnly || !canCreate) return;
     if (!proformaToConvert || !onConvertProforma) return;
     const success = onConvertProforma(proformaToConvert, conversionNewNumber.trim());
     if (success !== false) {
@@ -436,12 +437,14 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
 
   // Payment Status Modal Handlers
   const handleOpenPaymentModal = (inv: Invoice) => {
+    if (isReadOnly || !canSettle) return;
     setPaymentModalInvoice(inv);
     setPaymentNewStatus(inv.paymentStatus);
     setPaymentNewAmount(inv.paidAmount || 0);
   };
 
   const handleSavePaymentStatus = () => {
+    if (isReadOnly || !canSettle) return;
     if (!paymentModalInvoice) return;
     let finalPaid = paymentNewAmount;
     if (paymentNewStatus === 'paid') {
@@ -473,6 +476,12 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
               <span className="text-[11px] sm:text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold shrink-0">
                 {toPersianDigits(invoices.length)} سند
               </span>
+              {isReadOnly && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 text-[10px] sm:text-[11px] font-bold shrink-0">
+                  <Eye className="w-3 h-3" />
+                  <span>فقط مشاهده</span>
+                </span>
+              )}
             </div>
           </div>
 
@@ -1121,7 +1130,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                           >
                             <FileClock className="w-3.5 h-3.5" />
                           </span>
-                          {!inv.convertedAt && (() => {
+                          {!isReadOnly && !inv.convertedAt && (() => {
                             const daysAge = getInvoiceDaysAge(inv.date, inv.createdAt);
                             if (daysAge < 7) return null;
                             return (
@@ -1187,7 +1196,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      {!isPaid && (
+                      {canSettle && !isPaid && (
                         <button
                           type="button"
                           onClick={() => handleOpenPaymentModal(inv)}
@@ -1275,7 +1284,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                               >
                                 <FileClock className="w-3.5 h-3.5" />
                               </span>
-                              {!inv.convertedAt && (() => {
+                              {!isReadOnly && !inv.convertedAt && (() => {
                                 const daysAge = getInvoiceDaysAge(inv.date, inv.createdAt);
                                 if (daysAge < 7) return null;
                                 return (
@@ -1384,15 +1393,17 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
                             <Printer className="w-4 h-4" />
                           </button>
 
-                          <button
-                            id={`share-link-btn-${inv.id}`}
-                            type="button"
-                            onClick={() => handleOpenShareModal(inv)}
-                            title="ارسال و اشتراک لینک نسخه تحت وب برای مشتری"
-                            className="p-1.5 text-sky-600 hover:text-sky-800 hover:bg-sky-50 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Globe className="w-4 h-4" />
-                          </button>
+                          {!isReadOnly && (
+                            <button
+                              id={`share-link-btn-${inv.id}`}
+                              type="button"
+                              onClick={() => handleOpenShareModal(inv)}
+                              title="ارسال و اشتراک لینک نسخه تحت وب برای مشتری"
+                              className="p-1.5 text-sky-600 hover:text-sky-800 hover:bg-sky-50 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Globe className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1871,10 +1882,10 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           setQuickDetailsInvoice(null);
           handleOpenPaymentModal(inv);
         } : undefined}
-        onOpenShareLinkModal={(inv) => {
+        onOpenShareLinkModal={!isReadOnly ? (inv) => {
           setQuickDetailsInvoice(null);
           handleOpenShareModal(inv);
-        }}
+        } : undefined}
         onConvertProforma={canCreate ? (inv) => {
           setQuickDetailsInvoice(null);
           handleOpenConvertModal(inv);

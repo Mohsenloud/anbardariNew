@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Customer, Invoice, PurchaseInvoice, StoreSettings, AppUser, CustomerTransaction, CustomerFollowUpNote } from '../types';
 import { formatPrice, toPersianDigits, getCurrentJalaliDate, addDaysToJalali } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
+import { isReadOnlyUser } from '../utils/permissions';
 import { sendCustomerFollowUpReminderToTelegram, checkDueFollowUpRemindersOnTelegram, isTelegramConfigured } from '../utils/telegramService';
 import { exportCustomersToExcel, exportPersonInvoicesAndExitSlipsToExcel } from '../utils/excelHelper';
 import { ExcelImportModal } from './ExcelImportModal';
@@ -107,6 +108,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   onUpdatePaymentStatus,
   onUpdatePurchaseInvoice,
 }) => {
+  const isReadOnly = isReadOnlyUser(currentUser);
   const [activeSubSection, setActiveSubSection] = useState<'customers' | 'suppliers' | 'followups'>('customers');
   const [searchQuery, setSearchQuery] = useState('');
   const [supplierSearchQuery, setSupplierSearchQuery] = useState('');
@@ -170,6 +172,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
 
   // Helper to open separate transaction window (deposit / debt)
   const handleOpenTransaction = (cust: Customer, type: 'deposit' | 'debt' = 'deposit') => {
+    if (isReadOnly) return;
     setTransactionCustomer(cust);
     setTransactionInitialType(type);
   };
@@ -177,11 +180,12 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   // Helper to open statement modal with optional initial form (deposit/debt)
   const handleOpenStatement = (cust: Customer, initialForm: 'none' | 'deposit' | 'debt' = 'none') => {
     setStatementCustomer(cust);
-    setStatementInitialForm(initialForm);
+    setStatementInitialForm(isReadOnly ? 'none' : initialForm);
   };
 
   // Helper to open Public Web Link Modal (پیوند عمومی نسخه تحت وب) for a customer or specific invoice
   const handleOpenCustomerWebLink = (cust: Customer, specificInvoice?: Invoice) => {
+    if (isReadOnly) return;
     if (specificInvoice) {
       setShareLinkInvoice(specificInvoice);
       return;
@@ -372,6 +376,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   }, [customers, searchQuery, statusFilter, sortBy, customerMetrics]);
 
   const handleOpenNew = () => {
+    if (isReadOnly) return;
     setEditingCustomer({
       id: '',
       name: '',
@@ -386,12 +391,14 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   };
 
   const handleOpenEdit = (cust: Customer) => {
+    if (isReadOnly) return;
     setEditingCustomer({ ...cust, customerType: cust.customerType || 'regular' });
     setIsModalOpen(true);
   };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isReadOnly) return;
     if (!editingCustomer || !editingCustomer.name.trim()) return;
 
     const saved: Customer = {
@@ -490,6 +497,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
 
   const handleSaveSupplierPayment = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isReadOnly) return;
     if (!payingPurchaseInvoice) return;
     const newPaid = Math.min(
       payingPurchaseInvoice.finalTotal,
@@ -528,6 +536,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   };
 
   const handleManualSendFollowUpTelegram = async (cust: Customer, note?: CustomerFollowUpNote) => {
+    if (isReadOnly) return;
     const targetId = note?.id || cust.id;
     setSendingFollowUpTelegramId(targetId);
     setFollowUpTelegramStatus(null);
@@ -568,6 +577,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
 
   const handleAddFollowUpNote = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isReadOnly) return;
     if (!followUpModalCustomer || !newFollowUpNote.trim()) return;
 
     const chosenDueDate = newFollowUpDate.trim() || undefined;
@@ -622,6 +632,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   };
 
   const handleToggleCompleteFollowUp = (cust: Customer, noteId?: string) => {
+    if (isReadOnly) return;
     const updatedFollowUps = (cust.followUps || []).map((f) =>
       noteId ? (f.id === noteId ? { ...f, isCompleted: !f.isCompleted } : f) : { ...f, isCompleted: true }
     );
@@ -640,6 +651,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
   };
 
   const handleDeleteFollowUpNote = (cust: Customer, noteId: string) => {
+    if (isReadOnly) return;
     const remaining = (cust.followUps || []).filter((f) => f.id !== noteId);
     const latestActiveReminder = remaining.find((f) => !f.isCompleted && f.nextFollowUpDate)?.nextFollowUpDate;
     const updatedCustomer: Customer = {
@@ -689,6 +701,12 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
             <h2 className="text-sm sm:text-lg font-bold text-slate-800 truncate">
               مدیریت مشتریان و خریداران
             </h2>
+            {isReadOnly && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 text-[11px] font-bold shrink-0">
+                <Eye className="w-3 h-3" />
+                <span>فقط مشاهده</span>
+              </span>
+            )}
           </div>
 
           {/* Single Compact Actions Dropdown Beside Title */}
@@ -701,7 +719,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
               title="عملیات و امکانات"
             >
               <SlidersHorizontal className="w-3.5 h-3.5 text-purple-700" />
-              <span>عملیات</span>
+              <span>{isReadOnly ? 'گزارش و خروجی' : 'عملیات'}</span>
               <ChevronDown className={`w-3.5 h-3.5 text-purple-600 transition-transform duration-200 ${isActionsDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
 
@@ -709,20 +727,24 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
             {isActionsDropdownOpen && (
               <div className="absolute left-0 top-full mt-1.5 w-56 sm:w-60 bg-white rounded-2xl border border-slate-200/90 shadow-xl z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100">
                 {/* 1. مشتری جدید */}
-                <button
-                  type="button"
-                  id="add-customer-btn"
-                  onClick={() => {
-                    setIsActionsDropdownOpen(false);
-                    handleOpenNew();
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-emerald-800 bg-emerald-50 hover:bg-emerald-100 transition-colors cursor-pointer text-right"
-                >
-                  <UserPlus className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>مشتری جدید</span>
-                </button>
+                {!isReadOnly && (
+                  <>
+                    <button
+                      type="button"
+                      id="add-customer-btn"
+                      onClick={() => {
+                        setIsActionsDropdownOpen(false);
+                        handleOpenNew();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-emerald-800 bg-emerald-50 hover:bg-emerald-100 transition-colors cursor-pointer text-right"
+                    >
+                      <UserPlus className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>مشتری جدید</span>
+                    </button>
 
-                <div className="my-1 border-t border-slate-100" />
+                    <div className="my-1 border-t border-slate-100" />
+                  </>
+                )}
 
                 {/* 2. گزارش صورتحساب مشتریان */}
                 <button
@@ -773,19 +795,21 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                 </button>
 
                 {/* 5. ورود مشتریان از فایل اکسل */}
-                <button
-                  type="button"
-                  id="import-customers-excel-btn"
-                  onClick={() => {
-                    setIsActionsDropdownOpen(false);
-                    setIsImportModalOpen(true);
-                  }}
-                  title="ورود مشتریان از فایل اکسل"
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer text-right"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span>ورود از اکسل</span>
-                </button>
+                {!isReadOnly && (
+                  <button
+                    type="button"
+                    id="import-customers-excel-btn"
+                    onClick={() => {
+                      setIsActionsDropdownOpen(false);
+                      setIsImportModalOpen(true);
+                    }}
+                    title="ورود مشتریان از فایل اکسل"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer text-right"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>ورود از اکسل</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -986,7 +1010,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-bold transition-colors cursor-pointer"
                           >
                             <ReceiptText className="w-3.5 h-3.5 text-indigo-600" />
-                            <span>ریز حساب و ثبت پرداخت</span>
+                            <span>{isReadOnly ? 'مشاهده ریز حساب' : 'ریز حساب و ثبت پرداخت'}</span>
                           </button>
                         </td>
                       </tr>
@@ -1119,21 +1143,23 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0 self-end sm:self-center flex-wrap">
-                      <button
-                        type="button"
-                        disabled={sendingFollowUpTelegramId === (latestNote?.id || cust.id)}
-                        onClick={() => handleManualSendFollowUpTelegram(cust, latestNote || undefined)}
-                        className="px-2.5 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                        title="ارسال فوری پیام یادآوری تماس به تلگرام"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                        <span>
-                          {sendingFollowUpTelegramId === (latestNote?.id || cust.id)
-                            ? 'در حال ارسال...'
-                            : 'ارسال به تلگرام'}
-                        </span>
-                      </button>
-                      {cust.nextFollowUpDate && (
+                      {!isReadOnly && (
+                        <button
+                          type="button"
+                          disabled={sendingFollowUpTelegramId === (latestNote?.id || cust.id)}
+                          onClick={() => handleManualSendFollowUpTelegram(cust, latestNote || undefined)}
+                          className="px-2.5 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          title="ارسال فوری پیام یادآوری تماس به تلگرام"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>
+                            {sendingFollowUpTelegramId === (latestNote?.id || cust.id)
+                              ? 'در حال ارسال...'
+                              : 'ارسال به تلگرام'}
+                          </span>
+                        </button>
+                      )}
+                      {!isReadOnly && cust.nextFollowUpDate && (
                         <button
                           type="button"
                           onClick={() => handleToggleCompleteFollowUp(cust)}
@@ -1150,7 +1176,9 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                         className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs"
                       >
                         <MessageSquarePlus className="w-3.5 h-3.5" />
-                        <span>مشاهده و ثبت مذاکره ({toPersianDigits((cust.followUps || []).length)})</span>
+                        <span>
+                          {isReadOnly ? 'مشاهده سوابق مذاکرات' : 'مشاهده و ثبت مذاکره'} ({toPersianDigits((cust.followUps || []).length)})
+                        </span>
                       </button>
                     </div>
                   </div>
@@ -1830,16 +1858,18 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
 
                   {/* Phone & Public Web Link actions */}
                   <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
-                    <button
-                      type="button"
-                      id="detail-modal-top-web-link-btn"
-                      onClick={() => handleOpenCustomerWebLink(detailCustomer)}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-xl font-bold text-xs shadow-xs transition-all cursor-pointer"
-                      title="دریافت و ارسال پیوند عمومی نسخه تحت وب فاکتور و صورتحساب مشتری"
-                    >
-                      <Globe className="w-3.5 h-3.5" />
-                      <span>پیوند عمومی نسخه تحت وب</span>
-                    </button>
+                    {!isReadOnly && (
+                      <button
+                        type="button"
+                        id="detail-modal-top-web-link-btn"
+                        onClick={() => handleOpenCustomerWebLink(detailCustomer)}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-xl font-bold text-xs shadow-xs transition-all cursor-pointer"
+                        title="دریافت و ارسال پیوند عمومی نسخه تحت وب فاکتور و صورتحساب مشتری"
+                      >
+                        <Globe className="w-3.5 h-3.5" />
+                        <span>پیوند عمومی نسخه تحت وب</span>
+                      </button>
+                    )}
                     {detailCustomer.phone && (
                       <a
                         href={`tel:${detailCustomer.phone}`}
@@ -1922,14 +1952,16 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                       <Bell className="w-4 h-4 text-amber-600" />
                       <span>یادداشت‌های مذاکره و یادآور تماس بعدی:</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenFollowUpModal(detailCustomer)}
-                      className="px-2.5 py-1 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                    >
-                      <MessageSquarePlus className="w-3.5 h-3.5" />
-                      <span>ثبت مذاکره / یادآور جدید</span>
-                    </button>
+                    {!isReadOnly && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenFollowUpModal(detailCustomer)}
+                        className="px-2.5 py-1 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <MessageSquarePlus className="w-3.5 h-3.5" />
+                        <span>ثبت مذاکره / یادآور جدید</span>
+                      </button>
+                    )}
                   </div>
 
                   {detailCustomer.nextFollowUpDate && (
@@ -2024,14 +2056,16 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                               </td>
                               <td className="p-2.5 text-center">
                                 <div className="flex items-center justify-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenCustomerWebLink(detailCustomer, inv)}
-                                    className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg cursor-pointer transition-colors"
-                                    title="پیوند عمومی نسخه تحت وب این فاکتور"
-                                  >
-                                    <Globe className="w-3.5 h-3.5" />
-                                  </button>
+                                  {!isReadOnly && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenCustomerWebLink(detailCustomer, inv)}
+                                      className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg cursor-pointer transition-colors"
+                                      title="پیوند عمومی نسخه تحت وب این فاکتور"
+                                    >
+                                      <Globe className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                   {onViewInvoice && (
                                     <button
                                       type="button"
@@ -2073,159 +2107,177 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                     <span>مشاهده صورتحساب مالی</span>
                   </button>
 
-                  <button
-                    type="button"
-                    id="customer-details-footer-web-link-btn"
-                    onClick={() => handleOpenCustomerWebLink(detailCustomer)}
-                    className="flex-1 sm:flex-initial min-h-[40px] px-3.5 py-2 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-sky-200/70 cursor-pointer"
-                  >
-                    <Globe className="w-4 h-4 shrink-0" />
-                    <span>پیوند عمومی نسخه تحت وب</span>
-                  </button>
+                  {!isReadOnly && (
+                    <button
+                      type="button"
+                      id="customer-details-footer-web-link-btn"
+                      onClick={() => handleOpenCustomerWebLink(detailCustomer)}
+                      className="flex-1 sm:flex-initial min-h-[40px] px-3.5 py-2 bg-sky-600 hover:bg-sky-700 active:scale-98 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-sky-200/70 cursor-pointer"
+                    >
+                      <Globe className="w-4 h-4 shrink-0" />
+                      <span>پیوند عمومی نسخه تحت وب</span>
+                    </button>
+                  )}
                 </div>
 
                 {/* Secondary Actions & Close (سمت چپ - منوی یکپارچه عملیات و دکمه بستن) */}
                 <div className="flex items-center gap-2 shrink-0">
-                  {/* Actions Dropdown */}
-                  <div className="relative" ref={detailActionsDropdownRef}>
+                  {isReadOnly ? (
                     <button
                       type="button"
-                      id="customer-details-actions-dropdown-btn"
-                      onClick={() => setIsDetailActionsOpen((prev) => !prev)}
-                      className={`min-h-[40px] px-3 sm:px-3.5 py-2 border rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer ${
-                        isDetailActionsOpen
-                          ? 'bg-slate-200 text-slate-900 border-slate-300'
-                          : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300/80'
-                      }`}
-                      title="سایر عملیات مشتری"
-                      aria-expanded={isDetailActionsOpen}
+                      onClick={() => {
+                        const target = detailCustomer;
+                        setDetailCustomer(null);
+                        setExportModalCustomer(target);
+                        setIsExportModalOpen(true);
+                      }}
+                      className="min-h-[40px] px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300/80 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
                     >
-                      <SlidersHorizontal className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                      <span>عملیات</span>
-                      {hasDebt && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" title="دارای بدهی" />
-                      )}
-                      <ChevronUp className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isDetailActionsOpen ? 'rotate-180' : ''}`} />
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                      <span>خروجی اکسل</span>
                     </button>
-
-                    {/* Dropup Menu (باز شدن به سمت بالا داخل مدال) */}
-                    {isDetailActionsOpen && (
-                      <div 
-                        className="absolute bottom-full left-0 mb-2 w-56 sm:w-60 bg-white rounded-2xl border border-slate-200/90 shadow-2xl z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100 text-right"
-                        role="menu"
+                  ) : (
+                    /* Actions Dropdown */
+                    <div className="relative" ref={detailActionsDropdownRef}>
+                      <button
+                        type="button"
+                        id="customer-details-actions-dropdown-btn"
+                        onClick={() => setIsDetailActionsOpen((prev) => !prev)}
+                        className={`min-h-[40px] px-3 sm:px-3.5 py-2 border rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer ${
+                          isDetailActionsOpen
+                            ? 'bg-slate-200 text-slate-900 border-slate-300'
+                            : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300/80'
+                        }`}
+                        title="سایر عملیات مشتری"
+                        aria-expanded={isDetailActionsOpen}
                       >
-                        {/* Public Web Link */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const target = detailCustomer;
-                            setIsDetailActionsOpen(false);
-                            handleOpenCustomerWebLink(target);
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-sky-800 bg-sky-50 hover:bg-sky-100 transition-colors cursor-pointer"
-                          role="menuitem"
-                        >
-                          <Globe className="w-4 h-4 text-sky-600 shrink-0" />
-                          <span>پیوند عمومی نسخه تحت وب</span>
-                        </button>
+                        <SlidersHorizontal className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                        <span>عملیات</span>
+                        {hasDebt && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" title="دارای بدهی" />
+                        )}
+                        <ChevronUp className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isDetailActionsOpen ? 'rotate-180' : ''}`} />
+                      </button>
 
-                        {/* New Invoice */}
-                        {(!currentUser || currentUser.permissions.canCreateInvoice) && (
+                      {/* Dropup Menu (باز شدن به سمت بالا داخل مدال) */}
+                      {isDetailActionsOpen && (
+                        <div 
+                          className="absolute bottom-full left-0 mb-2 w-56 sm:w-60 bg-white rounded-2xl border border-slate-200/90 shadow-2xl z-50 p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-100 text-right"
+                          role="menu"
+                        >
+                          {/* Public Web Link */}
                           <button
                             type="button"
                             onClick={() => {
                               const target = detailCustomer;
                               setIsDetailActionsOpen(false);
-                              setDetailCustomer(null);
-                              onSelectCustomerForInvoice(target);
+                              handleOpenCustomerWebLink(target);
                             }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-emerald-800 bg-emerald-50/70 hover:bg-emerald-100 transition-colors cursor-pointer"
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-sky-800 bg-sky-50 hover:bg-sky-100 transition-colors cursor-pointer"
                             role="menuitem"
                           >
-                            <Plus className="w-4 h-4 text-emerald-600 shrink-0" />
-                            <span>صدور فاکتور جدید</span>
+                            <Globe className="w-4 h-4 text-sky-600 shrink-0" />
+                            <span>پیوند عمومی نسخه تحت وب</span>
                           </button>
-                        )}
 
-                        {/* Register Deposit / Payment */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const target = detailCustomer;
-                            setIsDetailActionsOpen(false);
-                            setDetailCustomer(null);
-                            handleOpenTransaction(target, 'deposit');
-                          }}
-                          className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
-                            hasDebt 
-                              ? 'text-emerald-800 bg-emerald-50/50 hover:bg-emerald-100' 
-                              : 'text-slate-700 hover:bg-slate-100'
-                          }`}
-                          role="menuitem"
-                        >
-                          <CreditCard className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span>ثبت واریزی به حساب</span>
-                          {hasDebt && (
-                            <span className="mr-auto text-[10px] font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md">بدهکار</span>
-                          )}
-                        </button>
-
-                        {/* Edit Customer Profile */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const target = detailCustomer;
-                            setIsDetailActionsOpen(false);
-                            setDetailCustomer(null);
-                            handleOpenEdit(target);
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                          role="menuitem"
-                        >
-                          <Edit3 className="w-4 h-4 text-blue-600 shrink-0" />
-                          <span>ویرایش مشخصات مشتری</span>
-                        </button>
-
-                        {/* Excel Export */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const target = detailCustomer;
-                            setIsDetailActionsOpen(false);
-                            setDetailCustomer(null);
-                            setExportModalCustomer(target);
-                            setIsExportModalOpen(true);
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                          role="menuitem"
-                        >
-                          <FileSpreadsheet className="w-4 h-4 text-purple-600 shrink-0" />
-                          <span>خروجی اکسل و سوابق</span>
-                        </button>
-
-                        {/* Delete Customer */}
-                        {(!currentUser || currentUser.role === 'admin' || currentUser.permissions.canManageCustomers) && (
-                          <>
-                            <div className="my-1 border-t border-slate-100" />
+                          {/* New Invoice */}
+                          {(!currentUser || currentUser.permissions.canCreateInvoice) && (
                             <button
                               type="button"
                               onClick={() => {
                                 const target = detailCustomer;
                                 setIsDetailActionsOpen(false);
                                 setDetailCustomer(null);
-                                setCustomerToDelete(target);
+                                onSelectCustomerForInvoice(target);
                               }}
-                              className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-emerald-800 bg-emerald-50/70 hover:bg-emerald-100 transition-colors cursor-pointer"
                               role="menuitem"
                             >
-                              <Trash2 className="w-4 h-4 text-rose-600 shrink-0" />
-                              <span>حذف مشتری</span>
+                              <Plus className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <span>صدور فاکتور جدید</span>
                             </button>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                          )}
+
+                          {/* Register Deposit / Payment */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const target = detailCustomer;
+                              setIsDetailActionsOpen(false);
+                              setDetailCustomer(null);
+                              handleOpenTransaction(target, 'deposit');
+                            }}
+                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
+                              hasDebt 
+                                ? 'text-emerald-800 bg-emerald-50/50 hover:bg-emerald-100' 
+                                : 'text-slate-700 hover:bg-slate-100'
+                            }`}
+                            role="menuitem"
+                          >
+                            <CreditCard className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>ثبت واریزی به حساب</span>
+                            {hasDebt && (
+                              <span className="mr-auto text-[10px] font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md">بدهکار</span>
+                            )}
+                          </button>
+
+                          {/* Edit Customer Profile */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const target = detailCustomer;
+                              setIsDetailActionsOpen(false);
+                              setDetailCustomer(null);
+                              handleOpenEdit(target);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                            role="menuitem"
+                          >
+                            <Edit3 className="w-4 h-4 text-blue-600 shrink-0" />
+                            <span>ویرایش مشخصات مشتری</span>
+                          </button>
+
+                          {/* Excel Export */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const target = detailCustomer;
+                              setIsDetailActionsOpen(false);
+                              setDetailCustomer(null);
+                              setExportModalCustomer(target);
+                              setIsExportModalOpen(true);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                            role="menuitem"
+                          >
+                            <FileSpreadsheet className="w-4 h-4 text-purple-600 shrink-0" />
+                            <span>خروجی اکسل و سوابق</span>
+                          </button>
+
+                          {/* Delete Customer */}
+                          {(!currentUser || currentUser.role === 'admin' || currentUser.permissions.canManageCustomers) && (
+                            <>
+                              <div className="my-1 border-t border-slate-100" />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const target = detailCustomer;
+                                  setIsDetailActionsOpen(false);
+                                  setDetailCustomer(null);
+                                  setCustomerToDelete(target);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold rounded-xl text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
+                                role="menuitem"
+                              >
+                                <Trash2 className="w-4 h-4 text-rose-600 shrink-0" />
+                                <span>حذف مشتری</span>
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Close Modal Button */}
                   <button
@@ -2515,7 +2567,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
       )}
 
       {/* CUSTOMER BULK PAYMENT / LUMP-SUM DEPOSIT MODAL */}
-      {paymentModalCustomer && (
+      {!isReadOnly && paymentModalCustomer && (
         <CustomerBulkPaymentModal
           isOpen={!!paymentModalCustomer}
           onClose={() => setPaymentModalCustomer(null)}
@@ -2593,7 +2645,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
       )}
 
       {/* SEPARATE TRANSACTION MODAL: REGISTER DEPOSIT OR REGISTER DEBT */}
-      {transactionCustomer && (
+      {!isReadOnly && transactionCustomer && (
         <CustomerTransactionModal
           isOpen={!!transactionCustomer}
           onClose={() => setTransactionCustomer(null)}
@@ -2638,6 +2690,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
             </div>
 
             <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs flex-1">
+              {!isReadOnly && (
               <form onSubmit={handleAddFollowUpNote} className="bg-amber-50/50 border border-amber-200/80 rounded-2xl p-3.5 space-y-3">
                 <div>
                   <label className="block font-bold text-slate-800 mb-1">
@@ -2738,6 +2791,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                   </button>
                 </div>
               </form>
+              )}
 
               {/* History of Follow-Up Notes */}
               <div className="space-y-2">
@@ -2782,37 +2836,39 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              disabled={sendingFollowUpTelegramId === fn.id}
-                              onClick={() => handleManualSendFollowUpTelegram(followUpModalCustomer, fn)}
-                              className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                              title="ارسال این یادآور به تلگرام"
-                            >
-                              <Send className="w-2.5 h-2.5" />
-                              <span>{sendingFollowUpTelegramId === fn.id ? '...' : 'تلگرام'}</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleToggleCompleteFollowUp(followUpModalCustomer, fn.id)}
-                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold border cursor-pointer ${
-                                fn.isCompleted
-                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                  : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-emerald-50'
-                              }`}
-                            >
-                              {fn.isCompleted ? 'انجام شد ✓' : 'علامت انجام'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteFollowUpNote(followUpModalCustomer, fn.id)}
-                              className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
-                              title="حذف یادداشت"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                          {!isReadOnly && (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                disabled={sendingFollowUpTelegramId === fn.id}
+                                onClick={() => handleManualSendFollowUpTelegram(followUpModalCustomer, fn)}
+                                className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                title="ارسال این یادآور به تلگرام"
+                              >
+                                <Send className="w-2.5 h-2.5" />
+                                <span>{sendingFollowUpTelegramId === fn.id ? '...' : 'تلگرام'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCompleteFollowUp(followUpModalCustomer, fn.id)}
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold border cursor-pointer ${
+                                  fn.isCompleted
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-emerald-50'
+                                }`}
+                              >
+                                {fn.isCompleted ? 'انجام شد ✓' : 'علامت انجام'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteFollowUpNote(followUpModalCustomer, fn.id)}
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
+                                title="حذف یادداشت"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
                         </div>
                         <p className="text-slate-800 font-medium leading-relaxed whitespace-pre-line">{fn.note}</p>
                       </div>
@@ -2883,7 +2939,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
               </div>
 
               {/* Payment Adjustment Form for Selected Purchase Invoice */}
-              {payingPurchaseInvoice && (
+              {!isReadOnly && payingPurchaseInvoice && (
                 <form
                   onSubmit={handleSaveSupplierPayment}
                   className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-3.5 space-y-3 animate-in fade-in"
@@ -2945,7 +3001,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                       <th className="p-2.5 font-bold text-left">مبلغ کل</th>
                       <th className="p-2.5 font-bold text-left">پرداخت‌شده</th>
                       <th className="p-2.5 font-bold text-left">مانده بدهی</th>
-                      <th className="p-2.5 font-bold text-center">تسویه / پرداخت</th>
+                      {!isReadOnly && <th className="p-2.5 font-bold text-center">تسویه / پرداخت</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -2975,18 +3031,20 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
                           <td className="p-2.5 text-left font-mono font-black text-rose-700">
                             {rem > 0 ? formatPrice(rem, settings.currency) : '۰ (تسویه)'}
                           </td>
-                          <td className="p-2.5 text-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPayingPurchaseInvoice(pi);
-                                setSupplierPaymentInput(paid);
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-[11px] cursor-pointer"
-                            >
-                              ثبت پرداخت
-                            </button>
-                          </td>
+                          {!isReadOnly && (
+                            <td className="p-2.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPayingPurchaseInvoice(pi);
+                                  setSupplierPaymentInput(paid);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-[11px] cursor-pointer"
+                              >
+                                ثبت پرداخت
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -2999,7 +3057,7 @@ export const CustomersManager: React.FC<CustomersManagerProps> = ({
       )}
 
       {/* PUBLIC WEB SHARE LINK MODAL FOR CUSTOMER / INVOICE */}
-      {shareLinkInvoice && (
+      {!isReadOnly && shareLinkInvoice && (
         <InvoiceShareLinkModal
           isOpen={!!shareLinkInvoice}
           invoice={shareLinkInvoice}

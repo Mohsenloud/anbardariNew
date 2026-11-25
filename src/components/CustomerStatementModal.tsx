@@ -62,6 +62,7 @@ import { CustomerTransactionModal } from './CustomerTransactionModal';
 import { NumericInput } from './NumericInput';
 import { SmartPagination, paginateArray } from './SmartPagination';
 import { sendTelegramTextMessage } from '../utils/telegramService';
+import { isReadOnlyUser } from '../utils/permissions';
 
 interface CustomerStatementModalProps {
   isOpen: boolean;
@@ -105,9 +106,10 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   onUpdatePaymentStatus,
   initialFormType = 'none',
 }) => {
+  const isReadOnly = isReadOnlyUser(currentUser);
   // Active sub-modal for registering deposit or debt
   const [activeTxnModalType, setActiveTxnModalType] = useState<'deposit' | 'debt' | null>(
-    initialFormType && initialFormType !== 'none' ? initialFormType : null
+    !isReadOnly && initialFormType && initialFormType !== 'none' ? initialFormType : null
   );
   const [filterType, setFilterType] = useState<'all' | 'debt' | 'deposit'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -240,6 +242,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
   // Open separate transaction modal
   const handleOpenTransactionModal = (type: 'deposit' | 'debt') => {
+    if (isReadOnly) return;
     setTransactionToEdit(null);
     setActiveTxnModalType(type);
   };
@@ -258,12 +261,14 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
   // Open edit modal for a transaction
   const handleOpenEditTransaction = (txn: CustomerTransaction) => {
+    if (isReadOnly) return;
     setTransactionToEdit(txn);
     setActiveTxnModalType(txn.type);
   };
 
   // Open edit modal for invoice payment
   const handleOpenEditInvoicePayment = (inv: Invoice) => {
+    if (isReadOnly) return;
     setInvoicePaymentToEdit(inv);
     setEditPaymentAmount(inv.paidAmount || 0);
     setEditPaymentMethod(inv.paymentMethod || 'cash');
@@ -273,6 +278,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
   // Save edited invoice payment
   const handleSaveInvoicePayment = () => {
+    if (isReadOnly) return;
     if (!invoicePaymentToEdit) return;
     const cleanAmount = Math.max(0, Number(editPaymentAmount) || 0);
     const newStatus = cleanAmount >= invoicePaymentToEdit.finalTotal ? 'paid' : cleanAmount > 0 ? 'partial' : 'unpaid';
@@ -304,6 +310,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
   // Universal deletion handler
   const handleConfirmDelete = () => {
+    if (isReadOnly) return;
     if (!itemToDelete) return;
 
     if (itemToDelete.type === 'transaction') {
@@ -340,10 +347,10 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
 
   // Sync initialFormType when modal opens
   React.useEffect(() => {
-    if (isOpen && initialFormType && initialFormType !== 'none') {
+    if (!isReadOnly && isOpen && initialFormType && initialFormType !== 'none') {
       setActiveTxnModalType((prev) => (prev !== initialFormType ? initialFormType : prev));
     }
-  }, [isOpen, initialFormType]);
+  }, [isOpen, initialFormType, isReadOnly]);
 
   // Live invoices list (refreshes if user edited/deleted invoice payment directly)
   const activeInvoices = useMemo(() => {
@@ -739,6 +746,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   // Send Statement Report to Telegram
   const [isSendingTelegram, setIsSendingTelegram] = useState(false);
   const handleSendTelegramStatement = async () => {
+    if (isReadOnly) return;
     if (!customer) return;
     if (!settings?.telegramBotEnabled) {
       setPdfSuccessMessage('ربات تلگرام در تنظیمات سیستم فعال نیست.');
@@ -992,33 +1000,42 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
             {/* Top Mobile Row / Right Desktop Zone: Actions + Quick Type Segmented Tabs */}
             <div className="flex items-center justify-between sm:justify-start gap-1.5">
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  id="add-deposit-btn"
-                  onClick={() => handleOpenTransactionModal('deposit')}
-                  className="h-7 sm:h-8 px-2.5 sm:px-3 flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-lg text-[10px] sm:text-[11px] font-bold shadow-2xs transition-all cursor-pointer shrink-0"
-                >
-                  <Plus className="w-3 h-3 shrink-0" />
-                  <span>ثبت واریز</span>
-                </button>
+              {!isReadOnly ? (
+                <>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      id="add-deposit-btn"
+                      onClick={() => handleOpenTransactionModal('deposit')}
+                      className="h-7 sm:h-8 px-2.5 sm:px-3 flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-lg text-[10px] sm:text-[11px] font-bold shadow-2xs transition-all cursor-pointer shrink-0"
+                    >
+                      <Plus className="w-3 h-3 shrink-0" />
+                      <span>ثبت واریز</span>
+                    </button>
 
-                <button
-                  type="button"
-                  id="add-debt-btn"
-                  onClick={() => handleOpenTransactionModal('debt')}
-                  className={`h-7 sm:h-8 px-2.5 sm:px-3 flex items-center gap-1 active:scale-95 text-white rounded-lg text-[10px] sm:text-[11px] font-bold shadow-2xs transition-all cursor-pointer shrink-0 ${
-                    fullLedger.netBalance < 0
-                      ? 'bg-blue-600 hover:bg-blue-700'
-                      : 'bg-rose-600 hover:bg-rose-700'
-                  }`}
-                >
-                  <Plus className="w-3 h-3 shrink-0" />
-                  <span>{fullLedger.netBalance < 0 ? 'ثبت پرداخت' : 'ثبت بدهی'}</span>
-                </button>
-              </div>
+                    <button
+                      type="button"
+                      id="add-debt-btn"
+                      onClick={() => handleOpenTransactionModal('debt')}
+                      className={`h-7 sm:h-8 px-2.5 sm:px-3 flex items-center gap-1 active:scale-95 text-white rounded-lg text-[10px] sm:text-[11px] font-bold shadow-2xs transition-all cursor-pointer shrink-0 ${
+                        fullLedger.netBalance < 0
+                          ? 'bg-blue-600 hover:bg-blue-700'
+                          : 'bg-rose-600 hover:bg-rose-700'
+                      }`}
+                    >
+                      <Plus className="w-3 h-3 shrink-0" />
+                      <span>{fullLedger.netBalance < 0 ? 'ثبت پرداخت' : 'ثبت بدهی'}</span>
+                    </button>
+                  </div>
 
-              <span className="h-4 w-px bg-slate-200 hidden sm:inline-block" />
+                  <span className="h-4 w-px bg-slate-200 hidden sm:inline-block" />
+                </>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 text-[10px] sm:text-[11px] font-bold shrink-0">
+                  <Eye className="w-3 h-3" />
+                  <span>حالت فقط مشاهده</span>
+                </span>
+              )}
 
               {/* Segmented Quick Type Tabs */}
               <div className="h-7 sm:h-8 flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[10px] sm:text-[11px] shrink-0">
@@ -1162,7 +1179,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                   <span className="hidden md:inline">اکسل</span>
                 </button>
 
-                {settings?.telegramBotEnabled && (
+                {!isReadOnly && settings?.telegramBotEnabled && (
                   <button
                     type="button"
                     id="send-statement-telegram-btn"
@@ -1635,7 +1652,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                           )}
 
                           {/* 2. Manual Transaction (Deposit or Debt): Edit & Delete */}
-                          {isManualTxn && entry.rawTransaction && (
+                          {!isReadOnly && isManualTxn && entry.rawTransaction && (
                             <>
                               <button
                                 type="button"
@@ -1665,7 +1682,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                           )}
 
                           {/* 3. Invoice Payment (Deposit recorded on invoice): Edit & Delete */}
-                          {entry.documentType === 'invoice_payment' && entry.rawInvoice && (
+                          {!isReadOnly && entry.documentType === 'invoice_payment' && entry.rawInvoice && (
                             <>
                               <button
                                 type="button"
@@ -1695,7 +1712,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                           )}
 
                           {/* 4. Invoice Debt (Sales Invoice): Edit & Delete */}
-                          {entry.documentType === 'invoice' && entry.rawInvoice && (
+                          {!isReadOnly && entry.documentType === 'invoice' && entry.rawInvoice && (
                             <>
                               {onEditInvoice && (
                                 <button
@@ -1885,7 +1902,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                                 )}
 
                                 {/* 2. Manual Transaction (Deposit or Debt): Edit & Delete */}
-                                {isManualTxn && entry.rawTransaction && (
+                                {!isReadOnly && isManualTxn && entry.rawTransaction && (
                                   <>
                                     <button
                                       type="button"
@@ -1913,7 +1930,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                                 )}
 
                                 {/* 3. Invoice Payment (Deposit on Invoice): Edit & Delete */}
-                                {entry.documentType === 'invoice_payment' && entry.rawInvoice && (
+                                {!isReadOnly && entry.documentType === 'invoice_payment' && entry.rawInvoice && (
                                   <>
                                     <button
                                       type="button"
@@ -1941,7 +1958,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                                 )}
 
                                 {/* 4. Invoice Debt (Sales Invoice): Edit & Delete */}
-                                {entry.documentType === 'invoice' && entry.rawInvoice && (
+                                {!isReadOnly && entry.documentType === 'invoice' && entry.rawInvoice && (
                                   <>
                                     {onEditInvoice && (
                                       <button
@@ -2030,7 +2047,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
             </strong>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            {fullLedger.netBalance > 0 ? (
+            {!isReadOnly && fullLedger.netBalance > 0 ? (
               <button
                 type="button"
                 onClick={() => handleOpenTransactionModal('deposit')}
@@ -2038,7 +2055,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
               >
                 واریز سریع
               </button>
-            ) : fullLedger.netBalance < 0 ? (
+            ) : !isReadOnly && fullLedger.netBalance < 0 ? (
               <button
                 type="button"
                 onClick={() => handleOpenTransactionModal('debt')}

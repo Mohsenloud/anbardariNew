@@ -206,7 +206,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canViewInvoices: true,
     canCreatePurchaseInvoice: false,
     canViewPurchaseInvoices: true,
-    canSettleInvoices: true,
+    canSettleInvoices: false,
     canDeleteInvoice: false,
     canManageInventory: false,
     canManageCustomers: true,
@@ -240,7 +240,7 @@ export function normalizeUserPermissions(
     return { ...roleDefaults };
   }
 
-  // در صورتی که نقش کاربر صراحتاً «حسابدار» (accountant) باشد، طبق قانون سیستم مجاز به ثبت/ویرایش فاکتور خرید، خدمات یا فروش نیست
+  // در صورتی که نقش کاربر «حسابدار» (accountant) باشد، دسترسی صرفاً مشاهده و گزارش‌گیری است (بدون ثبت، ویرایش، تسویه یا حذف)
   const isStrictAccountant = role === 'accountant';
   const isAdmin = role === 'admin';
   const isRestrictedFromBuyPrices = role === 'cashier' || role === 'warehouse';
@@ -260,13 +260,15 @@ export function normalizeUserPermissions(
         roleDefaults.canViewPurchaseInvoices ??
         (perms.canViewInvoices || perms.canManageInventory)
     ),
-    canSettleInvoices: Boolean(
-      perms.canSettleInvoices ??
-        roleDefaults.canSettleInvoices ??
-        (perms.canCreateInvoice || perms.canViewReports)
-    ),
+    canSettleInvoices: isStrictAccountant
+      ? false
+      : Boolean(
+          perms.canSettleInvoices ??
+            roleDefaults.canSettleInvoices ??
+            (perms.canCreateInvoice || perms.canViewReports)
+        ),
     canDeleteInvoice: isStrictAccountant ? false : Boolean(perms.canDeleteInvoice ?? roleDefaults.canDeleteInvoice),
-    canManageInventory: Boolean(perms.canManageInventory ?? roleDefaults.canManageInventory),
+    canManageInventory: isStrictAccountant ? false : Boolean(perms.canManageInventory ?? roleDefaults.canManageInventory),
     canManageCustomers: Boolean(perms.canManageCustomers ?? roleDefaults.canManageCustomers),
     canViewReports: Boolean(perms.canViewReports ?? roleDefaults.canViewReports),
     canViewBuyPrices: isRestrictedFromBuyPrices
@@ -274,8 +276,8 @@ export function normalizeUserPermissions(
       : isStrictAccountant
         ? true
         : Boolean(perms.canViewBuyPrices ?? roleDefaults.canViewBuyPrices),
-    canAccessAdmin: Boolean(perms.canAccessAdmin ?? roleDefaults.canAccessAdmin),
-    canManageUsers: Boolean(perms.canManageUsers ?? roleDefaults.canManageUsers),
+    canAccessAdmin: isStrictAccountant ? false : Boolean(perms.canAccessAdmin ?? roleDefaults.canAccessAdmin),
+    canManageUsers: isStrictAccountant ? false : Boolean(perms.canManageUsers ?? roleDefaults.canManageUsers),
   };
 }
 
@@ -291,7 +293,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   supervisor: 'سرپرست (همه فعالیت‌ها بجز پنل و مدیریت کاربران)',
   cashier: 'صندوق‌دار و فروشنده',
   warehouse: 'مسئول انبار و موجودی',
-  accountant: 'حسابدار و تحلیلگر مالی (مشاهده، تسویه و گزارشات)',
+  accountant: 'حسابدار و تحلیلگر مالی (فقط مشاهده و گزارش‌گیری)',
   custom: 'سطح دسترسی سفارشی',
 };
 
@@ -901,6 +903,10 @@ export const StorageService = {
         categories: 'category',
       };
 
+      if (this.getCurrentUser()?.role === 'accountant') {
+        return;
+      }
+
       ids.forEach((itemId) => {
         apiFetch('/api/db/delete-item', {
           method: 'POST',
@@ -1024,6 +1030,10 @@ export const StorageService = {
   // Asynchronously sync local changes to centralized server database
   async pushToServer(customPayload?: any): Promise<boolean> {
     if (!hasAuthToken()) {
+      return false;
+    }
+    // Read-only accountant role must never push mutations to the server
+    if (this.getCurrentUser()?.role === 'accountant') {
       return false;
     }
     try {
