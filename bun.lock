@@ -6,16 +6,12 @@
       "name": "react-example",
       "dependencies": {
         "@fontsource/vazirmatn": "^5.3.0",
-        "@google/genai": "^2.4.0",
-        "@tailwindcss/vite": "^4.1.14",
-        "@types/pg": "^8.23.1",
-        "@vitejs/plugin-react": "^5.0.4",
+        "@google/genai": "^3.6.1",
         "bidi-shaper": "^0.1.2",
         "dotenv": "^17.2.3",
         "express": "^4.21.2",
         "express-rate-limit": "^8.7.0",
         "helmet": "^8.3.0",
-        "html2canvas": "^1.4.1",
         "html2canvas-pro": "^2.4.2",
         "jspdf": "^4.2.1",
         "lucide-react": "^0.546.0",
@@ -24,14 +20,16 @@
         "react": "^19.0.1",
         "react-dom": "^19.0.1",
         "undici": "^8.12.3",
-        "vite": "^6.2.3",
         "xlsx": "^0.18.5",
       },
       "devDependencies": {
+        "@tailwindcss/vite": "^4.1.14",
         "@types/express": "^4.17.21",
         "@types/node": "^22.14.0",
+        "@types/pg": "^8.23.1",
         "@types/react": "^19.3.0",
         "@types/react-dom": "^19.3.0",
+        "@vitejs/plugin-react": "^5.0.4",
         "autoprefixer": "^10.4.21",
         "esbuild": "^0.25.0",
         "tailwindcss": "^4.1.14",
@@ -285,7 +283,7 @@
 
     "@fontsource/vazirmatn": ["@fontsource/vazirmatn@5.3.0", "", {}, "sha512-XC/2yN2r5gwhFT3klSuWaqncODX2DOfRYfNmbyzgtWYxHxMC+tcoaX+tgggrm6hSkEgpR1TuSDEf1PiI91G7qg=="],
 
-    "@google/genai": ["@google/genai@2.21.0", "", { "dependencies": { "google-auth-library": "^10.3.0", "p-retry": "^4.6.2", "protobufjs": "^7.5.4", "ws": "^8.18.0" }, "peerDependencies": { "@modelcontextprotocol/sdk": "^1.25.2" }, "optionalPeers": ["@modelcontextprotocol/sdk"] }, "sha512-+PDtco2/Z0ONdzCGekCoCT+O1VJS9xJQNN4XzQpXG/t3El/SWWMkCWlFRO1KmivOHPa4Q0VjUYu1HBKCZ/v33Q=="],
+    "@google/genai": ["@google/genai@3.6.1", "", { "dependencies": { "google-auth-library": "^10.3.0", "p-retry": "^4.6.2", "protobufjs": "^7.6.5", "ws": "^8.21.0" }, "peerDependencies": { "@modelcontextprotocol/sdk": "^1.25.2" }, "optionalPeers": ["@modelcontextprotocol/sdk"] }, "sha512-DQIkZkl+VoZc+RUSaJ41vRuywjQDpP0t/oUf5/ddQhNW6JsPjVULW2EgHmuJ1mrr6ACtrmUdPlqtNXF1yfKySg=="],
 
     "@isaacs/cliui": ["@isaacs/cliui@9.0.0", "", {}, "sha512-AokJm4tuBHillT+FpMtxQ60n8ObyXBatq7jD2/JA9dxbDDokKQm8KMht5ibGzLVU9IJDIKK4TPKgMHEYMn3lMg=="],
 

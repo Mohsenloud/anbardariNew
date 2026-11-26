@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { InboundReceipt, InboundReceiptItem, AppUser } from '../types';
 import { toPersianDigits, getCurrentJalaliDate } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
@@ -14,7 +14,8 @@ import {
   ChevronDown,
   ChevronUp,
   UserCheck,
-  FileText
+  FileText,
+  Link2
 } from 'lucide-react';
 
 interface InboundReceiptVerificationModalProps {
@@ -59,7 +60,34 @@ export const InboundReceiptVerificationModal: React.FC<InboundReceiptVerificatio
   const [showOptionalNotes, setShowOptionalNotes] = useState<boolean>(() =>
     Boolean(receipt.warehouseNotes)
   );
-  const [showVoiceTranscript, setShowVoiceTranscript] = useState<boolean>(false);
+  const [showVoiceTranscript, setShowVoiceTranscript] = useState<boolean>(
+    () => receipt.source === 'telegram_voice'
+  );
+  const catalogProducts = useMemo(() => StorageService.getProducts(), []);
+
+  const isUnmatchedVoiceItem = (item: InboundReceiptItem) =>
+    item.matchConfidence === 'unmatched' ||
+    item.productId.startsWith('voice-prod-') ||
+    item.productCode === 'NEW-VOICE' ||
+    !catalogProducts.some((p) => p.id === item.productId);
+
+  const handleLinkCatalogProduct = (index: number, selectedProductId: string) => {
+    const found = catalogProducts.find((p) => p.id === selectedProductId);
+    if (!found) return;
+    setItems((prev) => {
+      const copy = [...prev];
+      copy[index] = {
+        ...copy[index],
+        productId: found.id,
+        productName: found.name,
+        productCode: found.code,
+        unit: copy[index].unit || found.unit || 'عدد',
+        buyPrice: found.buyPrice || copy[index].buyPrice || 0,
+        matchConfidence: 'exact',
+      };
+      return copy;
+    });
+  };
 
   const handleQuantityChange = (index: number, newQty: number) => {
     const validQty = Math.max(0, isNaN(newQty) ? 0 : newQty);
@@ -103,6 +131,7 @@ export const InboundReceiptVerificationModal: React.FC<InboundReceiptVerificatio
   const totalReceived = items.reduce((sum, i) => sum + i.receivedQuantity, 0);
   const hasDiscrepancy = items.some((i) => i.discrepancy !== 0);
   const discrepancyItemsCount = items.filter((i) => i.discrepancy !== 0).length;
+  const unmatchedCount = receipt.source === 'telegram_voice' ? items.filter(isUnmatchedVoiceItem).length : 0;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -243,13 +272,25 @@ export const InboundReceiptVerificationModal: React.FC<InboundReceiptVerificatio
                 >
                   <div className="flex flex-col sm:grid sm:grid-cols-12 gap-2 sm:items-center">
                     {/* 1. Product Name & Code */}
-                    <div className="sm:col-span-5 flex items-center gap-2 min-w-0">
-                      <span className="w-5 h-5 rounded-md bg-slate-100 text-slate-600 font-mono text-[10px] font-bold flex items-center justify-center shrink-0">
+                    <div className="sm:col-span-5 flex items-start gap-2 min-w-0">
+                      <span className="w-5 h-5 rounded-md bg-slate-100 text-slate-600 font-mono text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
                         {toPersianDigits(idx + 1)}
                       </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="font-bold text-slate-900 text-xs sm:text-[13px] truncate" title={item.productName}>
-                          {item.productName}
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-slate-900 text-xs sm:text-[13px] truncate" title={item.productName}>
+                            {item.productName}
+                          </span>
+                          {receipt.source === 'telegram_voice' && isUnmatchedVoiceItem(item) && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold shrink-0">
+                              نیاز به اتصال به انبار
+                            </span>
+                          )}
+                          {receipt.source === 'telegram_voice' && item.matchConfidence === 'fuzzy' && !isUnmatchedVoiceItem(item) && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 text-[10px] font-bold shrink-0">
+                              تطبیق مشابه
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] text-slate-400 font-mono flex items-center gap-2">
                           <span>کد: {toPersianDigits(item.productCode)}</span>
@@ -257,6 +298,23 @@ export const InboundReceiptVerificationModal: React.FC<InboundReceiptVerificatio
                             • فاکتور: <strong className="font-mono">{toPersianDigits(item.expectedQuantity)} {item.unit || 'عدد'}</strong>
                           </span>
                         </div>
+                        {receipt.source === 'telegram_voice' && (isUnmatchedVoiceItem(item) || item.matchConfidence === 'fuzzy') && catalogProducts.length > 0 && (
+                          <div className="flex items-center gap-1.5 pt-0.5">
+                            <Link2 className="w-3 h-3 text-slate-400 shrink-0" />
+                            <select
+                              value={catalogProducts.some((p) => p.id === item.productId) ? item.productId : ''}
+                              onChange={(e) => handleLinkCatalogProduct(idx, e.target.value)}
+                              className="w-full max-w-[230px] text-[11px] bg-white border border-slate-300 rounded-md px-2 py-1 text-slate-700 outline-none focus:border-emerald-500"
+                            >
+                              <option value="">-- انتخاب کالای متناظر در انبار --</option>
+                              {catalogProducts.map((prod) => (
+                                <option key={prod.id} value={prod.id}>
+                                  {prod.name} ({prod.code})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -380,6 +438,16 @@ export const InboundReceiptVerificationModal: React.FC<InboundReceiptVerificatio
               </div>
             )}
           </div>
+
+          {/* Slim Unmatched Voice Products Hint */}
+          {unmatchedCount > 0 && (
+            <div className="px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                <strong>{toPersianDigits(unmatchedCount)} قلم از ویس به کالای موجود در انبار متصل نشده است.</strong> برای افزایش دقیق موجودی انبار، لطفاً از منوی کشویی کنار هر ردیف کالای متناظر آن را انتخاب کنید.
+              </span>
+            </div>
+          )}
 
           {/* Slim Discrepancy Alert (Only shown when there is a discrepancy) */}
           {hasDiscrepancy && (

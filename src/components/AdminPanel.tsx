@@ -16,9 +16,14 @@ import {
   testTelegramBotConnection,
   testTelegramMessage,
   testAiConnection,
+  getAiVoiceStatus,
+  processVoiceDirectly,
   setTelegramWebhook,
+  deleteTelegramWebhook,
   getTelegramWebhookInfo,
   sanitizeTelegramToken,
+  AiVoiceSystemStatus,
+  VoiceAnalysisResult,
 } from '../utils/telegramService';
 import {
   ShieldCheck,
@@ -73,6 +78,8 @@ import {
   Radio,
   KeyRound,
   RefreshCw,
+  Square,
+  FileAudio,
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -186,12 +193,59 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [showAiApiKey, setShowAiApiKey] = useState(false);
   const [isTestingAi, setIsTestingAi] = useState(false);
   const [aiTestResult, setAiTestResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
+  const [aiSystemStatus, setAiSystemStatus] = useState<AiVoiceSystemStatus | null>(null);
+  const [isLoadingAiStatus, setIsLoadingAiStatus] = useState(false);
   const [webhookUrlInput, setWebhookUrlInput] = useState('');
   const [isSettingWebhook, setIsSettingWebhook] = useState(false);
   const [webhookStatus, setWebhookStatus] = useState<{ ok: boolean; message: string; info?: any } | null>(null);
 
+  // Live AI Voice & Text Test Studio states
+  const [testVoiceText, setTestVoiceText] = useState(
+    'سلام، امروز ۱۵ پاکت سیمان تیپ ۲ و ۸ شاخه میلگرد ۱۴ از آقای رضایی وارد کارگاه شد.'
+  );
+  const [isAnalyzingVoice, setIsAnalyzingVoice] = useState(false);
+  const [voiceAnalysisResult, setVoiceAnalysisResult] = useState<VoiceAnalysisResult | null>(null);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<number | null>(null);
+  const audioFileInputRef = useRef<HTMLInputElement | null>(null);
+
   // Print & PDF Layout Customization sub-tab
   const [templatesSubTab, setTemplatesSubTab] = useState<'dimensions' | 'templates' | 'quality'>('dimensions');
+
+  const fetchAiStatus = async () => {
+    setIsLoadingAiStatus(true);
+    try {
+      const status = await getAiVoiceStatus();
+      if (status?.success) {
+        setAiSystemStatus(status);
+      }
+    } finally {
+      setIsLoadingAiStatus(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection === 'ai-voice') {
+      fetchAiStatus();
+    }
+  }, [activeSection]);
+
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try {
+          mediaRecorderRef.current.stop();
+          mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
+        } catch {
+          // ignore cleanup errors
+        }
+      }
+    };
+  }, []);
 
   const handleTestAiConnection = async () => {
     setIsTestingAi(true);
@@ -210,6 +264,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           message: res.message || 'اتصال به سرویس هوش مصنوعی با موفقیت برقرار شد.',
           details: res,
         });
+        fetchAiStatus();
       } else {
         setAiTestResult({
           success: false,
@@ -226,6 +281,113 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  const handleAnalyzeAudioBlob = async (blob: Blob, mimeType: string) => {
+    if (blob.size > 15 * 1024 * 1024) {
+      setVoiceAnalysisResult({ success: false, error: 'حجم فایل صوتی نباید بیشتر از ۱۵ مگابایت باشد.' });
+      return;
+    }
+    setIsAnalyzingVoice(true);
+    setVoiceAnalysisResult(null);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('خطا در خواندن فایل صوتی'));
+        reader.readAsDataURL(blob);
+      });
+      const res = await processVoiceDirectly({ audioBase64: base64, mimeType });
+      setVoiceAnalysisResult(res);
+      fetchAiStatus();
+    } catch (err: any) {
+      setVoiceAnalysisResult({ success: false, error: err?.message || 'خطا در تحلیل فایل صوتی' });
+    } finally {
+      setIsAnalyzingVoice(false);
+    }
+  };
+
+  const handleToggleMicRecording = async () => {
+    if (isRecordingVoice) {
+      if (recordingTimerRef.current) {
+        window.clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      setIsRecordingVoice(false);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      return;
+    }
+
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setVoiceAnalysisResult({
+        success: false,
+        error: 'مرورگر یا محیط فعلی از ضبط مستقیم میکروفون پشتیبانی نمی‌کند. می‌توانید فایل صوتی آپلود کنید یا تست متنی بزنید.',
+      });
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferredMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+        ? 'audio/ogg;codecs=opus'
+        : 'audio/webm';
+
+      const recorder = new MediaRecorder(stream, { mimeType: preferredMime });
+      recordedChunksRef.current = [];
+      recorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) {
+          recordedChunksRef.current.push(ev.data);
+        }
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const cleanMime = preferredMime.split(';')[0] || 'audio/webm';
+        const blob = new Blob(recordedChunksRef.current, { type: cleanMime });
+        if (blob.size > 0) {
+          handleAnalyzeAudioBlob(blob, cleanMime);
+        }
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setRecordingSeconds(0);
+      setIsRecordingVoice(true);
+      setVoiceAnalysisResult(null);
+      recordingTimerRef.current = window.setInterval(() => {
+        setRecordingSeconds((s) => s + 1);
+      }, 1000);
+    } catch (err: any) {
+      setVoiceAnalysisResult({
+        success: false,
+        error: 'دسترسی به میکروفون تایید نشد یا میکروفون در دسترس نیست.',
+      });
+    }
+  };
+
+  const handleUploadTestAudio = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    handleAnalyzeAudioBlob(file, file.type || 'audio/ogg');
+  };
+
+  const handleAnalyzeSampleText = async () => {
+    if (!testVoiceText.trim()) return;
+    setIsAnalyzingVoice(true);
+    setVoiceAnalysisResult(null);
+    try {
+      const res = await processVoiceDirectly({ text: testVoiceText.trim() });
+      setVoiceAnalysisResult(res);
+      fetchAiStatus();
+    } catch (err: any) {
+      setVoiceAnalysisResult({ success: false, error: err?.message || 'خطا در پردازش متن نمونه' });
+    } finally {
+      setIsAnalyzingVoice(false);
+    }
+  };
+
   const handleRegisterTelegramWebhook = async () => {
     if (!formData.telegramBotToken?.trim()) {
       setWebhookStatus({ ok: false, message: 'لطفاً ابتدا توکن ربات تلگرام را در بخش تنظیمات تلگرام ثبت کنید.' });
@@ -239,9 +401,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       if (res.ok) {
         setWebhookStatus({
           ok: true,
-          message: `وبهوک تلگرام با موفقیت روی آدرس زیر فعال گردید:\n${finalUrl}`,
+          message: `وبهوک تلگرام با محافظت Secret Token روی آدرس زیر فعال شد:\n${finalUrl}`,
           info: res,
         });
+        fetchAiStatus();
       } else {
         setWebhookStatus({
           ok: false,
@@ -258,6 +421,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  const handleDeleteTelegramWebhook = async () => {
+    if (!formData.telegramBotToken?.trim()) {
+      setWebhookStatus({ ok: false, message: 'لطفاً ابتدا توکن ربات تلگرام را ثبت فرمایید.' });
+      return;
+    }
+    setIsSettingWebhook(true);
+    try {
+      const res = await deleteTelegramWebhook(formData.telegramBotToken);
+      if (res.ok) {
+        setWebhookStatus({
+          ok: true,
+          message: 'وبهوک تلگرام با موفقیت حذف و غیرفعال شد.',
+        });
+        fetchAiStatus();
+      } else {
+        setWebhookStatus({
+          ok: false,
+          message: res.description || 'حذف وبهوک با خطا مواجه شد.',
+        });
+      }
+    } catch (err: any) {
+      setWebhookStatus({ ok: false, message: err?.message || 'خطا در حذف وبهوک' });
+    } finally {
+      setIsSettingWebhook(false);
+    }
+  };
+
   const handleCheckWebhookInfo = async () => {
     if (!formData.telegramBotToken?.trim()) {
       setWebhookStatus({ ok: false, message: 'لطفاً ابتدا توکن ربات تلگرام را ثبت فرمایید.' });
@@ -267,9 +457,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     try {
       const res = await getTelegramWebhookInfo(formData.telegramBotToken);
       if (res.ok && res.result) {
+        const lastErr = res.result.last_error_message
+          ? `\nآخرین خطای تلگرام: ${res.result.last_error_message}`
+          : '';
         setWebhookStatus({
           ok: true,
-          message: res.result.url ? `وبهوک فعال روی: ${res.result.url}` : 'هیچ وبهوکی برای این ربات ثبت نشده است (حالت Polling/دریافت دستی).',
+          message: res.result.url
+            ? `وبهوک فعال روی: ${res.result.url}\nپیام‌های در صف: ${toPersianDigits(res.result.pending_update_count || 0)}${lastErr}`
+            : 'هیچ وبهوکی برای این ربات ثبت نشده است.',
           info: res.result,
         });
       } else {
@@ -3772,112 +3967,121 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
           {/* 5.1 AI & TELEGRAM VOICE INBOUND ASSISTANT (هوش مصنوعی و ویس تلگرام) */}
           {canAccessFullAdmin && activeSection === 'ai-voice' && (
-            <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
-              {/* Header Title */}
+            <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-5">
+              {/* Header */}
               <div className="flex items-center justify-between pb-4 border-b border-slate-100 flex-wrap gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-purple-500/10 text-purple-600 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-xl bg-slate-900 text-emerald-400 flex items-center justify-center shrink-0">
                     <Mic className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-sm sm:text-base font-bold text-slate-800">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900">
                       هوش مصنوعی و دستیار صوتی ورود کالا از تلگرام
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      تبدیل ویس کارگاه و انبار در تلگرام به حواله ورود کالا با تایید نهایی مدیر و پشتیبانی از انواع API
+                      رونویسی دو‌مرحله‌ای فارسی، تطبیق هوشمند با کل کاتالوگ انبار و ثبت امن حواله ورود
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                    formData.aiVoiceInboundEnabled
-                      ? 'bg-purple-100 text-purple-800'
-                      : 'bg-slate-100 text-slate-500'
-                  }`}>
-                    <span className={`w-2 h-2 rounded-full ${formData.aiVoiceInboundEnabled ? 'bg-purple-600 animate-pulse' : 'bg-slate-400'}`}></span>
-                    {formData.aiVoiceInboundEnabled ? 'دستیار صوتی فعال' : 'دستیار صوتی غیرفعال'}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={fetchAiStatus}
+                    disabled={isLoadingAiStatus}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-medium cursor-pointer"
+                    title="بروزرسانی وضعیت موتور هوش مصنوعی"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingAiStatus ? 'animate-spin' : ''}`} />
+                    <span>بروزرسانی</span>
+                  </button>
+                  <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      name="aiVoiceInboundEnabled"
+                      checked={formData.aiVoiceInboundEnabled !== false}
+                      onChange={(e) => setFormData(prev => ({ ...prev, aiVoiceInboundEnabled: e.target.checked }))}
+                      className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer"
+                    />
+                    <span className="text-xs font-bold text-slate-800">
+                      {formData.aiVoiceInboundEnabled !== false ? 'دستیار فعال' : 'غیرفعال'}
+                    </span>
+                  </label>
                 </div>
               </div>
 
-              {/* Workflow Info Banner */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border border-purple-200/80 text-xs text-purple-950 space-y-2">
-                <div className="font-bold flex items-center gap-2 text-purple-900 text-sm">
-                  <Sparkles className="w-4 h-4 text-purple-600" />
-                  <span>نحوه کارکرد دستیار صوتی تلگرام در کارگاه و انبار:</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1 text-[11.5px] leading-relaxed text-slate-700">
-                  <div className="bg-white/80 p-3 rounded-xl border border-purple-100 shadow-2xs">
-                    <div className="font-bold text-purple-900 mb-1">۱. ارسال ویس در تلگرام</div>
-                    انباردار یا مسئول کارگاه ویس صوتی می‌فرستد: <em>«امروز ۲۰ کیسه سیمان تیپ ۲ و ۵ شاخه میلگرد ۱۶ وارد کارگاه شد.»</em>
-                  </div>
-                  <div className="bg-white/80 p-3 rounded-xl border border-purple-100 shadow-2xs">
-                    <div className="font-bold text-indigo-900 mb-1">۲. تحلیل هوش مصنوعی</div>
-                    موتور هوش مصنوعی (جمینای، اوپن‌ای‌آی یا سرور لوکال) صوت را پردازش کرده و اقلام، واحد و تعداد را استخراج می‌کند.
-                  </div>
-                  <div className="bg-white/80 p-3 rounded-xl border border-purple-100 shadow-2xs">
-                    <div className="font-bold text-emerald-900 mb-1">۳. تایید نهایی مدیر</div>
-                    حواله با وضعیت <strong>«در انتظار تایید»</strong> ثبت شده و مدیر پس از بررسی با یک کلیک تایید و موجودی انبار را افزایش می‌دهد.
-                  </div>
-                </div>
-              </div>
-
-              {/* Master Switch */}
-              <div className="p-4 rounded-2xl border border-purple-200 bg-purple-50/40">
-                <label className="flex items-center justify-between cursor-pointer gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0">
-                      <Mic className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="font-bold text-slate-800 text-xs sm:text-sm block">
-                        فعال‌سازی ثبت ورودی انبار از روی ویس تلگرام
-                      </span>
-                      <span className="text-[11px] text-slate-500">
-                        ربات پیام‌های صوتی دریافتی را تحلیل کرده و رسید ورود کالا را برای تایید مدیر ایجاد می‌نماید.
-                      </span>
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    name="aiVoiceInboundEnabled"
-                    checked={formData.aiVoiceInboundEnabled !== false}
-                    onChange={(e) => setFormData(prev => ({ ...prev, aiVoiceInboundEnabled: e.target.checked }))}
-                    className="w-5 h-5 rounded text-purple-600 focus:ring-purple-500 border-slate-300 cursor-pointer"
-                  />
-                </label>
-              </div>
-
-              {/* AI Engine & API Provider Configuration */}
-              <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-4">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <Cpu className="w-4 h-4 text-purple-600" />
-                    <span className="font-bold text-xs sm:text-sm text-slate-800">
-                      انتخاب سرویس‌دهنده و مدل هوش مصنوعی (AI Provider)
+              {/* Compact Live Readiness Strip */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+                <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/70">
+                  <div className="text-[11px] text-slate-500">وضعیت اتصال موتور</div>
+                  <div className="mt-1 flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                    <span className={`w-2 h-2 rounded-full ${aiSystemStatus?.isAiReady ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                    <span>
+                      {aiSystemStatus?.hasServerGeminiKey && (formData.aiProvider || 'gemini') === 'gemini'
+                        ? 'کلید سرور آماده'
+                        : aiSystemStatus?.isAiReady
+                        ? 'آماده به کار'
+                        : 'نیاز به تنظیم کلید'}
                     </span>
                   </div>
-                  <span className="text-[11px] text-slate-500">قابل تنظیم برای VPS، داکر، کلود یا سرور محلی</span>
+                </div>
+
+                <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/70">
+                  <div className="text-[11px] text-slate-500">موتور رونویسی + استخراج</div>
+                  <div className="mt-1 text-xs font-mono font-bold text-slate-900 truncate" dir="ltr">
+                    {(formData.aiProvider || 'gemini') === 'gemini'
+                      ? `${aiSystemStatus?.effectiveModel || formData.aiModel || 'gemini-4-hydrogen'}`
+                      : (formData.aiModel || 'gpt-4o-mini')}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/70">
+                  <div className="text-[11px] text-slate-500">کاتالوگ قابل تطبیق</div>
+                  <div className="mt-1 text-xs font-bold text-slate-900">
+                    {toPersianDigits(products.length)} کالای فعال (رتبه‌بندی هوشمند)
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/70">
+                  <div className="text-[11px] text-slate-500">امنیت وبهوک تلگرام</div>
+                  <div className="mt-1 flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                    <ShieldCheck className={`w-3.5 h-3.5 ${aiSystemStatus?.webhookSecretActive ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    <span>{aiSystemStatus?.webhookSecretActive ? 'محافظت Secret Token' : 'ثبت نشده'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 1: AI Engine Configuration */}
+              <div className="p-4 sm:p-5 rounded-xl border border-slate-200 bg-slate-50/40 space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Cpu className="w-4 h-4 text-slate-700" />
+                    <span className="font-bold text-xs sm:text-sm text-slate-900">
+                      پیکربندی موتور هوش مصنوعی و واژگان کارگاه
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500">
+                    در Gemini به‌صورت خودکار از <code className="font-mono text-slate-700">gemini-3.5-transcribe</code> برای صوت استفاده می‌شود
+                  </span>
                 </div>
 
                 {/* Provider Selection Tabs */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   <button
                     type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, aiProvider: 'gemini', aiModel: 'gemini-2.5-flash' }))}
+                    onClick={() => setFormData(prev => ({ ...prev, aiProvider: 'gemini', aiModel: 'gemini-4-hydrogen' }))}
                     className={`p-3 rounded-xl border text-right transition-all cursor-pointer flex flex-col gap-1 ${
                       (formData.aiProvider || 'gemini') === 'gemini'
-                        ? 'bg-purple-50 border-purple-400 text-purple-950 ring-1 ring-purple-300 shadow-xs'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        ? 'bg-emerald-50/80 border-emerald-500 text-emerald-950'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs">گوگل جمینای (Gemini API)</span>
-                      <span className="text-[10px] font-mono bg-purple-200/70 text-purple-900 px-1.5 py-0.5 rounded font-bold">پیشنهادی</span>
+                      <span className="font-bold text-xs">گوگل جمینای (Gemini)</span>
+                      <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">پیشنهادی</span>
                     </div>
                     <span className="text-[11px] text-slate-500 leading-relaxed">
-                      پشتیبانی مستقیم از صوت، سرعت بالا، بدون نیاز به کتابخانه سنگین محلی
+                      رونویسی دقیق فارسی با Transcribe 3.5 + استخراج ساختاریافته با Gemini 4 Hydrogen
                     </span>
                   </button>
 
@@ -3886,16 +4090,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     onClick={() => setFormData(prev => ({ ...prev, aiProvider: 'openai', aiModel: 'gpt-4o-mini' }))}
                     className={`p-3 rounded-xl border text-right transition-all cursor-pointer flex flex-col gap-1 ${
                       formData.aiProvider === 'openai'
-                        ? 'bg-purple-50 border-purple-400 text-purple-950 ring-1 ring-purple-300 shadow-xs'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        ? 'bg-emerald-50/80 border-emerald-500 text-emerald-950'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs">اوپن‌ای‌آی (OpenAI Whisper + GPT)</span>
-                      <span className="text-[10px] font-mono bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded">رایج</span>
+                      <span className="font-bold text-xs">اوپن‌ای‌آی (Whisper + GPT)</span>
+                      <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">OpenAI</span>
                     </div>
                     <span className="text-[11px] text-slate-500 leading-relaxed">
-                      استفاده از مدل Whisper جهت رونویسی و مدل کم‌هزینه gpt-4o-mini جهت استخراج JSON
+                      رونویسی با Whisper-1 همراه با استخراج JSON توسط gpt-4o-mini
                     </span>
                   </button>
 
@@ -3904,30 +4108,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     onClick={() => setFormData(prev => ({ ...prev, aiProvider: 'custom', aiModel: 'custom-model' }))}
                     className={`p-3 rounded-xl border text-right transition-all cursor-pointer flex flex-col gap-1 ${
                       formData.aiProvider === 'custom'
-                        ? 'bg-purple-50 border-purple-400 text-purple-950 ring-1 ring-purple-300 shadow-xs'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        ? 'bg-emerald-50/80 border-emerald-500 text-emerald-950'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs">سرویس شخصی / داکر (Custom API)</span>
-                      <span className="text-[10px] font-mono bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">VPS</span>
+                      <span className="font-bold text-xs">سرور اختصاصی / داکر</span>
+                      <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">VPS</span>
                     </div>
                     <span className="text-[11px] text-slate-500 leading-relaxed">
-                      سازگار با سرورهای محلی، هوش مصنوعی ایرانی یا Ollama / vLLM در سرور خودتان
+                      سازگار با سرورهای محلی Ollama / vLLM یا ارائه‌دهنده‌های OpenAI-Compatible
                     </span>
                   </button>
                 </div>
 
-                {/* API Key Input */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1">
-                    کلید اختصاصی API هوش مصنوعی (API Key) <span className="text-rose-500">*</span>
-                  </label>
-                  <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
-                    {(formData.aiProvider || 'gemini') === 'gemini'
-                      ? 'کلید Gemini API شما. (اگر در متغیر محیطی GEMINI_API_KEY روی سرور تعریف شده باشد، می‌توانید این کادر را خالی بگذارید).'
-                      : 'کلید دسترسی محرمانه ارائه‌دهنده انتخابی.'}
-                  </p>
+                {/* API Key & Test Connection */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <label className="text-xs font-bold text-slate-800">
+                      کلید API هوش مصنوعی
+                      {(formData.aiProvider || 'gemini') === 'gemini' && aiSystemStatus?.hasServerGeminiKey && (
+                        <span className="mr-2 text-[11px] font-medium text-emerald-700">
+                          (کلید سرور GEMINI_API_KEY فعال است؛ این کادر اختیاری است)
+                        </span>
+                      )}
+                    </label>
+                  </div>
 
                   <div className="flex items-center gap-2">
                     <div className="relative flex-1">
@@ -3935,18 +4141,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         type={showAiApiKey ? 'text' : 'password'}
                         name="aiApiKey"
                         dir="ltr"
-                        placeholder={(formData.aiProvider || 'gemini') === 'gemini' ? 'AIzaSy...' : 'sk-proj-...'}
+                        placeholder={
+                          (formData.aiProvider || 'gemini') === 'gemini'
+                            ? aiSystemStatus?.hasServerGeminiKey
+                              ? 'خالی بگذارید تا از کلید امن سرور استفاده شود'
+                              : 'AIzaSy...'
+                            : 'sk-proj-...'
+                        }
                         value={formData.aiApiKey || ''}
                         onChange={(e) => {
                           setFormData(prev => ({ ...prev, aiApiKey: e.target.value }));
                           if (aiTestResult) setAiTestResult(null);
                         }}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono text-left text-slate-800 outline-none focus:border-purple-500 pr-10"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-mono text-left text-slate-800 outline-none focus:border-emerald-500 pr-10"
                       />
                       <button
                         type="button"
                         onClick={() => setShowAiApiKey(!showAiApiKey)}
-                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        className="absolute right-3 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
                         title={showAiApiKey ? 'مخفی کردن کلید' : 'نمایش کلید'}
                       >
                         {showAiApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -3957,31 +4169,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       type="button"
                       onClick={handleTestAiConnection}
                       disabled={isTestingAi}
-                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold text-xs transition-all shadow-xs cursor-pointer shrink-0"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs transition-colors cursor-pointer shrink-0"
                     >
                       {isTestingAi ? (
                         <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>در حال ارزیابی...</span>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>در حال تست...</span>
                         </>
                       ) : (
                         <>
-                          <Zap className="w-4 h-4 text-amber-300" />
-                          <span>تست سلامت API هوش مصنوعی</span>
+                          <Zap className="w-3.5 h-3.5 text-amber-400" />
+                          <span>تست سلامت API</span>
                         </>
                       )}
                     </button>
                   </div>
-                </div>
 
-                {/* AI Connection Test Feedback */}
-                {aiTestResult && (
-                  <div className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-2 animate-fadeIn ${
-                    aiTestResult.success
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      : 'bg-rose-50 border-rose-200 text-rose-800'
-                  }`}>
-                    <div className="flex items-center gap-2">
+                  {aiTestResult && (
+                    <div className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                      aiTestResult.success
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                        : 'bg-rose-50 border-rose-200 text-rose-800'
+                    }`}>
                       {aiTestResult.success ? (
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                       ) : (
@@ -3989,32 +4198,47 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       )}
                       <span>{aiTestResult.message}</span>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
-                {/* Model & Custom Endpoint settings */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                {/* Model & Base URL */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-800 mb-1">
-                      مدل هوش مصنوعی (AI Model Name)
+                      مدل استخراج اقلام (AI Model)
                     </label>
                     <input
                       type="text"
                       name="aiModel"
                       dir="ltr"
-                      placeholder={(formData.aiProvider || 'gemini') === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o-mini'}
+                      placeholder={(formData.aiProvider || 'gemini') === 'gemini' ? 'gemini-4-hydrogen' : 'gpt-4o-mini'}
                       value={formData.aiModel || ''}
                       onChange={(e) => setFormData(prev => ({ ...prev, aiModel: e.target.value }))}
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left text-slate-800 outline-none focus:border-purple-500"
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left text-slate-800 outline-none focus:border-emerald-500"
                     />
-                    <span className="text-[10px] text-slate-400 mt-1 block">
-                      {(formData.aiProvider || 'gemini') === 'gemini' ? 'پیش‌فرض جمینای: gemini-2.5-flash' : 'پیش‌فرض: gpt-4o-mini'}
-                    </span>
+                    {(formData.aiProvider || 'gemini') === 'gemini' && (
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                        {['gemini-4-hydrogen', 'gemini-3.5-flash-lite', 'gemini-3-flash-preview'].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, aiModel: preset }))}
+                            className={`px-2 py-0.5 rounded text-[10px] font-mono border cursor-pointer transition-colors ${
+                              (formData.aiModel || 'gemini-4-hydrogen') === preset
+                                ? 'bg-slate-900 text-white border-slate-900'
+                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-800 mb-1">
-                      آدرس سرور سفارشی / Base URL (ویژه داکر یا سرور شخصی)
+                      آدرس سرور سفارشی / Base URL (ویژه سرور شخصی)
                     </label>
                     <input
                       type="text"
@@ -4023,130 +4247,362 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       placeholder="https://api.openai.com/v1 یا http://localhost:11434/v1"
                       value={formData.aiBaseUrl || ''}
                       onChange={(e) => setFormData(prev => ({ ...prev, aiBaseUrl: e.target.value }))}
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left text-slate-800 outline-none focus:border-purple-500"
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left text-slate-800 outline-none focus:border-emerald-500"
                     />
                     <span className="text-[10px] text-slate-400 mt-1 block">
-                      برای Gemini خالی بگذارید. برای سرویس‌های لوکال یا ارائه‌دهنده‌های ثالث وارد نمایید.
+                      برای Gemini خالی بگذارید. ویژه OpenAI پروکسی یا سرور محلی.
                     </span>
                   </div>
                 </div>
 
-                {/* Advanced Options */}
-                <div className="pt-2 border-t border-slate-200/80 space-y-2">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-700">
+                {/* Workshop Vocabulary / Custom Prompt */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">
+                    واژگان و اصطلاحات اختصاصی کارگاه / انبار (Custom Prompt Hints)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="مثال: منظور از «پاکت» کیسه ۵۰ کیلویی است. «میلگرد ذوب» یعنی میلگرد آجدار ذوب‌آهن اصفهان. نام راننده‌ها را به عنوان تامین‌کننده ثبت نکن."
+                    value={formData.aiCustomPrompt || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, aiCustomPrompt: e.target.value }))}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-500 resize-y"
+                  />
+                </div>
+
+                {/* Behavior Toggles */}
+                <div className="pt-2 border-t border-slate-200/80 grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  <label className="flex items-start gap-2.5 p-2.5 rounded-xl bg-white border border-slate-200 cursor-pointer text-xs text-slate-700">
                     <input
                       type="checkbox"
                       checked={formData.aiVoiceAutoMatchProducts !== false}
                       onChange={(e) => setFormData(prev => ({ ...prev, aiVoiceAutoMatchProducts: e.target.checked }))}
-                      className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300"
+                      className="w-4 h-4 mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
                     />
-                    <span className="font-bold">تطبیق خودکار نام کالا با محصولات تعریف‌شده در انبار</span>
+                    <div>
+                      <span className="font-bold text-slate-900 block">تطبیق هوشمند با کالاهای انبار</span>
+                      <span className="text-[11px] text-slate-500">جستجوی فازی فارسی در تمام کالاها و اتصال خودکار به کد کالا</span>
+                    </div>
                   </label>
 
-                  <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-700">
+                  <label className="flex items-start gap-2.5 p-2.5 rounded-xl bg-white border border-slate-200 cursor-pointer text-xs text-slate-700">
                     <input
                       type="checkbox"
                       checked={formData.aiVoiceRequireAdminApproval !== false}
                       onChange={(e) => setFormData(prev => ({ ...prev, aiVoiceRequireAdminApproval: e.target.checked }))}
-                      className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 border-slate-300"
+                      className="w-4 h-4 mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
                     />
-                    <span className="font-bold">الزام تایید مدیر (ثبت در وضعیت «در انتظار بررسی» بدون افزایش آنی موجودی انبار)</span>
+                    <div>
+                      <span className="font-bold text-slate-900 block">الزام تایید مدیر قبل از افزایش موجودی</span>
+                      <span className="text-[11px] text-slate-500">در صورت غیرفعال کردن، اقلام تطبیق‌یافته بلافاصله موجودی را افزایش می‌دهند</span>
+                    </div>
                   </label>
                 </div>
               </div>
 
-              {/* Telegram Webhook Setup for VPS */}
-              <div className="p-4 sm:p-5 rounded-2xl border border-sky-200 bg-sky-50/40 space-y-4">
+              {/* Section 2: Telegram Webhook & Access Control */}
+              <div className="p-4 sm:p-5 rounded-xl border border-slate-200 bg-slate-50/40 space-y-4">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <Radio className="w-4 h-4 text-sky-600" />
-                    <span className="font-bold text-xs sm:text-sm text-slate-800">
-                      اتصال ربات تلگرام به سرور (تنظیم Webhook برای دریافت ویس)
+                    <span className="font-bold text-xs sm:text-sm text-slate-900">
+                      وبهوک تلگرام و کنترل دسترسی فرستندگان
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleCheckWebhookInfo}
-                    disabled={isSettingWebhook || !formData.telegramBotToken?.trim()}
-                    className="text-xs font-bold text-sky-700 hover:text-sky-900 bg-sky-100 hover:bg-sky-200 px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
-                  >
-                    استعلام وضعیت فعلی وبهوک
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCheckWebhookInfo}
+                      disabled={isSettingWebhook || !formData.telegramBotToken?.trim()}
+                      className="text-xs font-bold text-slate-700 hover:text-slate-900 bg-white border border-slate-300 hover:bg-slate-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      استعلام وضعیت
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteTelegramWebhook}
+                      disabled={isSettingWebhook || !formData.telegramBotToken?.trim()}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-rose-700 hover:text-rose-900 bg-rose-50 border border-rose-200 hover:bg-rose-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>حذف وبهوک</span>
+                    </button>
+                  </div>
                 </div>
 
-                <p className="text-[11px] text-slate-600 leading-relaxed">
-                  برای اینکه ربات تلگرام بتواند پیام‌های صوتی (Voice) ارسالی توسط کاربران را بلافاصله دریافت کند، باید آدرس عمومی سرور یا دامین خود را به عنوان Webhook در تلگرام ثبت فرمایید:
-                </p>
-
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                   <input
                     type="text"
                     dir="ltr"
                     placeholder={`${window.location.origin}/api/telegram/webhook`}
                     value={webhookUrlInput || `${window.location.origin}/api/telegram/webhook`}
                     onChange={(e) => setWebhookUrlInput(e.target.value)}
-                    className="flex-1 bg-white border border-sky-300 rounded-xl px-3.5 py-2.5 text-xs font-mono text-left text-slate-800 outline-none focus:border-sky-500"
+                    className="flex-1 bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-mono text-left text-slate-800 outline-none focus:border-sky-500"
                   />
                   <button
                     type="button"
                     onClick={handleRegisterTelegramWebhook}
                     disabled={isSettingWebhook || !formData.telegramBotToken?.trim()}
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold text-xs transition-all shadow-xs cursor-pointer shrink-0"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-bold text-xs transition-colors cursor-pointer shrink-0"
                   >
                     {isSettingWebhook ? (
                       <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         <span>در حال ثبت...</span>
                       </>
                     ) : (
                       <>
-                        <Radio className="w-4 h-4" />
-                        <span>ثبت Webhook در تلگرام</span>
+                        <Radio className="w-3.5 h-3.5" />
+                        <span>ثبت امن Webhook</span>
                       </>
                     )}
                   </button>
                 </div>
 
                 {webhookStatus && (
-                  <div className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-2 animate-fadeIn ${
+                  <div className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
                     webhookStatus.ok
                       ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                       : 'bg-rose-50 border-rose-200 text-rose-800'
                   }`}>
-                    <div className="flex items-center gap-2">
-                      {webhookStatus.ok ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      ) : (
-                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                      )}
-                      <span className="whitespace-pre-line">{webhookStatus.message}</span>
-                    </div>
+                    {webhookStatus.ok ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    )}
+                    <span className="whitespace-pre-line">{webhookStatus.message}</span>
                   </div>
                 )}
 
-                <div className="p-3 bg-white/80 border border-sky-200 rounded-xl text-xs space-y-1 text-slate-700">
-                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                    <HelpCircle className="w-4 h-4 text-sky-600" />
-                    <span>نکته مهم برای اجرا روی VPS و داکر:</span>
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-slate-600">
-                    تلگرام برای ارسال وبهوک نیازمند آدرس با پروتکل امن <code>https://</code> و پورت استاندارد (مثل 443 با گواهی SSL رایگان Let's Encrypt یا Cloudflare) است. در فایل <code>nginx-vps-host.conf.example</code> مسیر <code>/api/telegram/webhook</code> به‌صورت خودکار به پورت سرور داکر فوروارد می‌شود.
+                {/* Allowed Chat IDs */}
+                <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-800">
+                    محدودسازی چت‌های مجاز برای ارسال ویس / پیام ورود (Chat ID Allowlist)
+                  </label>
+                  <input
+                    type="text"
+                    dir="ltr"
+                    placeholder="خالی = همه چت‌ها مجاز | مثال: 123456789, -100192837465"
+                    value={formData.aiVoiceAllowedChatIds || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, aiVoiceAllowedChatIds: e.target.value }))}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-mono text-left text-slate-800 outline-none focus:border-sky-500"
+                  />
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    کاربران انبار می‌توانند دستور <code className="font-mono bg-slate-200/70 px-1 rounded">/myid</code> را به ربات بفرستند تا شناسه چت خود را ببینند. همچنین علاوه بر ویس، دستور متنی <code className="font-mono bg-slate-200/70 px-1 rounded">/in ۱۰ پاکت سیمان</code> نیز پشتیبانی می‌شود.
                   </p>
                 </div>
               </div>
 
+              {/* Section 3: Live Voice & Text Test Studio */}
+              <div className="p-4 sm:p-5 rounded-xl border border-slate-200 bg-white space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-emerald-600" />
+                    <span className="font-bold text-xs sm:text-sm text-slate-900">
+                      آزمایشگاه زنده تست ویس و استخراج اقلام
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input
+                      ref={audioFileInputRef}
+                      type="file"
+                      accept="audio/*,.ogg,.mp3,.wav,.m4a,.webm"
+                      onChange={handleUploadTestAudio}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleToggleMicRecording}
+                      disabled={isAnalyzingVoice}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 ${
+                        isRecordingVoice
+                          ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                          : 'bg-slate-900 hover:bg-slate-800 text-white'
+                      }`}
+                    >
+                      {isRecordingVoice ? (
+                        <>
+                          <Square className="w-3.5 h-3.5 fill-current" />
+                          <span>توقف ضبط ({toPersianDigits(recordingSeconds)} ثانیه)</span>
+                        </>
+                      ) : (
+                        <>
+                          <Mic className="w-3.5 h-3.5" />
+                          <span>ضبط ویس تست</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => audioFileInputRef.current?.click()}
+                      disabled={isAnalyzingVoice || isRecordingVoice}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <FileAudio className="w-3.5 h-3.5 text-slate-500" />
+                      <span>آپلود فایل صوتی</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Text Simulation */}
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={testVoiceText}
+                    onChange={(e) => setTestVoiceText(e.target.value)}
+                    placeholder="متن نمونه ویس انباردار را برای تست استخراج و تطبیق با انبار بنویسید..."
+                    className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-800 outline-none focus:bg-white focus:border-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAnalyzeSampleText}
+                    disabled={isAnalyzingVoice || isRecordingVoice || !testVoiceText.trim()}
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold transition-colors cursor-pointer shrink-0"
+                  >
+                    {isAnalyzingVoice ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>در حال تحلیل...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" />
+                        <span>تست استخراج متن</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Test Analysis Result */}
+                {voiceAnalysisResult && (
+                  <div className={`rounded-xl border p-3.5 space-y-3 text-xs ${
+                    voiceAnalysisResult.success
+                      ? 'bg-slate-50 border-slate-200'
+                      : 'bg-rose-50 border-rose-200 text-rose-800'
+                  }`}>
+                    {!voiceAnalysisResult.success ? (
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>{voiceAnalysisResult.error || 'خطا در تحلیل هوش مصنوعی'}</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span className="font-bold text-slate-900">نتیجه تحلیل هوش مصنوعی</span>
+                            {voiceAnalysisResult.supplierName && (
+                              <span className="text-[11px] bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-700">
+                                تامین‌کننده: <strong>{voiceAnalysisResult.supplierName}</strong>
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500">
+                            {voiceAnalysisResult.engineUsed && <span>{voiceAnalysisResult.engineUsed}</span>}
+                            {voiceAnalysisResult.durationMs && (
+                              <span>• {toPersianDigits((voiceAnalysisResult.durationMs / 1000).toFixed(1))}s</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="bg-white p-2.5 rounded-lg border border-slate-200 text-slate-700 leading-relaxed">
+                          <span className="font-bold text-slate-900 ml-1">متن پیاده‌سازی‌شده:</span>
+                          «{voiceAnalysisResult.transcript}»
+                        </div>
+
+                        {voiceAnalysisResult.items && voiceAnalysisResult.items.length > 0 ? (
+                          <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+                            <table className="w-full text-right text-xs">
+                              <thead className="bg-slate-100 text-slate-600">
+                                <tr>
+                                  <th className="py-2 px-3 font-bold">نام کالا</th>
+                                  <th className="py-2 px-3 font-bold text-center">مقدار</th>
+                                  <th className="py-2 px-3 font-bold text-center">وضعیت تطبیق با انبار</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {voiceAnalysisResult.items.map((item, idx) => (
+                                  <tr key={idx}>
+                                    <td className="py-2 px-3 font-bold text-slate-900">
+                                      {item.productName}
+                                      {item.matchedProductCode && (
+                                        <span className="mr-1.5 text-[10px] font-mono font-normal text-slate-400">
+                                          ({item.matchedProductCode})
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="py-2 px-3 text-center font-mono font-bold text-slate-800">
+                                      {toPersianDigits(item.quantity)} {item.unit || 'عدد'}
+                                    </td>
+                                    <td className="py-2 px-3 text-center">
+                                      {item.matchConfidence === 'exact' ? (
+                                        <span className="inline-block px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold">
+                                          تطبیق دقیق
+                                        </span>
+                                      ) : item.matchConfidence === 'fuzzy' ? (
+                                        <span className="inline-block px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200 text-[11px] font-bold">
+                                          تطبیق مشابه
+                                        </span>
+                                      ) : (
+                                        <span className="inline-block px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-bold">
+                                          کالای جدید (تطبیق‌نیافته)
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="text-amber-700 text-xs">هیچ قلم کالایی استخراج نشد.</div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Section 4: Recent AI Voice Processing Logs */}
+              {aiSystemStatus?.recentLogs && aiSystemStatus.recentLogs.length > 0 && (
+                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/40 space-y-2.5">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                    <Clock className="w-4 h-4 text-slate-500" />
+                    <span>آخرین پردازش‌های هوش مصنوعی و ویس تلگرام</span>
+                  </div>
+                  <div className="divide-y divide-slate-200/70 bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    {aiSystemStatus.recentLogs.slice(0, 6).map((log) => (
+                      <div key={log.id} className="px-3 py-2 flex items-center justify-between gap-2 text-[11px]">
+                        <div className="min-w-0 flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${log.status === 'success' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                          <span className="font-bold text-slate-800 shrink-0">{log.sender || 'سیستم'}</span>
+                          <span className="text-slate-500 truncate">
+                            {log.status === 'success'
+                              ? `«${log.transcriptPreview || '-'}» (${toPersianDigits(log.itemCount)} قلم، ${toPersianDigits(log.matchedCount)} تطبیق)`
+                              : log.error}
+                          </span>
+                        </div>
+                        <span className="font-mono text-[10px] text-slate-400 shrink-0">
+                          {toPersianDigits((log.durationMs / 1000).toFixed(1))}s
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Bottom Action Footer */}
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100">
                 <span className="text-xs text-slate-500">
-                  تنظیمات هوش مصنوعی بلافاصله پس از ذخیره فعال خواهند شد.
+                  تنظیمات هوش مصنوعی و محدودیت‌های دسترسی بلافاصله پس از ذخیره اعمال می‌شوند.
                 </span>
                 <button
                   type="button"
                   onClick={() => handleSave()}
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 cursor-pointer"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
                 >
                   <Save className="w-4 h-4" />
-                  <span>ذخیره نهایی تنظیمات هوش مصنوعی</span>
+                  <span>ذخیره تنظیمات هوش مصنوعی و ویس</span>
                 </button>
               </div>
             </div>

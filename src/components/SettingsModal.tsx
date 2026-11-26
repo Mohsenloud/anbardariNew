@@ -1996,22 +1996,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               {formData.aiVoiceInboundEnabled !== false && (
-                <div className="space-y-4 bg-purple-50/30 p-4 rounded-2xl border border-purple-200">
+                <div className="space-y-4 bg-slate-50/70 p-4 rounded-2xl border border-slate-200">
                   {/* Provider Selection */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-700 block">ارائه‌دهنده هوش مصنوعی (AI Provider):</label>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <button
                         type="button"
-                        onClick={() => setFormData(prev => ({ ...prev, aiProvider: 'gemini', aiModel: 'gemini-2.5-flash' }))}
+                        onClick={() => setFormData(prev => ({ ...prev, aiProvider: 'gemini', aiModel: 'gemini-4-hydrogen' }))}
                         className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
                           (formData.aiProvider || 'gemini') === 'gemini'
-                            ? 'bg-purple-100/70 border-purple-400 text-purple-900 font-bold'
+                            ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-bold'
                             : 'bg-white border-slate-200 text-slate-700'
                         }`}
                       >
                         <div className="text-xs">گوگل جمینای (Gemini)</div>
-                        <div className="text-[10px] text-slate-500 font-normal">پردازش صوتی سریع و دقیق</div>
+                        <div className="text-[10px] text-slate-500 font-normal">Transcribe 3.5 + Gemini 4 Hydrogen</div>
                       </button>
 
                       <button
@@ -2019,7 +2019,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         onClick={() => setFormData(prev => ({ ...prev, aiProvider: 'openai', aiModel: 'gpt-4o-mini' }))}
                         className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
                           formData.aiProvider === 'openai'
-                            ? 'bg-purple-100/70 border-purple-400 text-purple-900 font-bold'
+                            ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-bold'
                             : 'bg-white border-slate-200 text-slate-700'
                         }`}
                       >
@@ -2032,7 +2032,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         onClick={() => setFormData(prev => ({ ...prev, aiProvider: 'custom', aiModel: 'custom-model' }))}
                         className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
                           formData.aiProvider === 'custom'
-                            ? 'bg-purple-100/70 border-purple-400 text-purple-900 font-bold'
+                            ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-bold'
                             : 'bg-white border-slate-200 text-slate-700'
                         }`}
                       >
@@ -2045,20 +2045,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   {/* API Key */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-700 block">
-                      کلید API هوش مصنوعی (API Key):
+                      کلید API هوش مصنوعی (اختیاری در صورت تنظیم روی سرور):
                     </label>
                     <div className="flex items-center gap-2">
                       <div className="relative flex-1">
                         <input
                           type={showAiApiKey ? 'text' : 'password'}
                           dir="ltr"
-                          placeholder={(formData.aiProvider || 'gemini') === 'gemini' ? 'AIzaSy... (یا خالی در صورت وجود GEMINI_API_KEY در داکر)' : 'sk-proj-...'}
+                          placeholder={(formData.aiProvider || 'gemini') === 'gemini' ? 'در صورت تنظیم GEMINI_API_KEY روی سرور خالی بگذارید' : 'sk-proj-...'}
                           value={formData.aiApiKey || ''}
                           onChange={(e) => {
                             setFormData(prev => ({ ...prev, aiApiKey: e.target.value }));
                             if (aiTestResult) setAiTestResult(null);
                           }}
-                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left outline-none focus:border-purple-500 pr-10"
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left outline-none focus:border-emerald-500 pr-10"
                         />
                         <button
                           type="button"
@@ -2073,7 +2073,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         type="button"
                         onClick={handleTestAiConnection}
                         disabled={isTestingAi}
-                        className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                        className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0 disabled:opacity-50"
                       >
                         {isTestingAi ? 'در حال بررسی...' : 'تست اتصال API'}
                       </button>
@@ -2092,14 +2092,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   {/* Model & Base URL */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                     <div>
-                      <label className="text-[11px] font-medium text-slate-700 block mb-1">نام مدل هوش مصنوعی:</label>
+                      <label className="text-[11px] font-medium text-slate-700 block mb-1">نام مدل استخراج هوشمند:</label>
                       <input
                         type="text"
                         dir="ltr"
-                        placeholder={(formData.aiProvider || 'gemini') === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o-mini'}
+                        placeholder={(formData.aiProvider || 'gemini') === 'gemini' ? 'gemini-4-hydrogen' : 'gpt-4o-mini'}
                         value={formData.aiModel || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, aiModel: e.target.value }))}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-mono outline-none focus:border-purple-500"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-mono outline-none focus:border-emerald-500"
                       />
                     </div>
 
@@ -2111,7 +2111,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         placeholder="https://api.openai.com/v1"
                         value={formData.aiBaseUrl || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, aiBaseUrl: e.target.value }))}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-mono outline-none focus:border-purple-500"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-mono outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Custom Workshop Vocabulary & Allowed Chats */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-700 block mb-1">اصطلاحات و واژگان اختصاصی کارگاه (اختیاری):</label>
+                      <input
+                        type="text"
+                        placeholder="مثلاً: پاکت معادل کیسه ۵۰ کیلویی، سیمان آبیک یعنی سیمان تیپ ۲"
+                        value={formData.aiCustomPrompt || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, aiCustomPrompt: e.target.value }))}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-medium text-slate-700 block mb-1">چت‌آیدی‌های مجاز برای ارسال ویس (اختیاری):</label>
+                      <input
+                        type="text"
+                        dir="ltr"
+                        placeholder="مثلاً: 123456789, -100987654321"
+                        value={formData.aiVoiceAllowedChatIds || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, aiVoiceAllowedChatIds: e.target.value }))}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-mono outline-none focus:border-emerald-500"
                       />
                     </div>
                   </div>

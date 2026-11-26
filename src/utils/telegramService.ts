@@ -1975,6 +1975,9 @@ export async function testAiConnection(params: {
   error?: string;
   provider?: string;
   model?: string;
+  transcriptionModel?: string;
+  latencyMs?: number;
+  usedServerKey?: boolean;
 }> {
   try {
     const res = await apiFetch('/api/ai/test-connection', {
@@ -1992,6 +1995,49 @@ export async function testAiConnection(params: {
   }
 }
 
+export interface AiVoiceRunLogEntry {
+  id: string;
+  timestamp: string;
+  source: 'telegram_voice' | 'telegram_text' | 'studio_test';
+  provider: string;
+  model: string;
+  transcriptionModel?: string;
+  durationMs: number;
+  status: 'success' | 'error';
+  itemCount: number;
+  matchedCount: number;
+  sender?: string;
+  transcriptPreview?: string;
+  error?: string;
+}
+
+export interface AiVoiceSystemStatus {
+  success: boolean;
+  provider?: string;
+  effectiveModel?: string;
+  transcriptionModel?: string;
+  hasServerGeminiKey?: boolean;
+  hasSettingsKey?: boolean;
+  isAiReady?: boolean;
+  webhookSecretActive?: boolean;
+  voiceInboundEnabled?: boolean;
+  catalogProductsCount?: number;
+  recentLogs?: AiVoiceRunLogEntry[];
+  error?: string;
+}
+
+/**
+ * Fetch live AI engine & Telegram voice diagnostics from server (never exposes secrets)
+ */
+export async function getAiVoiceStatus(): Promise<AiVoiceSystemStatus> {
+  try {
+    const res = await apiFetch('/api/ai/status');
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'خطا در دریافت وضعیت هوش مصنوعی' };
+  }
+}
+
 /**
  * Register Telegram Webhook for receiving voice messages
  */
@@ -1999,6 +2045,7 @@ export async function setTelegramWebhook(botToken: string, webhookUrl: string): 
   ok: boolean;
   description?: string;
   result?: boolean;
+  secretTokenProtected?: boolean;
 }> {
   const cleanToken = sanitizeTelegramToken(botToken);
   try {
@@ -2022,6 +2069,34 @@ export async function setTelegramWebhook(botToken: string, webhookUrl: string): 
     } catch {
       return { ok: false, description: err?.message || 'خطا در اتصال به سرور' };
     }
+  }
+}
+
+/**
+ * Delete / disable active Telegram Webhook
+ */
+export async function deleteTelegramWebhook(botToken: string): Promise<{
+  ok: boolean;
+  description?: string;
+  result?: boolean;
+}> {
+  const cleanToken = sanitizeTelegramToken(botToken);
+  try {
+    const res = await apiFetch('/api/telegram/delete-webhook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ botToken: cleanToken }),
+    });
+    const data = await res.json();
+    if (data?.ok) return data;
+
+    if (isServerTelegramNetworkError(data?.description || data?.error, res.status)) {
+      const direct = await callTelegramDirectFromBrowser(cleanToken, 'deleteWebhook', { drop_pending_updates: true });
+      return direct.data;
+    }
+    return data;
+  } catch (err: any) {
+    return { ok: false, description: err?.message || 'خطا در حذف وبهوک تلگرام' };
   }
 }
 
@@ -2060,27 +2135,47 @@ export async function getTelegramWebhookInfo(botToken: string): Promise<{
   }
 }
 
-/**
- * Test voice audio processing directly with AI
- */
-export async function processVoiceDirectly(audioBase64: string, mimeType = 'audio/ogg'): Promise<{
+export interface VoiceAnalysisResult {
   success: boolean;
   transcript?: string;
   supplierName?: string;
+  engineUsed?: string;
+  transcriptionModel?: string;
+  durationMs?: number;
   items?: Array<{
     productName: string;
     quantity: number;
     unit?: string;
     notes?: string;
     matchedProductId?: string;
+    matchedProductName?: string;
+    matchedProductCode?: string;
+    matchConfidence?: 'exact' | 'fuzzy' | 'unmatched';
   }>;
   error?: string;
-}> {
+}
+
+/**
+ * Test voice audio or sample text processing directly with AI
+ */
+export async function processVoiceDirectly(
+  input: string | { audioBase64?: string; mimeType?: string; text?: string },
+  mimeType = 'audio/ogg'
+): Promise<VoiceAnalysisResult> {
+  const payload =
+    typeof input === 'string'
+      ? { audioBase64: input, mimeType }
+      : {
+          audioBase64: input.audioBase64,
+          mimeType: input.mimeType || mimeType,
+          text: input.text,
+        };
+
   try {
     const res = await apiFetch('/api/ai/process-voice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ audioBase64, mimeType }),
+      body: JSON.stringify(payload),
     });
     return await res.json();
   } catch (err: any) {

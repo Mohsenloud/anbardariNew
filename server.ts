@@ -7,7 +7,7 @@ import crypto from 'crypto';
 import dns from 'dns';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import {
   testAndInitPostgres,
   loadStateFromPostgres,
@@ -356,12 +356,14 @@ const DEFAULT_INITIAL_DATA = {
     telegramCaptionTemplate: '',
     aiProvider: 'gemini',
     aiApiKey: '',
-    aiModel: 'gemini-2.5-flash',
+    aiModel: 'gemini-4-hydrogen',
     aiBaseUrl: '',
     aiVoiceInboundEnabled: true,
     aiVoiceAutoMatchProducts: true,
     aiVoiceRequireAdminApproval: true,
     aiCustomPrompt: '',
+    aiVoiceAllowedChatIds: '',
+    telegramWebhookSecret: '',
   },
   users: [
     {
@@ -5754,57 +5756,491 @@ function getJalaliDateStr(date: Date = new Date()): string {
   return `${jy}/${pad(jm)}/${pad(jd)}`;
 }
 
+// -------------------------------------------------------------
+// AI & TELEGRAM VOICE INBOUND ENGINE (OPTIMIZED)
+// -------------------------------------------------------------
+
+const GEMINI_DEFAULT_EXTRACTION_MODEL = 'gemini-4-hydrogen';
+const GEMINI_TRANSCRIPTION_MODEL = 'gemini-3.5-transcribe';
+const MAX_VOICE_AUDIO_BYTES = 15 * 1024 * 1024; // 15MB safety cap
+const VOICE_DEDUP_TTL_MS = 10 * 60 * 1000; // 10 minutes deduplication window
+
+interface AiVoiceRunLog {
+  id: string;
+  timestamp: string;
+  source: 'telegram_voice' | 'telegram_text' | 'studio_test';
+  provider: string;
+  model: string;
+  transcriptionModel?: string;
+  durationMs: number;
+  status: 'success' | 'error';
+  itemCount: number;
+  matchedCount: number;
+  sender?: string;
+  transcriptPreview?: string;
+  error?: string;
+}
+
+const recentAiVoiceLogs: AiVoiceRunLog[] = [];
+const processedTelegramUpdates = new Map<string, number>();
+
+function recordAiVoiceLog(entry: Omit<AiVoiceRunLog, 'id' | 'timestamp'>) {
+  recentAiVoiceLogs.unshift({
+    id: `vlog-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    timestamp: new Date().toISOString(),
+    ...entry,
+  });
+  if (recentAiVoiceLogs.length > 25) {
+    recentAiVoiceLogs.length = 25;
+  }
+}
+
+function isDuplicateTelegramVoiceUpdate(key: string): boolean {
+  const now = Date.now();
+  // Prune stale entries
+  if (processedTelegramUpdates.size > 500) {
+    for (const [k, ts] of processedTelegramUpdates.entries()) {
+      if (now - ts > VOICE_DEDUP_TTL_MS) {
+        processedTelegramUpdates.delete(k);
+      }
+    }
+  }
+  const existing = processedTelegramUpdates.get(key);
+  if (existing && now - existing < VOICE_DEDUP_TTL_MS) {
+    return true;
+  }
+  processedTelegramUpdates.set(key, now);
+  return false;
+}
+
+function createGeminiClient(apiKey: string): GoogleGenAI {
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
+}
+
+function resolveGeminiExtractionModel(rawModel?: string): string {
+  const cleaned = String(rawModel || '').trim();
+  if (!cleaned) return GEMINI_DEFAULT_EXTRACTION_MODEL;
+  const lower = cleaned.toLowerCase();
+  // Transparently migrate deprecated / legacy default models to active Gemini 4 Hydrogen
+  if (
+    lower.startsWith('gemini-1.') ||
+    lower.startsWith('gemini-2.0') ||
+    lower === 'gemini-2.5-flash' ||
+    lower === 'gemini-pro' ||
+    lower === 'gemini-flash'
+  ) {
+    return GEMINI_DEFAULT_EXTRACTION_MODEL;
+  }
+  return cleaned;
+}
+
+function supportsThinkingConfig(modelName: string): boolean {
+  const lower = modelName.toLowerCase();
+  return lower.startsWith('gemini-4') || lower.startsWith('gemini-3');
+}
+
+function formatAiErrorPersian(err: any): string {
+  const status = err?.status || err?.statusCode || err?.code;
+  const rawMsg = String(err?.message || err || '');
+  const lower = rawMsg.toLowerCase();
+
+  if (status === 401 || lower.includes('api key not valid') || lower.includes('invalid api key') || lower.includes('unauthorized')) {
+    return 'کلید API هوش مصنوعی نامعتبر است. لطفاً کلید را بررسی و مجدداً ذخیره کنید.';
+  }
+  if (status === 403 || lower.includes('permission') || lower.includes('forbidden')) {
+    return 'دسترسی کلید API به این مدل یا سرویس مجاز نیست (خطای ۴۰۳).';
+  }
+  if (status === 404 || lower.includes('not found')) {
+    return 'مدل هوش مصنوعی انتخاب‌شده در دسترس نیست. لطفاً مدل پیشنهادی gemini-4-hydrogen را انتخاب کنید.';
+  }
+  if (status === 429 || lower.includes('quota') || lower.includes('rate limit') || lower.includes('resource_exhausted')) {
+    return 'سقف درخواست لحظه‌ای یا سهمیه API هوش مصنوعی تکمیل شده است. لطفاً چند لحظه بعد دوباره تلاش کنید.';
+  }
+  if (lower.includes('timeout') || lower.includes('aborted') || lower.includes('etimedout')) {
+    return 'زمان انتظار پاسخ از سرور هوش مصنوعی به پایان رسید. لطفاً اتصال اینترنت سرور را بررسی کنید.';
+  }
+  if (lower.includes('fetch failed') || lower.includes('econnrefused') || lower.includes('enotfound')) {
+    return 'امکان برقراری ارتباط شبکه با سرور هوش مصنوعی وجود ندارد (بررسی DNS یا پروکسی سرور).';
+  }
+  return rawMsg || 'خطای غیرمنتظره در ارتباط با سرویس هوش مصنوعی.';
+}
+
+async function withAiRetry<T>(operation: () => Promise<T>, maxRetries = 2): Promise<T> {
+  let lastError: any;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (err: any) {
+      lastError = err;
+      const status = err?.status || err?.statusCode;
+      const msg = String(err?.message || '').toLowerCase();
+      const isTransient =
+        status === 429 ||
+        status === 500 ||
+        status === 502 ||
+        status === 503 ||
+        status === 504 ||
+        msg.includes('rate') ||
+        msg.includes('overloaded') ||
+        msg.includes('unavailable') ||
+        msg.includes('timeout') ||
+        msg.includes('econnreset');
+      if (!isTransient || attempt === maxRetries) {
+        throw err;
+      }
+      const backoffMs = 600 * Math.pow(2, attempt) + Math.floor(Math.random() * 250);
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+    }
+  }
+  throw lastError;
+}
+
+function toAsciiDigits(input: string): string {
+  return String(input || '')
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
+}
+
+function normalizePersianForMatch(text: string): string {
+  return toAsciiDigits(String(text || ''))
+    .replace(/[يیى]/g, 'ی')
+    .replace(/[كک]/g, 'ک')
+    .replace(/[ةۀ]/g, 'ه')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/[\u064B-\u065F\u0670\u200C]/g, ' ')
+    .replace(/[^\u0600-\u06FFa-zA-Z0-9\s]/g, ' ')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeUnitPersian(unit?: string): string {
+  const norm = normalizePersianForMatch(unit || '');
+  if (!norm) return 'عدد';
+  if (['عدد', 'دونه', 'دانه', 'تعداد', 'تا'].includes(norm)) return 'عدد';
+  if (['پاکت', 'کیسه', 'گونی'].includes(norm)) return norm === 'گونی' ? 'گونی' : norm;
+  if (['کیلو', 'کیلوگرم', 'کگ', 'kg'].includes(norm)) return 'کیلوگرم';
+  if (['گرم', 'gr', 'g'].includes(norm)) return 'گرم';
+  if (['تن', 'ton'].includes(norm)) return 'تن';
+  if (['متر', 'مترمربع', 'متر مربع', 'm'].includes(norm)) return norm.includes('مربع') ? 'متر مربع' : 'متر';
+  if (['شاخه', 'بندیل', 'رول', 'حلقه', 'کارتن', 'بسته', 'جعبه', 'لیتر', 'گالن', 'سطل', 'ورق', 'تخته', 'جفت', 'دست', 'ست'].includes(norm)) {
+    return norm;
+  }
+  return String(unit || 'عدد').trim();
+}
+
+function scoreProductSimilarity(queryRaw: string, product: any): number {
+  const query = normalizePersianForMatch(queryRaw);
+  if (!query) return 0;
+  const prodName = normalizePersianForMatch(product?.name || '');
+  const prodCode = normalizePersianForMatch(product?.code || '');
+  const prodCat = normalizePersianForMatch(product?.category || '');
+
+  if (prodCode && (query === prodCode || query.includes(prodCode))) return 1.0;
+  if (prodName && query === prodName) return 1.0;
+  if (prodName && (prodName.includes(query) || query.includes(prodName))) {
+    const ratio = Math.min(query.length, prodName.length) / Math.max(query.length, prodName.length);
+    return 0.72 + ratio * 0.25;
+  }
+
+  const queryTokens = query.split(' ').filter((t) => t.length >= 2);
+  const nameTokens = prodName.split(' ').filter((t) => t.length >= 2);
+  if (queryTokens.length === 0 || nameTokens.length === 0) return 0;
+
+  let matchedTokens = 0;
+  for (const qt of queryTokens) {
+    if (nameTokens.some((nt) => nt === qt || nt.includes(qt) || qt.includes(nt))) {
+      matchedTokens += 1;
+    } else if (prodCat && prodCat.includes(qt)) {
+      matchedTokens += 0.35;
+    }
+  }
+  const precision = matchedTokens / queryTokens.length;
+  const recall = matchedTokens / nameTokens.length;
+  if (precision + recall === 0) return 0;
+  return (2 * precision * recall) / (precision + recall);
+}
+
+function rankProductsForTranscript(transcript: string, existingProducts: any[], limit = 120): any[] {
+  const all = Array.isArray(existingProducts) ? existingProducts.filter((p) => p && p.id && p.name) : [];
+  if (all.length <= limit) return all;
+
+  const normTranscript = normalizePersianForMatch(transcript);
+  if (!normTranscript) return all.slice(0, limit);
+
+  const transcriptTokens = new Set(normTranscript.split(' ').filter((t) => t.length >= 2));
+
+  const scored = all.map((p, idx) => {
+    const pName = normalizePersianForMatch(p.name);
+    const pCode = normalizePersianForMatch(p.code || '');
+    let score = 0;
+    if (pCode && normTranscript.includes(pCode)) score += 10;
+    if (pName && normTranscript.includes(pName)) score += 8;
+    const pTokens = pName.split(' ').filter((t) => t.length >= 2);
+    for (const pt of pTokens) {
+      if (transcriptTokens.has(pt)) {
+        score += 2.5;
+      } else {
+        for (const tt of transcriptTokens) {
+          if (tt.length >= 3 && (pt.includes(tt) || tt.includes(pt))) {
+            score += 1;
+            break;
+          }
+        }
+      }
+    }
+    return { p, score, idx };
+  });
+
+  scored.sort((a, b) => (b.score !== a.score ? b.score - a.score : a.idx - b.idx));
+  return scored.slice(0, limit).map((s) => s.p);
+}
+
+function matchItemToCatalogProduct(
+  item: { productName: string; matchedProductId?: string },
+  existingProducts: any[],
+  autoMatchEnabled: boolean
+): { product: any | null; confidence: 'exact' | 'fuzzy' | 'unmatched' } {
+  if (!autoMatchEnabled || !Array.isArray(existingProducts) || existingProducts.length === 0) {
+    return { product: null, confidence: 'unmatched' };
+  }
+
+  if (item.matchedProductId) {
+    const byId = existingProducts.find((p) => p && p.id === item.matchedProductId);
+    if (byId) return { product: byId, confidence: 'exact' };
+  }
+
+  const rawName = String(item.productName || '').trim();
+  if (!rawName) return { product: null, confidence: 'unmatched' };
+
+  const normName = normalizePersianForMatch(rawName);
+  const exact = existingProducts.find(
+    (p) =>
+      p &&
+      (normalizePersianForMatch(p.name) === normName ||
+        (p.code && normalizePersianForMatch(p.code) === normName))
+  );
+  if (exact) return { product: exact, confidence: 'exact' };
+
+  let bestProduct: any = null;
+  let bestScore = 0;
+  for (const p of existingProducts) {
+    const score = scoreProductSimilarity(rawName, p);
+    if (score > bestScore) {
+      bestScore = score;
+      bestProduct = p;
+    }
+  }
+
+  if (bestProduct && bestScore >= 0.62) {
+    return { product: bestProduct, confidence: bestScore >= 0.9 ? 'exact' : 'fuzzy' };
+  }
+
+  return { product: null, confidence: 'unmatched' };
+}
+
+function getAudioFilenameForMime(mimeType: string): string {
+  const lower = String(mimeType || 'audio/ogg').toLowerCase();
+  if (lower.includes('mpeg') || lower.includes('mp3')) return 'voice.mp3';
+  if (lower.includes('wav')) return 'voice.wav';
+  if (lower.includes('mp4') || lower.includes('m4a') || lower.includes('aac')) return 'voice.m4a';
+  if (lower.includes('webm')) return 'voice.webm';
+  if (lower.includes('flac')) return 'voice.flac';
+  return 'voice.ogg';
+}
+
+function parseJsonSafely(rawText: string): any {
+  const cleaned = String(rawText || '')
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      return JSON.parse(match[0]);
+    }
+    throw new Error('پاسخ ساختاریافته معتبر از هوش مصنوعی دریافت نشد.');
+  }
+}
+
+function parseAllowedChatIds(raw?: string): Set<string> {
+  const set = new Set<string>();
+  if (!raw) return set;
+  String(raw)
+    .split(/[\s,،;\n]+/)
+    .map((s) => toAsciiDigits(s).trim())
+    .filter(Boolean)
+    .forEach((id) => set.add(id));
+  return set;
+}
+
+const VOICE_EXTRACTION_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    transcript: {
+      type: Type.STRING,
+      description: 'متن دقیق و کامل فارسی شنیده‌شده یا دریافت‌شده',
+    },
+    supplierName: {
+      type: Type.STRING,
+      description: 'نام تامین‌کننده، فروشنده، راننده یا کارگاه مبدأ در صورت ذکر شدن؛ در غیر این صورت رشته خالی',
+    },
+    items: {
+      type: Type.ARRAY,
+      description: 'لیست اقلام کالای ورودی به انبار یا کارگاه',
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          productName: {
+            type: Type.STRING,
+            description: 'نام کامل و دقیق کالا به فارسی',
+          },
+          quantity: {
+            type: Type.NUMBER,
+            description: 'تعداد یا مقدار عددی کالا (بزرگتر از صفر)',
+          },
+          unit: {
+            type: Type.STRING,
+            description: 'واحد شمارش کالا مانند عدد، پاکت، کیسه، شاخه، متر، کیلوگرم، کارتن، تن',
+          },
+          matchedProductId: {
+            type: Type.STRING,
+            description: 'شناسه دقیق id کالا از لیست مرجع انبار در صورت تطبیق قطعی یا بسیار نزدیک؛ در غیر این صورت رشته خالی',
+          },
+          notes: {
+            type: Type.STRING,
+            description: 'توضیحات تکمیلی، برند، سایز یا وضعیت بسته‌بندی در صورت ذکر شدن',
+          },
+        },
+        required: ['productName', 'quantity', 'unit'],
+      },
+    },
+  },
+  required: ['transcript', 'items'],
+};
+
+// 12.4.0 AI & Voice System Status (never exposes API keys or secrets)
+app.get('/api/ai/status', requireAdmin, async (_req, res) => {
+  try {
+    setNoCacheHeaders(res);
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const settings = dbData?.settings || {};
+    const provider = settings?.aiProvider || 'gemini';
+    const hasServerGeminiKey = Boolean((process.env.GEMINI_API_KEY || '').trim());
+    const hasSettingsKey = Boolean((settings?.aiApiKey || '').trim());
+    const effectiveModel =
+      provider === 'gemini'
+        ? resolveGeminiExtractionModel(settings?.aiModel)
+        : (settings?.aiModel || (provider === 'openai' ? 'gpt-4o-mini' : 'custom-model'));
+
+    return res.json({
+      success: true,
+      provider,
+      effectiveModel,
+      transcriptionModel: provider === 'gemini' ? GEMINI_TRANSCRIPTION_MODEL : 'whisper-1',
+      hasServerGeminiKey,
+      hasSettingsKey,
+      isAiReady: provider === 'gemini' ? (hasServerGeminiKey || hasSettingsKey) : (provider === 'custom' || hasSettingsKey),
+      webhookSecretActive: Boolean((settings?.telegramWebhookSecret || '').trim()),
+      voiceInboundEnabled: settings?.aiVoiceInboundEnabled !== false,
+      catalogProductsCount: Array.isArray(dbData?.products) ? dbData.products.length : 0,
+      recentLogs: recentAiVoiceLogs.slice(0, 10),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'خطا در دریافت وضعیت هوش مصنوعی' });
+  }
+});
+
 // 12.4.1 Test AI Connection & API Key
 app.post('/api/ai/test-connection', requireAdmin, async (req, res) => {
+  const startedAt = Date.now();
   try {
     const { data: dbData } = await getLatestConvergedDatabase();
     const settings = dbData?.settings || {};
 
     const provider = req.body?.provider || settings?.aiProvider || 'gemini';
-    const apiKey = (req.body?.apiKey || settings?.aiApiKey || (provider === 'gemini' ? process.env.GEMINI_API_KEY : '') || '').trim();
-    const model = (req.body?.model || settings?.aiModel || (provider === 'gemini' ? 'gemini-2.5-flash' : 'whisper-1')).trim();
-    const baseUrl = (req.body?.baseUrl || settings?.aiBaseUrl || '').trim();
+    const submittedKey = String(req.body?.apiKey || '').trim();
+    const storedKey = String(settings?.aiApiKey || '').trim();
+    const serverGeminiKey = String(process.env.GEMINI_API_KEY || '').trim();
+    const apiKey = submittedKey || storedKey || (provider === 'gemini' ? serverGeminiKey : '');
+    const usedServerKey = provider === 'gemini' && !submittedKey && !storedKey && Boolean(serverGeminiKey);
+    const rawModel = String(req.body?.model || settings?.aiModel || '').trim();
+    const baseUrl = String(req.body?.baseUrl || settings?.aiBaseUrl || '').trim();
 
     if (!apiKey && provider !== 'custom') {
       return res.status(400).json({
         success: false,
-        error: 'کلید API هوش مصنوعی وارد نشده است. لطفاً در پنل مدیریت یا تنظیمات کلید را ثبت کنید.',
+        error: 'کلید API هوش مصنوعی یافت نشد. برای Gemini می‌توانید متغیر GEMINI_API_KEY روی سرور تنظیم کنید یا کلید را ثبت نمایید.',
       });
     }
 
     if (provider === 'gemini') {
-      const aiClient = new GoogleGenAI({ apiKey });
-      const testModel = model || 'gemini-2.5-flash';
-      const prompt = 'پاسخ بسیار کوتاه یک کلمه‌ای فقط به صورت JSON: {"status": "ok", "provider": "gemini"}';
-      const response = await aiClient.models.generateContent({
-        model: testModel,
-        contents: prompt,
-      });
+      const aiClient = createGeminiClient(apiKey);
+      const testModel = resolveGeminiExtractionModel(rawModel);
+      const response = await withAiRetry(() =>
+        aiClient.models.generateContent({
+          model: testModel,
+          contents: 'Return JSON: {"status": "ok", "provider": "gemini"}',
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                status: { type: Type.STRING },
+                provider: { type: Type.STRING },
+              },
+              required: ['status', 'provider'],
+            },
+            ...(supportsThinkingConfig(testModel)
+              ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+              : {}),
+          },
+        })
+      );
 
-      const responseText = response.text || '';
+      const latencyMs = Date.now() - startedAt;
+      const responseText = (response.text || '').trim();
       return res.json({
         success: true,
         provider: 'gemini',
         model: testModel,
-        message: `اتصال به هوش مصنوعی Gemini (${testModel}) با موفقیت برقرار شد.`,
-        rawResponse: responseText.trim(),
+        transcriptionModel: GEMINI_TRANSCRIPTION_MODEL,
+        usedServerKey,
+        latencyMs,
+        message: `اتصال به Gemini (${testModel} + ${GEMINI_TRANSCRIPTION_MODEL}) با موفقیت برقرار شد (${latencyMs}ms).`,
+        rawResponse: responseText,
       });
     } else if (provider === 'openai' || provider === 'custom') {
-      const targetUrl = baseUrl ? `${baseUrl.replace(/\/$/, '')}/chat/completions` : 'https://api.openai.com/v1/chat/completions';
+      const targetUrl = baseUrl
+        ? `${baseUrl.replace(/\/$/, '')}/chat/completions`
+        : 'https://api.openai.com/v1/chat/completions';
+      const targetModel = rawModel || (provider === 'openai' ? 'gpt-4o-mini' : 'custom-model');
+
       const response = await fetch(targetUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         },
         body: JSON.stringify({
-          model: model || (provider === 'openai' ? 'gpt-4o-mini' : 'custom-model'),
-          messages: [{ role: 'user', content: 'Say {"status":"ok"} in JSON only' }],
+          model: targetModel,
+          messages: [{ role: 'user', content: 'Respond strictly with JSON: {"status":"ok"}' }],
           max_tokens: 30,
         }),
+        signal: AbortSignal.timeout(15000),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         return res.status(400).json({
           success: false,
@@ -5812,11 +6248,13 @@ app.post('/api/ai/test-connection', requireAdmin, async (req, res) => {
         });
       }
 
+      const latencyMs = Date.now() - startedAt;
       return res.json({
         success: true,
         provider,
-        model: model || 'gpt-4o-mini',
-        message: `اتصال به سرویس هوش مصنوعی (${provider}) با موفقیت برقرار شد.`,
+        model: targetModel,
+        latencyMs,
+        message: `اتصال به سرویس ${provider} (${targetModel}) با موفقیت برقرار شد (${latencyMs}ms).`,
         data: data.choices?.[0]?.message?.content,
       });
     }
@@ -5826,227 +6264,504 @@ app.post('/api/ai/test-connection', requireAdmin, async (req, res) => {
     console.error('[AI Test Connection] Error:', err);
     return res.status(500).json({
       success: false,
-      error: 'خطا در ارتباط با سرور هوش مصنوعی: ' + (err?.message || ''),
+      error: formatAiErrorPersian(err),
     });
   }
 });
 
-// Helper function to extract structured inbound items from audio using configured AI
-async function processVoiceWithAI(audioBuffer: Buffer, mimeType: string, settings: any, existingProducts: any[]): Promise<{
+// Helper function to extract structured inbound items from audio or text using configured AI
+async function processVoiceWithAI(
+  options: {
+    audioBuffer?: Buffer;
+    mimeType?: string;
+    textInput?: string;
+    captionHint?: string;
+  },
+  settings: any,
+  existingProducts: any[]
+): Promise<{
   transcript: string;
   items: Array<{
     productName: string;
     quantity: number;
-    unit?: string;
+    unit: string;
     notes?: string;
     matchedProductId?: string;
+    matchedProductName?: string;
+    matchedProductCode?: string;
+    matchConfidence: 'exact' | 'fuzzy' | 'unmatched';
   }>;
-  supplierName?: string;
+  supplierName: string;
+  engineUsed: string;
+  transcriptionModel?: string;
+  durationMs: number;
   rawJson?: any;
 }> {
+  const startedAt = Date.now();
   const provider = settings?.aiProvider || 'gemini';
-  const apiKey = (settings?.aiApiKey || (provider === 'gemini' ? process.env.GEMINI_API_KEY : '') || '').trim();
-  const model = (settings?.aiModel || (provider === 'gemini' ? 'gemini-2.5-flash' : 'whisper-1')).trim();
-  const baseUrl = (settings?.aiBaseUrl || '').trim();
+  const apiKey = String(settings?.aiApiKey || (provider === 'gemini' ? process.env.GEMINI_API_KEY : '') || '').trim();
+  const baseUrl = String(settings?.aiBaseUrl || '').trim();
+  const autoMatchEnabled = settings?.aiVoiceAutoMatchProducts !== false;
+  const customPrompt = String(settings?.aiCustomPrompt || '').trim();
+  const captionHint = String(options.captionHint || '').trim();
 
-  // Create list of known products for AI fuzzy matching
-  const productReferenceList = (existingProducts || []).slice(0, 80).map((p: any) => ({
-    id: p.id,
-    name: p.name,
-    code: p.code,
-    unit: p.unit || 'عدد',
-  }));
+  const buildExtractionInstruction = (rankedProducts: any[]) => {
+    const compactCatalog = autoMatchEnabled
+      ? rankedProducts.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          code: p.code || '',
+          unit: p.unit || 'عدد',
+        }))
+      : [];
 
-  const systemPrompt = `تو دستیار هوشمند انبارداری و ثبت ورود کالا به کارگاه و انبار هستی.
-یک فایل صوتی (ویس کارگاهی) توسط انباردار یا مسئول کارگاه ارسال شده است که در آن ورود یک یا چند قلم کالا را گزارش می‌دهد.
-وظیفه تو:
-۱. متن دقیق گفته‌شده به فارسی را پیاده‌سازی کن (transcript).
-۲. اقلام ورودی، تعداد (عددی)، واحد شمارش (مثلا پاکت، کیسه، عدد، شاخه، تن، متر، کیلو و غیره) و در صورت ذکر شدن نام تامین‌کننده/راننده/کارگاه را استخراج کن.
-۳. در صورت امکان، نام کالا را با لیست کالاهای موجود در انبار تطبیق بده.
+    return [
+      'تو دستیار دقیق انبارداری و ثبت حواله ورود کالا در کارگاه و فروشگاه به زبان فارسی هستی.',
+      'از متن پیاده‌سازی‌شده (ویس یا پیام انباردار)، تمامی اقلام ورودی کالا، مقدار عددی دقیق، واحد شمارش استاندارد فارسی، توضیحات تکمیلی و نام تامین‌کننده/راننده را استخراج کن.',
+      'قوانین مهم:',
+      '۱. اعداد فارسی و گفتاری (مثل «ده تا»، «دو و نیم»، «پانزده») را به عدد لاتین معتبر تبدیل کن. مقدار حتماً باید عدد مثبت باشد.',
+      '۲. واحد شمارش را دقیق و کوتاه بنویس (مثل: عدد، پاکت، کیسه، شاخه، متر، کیلوگرم، تن، کارتن، بسته، ورق، رول). اگر واحدی ذکر نشد از واحد کالای مرجع یا «عدد» استفاده کن.',
+      '۳. اگر در متن کلماتی مثل «از شرکت ...»، «بارِ ...»، «راننده آقای ...» آمده، آن را در supplierName قرار بده وگرنه خالی بگذار.',
+      autoMatchEnabled
+        ? '۴. در صورت تطبیق قطعی یا بسیار نزدیک نام کالا با لیست مرجع انبار، شناسه دقیق id آن را در matchedProductId قرار بده. اگر مطمئن نیستی، matchedProductId را رشته خالی بگذار.'
+        : '۴. تطبیق خودکار کالا غیرفعال است؛ matchedProductId را همیشه رشته خالی بگذار.',
+      customPrompt ? `۵. واژگان و دستورالعمل اختصاصی کارگاه:\n${customPrompt}` : '',
+      autoMatchEnabled && compactCatalog.length > 0
+        ? `لیست کالاهای مرجع انبار (${compactCatalog.length} قلم مرتبط):\n${JSON.stringify(compactCatalog)}`
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+  };
 
-لیست کالاهای مرجع انبار:
-${JSON.stringify(productReferenceList)}
-
-${settings?.aiCustomPrompt ? `دستورالعمل اختصاصی کاربر: ${settings.aiCustomPrompt}` : ''}
-
-حتماً و فقط خروجی را به صورت ساختار معتبر JSON خالص بدون هیچ متن اضافی یا علامت نقل‌قول کد بازگردان:
-{
-  "transcript": "متن دقیق شنیده شده به فارسی",
-  "supplierName": "نام تامین‌کننده یا راننده در صورت ذکر شدن یا خالی",
-  "items": [
-    {
-      "productName": "نام کالا (مثلا: سیمان تیپ ۲)",
-      "quantity": 10,
-      "unit": "پاکت",
-      "matchedProductId": "شناسه کالای تطبیق داده شده از لیست مرجع در صورت تطبیق یا خالی",
-      "notes": "توضیحات تکمیلی در صورت وجود"
-    }
-  ]
-}`;
+  let transcript = String(options.textInput || '').trim();
+  let parsed: any = null;
+  let engineUsed = '';
+  let transcriptionModel: string | undefined;
 
   if (provider === 'gemini') {
     if (!apiKey) {
-      throw new Error('کلید Gemini API در تنظیمات یا متغیرهای محیطی یافت نشد.');
+      throw new Error('کلید Gemini API در تنظیمات یا متغیر محیطی GEMINI_API_KEY یافت نشد.');
     }
-    const aiClient = new GoogleGenAI({ apiKey });
-    const targetModel = model || 'gemini-2.5-flash';
+    const aiClient = createGeminiClient(apiKey);
+    const extractionModel = resolveGeminiExtractionModel(settings?.aiModel);
+    engineUsed = `gemini:${extractionModel}`;
 
-    const base64Audio = audioBuffer.toString('base64');
-    const audioPart = {
-      inlineData: {
-        data: base64Audio,
-        mimeType: mimeType || 'audio/ogg',
-      },
-    };
+    // Stage 1: Dedicated speech-to-text transcription when audio is provided
+    if (options.audioBuffer && options.audioBuffer.length > 0 && !transcript) {
+      const base64Audio = options.audioBuffer.toString('base64');
+      const normalizedMime = options.mimeType || 'audio/ogg';
+      const audioPart = {
+        inlineData: {
+          data: base64Audio,
+          mimeType: normalizedMime,
+        },
+      };
 
-    const response = await aiClient.models.generateContent({
-      model: targetModel,
-      contents: [
-        { role: 'user', parts: [audioPart, { text: systemPrompt }] },
-      ],
-      config: {
-        responseMimeType: 'application/json',
-      },
-    });
+      try {
+        transcriptionModel = GEMINI_TRANSCRIPTION_MODEL;
+        const transcribeRes = await withAiRetry(() =>
+          aiClient.models.generateContent({
+            model: GEMINI_TRANSCRIPTION_MODEL,
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  audioPart,
+                  {
+                    text: [
+                      'متن این پیام صوتی فارسی کارگاهی/انبارداری را با دقت بالا و دقیقاً مطابق گفتار پیاده‌سازی کن.',
+                      'نام کالاها، اعداد، سایزها و واحدها (پاکت، کیسه، شاخه، متر، کیلو، عدد و...) را با دقت کامل بنویس. فقط متن رونویسی‌شده را برگردان.',
+                      customPrompt ? `راهنمای اصطلاحات کارگاه: ${customPrompt}` : '',
+                    ]
+                      .filter(Boolean)
+                      .join('\n'),
+                  },
+                ],
+              },
+            ],
+          })
+        );
+        transcript = (transcribeRes.text || '').trim();
+      } catch (transcribeErr: any) {
+        console.warn('[AI Voice] gemini-3.5-transcribe fallback to direct multimodal extraction:', transcribeErr?.message);
+        transcriptionModel = extractionModel;
+      }
 
-    const text = response.text || '{}';
-    let parsed: any;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      const match = text.match(/\{[\s\S]*\}/);
-      if (match) {
-        parsed = JSON.parse(match[0]);
-      } else {
-        throw new Error('عدم دریافت ساختار JSON معتبر از هوش مصنوعی');
+      // If Stage 1 failed to produce transcript, run direct multimodal structured extraction with extractionModel
+      if (!transcript) {
+        const rankedFallback = rankProductsForTranscript(captionHint, existingProducts, 120);
+        const sysInst = buildExtractionInstruction(rankedFallback);
+        const directRes = await withAiRetry(() =>
+          aiClient.models.generateContent({
+            model: extractionModel,
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  audioPart,
+                  {
+                    text: captionHint
+                      ? `فایل صوتی ورودی انبار همراه با کپشن: «${captionHint}». ابتدا دقیق به فارسی رونویسی کن و سپس اقلام را استخراج نما.`
+                      : 'این فایل صوتی ورودی انبار را دقیق به فارسی رونویسی کن و اقلام را در قالب JSON استخراج نما.',
+                  },
+                ],
+              },
+            ],
+            config: {
+              systemInstruction: sysInst,
+              responseMimeType: 'application/json',
+              responseSchema: VOICE_EXTRACTION_SCHEMA,
+              ...(supportsThinkingConfig(extractionModel)
+                ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+                : {}),
+            },
+          })
+        );
+        parsed = parseJsonSafely(directRes.text || '{}');
+        transcript = String(parsed?.transcript || '').trim();
       }
     }
 
-    return {
-      transcript: parsed.transcript || 'بدون متن',
-      supplierName: parsed.supplierName || 'ورودی صوتی تلگرام',
-      items: Array.isArray(parsed.items) ? parsed.items : [],
-      rawJson: parsed,
-    };
+    // Stage 2: High-precision structured JSON extraction using catalog pre-ranking on transcript
+    if (!parsed) {
+      const combinedQuery = [transcript, captionHint].filter(Boolean).join(' ');
+      const rankedProducts = rankProductsForTranscript(combinedQuery, existingProducts, 120);
+      const sysInst = buildExtractionInstruction(rankedProducts);
+
+      const extractionRes = await withAiRetry(() =>
+        aiClient.models.generateContent({
+          model: extractionModel,
+          contents: captionHint
+            ? `متن گزارش ورودی کالا:\n«${transcript}»\n\nتوضیح/کپشن همراه پیام:\n«${captionHint}»`
+            : `متن گزارش ورودی کالا:\n«${transcript}»`,
+          config: {
+            systemInstruction: sysInst,
+            responseMimeType: 'application/json',
+            responseSchema: VOICE_EXTRACTION_SCHEMA,
+            ...(supportsThinkingConfig(extractionModel)
+              ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+              : {}),
+          },
+        })
+      );
+
+      parsed = parseJsonSafely(extractionRes.text || '{}');
+      if (!transcript && parsed?.transcript) {
+        transcript = String(parsed.transcript).trim();
+      }
+    }
   } else if (provider === 'openai' || provider === 'custom') {
-    // 1. Transcribe via Whisper
-    const whisperUrl = baseUrl ? `${baseUrl.replace(/\/$/, '')}/audio/transcriptions` : 'https://api.openai.com/v1/audio/transcriptions';
-    const form = new FormData();
-    const audioBlob = new Blob([audioBuffer], { type: mimeType || 'audio/ogg' });
-    form.append('file', audioBlob, 'voice.ogg');
-    form.append('model', 'whisper-1');
-    form.append('language', 'fa');
+    const rawModel = String(settings?.aiModel || '').trim();
+    const chatModel = rawModel && !rawModel.toLowerCase().includes('whisper')
+      ? rawModel
+      : (provider === 'openai' ? 'gpt-4o-mini' : 'custom-model');
+    engineUsed = `${provider}:${chatModel}`;
 
-    const whisperRes = await fetch(whisperUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: form,
-    });
+    // Stage 1: Whisper transcription when audio is provided
+    if (options.audioBuffer && options.audioBuffer.length > 0 && !transcript) {
+      transcriptionModel = 'whisper-1';
+      const whisperUrl = baseUrl
+        ? `${baseUrl.replace(/\/$/, '')}/audio/transcriptions`
+        : 'https://api.openai.com/v1/audio/transcriptions';
+      const form = new FormData();
+      const normalizedMime = options.mimeType || 'audio/ogg';
+      const audioBlob = new Blob([new Uint8Array(options.audioBuffer)], { type: normalizedMime });
+      form.append('file', audioBlob, getAudioFilenameForMime(normalizedMime));
+      form.append('model', 'whisper-1');
+      form.append('language', 'fa');
+      if (customPrompt) {
+        form.append('prompt', customPrompt.slice(0, 400));
+      }
 
-    const whisperData = await whisperRes.json();
-    if (!whisperRes.ok) {
-      throw new Error(`خطا در Whisper API: ${whisperData?.error?.message || whisperRes.statusText}`);
+      const whisperRes = await withAiRetry(() =>
+        fetch(whisperUrl, {
+          method: 'POST',
+          headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+          body: form,
+          signal: AbortSignal.timeout(35000),
+        })
+      );
+
+      const whisperData = await whisperRes.json().catch(() => ({}));
+      if (!whisperRes.ok) {
+        throw new Error(`خطا در رونویسی Whisper: ${whisperData?.error?.message || whisperRes.statusText}`);
+      }
+      transcript = String(whisperData?.text || '').trim();
     }
 
-    const transcript = whisperData.text || '';
+    // Stage 2: Structured extraction
+    const combinedQuery = [transcript, captionHint].filter(Boolean).join(' ');
+    const rankedProducts = rankProductsForTranscript(combinedQuery, existingProducts, 120);
+    const sysInst =
+      buildExtractionInstruction(rankedProducts) +
+      '\n\nفقط و فقط یک آبجکت JSON خالص با کلیدهای transcript, supplierName, items (شامل productName, quantity, unit, matchedProductId, notes) بازگردان.';
 
-    // 2. Parse items using Chat Completion
-    const chatUrl = baseUrl ? `${baseUrl.replace(/\/$/, '')}/chat/completions` : 'https://api.openai.com/v1/chat/completions';
-    const chatRes = await fetch(chatUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: model && !model.includes('whisper') ? model : 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `متن ویس پیاده‌سازی شده: "${transcript}"` },
-        ],
-        response_format: { type: 'json_object' },
-      }),
-    });
+    const chatUrl = baseUrl
+      ? `${baseUrl.replace(/\/$/, '')}/chat/completions`
+      : 'https://api.openai.com/v1/chat/completions';
 
-    const chatData = await chatRes.json();
+    const chatRes = await withAiRetry(() =>
+      fetch(chatUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+        body: JSON.stringify({
+          model: chatModel,
+          messages: [
+            { role: 'system', content: sysInst },
+            {
+              role: 'user',
+              content: captionHint
+                ? `متن پیاده‌سازی‌شده: «${transcript}»\nکپشن همراه: «${captionHint}»`
+                : `متن پیاده‌سازی‌شده: «${transcript}»`,
+            },
+          ],
+          response_format: { type: 'json_object' },
+        }),
+        signal: AbortSignal.timeout(35000),
+      })
+    );
+
+    const chatData = await chatRes.json().catch(() => ({}));
     if (!chatRes.ok) {
       throw new Error(`خطا در استخراج اقلام: ${chatData?.error?.message || chatRes.statusText}`);
     }
-
-    const parsed = JSON.parse(chatData.choices?.[0]?.message?.content || '{}');
-    return {
-      transcript: transcript || parsed.transcript,
-      supplierName: parsed.supplierName || 'ورودی صوتی تلگرام',
-      items: Array.isArray(parsed.items) ? parsed.items : [],
-      rawJson: parsed,
-    };
+    parsed = parseJsonSafely(chatData?.choices?.[0]?.message?.content || '{}');
+  } else {
+    throw new Error(`ارائه‌دهنده هوش مصنوعی «${provider}» پشتیبانی نمی‌شود.`);
   }
 
-  throw new Error(`ارائه‌دهنده هوش مصنوعی «${provider}» پشتیبانی نمی‌شود.`);
+  // Post-AI normalization & deterministic catalog verification
+  const rawItems = Array.isArray(parsed?.items) ? parsed.items : [];
+  const normalizedItems = rawItems
+    .map((raw: any) => {
+      const productName = String(raw?.productName || '').trim();
+      const qtyNum = Number(toAsciiDigits(String(raw?.quantity ?? '0')).replace(/[^\d.]/g, ''));
+      if (!productName || !Number.isFinite(qtyNum) || qtyNum <= 0) return null;
+
+      const { product: matched, confidence } = matchItemToCatalogProduct(
+        { productName, matchedProductId: raw?.matchedProductId },
+        existingProducts,
+        autoMatchEnabled
+      );
+
+      return {
+        productName: matched ? matched.name : productName,
+        quantity: Math.round(qtyNum * 1000) / 1000,
+        unit: normalizeUnitPersian(raw?.unit || matched?.unit || 'عدد'),
+        notes: String(raw?.notes || '').trim() || undefined,
+        matchedProductId: matched ? matched.id : undefined,
+        matchedProductName: matched ? matched.name : undefined,
+        matchedProductCode: matched ? matched.code : undefined,
+        matchConfidence: confidence,
+      };
+    })
+    .filter(Boolean) as Array<{
+      productName: string;
+      quantity: number;
+      unit: string;
+      notes?: string;
+      matchedProductId?: string;
+      matchedProductName?: string;
+      matchedProductCode?: string;
+      matchConfidence: 'exact' | 'fuzzy' | 'unmatched';
+    }>;
+
+  return {
+    transcript: transcript || String(parsed?.transcript || 'بدون متن').trim(),
+    supplierName: String(parsed?.supplierName || '').trim(),
+    items: normalizedItems,
+    engineUsed,
+    transcriptionModel,
+    durationMs: Date.now() - startedAt,
+    rawJson: parsed,
+  };
 }
 
-// 12.4.2 Direct Voice Audio Analysis (for testing from UI or direct upload)
+// 12.4.2 Direct Voice / Text Analysis (for Live Test Studio in UI or direct audio upload)
 app.post('/api/ai/process-voice', requireAdminOrInventory, async (req, res) => {
+  const startedAt = Date.now();
   try {
-    const { audioBase64, mimeType } = req.body;
-    if (!audioBase64) {
-      return res.status(400).json({ success: false, error: 'فایل صوتی یافت نشد.' });
+    const { audioBase64, mimeType, text } = req.body || {};
+    const cleanText = String(text || '').trim();
+
+    if (!audioBase64 && !cleanText) {
+      return res.status(400).json({ success: false, error: 'فایل صوتی یا متن نمونه برای تحلیل ارسال نشده است.' });
     }
 
     const { data: dbData } = await getLatestConvergedDatabase();
     const settings = dbData?.settings || {};
-    const products = dbData?.products || [];
+    const products = Array.isArray(dbData?.products) ? dbData.products : [];
 
-    const cleanBase64 = String(audioBase64).replace(/^data:[^;]+;base64,/, '').trim();
-    const audioBuffer = Buffer.from(cleanBase64, 'base64');
+    let audioBuffer: Buffer | undefined;
+    if (audioBase64) {
+      const cleanBase64 = String(audioBase64).replace(/^data:[^;]+;base64,/, '').trim();
+      audioBuffer = Buffer.from(cleanBase64, 'base64');
+      if (audioBuffer.length === 0) {
+        return res.status(400).json({ success: false, error: 'فایل صوتی ارسالی خالی است.' });
+      }
+      if (audioBuffer.length > MAX_VOICE_AUDIO_BYTES) {
+        return res.status(413).json({ success: false, error: 'حجم فایل صوتی بیش از حد مجاز (۱۵ مگابایت) است.' });
+      }
+    }
 
-    const result = await processVoiceWithAI(audioBuffer, mimeType || 'audio/ogg', settings, products);
+    const result = await processVoiceWithAI(
+      {
+        audioBuffer,
+        mimeType: mimeType || 'audio/ogg',
+        textInput: cleanText || undefined,
+      },
+      settings,
+      products
+    );
+
+    recordAiVoiceLog({
+      source: 'studio_test',
+      provider: settings?.aiProvider || 'gemini',
+      model: result.engineUsed,
+      transcriptionModel: result.transcriptionModel,
+      durationMs: result.durationMs,
+      status: 'success',
+      itemCount: result.items.length,
+      matchedCount: result.items.filter((i) => i.matchConfidence !== 'unmatched').length,
+      sender: 'آزمایشگاه تست پنل مدیریت',
+      transcriptPreview: result.transcript.slice(0, 120),
+    });
+
     return res.json({ success: true, ...result });
   } catch (err: any) {
     console.error('[AI Process Voice] Error:', err);
-    return res.status(500).json({ success: false, error: 'خطا در پردازش ویس: ' + (err?.message || '') });
+    const friendlyError = formatAiErrorPersian(err);
+    recordAiVoiceLog({
+      source: 'studio_test',
+      provider: 'ai',
+      model: '-',
+      durationMs: Date.now() - startedAt,
+      status: 'error',
+      itemCount: 0,
+      matchedCount: 0,
+      sender: 'آزمایشگاه تست پنل مدیریت',
+      error: friendlyError,
+    });
+    return res.status(500).json({ success: false, error: friendlyError });
   }
 });
 
-// 12.4.3 Telegram Webhook Handler (receives voice messages, downloads audio, calls AI, creates pending InboundReceipt)
+// Helper to update a Telegram status message in-place (falls back to sendMessage if edit fails)
+async function updateOrSendTelegramReply(
+  botToken: string,
+  chatId: number | string,
+  replyToMessageId: number | undefined,
+  statusMessageId: number | undefined,
+  htmlText: string
+) {
+  if (statusMessageId) {
+    const edited = await callTelegramApi('editMessageText', {
+      token: botToken,
+      body: {
+        chat_id: chatId,
+        message_id: statusMessageId,
+        text: htmlText,
+        parse_mode: 'HTML',
+      },
+    });
+    if (edited.ok) return;
+  }
+  await callTelegramApi('sendMessage', {
+    token: botToken,
+    body: {
+      chat_id: chatId,
+      ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
+      text: htmlText,
+      parse_mode: 'HTML',
+    },
+  });
+}
+
+// 12.4.3 Telegram Webhook Handler (Voice, Audio & /in Text Inbound with Deduplication, Auth & Atomic DB Sync)
 app.post('/api/telegram/webhook', async (req, res) => {
-  // Always respond 200 quickly to Telegram
+  // Always acknowledge Telegram promptly so it never stalls or floods retries
   res.status(200).json({ ok: true });
+
+  let activeBotToken = '';
+  let activeChatId: number | string | undefined;
+  let activeReplyMsgId: number | undefined;
+  let statusMsgId: number | undefined;
+  let senderLabel = 'کاربر تلگرام';
+  const webhookStartedAt = Date.now();
 
   try {
     const update = req.body;
-    if (!update) return;
+    if (!update || typeof update !== 'object') return;
 
     const message = update.message || update.edited_message;
-    if (!message) return;
+    if (!message || !message.chat?.id) return;
 
     const { data: dbData } = await getLatestConvergedDatabase();
     const settings = dbData?.settings || {};
 
-    const botToken = (settings?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    // 1. Verify webhook secret token if configured
+    const expectedSecret = String(settings?.telegramWebhookSecret || '').trim();
+    if (expectedSecret) {
+      const receivedSecret = String(req.headers['x-telegram-bot-api-secret-token'] || '').trim();
+      if (receivedSecret !== expectedSecret) {
+        console.warn('[Telegram Webhook] Rejected request with invalid secret token.');
+        return;
+      }
+    }
+
+    const botToken = String(settings?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
     if (!botToken || !settings.telegramBotEnabled) {
-      console.log('[Telegram Webhook] Bot is not enabled or token is missing.');
+      return;
+    }
+    activeBotToken = botToken;
+
+    const chatId = message.chat.id;
+    activeChatId = chatId;
+    activeReplyMsgId = message.message_id;
+
+    const sender = message.from || {};
+    senderLabel =
+      [sender.first_name, sender.last_name].filter(Boolean).join(' ').trim() ||
+      (sender.username ? `@${sender.username}` : `چت ${chatId}`);
+
+    const rawText = String(message.text || '').trim();
+    const captionHint = String(message.caption || '').trim();
+
+    // 2. Utility commands (/start, /help, /myid)
+    if (rawText.startsWith('/myid') || rawText === '/id') {
+      await callTelegramApi('sendMessage', {
+        token: botToken,
+        body: {
+          chat_id: chatId,
+          reply_to_message_id: message.message_id,
+          text: [
+            '🆔 <b>شناسه چت (Chat ID) شما:</b>',
+            `<code>${escapeTelegramHtml(String(chatId))}</code>`,
+            '',
+            'برای محدودسازی دسترسی ثبت ویس در پنل مدیریت، این عدد را در بخش «چت‌های مجاز» وارد کنید.',
+          ].join('\n'),
+          parse_mode: 'HTML',
+        },
+      });
       return;
     }
 
-    const chatId = message.chat?.id;
-    const sender = message.from || {};
-    const isVoice = !!message.voice;
-    const isAudio = !!message.audio;
-    const isDocumentAudio = message.document && (message.document.mime_type || '').startsWith('audio/');
-
-    // Handle /start or greeting command
-    if (message.text && message.text.startsWith('/start')) {
+    if (rawText.startsWith('/start') || rawText.startsWith('/help')) {
       const welcomeText = [
-        '👋 <b>سلام به دستیار هوشمند انبارداری و حسابداری</b>',
+        '👋 <b>دستیار هوشمند ورود کالا به انبار</b>',
         '',
-        '🎙️ <b>قابلیت دریافت پیام صوتی (Voice):</b>',
-        'شما می‌توانید یک ویس تلگرامی در مورد ورود کالای جدید به کارگاه یا انبار ارسال کنید.',
-        '<i>مثال صوتی: «سلام، امروز ۱۰ پاکت سیمان تیپ ۲ و ۵ شاخه لوله پلیکا وارد کارگاه شد.»</i>',
+        '🎙️ <b>ثبت با پیام صوتی (Voice):</b>',
+        'کافیست ویس ورود کالا را بفرستید؛ مثلاً:',
+        '<i>«سلام، امروز ۲۰ پاکت سیمان تیپ ۲ و ۵ شاخه لوله پلیکا از آقای رضایی وارد کارگاه شد.»</i>',
         '',
-        '⚙️ سیستم با هوش مصنوعی صدا را تبدیل کرده و یک <b>حواله ورود به انبار در انتظار تایید مدیریت</b> ثبت می‌کند.',
+        '✍️ <b>ثبت با پیام متنی سریع:</b>',
+        '<code>/in ۲۰ پاکت سیمان تیپ ۲ و ۵ عدد کلید مینیاتوری</code>',
+        '',
+        `🆔 شناسه چت شما: <code>${escapeTelegramHtml(String(chatId))}</code>`,
       ].join('\n');
 
       await callTelegramApi('sendMessage', {
@@ -6056,98 +6771,210 @@ app.post('/api/telegram/webhook', async (req, res) => {
       return;
     }
 
-    // Check if voice inbound is enabled
-    if (!settings.aiVoiceInboundEnabled) {
-      console.log('[Telegram Webhook] Voice inbound is disabled in settings.');
+    // 3. Determine if message is inbound audio or /in text command
+    const isVoice = Boolean(message.voice);
+    const isAudio = Boolean(message.audio);
+    const isDocumentAudio = Boolean(message.document && String(message.document.mime_type || '').startsWith('audio/'));
+    const textInboundMatch = rawText.match(/^\/(?:in|ورود)\s+([\s\S]+)/i);
+    const isTextInbound = Boolean(textInboundMatch);
+
+    if (!isVoice && !isAudio && !isDocumentAudio && !isTextInbound) {
       return;
     }
 
-    if (!isVoice && !isAudio && !isDocumentAudio) {
-      return;
-    }
-
-    const fileId = message.voice?.file_id || message.audio?.file_id || message.document?.file_id;
-    const mimeType = message.voice?.mime_type || message.audio?.mime_type || message.document?.mime_type || 'audio/ogg';
-
-    if (!fileId) return;
-
-    // Send acknowledgement to user
-    await callTelegramApi('sendMessage', {
-      token: botToken,
-      body: {
-        chat_id: chatId,
-        reply_to_message_id: message.message_id,
-        text: '🎙️ <b>ویس شما دریافت شد.</b>\nدر حال پردازش هوشمند و استخراج اقلام ورودی به انبار با هوش مصنوعی...',
-        parse_mode: 'HTML',
-      },
-    });
-
-    // 1. Get file path from Telegram
-    const { ok: fileOk, data: fileInfo } = await callTelegramApi(`getFile?file_id=${fileId}`, {
-      token: botToken,
-    });
-    if (!fileOk || !fileInfo?.result?.file_path) {
-      throw new Error('عدم امکان دریافت مشخصات فایل صوتی از سرور تلگرام');
-    }
-
-    // 2. Download the voice file
-    const baseUrl = (settings.telegramApiUrl || process.env.TELEGRAM_API_URL || 'https://api.telegram.org').trim().replace(/\/+$/, '');
-    const downloadUrl = `${baseUrl}/file/bot${sanitizeTelegramBotToken(botToken)}/${fileInfo.result.file_path}`;
-    const proxyUrl = settings.telegramProxyUrl;
-    const dispatcher = await getTelegramDispatcher(proxyUrl);
-    const audioRes = await fetch(downloadUrl, dispatcher ? { dispatcher } as any : undefined);
-    const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
-
-    // 3. Process voice using configured AI
-    const aiResult = await processVoiceWithAI(audioBuffer, mimeType, settings, dbData?.products || []);
-
-    if (!aiResult.items || aiResult.items.length === 0) {
+    // Check master enable flag
+    if (settings.aiVoiceInboundEnabled === false) {
       await callTelegramApi('sendMessage', {
         token: botToken,
         body: {
           chat_id: chatId,
           reply_to_message_id: message.message_id,
-          text: `⚠️ <b>متن پیاده‌سازی شده:</b>\n<i>«${escapeTelegramHtml(aiResult.transcript)}»</i>\n\nهیچ قلم کالایی در این پیام صوتی تشخیص داده نشد. لطفاً مجدداً با ذکر دقیق نام و تعداد کالا پیام صوتی بفرستید.`,
+          text: '⏸️ قابلیت ثبت ورود کالا از طریق دستیار صوتی در تنظیمات سیستم غیرفعال است.',
           parse_mode: 'HTML',
         },
       });
       return;
     }
 
-    // 4. Create Inbound Receipt in status 'pending_verification'
+    // 4. Optional Chat ID Allowlist Enforcement
+    const allowedChatIds = parseAllowedChatIds(settings.aiVoiceAllowedChatIds);
+    if (allowedChatIds.size > 0 && !allowedChatIds.has(String(chatId))) {
+      await callTelegramApi('sendMessage', {
+        token: botToken,
+        body: {
+          chat_id: chatId,
+          reply_to_message_id: message.message_id,
+          text: [
+            '⛔ <b>دسترسی ثبت ورودی برای این چت فعال نیست.</b>',
+            `شناسه چت شما: <code>${escapeTelegramHtml(String(chatId))}</code>`,
+            'لطفاً این شناسه را برای مدیر سیستم ارسال کنید تا در لیست چت‌های مجاز ثبت شود.',
+          ].join('\n'),
+          parse_mode: 'HTML',
+        },
+      });
+      return;
+    }
+
+    // 5. Deduplication guard against Telegram webhook retries
+    const fileUniqueId =
+      message.voice?.file_unique_id ||
+      message.audio?.file_unique_id ||
+      message.document?.file_unique_id ||
+      '';
+    const dedupKey = update.update_id
+      ? `upd:${update.update_id}`
+      : fileUniqueId
+      ? `file:${chatId}:${fileUniqueId}`
+      : `msg:${chatId}:${message.message_id}`;
+
+    if (isDuplicateTelegramVoiceUpdate(dedupKey)) {
+      console.log(`[Telegram Webhook] Skipping duplicate update (${dedupKey}).`);
+      return;
+    }
+
+    // 6. Send single live status message (we will edit this same message upon completion or error)
+    const ackRes = await callTelegramApi('sendMessage', {
+      token: botToken,
+      body: {
+        chat_id: chatId,
+        reply_to_message_id: message.message_id,
+        text: isTextInbound
+          ? '🤖 <b>پیام ورود کالا دریافت شد.</b>\nدر حال تحلیل هوشمند و تطبیق اقلام با انبار...'
+          : '🎙️ <b>ویس شما دریافت شد.</b>\nدر حال رونویسی فارسی و استخراج اقلام ورودی به انبار...',
+        parse_mode: 'HTML',
+      },
+    });
+    statusMsgId = ackRes?.data?.result?.message_id;
+
+    let audioBuffer: Buffer | undefined;
+    let mimeType = 'audio/ogg';
+
+    if (!isTextInbound) {
+      const fileId = message.voice?.file_id || message.audio?.file_id || message.document?.file_id;
+      const reportedSize = Number(message.voice?.file_size || message.audio?.file_size || message.document?.file_size || 0);
+      mimeType = message.voice?.mime_type || message.audio?.mime_type || message.document?.mime_type || 'audio/ogg';
+
+      if (!fileId) {
+        throw new Error('شناسه فایل صوتی در پیام تلگرام یافت نشد.');
+      }
+      if (reportedSize > MAX_VOICE_AUDIO_BYTES) {
+        throw new Error('حجم فایل صوتی بیش از حد مجاز (۱۵ مگابایت) است. لطفاً پیام کوتاه‌تری ارسال کنید.');
+      }
+
+      // Get file path from Telegram
+      const { ok: fileOk, data: fileInfo } = await callTelegramApi(`getFile?file_id=${encodeURIComponent(fileId)}`, {
+        token: botToken,
+      });
+      if (!fileOk || !fileInfo?.result?.file_path) {
+        throw new Error('امکان دریافت آدرس فایل صوتی از سرور تلگرام وجود نداشت.');
+      }
+
+      // Download voice file with timeout & validation
+      const tgBaseUrl = String(settings.telegramApiUrl || process.env.TELEGRAM_API_URL || 'https://api.telegram.org')
+        .trim()
+        .replace(/\/+$/, '');
+      const downloadUrl = `${tgBaseUrl}/file/bot${sanitizeTelegramBotToken(botToken)}/${fileInfo.result.file_path}`;
+      const dispatcher = await getTelegramDispatcher(settings.telegramProxyUrl);
+
+      const audioRes = await fetch(downloadUrl, {
+        ...(dispatcher ? ({ dispatcher } as any) : {}),
+        signal: AbortSignal.timeout(25000),
+      });
+      if (!audioRes.ok) {
+        throw new Error(`خطا در دانلود فایل صوتی از تلگرام (کد ${audioRes.status}).`);
+      }
+
+      audioBuffer = Buffer.from(await audioRes.arrayBuffer());
+      if (audioBuffer.length === 0) {
+        throw new Error('فایل صوتی دانلودشده خالی بود.');
+      }
+      if (audioBuffer.length > MAX_VOICE_AUDIO_BYTES) {
+        throw new Error('حجم فایل صوتی بیش از ۱۵ مگابایت است.');
+      }
+    }
+
+    // 7. Run optimized AI extraction
+    const aiResult = await processVoiceWithAI(
+      {
+        audioBuffer,
+        mimeType,
+        textInput: isTextInbound ? textInboundMatch?.[1]?.trim() : undefined,
+        captionHint: captionHint || undefined,
+      },
+      settings,
+      Array.isArray(dbData?.products) ? dbData.products : []
+    );
+
+    if (!aiResult.items || aiResult.items.length === 0) {
+      recordAiVoiceLog({
+        source: isTextInbound ? 'telegram_text' : 'telegram_voice',
+        provider: settings?.aiProvider || 'gemini',
+        model: aiResult.engineUsed,
+        transcriptionModel: aiResult.transcriptionModel,
+        durationMs: Date.now() - webhookStartedAt,
+        status: 'error',
+        itemCount: 0,
+        matchedCount: 0,
+        sender: senderLabel,
+        transcriptPreview: aiResult.transcript.slice(0, 120),
+        error: 'هیچ قلم کالایی تشخیص داده نشد',
+      });
+
+      await updateOrSendTelegramReply(
+        botToken,
+        chatId,
+        message.message_id,
+        statusMsgId,
+        [
+          '⚠️ <b>هیچ قلم کالایی در این پیام تشخیص داده نشد.</b>',
+          '',
+          '📝 <b>متن پیاده‌سازی‌شده:</b>',
+          `<i>«${escapeTelegramHtml(aiResult.transcript)}»</i>`,
+          '',
+          '💡 لطفاً نام کالا و تعداد آن را واضح‌تر بیان کنید (مثال: «۱۰ پاکت سیمان تیپ ۲»).',
+        ].join('\n')
+      );
+      return;
+    }
+
+    // 8. Build InboundReceipt & save atomically with proper revision increment, checksum & ActivityLog
     const nowJalali = getJalaliDateStr();
-    const receiptCode = `REC-VOICE-${Date.now().toString().slice(-4)}`;
+    const nowTime = new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
+    const receiptCode = `REC-VC-${Date.now().toString().slice(-5)}`;
+    const productsList = Array.isArray(dbData?.products) ? dbData.products : [];
 
     const inboundItems = aiResult.items.map((it, idx) => {
-      // Find matching product if any
-      let matched = (dbData?.products || []).find((p: any) => p.id === it.matchedProductId);
-      if (!matched && it.productName) {
-        const cleanName = it.productName.trim().toLowerCase();
-        matched = (dbData?.products || []).find((p: any) => p.name.trim().toLowerCase().includes(cleanName) || cleanName.includes(p.name.trim().toLowerCase()));
-      }
+      const matched = it.matchedProductId
+        ? productsList.find((p: any) => p && p.id === it.matchedProductId)
+        : null;
 
       return {
         id: `item-${Date.now()}-${idx}`,
         productId: matched ? matched.id : `voice-prod-${Date.now()}-${idx}`,
         productName: matched ? matched.name : it.productName,
-        productCode: matched ? matched.code : `VC-${idx + 1}`,
+        productCode: matched ? (matched.code || `VC-${idx + 1}`) : 'NEW-VOICE',
         unit: it.unit || matched?.unit || 'عدد',
         expectedQuantity: Number(it.quantity) || 1,
         receivedQuantity: Number(it.quantity) || 1,
         discrepancy: 0,
         discrepancyReason: '',
-        buyPrice: matched ? (matched.buyPrice || matched.purchasePrice || 0) : 0,
+        buyPrice: matched ? Number(matched.buyPrice || matched.purchasePrice || 0) : 0,
+        matchConfidence: it.matchConfidence,
       };
     });
 
+    const allMatched = inboundItems.every((it) => it.matchConfidence !== 'unmatched');
+    const autoConfirmAllowed = settings.aiVoiceRequireAdminApproval === false && allMatched;
+
     const newReceipt: any = {
-      id: `inb-voice-${Date.now()}`,
+      id: `inb-voice-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
       receiptNumber: receiptCode,
       purchaseInvoiceId: '',
-      purchaseInvoiceNumber: `صوتی-تلگرام`,
-      supplierName: aiResult.supplierName || (sender.first_name ? `${sender.first_name} (تلگرام)` : 'ورودی صوتی تلگرام'),
+      purchaseInvoiceNumber: isTextInbound ? 'متنی-تلگرام' : 'صوتی-تلگرام',
+      supplierName: aiResult.supplierName || `${senderLabel} (تلگرام)`,
       date: nowJalali,
-      status: 'pending_verification',
+      status: autoConfirmAllowed ? 'confirmed' : 'pending_verification',
+      ...(autoConfirmAllowed ? { verifiedDate: nowJalali, verifiedBy: 'تایید خودکار هوش مصنوعی' } : {}),
       items: inboundItems,
       totalExpectedQuantity: inboundItems.reduce((sum, i) => sum + i.expectedQuantity, 0),
       totalReceivedQuantity: inboundItems.reduce((sum, i) => sum + i.receivedQuantity, 0),
@@ -6157,91 +6984,239 @@ app.post('/api/telegram/webhook', async (req, res) => {
       voiceSender: {
         userId: sender.id,
         username: sender.username,
-        firstName: sender.first_name,
-        chatId: chatId,
+        firstName: senderLabel,
+        chatId,
       },
-      notes: `ثبت خودکار از پیام صوتی تلگرام. متن صوت: «${aiResult.transcript}»`,
-      warehouseNotes: 'در انتظار تایید فیزیکی و شمارش نهایی مدیر',
+      notes: `ثبت هوشمند از ${isTextInbound ? 'پیام متنی' : 'ویس'} تلگرام (${senderLabel}). متن: «${aiResult.transcript}»`,
+      warehouseNotes: autoConfirmAllowed
+        ? 'ثبت و افزایش موجودی خودکار بر اساس تنظیمات هوش مصنوعی'
+        : 'در انتظار بررسی و تایید نهایی مدیر یا انباردار',
       createdAt: nowJalali,
+      updatedAt: nowJalali,
     };
 
-    // Save into database atomically
     await enqueueDbWrite(async () => {
       const { data: currentDb } = await getLatestConvergedDatabase();
       const currentReceipts = Array.isArray(currentDb.inboundReceipts) ? [...currentDb.inboundReceipts] : [];
       currentReceipts.unshift(newReceipt);
       currentDb.inboundReceipts = currentReceipts;
-      await writeDatabase(currentDb);
+
+      // If auto-approval is enabled AND every item matched an existing warehouse product, update stock & kardex atomically
+      if (autoConfirmAllowed && Array.isArray(currentDb.products)) {
+        const currentMovements = Array.isArray(currentDb.movements) ? [...currentDb.movements] : [];
+        for (const item of inboundItems) {
+          const prodIdx = currentDb.products.findIndex((p: any) => p && p.id === item.productId);
+          if (prodIdx >= 0) {
+            const prevStock = Number(currentDb.products[prodIdx].stock) || 0;
+            const nextStock = prevStock + item.receivedQuantity;
+            currentDb.products[prodIdx] = {
+              ...currentDb.products[prodIdx],
+              stock: nextStock,
+            };
+            currentMovements.unshift({
+              id: `mov-vc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              productId: item.productId,
+              productName: item.productName,
+              type: 'purchase',
+              quantity: item.receivedQuantity,
+              previousStock: prevStock,
+              newStock: nextStock,
+              date: nowJalali,
+              note: `ورود خودکار از ویس تلگرام (${receiptCode}) توسط ${senderLabel}`,
+              referenceId: receiptCode,
+            });
+          }
+        }
+        currentDb.movements = currentMovements;
+      }
+
+      // Append Activity Log entry
+      const currentLogs = Array.isArray(currentDb.activityLogs) ? [...currentDb.activityLogs] : [];
+      currentLogs.unshift({
+        id: `log-vc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        userId: 'telegram-bot',
+        userName: senderLabel,
+        userRole: 'system',
+        userRoleTitle: 'دستیار صوتی تلگرام',
+        category: 'warehouse',
+        actionType: autoConfirmAllowed ? 'telegram_voice_inbound_auto' : 'telegram_voice_inbound_pending',
+        actionTitle: autoConfirmAllowed ? 'ثبت و تایید خودکار ورود صوتی' : 'ثبت حواله ورود صوتی (در انتظار تایید)',
+        details: `حواله ${receiptCode} شامل ${inboundItems.length} قلم کالا از ${senderLabel} — متن: «${aiResult.transcript.slice(0, 140)}»`,
+        timestamp: `${nowJalali} - ${nowTime}`,
+        dateOnly: nowJalali,
+        createdAtMs: Date.now(),
+        severity: allMatched ? 'info' : 'warning',
+        entityType: 'inbound_receipt',
+        entityId: newReceipt.id,
+        entityLabel: receiptCode,
+      });
+      currentDb.activityLogs = currentLogs.slice(0, 2000);
+
+      // Update timestamp & increment revision atomically so connected clients sync immediately
+      currentDb.updatedAt = new Date().toISOString();
+      writeDatabase(currentDb, true, true);
       if (getPostgresStatus().connected) {
         await saveStateToPostgres(currentDb);
       }
     });
 
-    // 5. Send success confirmation message back to Telegram
-    const itemsSummary = inboundItems
-      .map((it, idx) => `  ${idx + 1}. <b>${escapeTelegramHtml(it.productName)}</b>: ${it.expectedQuantity} ${escapeTelegramHtml(it.unit)}`)
-      .join('\n');
+    const matchedCount = inboundItems.filter((i) => i.matchConfidence !== 'unmatched').length;
+    const totalDurationMs = Date.now() - webhookStartedAt;
 
-    const replyText = [
-      `✅ <b>رسید ورود کالا با موفقیت ثبت شد (شماره: ${escapeTelegramHtml(receiptCode)})</b>`,
-      '',
-      `🎙️ <b>متن پیاده‌سازی شده صوت:</b>`,
-      `<i>«${escapeTelegramHtml(aiResult.transcript)}»</i>`,
-      '',
-      `📦 <b>اقلام استخراج‌شده:</b>`,
-      itemsSummary,
-      '',
-      `⏳ <b>وضعیت:</b> در انتظار بررسی و تایید نهایی مدیر در پنل کارگاه`,
-      `🏢 جهت نهایی‌سازی و افزایش موجودی انبار، مدیر می‌تواند این حواله را در بخش «انبارداری > حواله‌های ورود» تایید فرماید.`,
-    ].join('\n');
-
-    await callTelegramApi('sendMessage', {
-      token: botToken,
-      body: {
-        chat_id: chatId,
-        reply_to_message_id: message.message_id,
-        text: replyText,
-        parse_mode: 'HTML',
-      },
+    recordAiVoiceLog({
+      source: isTextInbound ? 'telegram_text' : 'telegram_voice',
+      provider: settings?.aiProvider || 'gemini',
+      model: aiResult.engineUsed,
+      transcriptionModel: aiResult.transcriptionModel,
+      durationMs: totalDurationMs,
+      status: 'success',
+      itemCount: inboundItems.length,
+      matchedCount,
+      sender: senderLabel,
+      transcriptPreview: aiResult.transcript.slice(0, 120),
     });
 
+    // 9. Edit status message in-place with structured summary
+    const itemsSummary = inboundItems
+      .map((it, idx) => {
+        const badge = it.matchConfidence === 'exact' ? '✅' : it.matchConfidence === 'fuzzy' ? '🔎' : '🆕';
+        return `  ${idx + 1}. ${badge} <b>${escapeTelegramHtml(it.productName)}</b>: ${it.expectedQuantity} ${escapeTelegramHtml(it.unit)}`;
+      })
+      .join('\n');
+
+    const unmatchedNote =
+      matchedCount < inboundItems.length
+        ? '\n⚠️ <i>اقلام با علامت 🆕 در انبار تطبیق قطعی نداشتند و هنگام تایید قابل اتصال به کالای موجود هستند.</i>'
+        : '';
+
+    const replyText = [
+      `✅ <b>حواله ورود کالا ثبت شد</b> (<code>${escapeTelegramHtml(receiptCode)}</code>)`,
+      aiResult.supplierName ? `🏢 <b>تامین‌کننده/مبدأ:</b> ${escapeTelegramHtml(aiResult.supplierName)}` : '',
+      '',
+      `📝 <b>متن پیاده‌سازی‌شده:</b>`,
+      `<i>«${escapeTelegramHtml(aiResult.transcript)}»</i>`,
+      '',
+      `📦 <b>اقلام استخراج‌شده (${inboundItems.length} ردیف):</b>`,
+      itemsSummary,
+      unmatchedNote,
+      '',
+      autoConfirmAllowed
+        ? '🟢 <b>وضعیت:</b> تایید خودکار انجام شد و موجودی انبار به‌روزرسانی گردید.'
+        : '⏳ <b>وضعیت:</b> در انتظار بررسی و تایید نهایی در بخش «انبارداری › حواله‌های ورود»',
+      `⚡ زمان پردازش: ${(totalDurationMs / 1000).toFixed(1)} ثانیه`,
+    ]
+      .filter((line) => line !== '')
+      .join('\n');
+
+    await updateOrSendTelegramReply(botToken, chatId, message.message_id, statusMsgId, replyText);
   } catch (webhookErr: any) {
     console.error('[Telegram Webhook Voice Processing] Error:', webhookErr);
+    const friendlyError = formatAiErrorPersian(webhookErr);
+    recordAiVoiceLog({
+      source: 'telegram_voice',
+      provider: 'telegram',
+      model: '-',
+      durationMs: Date.now() - webhookStartedAt,
+      status: 'error',
+      itemCount: 0,
+      matchedCount: 0,
+      sender: senderLabel,
+      error: friendlyError,
+    });
+
+    if (activeBotToken && activeChatId) {
+      await updateOrSendTelegramReply(
+        activeBotToken,
+        activeChatId,
+        activeReplyMsgId,
+        statusMsgId,
+        `❌ <b>خطا در پردازش پیام ورود کالا</b>\n\n${escapeTelegramHtml(friendlyError)}\n\nلطفاً لحظاتی دیگر دوباره ارسال کنید یا به مدیر سیستم اطلاع دهید.`
+      ).catch(() => {});
+    }
   }
 });
 
-// 12.4.4 Set Webhook or Polling helper endpoint
+// 12.4.4 Set Telegram Webhook with automatic secret_token protection
 app.post('/api/telegram/set-webhook', requireAdmin, async (req, res) => {
   try {
     const { data: dbData } = await getLatestConvergedDatabase();
     const settings = dbData?.settings || {};
     const botToken = sanitizeTelegramBotToken(req.body?.botToken || settings?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN);
-    const webhookUrl = (req.body?.webhookUrl || '').trim();
+    const webhookUrl = String(req.body?.webhookUrl || '').trim();
 
     if (!botToken) {
-      return res.status(400).json({ success: false, error: 'توکن ربات تلگرام مشخص نیست.' });
+      return res.status(400).json({ ok: false, success: false, description: 'توکن ربات تلگرام مشخص نیست.' });
     }
-    if (!webhookUrl) {
-      return res.status(400).json({ success: false, error: 'آدرس وبهوک (URL) وارد نشده است.' });
+    if (!webhookUrl || !/^https:\/\//i.test(webhookUrl)) {
+      return res.status(400).json({
+        ok: false,
+        success: false,
+        description: 'آدرس وبهوک باید معتبر و با پروتکل امن https:// شروع شود.',
+      });
+    }
+
+    // Generate or reuse secure secret token (Telegram allows A-Z, a-z, 0-9, _, -)
+    let secretToken = String(settings?.telegramWebhookSecret || '').trim();
+    if (!secretToken || secretToken.length < 16) {
+      secretToken = `whsec_${crypto.randomBytes(20).toString('hex')}`;
     }
 
     const { data } = await callTelegramApi('setWebhook', {
       token: botToken,
       body: {
         url: webhookUrl,
+        secret_token: secretToken,
+        max_connections: 40,
         allowed_updates: ['message', 'edited_message'],
         drop_pending_updates: true,
       },
     });
 
-    return res.json(data);
+    if (data?.ok) {
+      // Persist secret token cleanly in DB so webhook verification activates immediately
+      await enqueueDbWrite(async () => {
+        const { data: currentDb } = await getLatestConvergedDatabase();
+        currentDb.settings = {
+          ...(currentDb.settings || {}),
+          telegramWebhookSecret: secretToken,
+        };
+        currentDb.updatedAt = new Date().toISOString();
+        writeDatabase(currentDb, false, true);
+        if (getPostgresStatus().connected) {
+          await saveStateToPostgres(currentDb);
+        }
+      });
+    }
+
+    return res.json({ ...data, secretTokenProtected: Boolean(data?.ok) });
   } catch (err: any) {
     console.error('[Telegram Set Webhook] Error:', err);
-    return res.status(500).json({ success: false, error: err?.message || 'خطا در ثبت وبهوک تلگرام' });
+    return res.status(500).json({ ok: false, success: false, description: err?.message || 'خطا در ثبت وبهوک تلگرام' });
   }
 });
 
-// 12.4.5 Get Webhook Info
+// 12.4.5 Delete / Disable Telegram Webhook
+app.post('/api/telegram/delete-webhook', requireAdmin, async (req, res) => {
+  try {
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const settings = dbData?.settings || {};
+    const botToken = sanitizeTelegramBotToken(req.body?.botToken || settings?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN);
+
+    if (!botToken) {
+      return res.status(400).json({ ok: false, success: false, description: 'توکن ربات تلگرام مشخص نیست.' });
+    }
+
+    const { data } = await callTelegramApi('deleteWebhook', {
+      token: botToken,
+      body: { drop_pending_updates: true },
+    });
+    return res.json(data);
+  } catch (err: any) {
+    return res.status(500).json({ ok: false, success: false, description: err?.message || 'خطا در حذف وبهوک تلگرام' });
+  }
+});
+
+// 12.4.6 Get Webhook Info
 app.get('/api/telegram/webhook-info', requireAdmin, async (req, res) => {
   try {
     const { data: dbData } = await getLatestConvergedDatabase();
@@ -6249,7 +7224,7 @@ app.get('/api/telegram/webhook-info', requireAdmin, async (req, res) => {
     const botToken = sanitizeTelegramBotToken((req.query?.botToken as string) || settings?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN);
 
     if (!botToken) {
-      return res.status(400).json({ success: false, error: 'توکن ربات تلگرام مشخص نیست.' });
+      return res.status(400).json({ ok: false, success: false, description: 'توکن ربات تلگرام مشخص نیست.' });
     }
 
     const { data } = await callTelegramApi('getWebhookInfo', {
@@ -6257,7 +7232,7 @@ app.get('/api/telegram/webhook-info', requireAdmin, async (req, res) => {
     });
     return res.json(data);
   } catch (err: any) {
-    return res.status(500).json({ success: false, error: err?.message });
+    return res.status(500).json({ ok: false, success: false, description: err?.message });
   }
 });
 

@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@fontsource/vazirmatn": "^5.3.0",
-    "@google/genai": "^2.4.0",
+    "@google/genai": "^3.6.1",
     "bidi-shaper": "^0.1.2",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",

@@ -729,12 +729,14 @@ const initialSettings: StoreSettings = {
   // تنظیمات هوش مصنوعی و ویس تلگرام
   aiProvider: 'gemini',
   aiApiKey: '',
-  aiModel: 'gemini-2.5-flash',
+  aiModel: 'gemini-4-hydrogen',
   aiBaseUrl: '',
   aiVoiceInboundEnabled: true,
   aiVoiceAutoMatchProducts: true,
   aiVoiceRequireAdminApproval: true,
   aiCustomPrompt: '',
+  aiVoiceAllowedChatIds: '',
+  telegramWebhookSecret: '',
 
   // تنظیمات ابعاد، فونت‌ها و جدول چاپ و خروجی PDF
   printLayout: DEFAULT_PRINT_LAYOUT,

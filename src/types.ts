@@ -446,12 +446,14 @@ export interface StoreSettings {
   // تنظیمات هوش مصنوعی (AI Engine) جهت تبدیل ویس تلگرام و ثبت خودکار ورودی کالا
   aiProvider?: 'gemini' | 'openai' | 'custom'; // ارائه‌دهنده سرویس هوش مصنوعی (جمینای، اوپن‌ای‌آی یا سرور شخصی)
   aiApiKey?: string; // کلید دسترسی API هوش مصنوعی (Gemini API Key یا OpenAI Key)
-  aiModel?: string; // مدل هوش مصنوعی (پیش‌فرض جمینای: gemini-2.5-flash)
+  aiModel?: string; // مدل هوش مصنوعی (پیش‌فرض جمینای: gemini-4-hydrogen)
   aiBaseUrl?: string; // آدرس سفارشی سرور هوش مصنوعی برای داکر / لوکال / ارائه‌دهنده‌های ایرانی
   aiVoiceInboundEnabled?: boolean; // فعال بودن پردازش پیام‌های صوتی تلگرام و ثبت حواله ورود
   aiVoiceAutoMatchProducts?: boolean; // تطبیق هوشمند نام کالا در ویس با انبار موجود
   aiVoiceRequireAdminApproval?: boolean; // ثبت در وضعیت در انتظار تایید مدیر بدون افزایش آنی موجودی (پیش‌فرض: true)
-  aiCustomPrompt?: string; // دستورالعمل تکمیلی برای هوش مصنوعی در استخراج اقلام
+  aiCustomPrompt?: string; // دستورالعمل تکمیلی و واژگان اختصاصی کارگاه برای هوش مصنوعی
+  aiVoiceAllowedChatIds?: string; // لیست چت‌آیدی‌های مجاز برای ارسال ویس ورود کالا (جداشده با ویرگول؛ خالی = همه مجاز)
+  telegramWebhookSecret?: string; // توکن محرمانه اعتبارسنجی درخواست‌های Webhook تلگرام
 
   // تنظیمات اختصاصی ابعاد، فونت‌ها و جدول چاپ و خروجی PDF (تعیین شده توسط مدیر)
   printLayout?: PrintLayoutSettings;
@@ -755,6 +757,7 @@ export interface InboundReceiptItem {
   sellPrice?: number;
   variantId?: string;
   variantName?: string;
+  matchConfidence?: 'exact' | 'fuzzy' | 'unmatched';
 }
 
 export type InboundReceiptStatus = 'pending_verification' | 'confirmed' | 'has_discrepancy' | 'rejected';
