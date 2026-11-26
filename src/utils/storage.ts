@@ -16,6 +16,7 @@ import {
   InboundReceipt,
   InvoiceShareLink,
   ActivityLog,
+  ActivityLogSeverity,
   ActivityActionCategory,
   ServerBackupInfo,
   DirectTransfer,
@@ -30,7 +31,7 @@ import {
   DEFAULT_PRINT_LAYOUT,
   PrintLayoutSettings
 } from '../types';
-import { getCurrentJalaliDate, getCurrentJalaliTime } from './jalali';
+import { getCurrentJalaliDate, getCurrentJalaliTime, jalaliToGregorian, toEnglishDigits } from './jalali';
 import {
   ensureProductCodesAndBarcodes,
   generateNextProductCode,
@@ -282,7 +283,7 @@ export function normalizeUserPermissions(
 }
 
 export function canUserViewBuyPrices(user?: AppUser | null): boolean {
-  if (!user) return true;
+  if (!user) return false;
   if (user.role === 'admin' || user.role === 'accountant') return true;
   if (user.role === 'cashier' || user.role === 'warehouse') return false;
   return Boolean(user.permissions?.canViewBuyPrices);
@@ -705,64 +706,131 @@ const initialSettings: StoreSettings = {
   printLayout: DEFAULT_PRINT_LAYOUT,
 };
 
-const initialActivityLogs: ActivityLog[] = [
-  {
-    id: 'log-1',
-    userId: 'user-1',
-    userName: 'حمیدرضا سپهری',
-    userRole: 'admin',
-    userRoleTitle: 'مدیر کل سیستم',
-    category: 'auth',
-    actionType: 'login',
-    actionTitle: 'ورود به سیستم',
-    details: 'ورود موفق به سامانه و احراز هویت مدیر ارشد',
-    timestamp: `${getCurrentJalaliDate()} - ۰۸:۳۰:۱۵`,
-    dateOnly: getCurrentJalaliDate(),
-    deviceInfo: 'مرورگر وب (رایانه)',
-  },
-  {
-    id: 'log-2',
-    userId: 'user-2',
-    userName: 'سارا محمدی',
-    userRole: 'cashier',
-    userRoleTitle: 'صندوق‌دار شیفت صبح',
-    category: 'sales',
-    actionType: 'create_invoice',
-    actionTitle: 'صدور فاکتور فروش',
-    details: 'صدور فاکتور شماره INV-1001 برای مشتری شرکت فناوران داده‌پرداز پایتخت به مبلغ ۲,۴۶۳,۲۰۰ تومان',
-    timestamp: `${getCurrentJalaliDate()} - ۰۹:۱۵:۴۰`,
-    dateOnly: getCurrentJalaliDate(),
-    deviceInfo: 'صندوق فروشگاه (POS)',
-  },
-  {
-    id: 'log-3',
-    userId: 'user-3',
-    userName: 'حسین اکبری',
-    userRole: 'warehouse',
-    userRoleTitle: 'مسئول انبار و موجودی',
-    category: 'warehouse',
-    actionType: 'verify_receipt',
-    actionTitle: 'ثبت مغایرت و تایید حواله ورود',
-    details: 'شمارش و تایید حواله ورود REC-1001 مربوط به فاکتور خرید PUR-1001 با مغایرت ۱۵- عدد فلش مموری',
-    timestamp: `${getCurrentJalaliDate()} - ۱۰:۴۵:۱۲`,
-    dateOnly: getCurrentJalaliDate(),
-    deviceInfo: 'مرورگر همراه (موبایل)',
-  },
-  {
-    id: 'log-4',
-    userId: 'user-1',
-    userName: 'حمیدرضا سپهری',
-    userRole: 'admin',
-    userRoleTitle: 'مدیر کل سیستم',
-    category: 'settings',
-    actionType: 'update_settings',
-    actionTitle: 'به‌روزرسانی پیکربندی فروشگاه',
-    details: 'بروزرسانی مشخصات سربرگ و فعال‌سازی کسر خودکار موجودی انبار هنگام صدور فاکتور',
-    timestamp: `${getCurrentJalaliDate()} - ۱۱:۲۰:۰۰`,
-    dateOnly: getCurrentJalaliDate(),
-    deviceInfo: 'مرورگر وب (رایانه)',
-  },
-];
+const initialActivityLogs: ActivityLog[] = [];
+
+function detectClientDeviceInfo(): string {
+  if (typeof navigator === 'undefined') return 'مرورگر وب';
+  const ua = navigator.userAgent || '';
+  if (!ua) return 'مرورگر وب';
+
+  let os = 'نامشخص';
+  let form = typeof window !== 'undefined' && window.innerWidth < 768 ? 'موبایل' : 'رایانه';
+  if (/Android/i.test(ua)) {
+    os = 'Android';
+    form = 'موبایل';
+  } else if (/iPhone|iPad|iPod/i.test(ua)) {
+    os = 'iOS';
+    form = /iPad/i.test(ua) ? 'تبلت' : 'موبایل';
+  } else if (/Windows/i.test(ua)) {
+    os = 'Windows';
+  } else if (/Mac OS X|Macintosh/i.test(ua)) {
+    os = 'macOS';
+  } else if (/Linux/i.test(ua)) {
+    os = 'Linux';
+  }
+
+  let browser = 'مرورگر';
+  if (/Edg\//i.test(ua)) browser = 'Edge';
+  else if (/OPR\/|Opera/i.test(ua)) browser = 'Opera';
+  else if (/Chrome\//i.test(ua) && !/Chromium/i.test(ua)) browser = 'Chrome';
+  else if (/Firefox\//i.test(ua)) browser = 'Firefox';
+  else if (/Safari\//i.test(ua) && !/Chrome\//i.test(ua)) browser = 'Safari';
+
+  return `${browser} • ${os} (${form})`;
+}
+
+export function inferClientLogSeverity(actionType?: string, category?: string): ActivityLogSeverity {
+  const act = String(actionType || '').toLowerCase();
+  const cat = String(category || '').toLowerCase();
+  if (
+    act.includes('delete') ||
+    act.includes('restore') ||
+    act.includes('clear_logs') ||
+    act.includes('import_sql') ||
+    act.includes('lockout') ||
+    act.includes('recovery_reset') ||
+    act.includes('return')
+  ) {
+    return 'critical';
+  }
+  if (
+    act.includes('failed_login') ||
+    act.includes('edit') ||
+    act.includes('update') ||
+    act.includes('adjust') ||
+    act.includes('recovery_request') ||
+    act.includes('share_link') ||
+    act.includes('prune') ||
+    cat === 'settings' ||
+    cat === 'users'
+  ) {
+    return 'warning';
+  }
+  return 'info';
+}
+
+function isLegacyDemoSeedLogClient(log: any): boolean {
+  if (!log || typeof log !== 'object') return false;
+  const id = String(log.id || '');
+  if (!['log-1', 'log-2', 'log-3', 'log-4'].includes(id)) return false;
+  const details = String(log.details || '');
+  return (
+    details.includes('شماره INV-1001 برای مشتری شرکت فناوران') ||
+    details.includes('REC-1001 مربوط به فاکتور خرید PUR-1001') ||
+    details.includes('احراز هویت مدیر ارشد') ||
+    details.includes('کسر خودکار موجودی انبار هنگام صدور فاکتور')
+  );
+}
+
+function computeLogSortMsClient(log: Partial<ActivityLog>): number {
+  if (typeof log.createdAtMs === 'number' && Number.isFinite(log.createdAtMs) && log.createdAtMs > 0) {
+    return log.createdAtMs;
+  }
+  const idMatch = String(log.id || '').match(/^log-(\d{12,15})(?:-|$)/);
+  if (idMatch) {
+    return Number(idMatch[1]);
+  }
+  const ts = toEnglishDigits(String(log.timestamp || log.dateOnly || ''));
+  const m = ts.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\D+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (m) {
+    const [gy, gm, gd] = jalaliToGregorian(Number(m[1]), Number(m[2]), Number(m[3]));
+    return (
+      Date.UTC(gy, gm - 1, gd, Number(m[4] || 0), Number(m[5] || 0), Number(m[6] || 0)) -
+      3.5 * 3600 * 1000
+    );
+  }
+  return 0;
+}
+
+function mergeActivityLogsClient(existing: ActivityLog[], incoming: ActivityLog[], maxItems = 2000): ActivityLog[] {
+  const map = new Map<string, ActivityLog>();
+  const add = (list: ActivityLog[]) => {
+    for (const raw of Array.isArray(list) ? list : []) {
+      if (!raw || typeof raw !== 'object' || !raw.id || isLegacyDemoSeedLogClient(raw)) continue;
+      const prev = map.get(raw.id);
+      const normalized: ActivityLog = {
+        ...raw,
+        severity: raw.severity || inferClientLogSeverity(raw.actionType, raw.category),
+      };
+      if (!prev) {
+        map.set(raw.id, normalized);
+      } else {
+        map.set(raw.id, {
+          ...prev,
+          ...normalized,
+          ipAddress: normalized.ipAddress || prev.ipAddress,
+          source: prev.source === 'server' || normalized.source === 'server' ? 'server' : (normalized.source || prev.source),
+          createdAtMs: normalized.createdAtMs || prev.createdAtMs,
+        });
+      }
+    }
+  };
+  add(existing);
+  add(incoming);
+  return Array.from(map.values())
+    .sort((a, b) => computeLogSortMsClient(b) - computeLogSortMsClient(a))
+    .slice(0, maxItems);
+}
 
 const initialDirectTransfers: DirectTransfer[] = [];
 
@@ -1286,7 +1354,11 @@ export const StorageService = {
               preservedSettings.warehouses = currentLocal.warehouses;
             }
             safeLocalStorageSet(STORAGE_KEYS.SETTINGS, JSON.stringify(preservedSettings));
-            if (!isRecentSave) {
+            const logged = this.getLoggedInUser();
+            const canPushGlobalSettings = Boolean(
+              logged && (logged.role === 'admin' || logged.permissions?.canAccessAdmin)
+            );
+            if (!isRecentSave && canPushGlobalSettings) {
               this.pushToServer({ settings: preservedSettings });
             }
           } else {
@@ -1319,8 +1391,13 @@ export const StorageService = {
         }
 
         if (Array.isArray(d.activityLogs)) {
-          safeLocalStorageSet(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(d.activityLogs));
-          hasAnyUpdate = true;
+          const active = this.getLoggedInUser();
+          const canViewServerLogs = active && (active.role === 'admin' || active.permissions?.canAccessAdmin || active.permissions?.canManageUsers);
+          if (canViewServerLogs) {
+            const cleaned = mergeActivityLogsClient([], d.activityLogs);
+            safeLocalStorageSet(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(cleaned));
+            hasAnyUpdate = true;
+          }
         }
 
         if (Array.isArray(d.categories)) {
@@ -1973,6 +2050,16 @@ export const StorageService = {
     const current = this.getCategories();
     if (current.some((c) => c.toLowerCase() === clean.toLowerCase())) return false;
     this.saveCategories([...current, clean], [clean]);
+    this.logActivity({
+      category: 'warehouse',
+      actionType: 'create_category',
+      actionTitle: 'تعریف دسته‌بندی کالای جدید',
+      details: `ایجاد دسته‌بندی «${clean}» در فهرست دسته‌بندی‌های کالا`,
+      severity: 'info',
+      entityType: 'category',
+      entityId: clean,
+      entityLabel: clean,
+    });
     return true;
   },
 
@@ -1993,12 +2080,14 @@ export const StorageService = {
     }
     this.saveCategories(updatedCategories, [cleanNew]);
 
+    let updatedCount = 0;
     if (updateProducts) {
       const products = this.getProducts();
       let changed = false;
       const updatedProducts = products.map((p) => {
         if ((p.category || '').trim().toLowerCase() === cleanOld.toLowerCase()) {
           changed = true;
+          updatedCount++;
           return { ...p, category: cleanNew };
         }
         return p;
@@ -2007,6 +2096,21 @@ export const StorageService = {
         this.saveProducts(updatedProducts);
       }
     }
+    this.logActivity({
+      category: 'warehouse',
+      actionType: 'edit_category',
+      actionTitle: 'تغییر نام دسته‌بندی کالا',
+      details: `تغییر نام دسته‌بندی از «${cleanOld}» به «${cleanNew}»${updateProducts ? ` (${updatedCount} کالا بروزرسانی شد)` : ''}`,
+      severity: 'warning',
+      entityType: 'category',
+      entityId: cleanNew,
+      entityLabel: `${cleanOld} -> ${cleanNew}`,
+      metadata: {
+        oldName: cleanOld,
+        newName: cleanNew,
+        updatedProductsCount: updatedCount,
+      },
+    });
     this.notifyChange();
     return true;
   },
@@ -2028,9 +2132,11 @@ export const StorageService = {
 
     const products = this.getProducts();
     let changed = false;
+    let movedProductsCount = 0;
     const updatedProducts = products.map((p) => {
       if ((p.category || '').trim().toLowerCase() === clean.toLowerCase()) {
         changed = true;
+        movedProductsCount++;
         return { ...p, category: cleanTarget };
       }
       return p;
@@ -2038,6 +2144,21 @@ export const StorageService = {
     if (changed) {
       this.saveProducts(updatedProducts);
     }
+    this.logActivity({
+      category: 'warehouse',
+      actionType: 'delete_category',
+      actionTitle: 'حذف دسته‌بندی کالا',
+      details: `حذف دسته‌بندی «${clean}» و انتقال ${movedProductsCount} کالا به دسته «${cleanTarget}»`,
+      severity: 'critical',
+      entityType: 'category',
+      entityId: clean,
+      entityLabel: clean,
+      metadata: {
+        deletedCategory: clean,
+        reassignedTo: cleanTarget,
+        movedProductsCount,
+      },
+    });
     this.notifyChange();
     return true;
   },
@@ -3616,15 +3737,6 @@ export const StorageService = {
         };
       });
 
-      if (!sanitized.some((u) => u.role === 'supervisor') && !userDelSet.has('user-5')) {
-        const sup = initialUsers.find((u) => u.id === 'user-5');
-        if (sup) {
-          const { password: _p, pin: _pin, ...safeSup } = sup;
-          sanitized.push({ ...safeSup, hasPassword: true });
-          needsLocalRepair = true;
-        }
-      }
-
       if (needsLocalRepair) {
         safeLocalStorageSet(STORAGE_KEYS.USERS, JSON.stringify(sanitized));
       }
@@ -3976,6 +4088,27 @@ export const StorageService = {
       this.saveInvoices(invoices);
     }
 
+    this.logActivity({
+      category: 'warehouse',
+      actionType: deliveryData.isDelivered ? 'exit_slip_delivered' : 'exit_slip_updated',
+      actionTitle: deliveryData.isDelivered ? 'تایید خروج و تحویل حواله انبار' : 'بروزرسانی اطلاعات حواله خروج',
+      details: `${deliveryData.isDelivered ? 'تایید تحویل' : 'ثبت وضعیت'} حواله خروج ${updated.slipNumber || '-'} مربوط به فاکتور ${targetInv?.invoiceNumber || invoiceId} (${targetInv?.customerName || 'مشتری'}) — تحویل‌گیرنده: ${deliveryData.receiverName || 'نامشخص'}${deliveryData.vehicleInfo ? ` | خودرو: ${deliveryData.vehicleInfo}` : ''}`,
+      severity: deliveryData.isDelivered ? 'info' : 'warning',
+      entityType: 'invoice',
+      entityId: invoiceId,
+      entityLabel: updated.slipNumber || targetInv?.invoiceNumber || invoiceId,
+      metadata: {
+        slipNumber: updated.slipNumber || null,
+        invoiceNumber: targetInv?.invoiceNumber || null,
+        isDelivered: Boolean(deliveryData.isDelivered),
+        receiverName: deliveryData.receiverName || null,
+        receiverPhone: deliveryData.receiverPhone || null,
+        vehicleInfo: deliveryData.vehicleInfo || null,
+        deliveredBy: deliveryData.deliveredBy || null,
+        deliveredAt: deliveryData.deliveredAt || null,
+      },
+    });
+
     return updated;
   },
 
@@ -4062,6 +4195,22 @@ export const StorageService = {
     }
 
     this.saveSavedVehicles(list);
+    this.logActivity({
+      category: 'warehouse',
+      actionType: existingIdx !== -1 ? 'edit_vehicle' : 'create_vehicle',
+      actionTitle: existingIdx !== -1 ? 'ویرایش مشخصات خودرو ناوگان' : 'ثبت خودرو جدید در ناوگان',
+      details: `${existingIdx !== -1 ? 'ویرایش' : 'ثبت'} خودرو «${savedVehicle.vehicleInfo}»${savedVehicle.driverName ? ` — راننده: ${savedVehicle.driverName}` : ''}${savedVehicle.plateNumber ? ` — پلاک: ${savedVehicle.plateNumber}` : ''}`,
+      severity: existingIdx !== -1 ? 'warning' : 'info',
+      entityType: 'vehicle',
+      entityId: savedVehicle.id,
+      entityLabel: savedVehicle.vehicleInfo || savedVehicle.plateNumber || savedVehicle.id,
+      metadata: {
+        vehicleType: savedVehicle.vehicleType || null,
+        driverName: savedVehicle.driverName || null,
+        driverPhone: savedVehicle.driverPhone || null,
+        plateNumber: savedVehicle.plateNumber || null,
+      },
+    });
     return savedVehicle;
   },
 
@@ -4077,6 +4226,7 @@ export const StorageService = {
     }
 
     const list = this.getSavedVehicles();
+    const removed = list.find((v) => v && ((cleanId && v.id === cleanId) || (targetInfo && String(v.vehicleInfo || '').trim().toLowerCase() === targetInfo)));
     const updated = list.filter((v) => {
       if (!v) return false;
       if (cleanId && v.id === cleanId) return false;
@@ -4086,6 +4236,16 @@ export const StorageService = {
     });
 
     this.saveSavedVehicles(updated);
+    this.logActivity({
+      category: 'warehouse',
+      actionType: 'delete_vehicle',
+      actionTitle: 'حذف خودرو از ناوگان',
+      details: `حذف خودرو «${removed?.vehicleInfo || vehicleInfo || cleanId}» از فهرست ناوگان تحویل`,
+      severity: 'critical',
+      entityType: 'vehicle',
+      entityId: cleanId || targetInfo,
+      entityLabel: removed?.vehicleInfo || vehicleInfo || cleanId,
+    });
     this.notifyChange();
   },
 
@@ -4100,6 +4260,15 @@ export const StorageService = {
       }
     });
     this.saveSavedVehicles([]);
+    this.logActivity({
+      category: 'warehouse',
+      actionType: 'clear_vehicles',
+      actionTitle: 'پاکسازی کامل فهرست ناوگان',
+      details: `حذف دسته‌جمعی ${current.length} خودرو از فهرست ناوگان تحویل`,
+      severity: 'critical',
+      entityType: 'vehicle',
+      metadata: { clearedCount: current.length },
+    });
     this.notifyChange();
   },
 
@@ -4168,6 +4337,10 @@ export const StorageService = {
   },
 
   clearInvoices() {
+    const caller = this.getLoggedInUser();
+    if (caller && (caller.role === 'accountant' || (caller.role !== 'admin' && !caller.permissions?.canAccessAdmin))) {
+      return;
+    }
     const currentInvoices = this.getInvoices();
     const tombstones = this.getDeletedTombstones();
     const invSet = new Set(tombstones.invoices || []);
@@ -4185,10 +4358,29 @@ export const StorageService = {
       deletedInvoiceIds: tombstones.invoices,
       tombstones,
     });
+    this.logActivity({
+      category: 'sales',
+      actionType: 'clear_all_invoices',
+      actionTitle: 'حذف کلیه فاکتورهای فروش',
+      details: `پاکسازی دسته‌جمعی ${currentInvoices.length} فاکتور از سامانه`,
+      severity: 'critical',
+      entityType: 'invoice',
+      metadata: { clearedInvoicesCount: currentInvoices.length },
+    });
     this.notifyChange();
   },
 
   clearAllData() {
+    const caller = this.getLoggedInUser();
+    if (caller && (caller.role === 'accountant' || (caller.role !== 'admin' && !caller.permissions?.canAccessAdmin))) {
+      return;
+    }
+    const counts = {
+      products: this.getProducts().length,
+      customers: this.getCustomers().length,
+      invoices: this.getInvoices().length,
+      purchases: this.getPurchaseInvoices().length,
+    };
     const tombstones: AppTombstones = {
       invoices: this.getInvoices().map((x) => x.id),
       products: this.getProducts().map((x) => x.id),
@@ -4225,12 +4417,33 @@ export const StorageService = {
       deletedInvoiceIds: tombstones.invoices,
       tombstones,
     });
+    this.logActivity({
+      category: 'system',
+      actionType: 'clear_all_data',
+      actionTitle: 'پاکسازی کامل داده‌های عملیاتی سامانه',
+      details: `حذف کامل داده‌ها (${counts.invoices} فاکتور، ${counts.products} کالا، ${counts.customers} مشتری، ${counts.purchases} فاکتور خرید)`,
+      severity: 'critical',
+      entityType: 'system',
+      metadata: counts,
+    });
     this.notifyChange();
   },
 
   resetSettingsToDefault(): StoreSettings {
+    const caller = this.getLoggedInUser();
+    if (caller && (caller.role === 'accountant' || (caller.role !== 'admin' && !caller.permissions?.canAccessAdmin))) {
+      return this.getSettings();
+    }
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(initialSettings));
     this.pushToServer({ settings: initialSettings });
+    this.logActivity({
+      category: 'settings',
+      actionType: 'reset_settings',
+      actionTitle: 'بازنشانی تنظیمات سامانه به پیش‌فرض',
+      details: 'بازگرداندن کلیه تنظیمات فروشگاه، چاپ و قوانین انبار به حالت کارخانه',
+      severity: 'critical',
+      entityType: 'settings',
+    });
     return initialSettings;
   },
 
@@ -4238,19 +4451,50 @@ export const StorageService = {
   getActivityLogs(): ActivityLog[] {
     const data = localStorage.getItem(STORAGE_KEYS.ACTIVITY_LOGS);
     if (!data) {
-      localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(initialActivityLogs));
-      return initialActivityLogs;
+      safeLocalStorageSet(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(initialActivityLogs));
+      return [];
     }
     try {
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      return mergeActivityLogsClient([], Array.isArray(parsed) ? parsed : []);
     } catch {
-      return initialActivityLogs;
+      return [];
     }
   },
 
   saveActivityLogs(logs: ActivityLog[]) {
-    localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(logs));
-    this.pushToServer({ activityLogs: logs });
+    const normalized = mergeActivityLogsClient([], Array.isArray(logs) ? logs : []);
+    safeLocalStorageSet(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(normalized));
+  },
+
+  async fetchActivityLogsFromServer(): Promise<{ success: boolean; logs: ActivityLog[]; message?: string }> {
+    if (!hasAuthToken()) {
+      return { success: false, logs: this.getActivityLogs(), message: 'نشست کاربری فعال نیست.' };
+    }
+    try {
+      const res = await apiFetch(`/api/activity-logs?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success && Array.isArray(json.logs)) {
+        const cleaned = mergeActivityLogsClient([], json.logs);
+        safeLocalStorageSet(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(cleaned));
+        this.notifyChange();
+        return { success: true, logs: cleaned };
+      }
+      return {
+        success: false,
+        logs: this.getActivityLogs(),
+        message: json?.message || 'خطا در دریافت لاگ‌های فعالیت از سرور.',
+      };
+    } catch {
+      return {
+        success: false,
+        logs: this.getActivityLogs(),
+        message: 'ارتباط با سرور برای بروزرسانی لاگ‌ها برقرار نشد.',
+      };
+    }
   },
 
   logActivity(params: {
@@ -4262,20 +4506,28 @@ export const StorageService = {
     actionType: string;
     actionTitle: string;
     details: string;
+    severity?: ActivityLogSeverity;
+    entityType?: string;
+    entityId?: string;
+    entityLabel?: string;
+    metadata?: Record<string, string | number | boolean | null>;
     deviceInfo?: string;
   }): ActivityLog {
+    const now = new Date();
+    const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+    const dateOnly = getCurrentJalaliDate();
+    const timeWithSec = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const createdAtMs = now.getTime();
+
     try {
       const activeUser = this.getActiveUser();
       const userId = params.userId || activeUser?.id || 'sys';
       const userName = params.userName || activeUser?.fullName || 'کاربر سیستم';
       const userRole = params.userRole || activeUser?.role || 'admin';
-      const userRoleTitle = params.userRoleTitle || activeUser?.roleTitle || ROLE_LABELS[activeUser?.role as UserRole] || 'مدیر';
-
-      const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-      const defaultDevice = isMobile ? 'مرورگر همراه (موبایل)' : 'مرورگر وب (رایانه)';
+      const userRoleTitle = params.userRoleTitle || activeUser?.roleTitle || ROLE_LABELS[activeUser?.role as UserRole] || 'کاربر';
 
       const newLog: ActivityLog = {
-        id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: `log-${createdAtMs}-${Math.random().toString(36).slice(2, 7)}`,
         userId,
         userName,
         userRole,
@@ -4284,20 +4536,55 @@ export const StorageService = {
         actionType: params.actionType,
         actionTitle: params.actionTitle,
         details: params.details,
-        timestamp: `${getCurrentJalaliDate()} - ${getCurrentJalaliTime()}`,
-        dateOnly: getCurrentJalaliDate(),
-        deviceInfo: params.deviceInfo || defaultDevice,
+        timestamp: `${dateOnly} - ${timeWithSec || getCurrentJalaliTime()}`,
+        dateOnly,
+        createdAtMs,
+        severity: params.severity || inferClientLogSeverity(params.actionType, params.category),
+        source: 'client',
+        deviceInfo: params.deviceInfo || detectClientDeviceInfo(),
+        ...(params.entityType ? { entityType: params.entityType } : {}),
+        ...(params.entityId ? { entityId: params.entityId } : {}),
+        ...(params.entityLabel ? { entityLabel: params.entityLabel } : {}),
+        ...(params.metadata ? { metadata: params.metadata } : {}),
       };
 
+      // Strictly respect read-only accountant rule
+      if (activeUser?.role === 'accountant') {
+        return newLog;
+      }
+
       const currentLogs = this.getActivityLogs();
-      const updatedLogs = [newLog, ...currentLogs].slice(0, 1000);
-      this.saveActivityLogs(updatedLogs);
+      const updatedLogs = mergeActivityLogsClient(currentLogs, [newLog], 2000);
+      safeLocalStorageSet(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(updatedLogs));
       this.notifyChange();
+
+      // Send ONLY the new log atomically via POST /api/activity-logs instead of pushing the entire DB array
+      if (hasAuthToken()) {
+        apiFetch('/api/activity-logs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+          body: JSON.stringify(newLog),
+        })
+          .then(async (res) => {
+            if (!res.ok) return;
+            const json = await res.json().catch(() => null);
+            if (json?.success && json.log?.id) {
+              const latestLocal = this.getActivityLogs();
+              const merged = mergeActivityLogsClient(latestLocal, [json.log], 2000);
+              safeLocalStorageSet(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(merged));
+              this.notifyChange();
+            }
+          })
+          .catch(() => {
+            // Retain local copy if temporarily offline
+          });
+      }
+
       return newLog;
     } catch (err) {
       console.error('Failed to record activity log:', err);
       return {
-        id: `log-${Date.now()}`,
+        id: `log-${createdAtMs}`,
         userId: 'err',
         userName: 'سیستم',
         userRole: 'admin',
@@ -4305,16 +4592,47 @@ export const StorageService = {
         actionType: params.actionType,
         actionTitle: params.actionTitle,
         details: params.details,
-        timestamp: `${getCurrentJalaliDate()} - ${getCurrentJalaliTime()}`,
-        dateOnly: getCurrentJalaliDate(),
+        timestamp: `${dateOnly} - ${timeWithSec}`,
+        dateOnly,
+        createdAtMs,
+        severity: params.severity || 'warning',
+        source: 'client',
       };
     }
   },
 
-  clearActivityLogs() {
-    localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify([]));
-    this.pushToServer({ activityLogs: [] });
-    this.notifyChange();
+  async clearActivityLogs(): Promise<{ success: boolean; logs: ActivityLog[]; message?: string }> {
+    if (!hasAuthToken()) {
+      return { success: false, logs: this.getActivityLogs(), message: 'نشست کاربری معتبر نیست.' };
+    }
+    try {
+      const res = await apiFetch('/api/activity-logs', {
+        method: 'DELETE',
+        headers: { 'Cache-Control': 'no-cache' },
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success) {
+        const nextLogs = mergeActivityLogsClient([], Array.isArray(json.logs) ? json.logs : []);
+        safeLocalStorageSet(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(nextLogs));
+        this.notifyChange();
+        return {
+          success: true,
+          logs: nextLogs,
+          message: json.message || 'آرشیو لاگ‌های فعالیت با موفقیت پاکسازی شد.',
+        };
+      }
+      return {
+        success: false,
+        logs: this.getActivityLogs(),
+        message: json?.message || 'شما مجوز پاکسازی لاگ‌های فعالیت را ندارید.',
+      };
+    } catch {
+      return {
+        success: false,
+        logs: this.getActivityLogs(),
+        message: 'ارتباط با سرور برای پاکسازی لاگ‌ها برقرار نشد.',
+      };
+    }
   },
 
   // -------------------------------------------------------------
@@ -4426,6 +4744,17 @@ export const StorageService = {
       actionType: 'direct_transfer_dispatch',
       actionTitle: `ثبت خروج مستقیم انبار: ${newTransfer.transferNumber}`,
       details: `${typeLabel} - تحویل به: ${newTransfer.receiverName} | خودرو: ${newTransfer.dispatchVehicleInfo || 'نامشخص'} | اقلام: ${newTransfer.items.map((i) => `${i.productName} (${i.quantity} ${i.unit})`).join('، ')}`,
+      severity: 'info',
+      entityType: 'direct_transfer',
+      entityId: newTransfer.id,
+      entityLabel: newTransfer.transferNumber,
+      metadata: {
+        transferType: typeLabel,
+        receiverName: newTransfer.receiverName || null,
+        vehicleInfo: newTransfer.dispatchVehicleInfo || null,
+        itemsCount: newTransfer.items.length,
+        isReturnable: Boolean(newTransfer.isReturnable),
+      },
     });
 
     this.notifyChange();
@@ -4462,6 +4791,15 @@ export const StorageService = {
       actionType: 'direct_transfer_update',
       actionTitle: `ویرایش حواله امانی/تعمیرات: ${updated.transferNumber}`,
       details: `عنوان: ${updated.title} | تحویل‌گیرنده: ${updated.receiverName} | موعد بازگشت: ${updated.expectedReturnDate || 'تعیین‌نشده'}`,
+      severity: 'warning',
+      entityType: 'direct_transfer',
+      entityId: updated.id,
+      entityLabel: updated.transferNumber,
+      metadata: {
+        receiverName: updated.receiverName || null,
+        expectedReturnDate: updated.expectedReturnDate || null,
+        status: updated.status || null,
+      },
     });
 
     this.notifyChange();
@@ -4499,6 +4837,14 @@ export const StorageService = {
       actionType: 'direct_transfer_complete',
       actionTitle: `مختومه‌سازی حواله ${target.transferNumber}`,
       details: `حواله «${target.title}» به وضعیت مختومه (بدون بازگشت) تغییر یافت.${reasonNote ? ` علت: ${reasonNote}` : ''}`,
+      severity: 'warning',
+      entityType: 'direct_transfer',
+      entityId: target.id,
+      entityLabel: target.transferNumber,
+      metadata: {
+        reason: reasonNote || null,
+        receiverName: target.receiverName || null,
+      },
     });
 
     this.notifyChange();
@@ -4614,6 +4960,18 @@ export const StorageService = {
       actionType: 'direct_transfer_return',
       actionTitle: `ثبت ورود/بازگشت به انبار: ${targetTransfer.transferNumber}`,
       details: `آورنده: ${returnData.returnerName} | خودرو: ${returnData.returnVehicleInfo || 'نامشخص'} | تحویل‌گیرنده در انبار: ${returnData.receivedByWarehouseUser} | وضعیت: ${targetTransfer.status === 'returned' ? 'تکمیل کامل برگشت' : 'بخشی از اقلام برگشت داده شد'}`,
+      severity: 'info',
+      entityType: 'direct_transfer',
+      entityId: targetTransfer.id,
+      entityLabel: targetTransfer.transferNumber,
+      metadata: {
+        returnerName: returnData.returnerName || null,
+        vehicleInfo: returnData.returnVehicleInfo || null,
+        receivedBy: returnData.receivedByWarehouseUser || null,
+        healthStatus: returnData.healthStatus || null,
+        returnedItemsCount: returnData.itemsReturned.length,
+        finalStatus: targetTransfer.status,
+      },
     });
 
     this.notifyChange();
@@ -4688,6 +5046,15 @@ export const StorageService = {
       actionType: 'delete_direct_transfer',
       actionTitle: `حذف حواله خروج مستقیم ${target.transferNumber}`,
       details: `حواله ${target.title} از سیستم حذف شد. ${returnStockToWarehouse ? 'موجودی کالاهای باقیمانده به انبار برگشت داده شد.' : ''}`,
+      severity: 'critical',
+      entityType: 'direct_transfer',
+      entityId: cleanId,
+      entityLabel: target.transferNumber,
+      metadata: {
+        title: target.title || null,
+        receiverName: target.receiverName || null,
+        stockReturned: returnStockToWarehouse,
+      },
     });
 
     this.notifyChange();
@@ -4739,6 +5106,10 @@ export const StorageService = {
   },
 
   importAllData(jsonString: string, selectedModules?: string[]): boolean {
+    const caller = this.getLoggedInUser();
+    if (caller && (caller.role === 'accountant' || (caller.role !== 'admin' && !caller.permissions?.canAccessAdmin))) {
+      return false;
+    }
     try {
       const parsed = JSON.parse(jsonString);
       const actualData = parsed.data || parsed;
@@ -4930,6 +5301,10 @@ export const StorageService = {
   },
 
   resetToDefaults() {
+    const caller = this.getLoggedInUser();
+    if (caller && (caller.role === 'accountant' || (caller.role !== 'admin' && !caller.permissions?.canAccessAdmin))) {
+      return;
+    }
     const emptyTombstones: AppTombstones = {
       invoices: [],
       products: [],

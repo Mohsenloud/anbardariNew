@@ -1030,26 +1030,155 @@ function ensureUsersPasswordsHashed(users: any[]): { users: any[]; changed: bool
   return { users: updated, changed };
 }
 
+const DEFAULT_ROLE_PERMISSIONS_SERVER: Record<string, Record<string, boolean>> = {
+  admin: {
+    canCreateInvoice: true,
+    canViewInvoices: true,
+    canCreatePurchaseInvoice: true,
+    canViewPurchaseInvoices: true,
+    canSettleInvoices: true,
+    canDeleteInvoice: true,
+    canManageInventory: true,
+    canManageCustomers: true,
+    canViewReports: true,
+    canViewBuyPrices: true,
+    canAccessAdmin: true,
+    canManageUsers: true,
+  },
+  supervisor: {
+    canCreateInvoice: true,
+    canViewInvoices: true,
+    canCreatePurchaseInvoice: true,
+    canViewPurchaseInvoices: true,
+    canSettleInvoices: true,
+    canDeleteInvoice: true,
+    canManageInventory: true,
+    canManageCustomers: true,
+    canViewReports: true,
+    canViewBuyPrices: false,
+    canAccessAdmin: false,
+    canManageUsers: false,
+  },
+  cashier: {
+    canCreateInvoice: true,
+    canViewInvoices: true,
+    canCreatePurchaseInvoice: false,
+    canViewPurchaseInvoices: false,
+    canSettleInvoices: true,
+    canDeleteInvoice: false,
+    canManageInventory: false,
+    canManageCustomers: true,
+    canViewReports: false,
+    canViewBuyPrices: false,
+    canAccessAdmin: false,
+    canManageUsers: false,
+  },
+  warehouse: {
+    canCreateInvoice: false,
+    canViewInvoices: true,
+    canCreatePurchaseInvoice: false,
+    canViewPurchaseInvoices: true,
+    canSettleInvoices: false,
+    canDeleteInvoice: false,
+    canManageInventory: true,
+    canManageCustomers: false,
+    canViewReports: false,
+    canViewBuyPrices: false,
+    canAccessAdmin: false,
+    canManageUsers: false,
+  },
+  accountant: {
+    canCreateInvoice: false,
+    canViewInvoices: true,
+    canCreatePurchaseInvoice: false,
+    canViewPurchaseInvoices: true,
+    canSettleInvoices: false,
+    canDeleteInvoice: false,
+    canManageInventory: false,
+    canManageCustomers: true,
+    canViewReports: true,
+    canViewBuyPrices: true,
+    canAccessAdmin: false,
+    canManageUsers: false,
+  },
+  custom: {
+    canCreateInvoice: true,
+    canViewInvoices: true,
+    canCreatePurchaseInvoice: false,
+    canViewPurchaseInvoices: true,
+    canSettleInvoices: true,
+    canDeleteInvoice: false,
+    canManageInventory: false,
+    canManageCustomers: false,
+    canViewReports: false,
+    canViewBuyPrices: false,
+    canAccessAdmin: false,
+    canManageUsers: false,
+  },
+};
+
+function normalizeUserPermissionsServer(role: string, perms?: Record<string, any> | null): Record<string, boolean> {
+  const safeRole = String(role || 'custom');
+  const defaults = DEFAULT_ROLE_PERMISSIONS_SERVER[safeRole] || DEFAULT_ROLE_PERMISSIONS_SERVER.custom;
+  if (safeRole === 'admin') {
+    return { ...DEFAULT_ROLE_PERMISSIONS_SERVER.admin };
+  }
+  const p = perms && typeof perms === 'object' ? perms : {};
+  const isStrictAccountant = safeRole === 'accountant';
+  const isRestrictedFromBuyPrices = safeRole === 'cashier' || safeRole === 'warehouse';
+
+  return {
+    canCreateInvoice: isStrictAccountant ? false : Boolean(p.canCreateInvoice ?? defaults.canCreateInvoice),
+    canViewInvoices: Boolean(p.canViewInvoices ?? defaults.canViewInvoices),
+    canCreatePurchaseInvoice: isStrictAccountant ? false : Boolean(p.canCreatePurchaseInvoice ?? defaults.canCreatePurchaseInvoice),
+    canViewPurchaseInvoices: Boolean(
+      p.canViewPurchaseInvoices ?? defaults.canViewPurchaseInvoices ?? (p.canViewInvoices || p.canManageInventory)
+    ),
+    canSettleInvoices: isStrictAccountant
+      ? false
+      : Boolean(p.canSettleInvoices ?? defaults.canSettleInvoices ?? (p.canCreateInvoice || p.canViewReports)),
+    canDeleteInvoice: isStrictAccountant ? false : Boolean(p.canDeleteInvoice ?? defaults.canDeleteInvoice),
+    canManageInventory: isStrictAccountant ? false : Boolean(p.canManageInventory ?? defaults.canManageInventory),
+    canManageCustomers: Boolean(p.canManageCustomers ?? defaults.canManageCustomers),
+    canViewReports: Boolean(p.canViewReports ?? defaults.canViewReports),
+    canViewBuyPrices: isRestrictedFromBuyPrices
+      ? false
+      : isStrictAccountant
+        ? true
+        : Boolean(p.canViewBuyPrices ?? defaults.canViewBuyPrices),
+    canAccessAdmin: isStrictAccountant ? false : Boolean(p.canAccessAdmin ?? defaults.canAccessAdmin),
+    canManageUsers: isStrictAccountant ? false : Boolean(p.canManageUsers ?? defaults.canManageUsers),
+  };
+}
+
+function verifyUserPasswordServer(user: any, rawPassword: string): boolean {
+  const raw = String(rawPassword || '').trim();
+  if (!user || !raw) return false;
+  const normalized = normalizePersianDigitsServer(raw);
+  const storedPass = user.password || user.pin || '1234';
+  if (verifySecret(raw, storedPass) || (normalized !== raw && verifySecret(normalized, storedPass))) {
+    return true;
+  }
+  if (user.pin && user.pin !== storedPass) {
+    if (verifySecret(raw, user.pin) || (normalized !== raw && verifySecret(normalized, user.pin))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function computeSessionFingerprint(user: any): string {
+  const material = `${String(user?.password || '')}::${String(user?.pin || '')}`;
+  return crypto.createHmac('sha256', SESSION_SECRET).update(material).digest('hex').slice(0, 16);
+}
+
 function sanitizeUserForClient(u: any): any {
   if (!u || typeof u !== 'object') return u;
   const { password, pin, ...safe } = u;
-  const normalizedPerms =
-    safe.role === 'accountant'
-      ? {
-          ...(safe.permissions || {}),
-          canCreateInvoice: false,
-          canCreatePurchaseInvoice: false,
-          canSettleInvoices: false,
-          canDeleteInvoice: false,
-          canManageInventory: false,
-          canAccessAdmin: false,
-          canManageUsers: false,
-          canViewBuyPrices: true,
-        }
-      : safe.permissions;
+  const normalizedPerms = normalizeUserPermissionsServer(safe.role, safe.permissions);
   return {
     ...safe,
-    ...(normalizedPerms ? { permissions: normalizedPerms } : {}),
+    permissions: normalizedPerms,
     hasPassword: Boolean(password || pin),
   };
 }
@@ -1059,6 +1188,7 @@ interface AuthSessionPayload {
   username: string;
   role: string;
   permissions: Record<string, boolean>;
+  pwSig?: string;
   exp: number;
 }
 
@@ -1077,7 +1207,12 @@ function isReadOnlyAccountant(user?: { role?: string } | null): boolean {
 function sanitizeDbForClient(data: any, authUser?: AuthSessionPayload): any {
   if (!data || typeof data !== 'object') return data;
   const isAdmin = isAdminUser(authUser);
-  const safeUsers = Array.isArray(data.users) ? data.users.map(sanitizeUserForClient) : [];
+  const canManageUsers = isAdmin || Boolean(authUser?.permissions?.canManageUsers);
+  const canViewLogs = isAdmin || canManageUsers;
+  const allUsers = Array.isArray(data.users) ? data.users : [];
+  const safeUsers = canManageUsers
+    ? allUsers.map(sanitizeUserForClient)
+    : allUsers.filter((u: any) => u?.id === authUser?.userId).map(sanitizeUserForClient);
   let safeSettings = data.settings;
   if (safeSettings && typeof safeSettings === 'object' && !isAdmin) {
     safeSettings = {
@@ -1089,6 +1224,7 @@ function sanitizeDbForClient(data: any, authUser?: AuthSessionPayload): any {
   return {
     ...data,
     users: safeUsers,
+    activityLogs: canViewLogs ? mergeActivityLogs(data.activityLogs, []) : [],
     ...(safeSettings ? { settings: safeSettings } : {}),
   };
 }
@@ -1098,7 +1234,8 @@ function signSessionToken(user: any): string {
     userId: String(user.id || ''),
     username: String(user.username || ''),
     role: String(user.role || 'cashier'),
-    permissions: user.permissions && typeof user.permissions === 'object' ? user.permissions : {},
+    permissions: normalizeUserPermissionsServer(String(user.role || 'cashier'), user.permissions),
+    pwSig: computeSessionFingerprint(user),
     exp: Date.now() + SESSION_TTL_MS,
   };
   const encoded = Buffer.from(JSON.stringify(payload), 'utf-8').toString('base64url');
@@ -1245,6 +1382,331 @@ function mergeCollectionById(currentArr: any[], incomingArr: any[], delSet: Set<
     }
   }
   return Array.from(map.values());
+}
+
+// -------------------------------------------------------------
+// ACCURATE & TAMPER-RESISTANT ACTIVITY AUDIT LOGGING HELPERS
+// -------------------------------------------------------------
+const MAX_ACTIVITY_LOGS = 2000;
+
+function gregorianToJalaliServer(gy: number, gm: number, gd: number): [number, number, number] {
+  const g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+  let jy = gy <= 1600 ? 0 : 979;
+  let adjGy = gy - (gy <= 1600 ? 621 : 1600);
+  const gy2 = gm > 2 ? adjGy + 1 : adjGy;
+  let days =
+    365 * adjGy +
+    Math.floor((gy2 + 3) / 4) -
+    Math.floor((gy2 + 99) / 100) +
+    Math.floor((gy2 + 399) / 400) -
+    80 +
+    gd +
+    g_d_m[gm - 1];
+  jy += 33 * Math.floor(days / 12053);
+  days %= 12053;
+  jy += 4 * Math.floor(days / 1461);
+  days %= 1461;
+  jy += Math.floor((days - 1) / 365);
+  if (days > 0) {
+    days = (days - 1) % 365;
+  }
+  let jm: number;
+  let jd: number;
+  if (days < 186) {
+    jm = 1 + Math.floor(days / 31);
+    jd = 1 + (days % 31);
+  } else {
+    jm = 7 + Math.floor((days - 186) / 30);
+    jd = 1 + ((days - 186) % 30);
+  }
+  return [jy, jm, jd];
+}
+
+function getTehranJalaliDateTime(date: Date = new Date()): { dateOnly: string; time: string; timestamp: string; createdAtMs: number } {
+  const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Tehran',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(date);
+    const getPart = (t: string) => Number(parts.find((p) => p.type === t)?.value || 0);
+    const gy = getPart('year') || date.getFullYear();
+    const gm = getPart('month') || date.getMonth() + 1;
+    const gd = getPart('day') || date.getDate();
+    const hh = getPart('hour') % 24;
+    const mm = getPart('minute');
+    const ss = getPart('second');
+    const [jy, jm, jd] = gregorianToJalaliServer(gy, gm, gd);
+    const dateOnly = `${jy}/${pad(jm)}/${pad(jd)}`;
+    const time = `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+    return { dateOnly, time, timestamp: `${dateOnly} - ${time}`, createdAtMs: date.getTime() };
+  } catch {
+    const [jy, jm, jd] = gregorianToJalaliServer(date.getFullYear(), date.getMonth() + 1, date.getDate());
+    const dateOnly = `${jy}/${pad(jm)}/${pad(jd)}`;
+    const time = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    return { dateOnly, time, timestamp: `${dateOnly} - ${time}`, createdAtMs: date.getTime() };
+  }
+}
+
+function getRequestClientIp(req?: express.Request): string {
+  if (!req) return 'system';
+  const fwd = req.headers['x-forwarded-for'];
+  let ip = '';
+  if (typeof fwd === 'string' && fwd.trim()) {
+    ip = fwd.split(',')[0].trim();
+  } else if (Array.isArray(fwd) && fwd.length > 0) {
+    ip = String(fwd[0]).trim();
+  } else {
+    ip = String(req.ip || req.socket?.remoteAddress || '').trim();
+  }
+  if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+  if (ip === '::1') ip = '127.0.0.1';
+  return ip || 'نامشخص';
+}
+
+function parseUserAgentSummary(req?: express.Request): string {
+  if (!req) return 'هسته سرور';
+  const ua = String(req.headers['user-agent'] || '');
+  if (!ua) return 'مرورگر وب';
+  if (/curl|wget|node-fetch|undici|python/i.test(ua)) return 'درخواست API / اسکریپت';
+
+  let os = 'نامشخص';
+  let form = 'رایانه';
+  if (/Android/i.test(ua)) {
+    os = 'Android';
+    form = 'موبایل';
+  } else if (/iPhone|iPad|iPod/i.test(ua)) {
+    os = 'iOS';
+    form = /iPad/i.test(ua) ? 'تبلت' : 'موبایل';
+  } else if (/Windows/i.test(ua)) {
+    os = 'Windows';
+  } else if (/Mac OS X|Macintosh/i.test(ua)) {
+    os = 'macOS';
+  } else if (/Linux/i.test(ua)) {
+    os = 'Linux';
+  }
+
+  let browser = 'مرورگر';
+  if (/Edg\//i.test(ua)) browser = 'Edge';
+  else if (/OPR\/|Opera/i.test(ua)) browser = 'Opera';
+  else if (/Chrome\//i.test(ua) && !/Chromium/i.test(ua)) browser = 'Chrome';
+  else if (/Firefox\//i.test(ua)) browser = 'Firefox';
+  else if (/Safari\//i.test(ua) && !/Chrome\//i.test(ua)) browser = 'Safari';
+
+  return `${browser} • ${os} (${form})`;
+}
+
+function inferActivitySeverityServer(actionType?: string, category?: string): 'info' | 'warning' | 'critical' {
+  const act = String(actionType || '').toLowerCase();
+  const cat = String(category || '').toLowerCase();
+  if (
+    act.includes('delete') ||
+    act.includes('restore') ||
+    act.includes('clear_logs') ||
+    act.includes('import_sql') ||
+    act.includes('lockout') ||
+    act.includes('recovery_reset') ||
+    act.includes('return')
+  ) {
+    return 'critical';
+  }
+  if (
+    act.includes('failed_login') ||
+    act.includes('edit') ||
+    act.includes('update') ||
+    act.includes('adjust') ||
+    act.includes('recovery_request') ||
+    act.includes('share_link') ||
+    act.includes('prune') ||
+    cat === 'settings' ||
+    cat === 'users'
+  ) {
+    return 'warning';
+  }
+  return 'info';
+}
+
+function isLegacyDemoSeedLog(log: any): boolean {
+  if (!log || typeof log !== 'object') return false;
+  const id = String(log.id || '');
+  if (!['log-1', 'log-2', 'log-3', 'log-4'].includes(id)) return false;
+  const details = String(log.details || '');
+  return (
+    details.includes('شماره INV-1001 برای مشتری شرکت فناوران') ||
+    details.includes('REC-1001 مربوط به فاکتور خرید PUR-1001') ||
+    details.includes('احراز هویت مدیر ارشد') ||
+    details.includes('کسر خودکار موجودی انبار هنگام صدور فاکتور')
+  );
+}
+
+function normalizeLogMetadata(rawMeta: any): Record<string, string | number | boolean | null> | undefined {
+  if (!rawMeta || typeof rawMeta !== 'object' || Array.isArray(rawMeta)) return undefined;
+  const cleaned: Record<string, string | number | boolean | null> = {};
+  let count = 0;
+  for (const [k, v] of Object.entries(rawMeta)) {
+    if (count >= 16) break;
+    const key = String(k || '').trim().slice(0, 60);
+    if (!key) continue;
+    if (v === null) {
+      cleaned[key] = null;
+      count++;
+    } else if (typeof v === 'string') {
+      cleaned[key] = v.slice(0, 300);
+      count++;
+    } else if (typeof v === 'number' || typeof v === 'boolean') {
+      cleaned[key] = v;
+      count++;
+    }
+  }
+  return count > 0 ? cleaned : undefined;
+}
+
+function computeLogSortMs(log: any): number {
+  if (typeof log?.createdAtMs === 'number' && Number.isFinite(log.createdAtMs) && log.createdAtMs > 0) {
+    return log.createdAtMs;
+  }
+  const idMatch = String(log?.id || '').match(/^log-(\d{12,15})(?:-|$)/);
+  if (idMatch) {
+    return Number(idMatch[1]);
+  }
+  const ts = normalizePersianDigitsServer(String(log?.timestamp || log?.dateOnly || ''));
+  const match = ts.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\D+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (match) {
+    const [gy, gm, gd] = jalaliToGregorianServer(Number(match[1]), Number(match[2]), Number(match[3]));
+    const hh = Number(match[4] || 0);
+    const mm = Number(match[5] || 0);
+    const ss = Number(match[6] || 0);
+    // Tehran wall clock is UTC+03:30
+    return Date.UTC(gy, gm - 1, gd, hh, mm, ss) - 3.5 * 3600 * 1000;
+  }
+  return 0;
+}
+
+function mergeActivityLogs(existingArr: any, incomingArr: any, maxItems: number = MAX_ACTIVITY_LOGS): any[] {
+  const map = new Map<string, any>();
+  const addItems = (arr: any) => {
+    if (!Array.isArray(arr)) return;
+    for (const raw of arr) {
+      if (!raw || typeof raw !== 'object' || !raw.id || isLegacyDemoSeedLog(raw)) continue;
+      const id = String(raw.id);
+      const prev = map.get(id);
+      const normalized = {
+        ...raw,
+        id,
+        severity: raw.severity || inferActivitySeverityServer(raw.actionType, raw.category),
+        ...(typeof raw.createdAtMs === 'number' && Number.isFinite(raw.createdAtMs) ? { createdAtMs: raw.createdAtMs } : {}),
+      };
+      if (!prev) {
+        map.set(id, normalized);
+      } else {
+        // Keep richer entry (server-stamped fields win)
+        map.set(id, {
+          ...prev,
+          ...normalized,
+          ipAddress: prev.ipAddress || normalized.ipAddress,
+          source: prev.source === 'server' || normalized.source === 'server' ? 'server' : (normalized.source || prev.source),
+          createdAtMs: normalized.createdAtMs || prev.createdAtMs,
+        });
+      }
+    }
+  };
+
+  addItems(existingArr);
+  addItems(incomingArr);
+
+  return Array.from(map.values())
+    .sort((a, b) => computeLogSortMs(b) - computeLogSortMs(a))
+    .slice(0, maxItems);
+}
+
+function buildServerLogEntry(
+  req: express.Request | undefined,
+  params: {
+    userId?: string;
+    userName?: string;
+    userRole?: string;
+    userRoleTitle?: string;
+    category: string;
+    actionType: string;
+    actionTitle: string;
+    details: string;
+    severity?: 'info' | 'warning' | 'critical';
+    source?: 'client' | 'server';
+    entityType?: string;
+    entityId?: string;
+    entityLabel?: string;
+    metadata?: Record<string, string | number | boolean | null>;
+    deviceInfo?: string;
+  }
+) {
+  const dt = getTehranJalaliDateTime();
+  return {
+    id: `log-${dt.createdAtMs}-${crypto.randomBytes(3).toString('hex')}`,
+    userId: params.userId || 'system',
+    userName: params.userName || 'سیستم',
+    userRole: params.userRole || 'system',
+    userRoleTitle: params.userRoleTitle,
+    category: params.category,
+    actionType: params.actionType,
+    actionTitle: String(params.actionTitle || '').slice(0, 140),
+    details: String(params.details || '').slice(0, 800),
+    timestamp: dt.timestamp,
+    dateOnly: dt.dateOnly,
+    createdAtMs: dt.createdAtMs,
+    severity: params.severity || inferActivitySeverityServer(params.actionType, params.category),
+    source: params.source || 'server',
+    ipAddress: getRequestClientIp(req),
+    deviceInfo: params.deviceInfo || parseUserAgentSummary(req),
+    ...(params.entityType ? { entityType: params.entityType } : {}),
+    ...(params.entityId ? { entityId: params.entityId } : {}),
+    ...(params.entityLabel ? { entityLabel: params.entityLabel } : {}),
+    ...(params.metadata ? { metadata: normalizeLogMetadata(params.metadata) } : {}),
+  };
+}
+
+function appendLogToDbObject(
+  dbObj: any,
+  req: express.Request | undefined,
+  params: Parameters<typeof buildServerLogEntry>[1]
+) {
+  const entry = buildServerLogEntry(req, params);
+  dbObj.activityLogs = mergeActivityLogs([entry], dbObj.activityLogs);
+  return entry;
+}
+
+async function recordServerActivityLog(
+  req: express.Request | undefined,
+  params: Parameters<typeof buildServerLogEntry>[1]
+) {
+  try {
+    return await enqueueDbWrite(async () => {
+      const { data: currentDb } = await getLatestConvergedDatabase();
+      const updatedDb = { ...currentDb };
+      const entry = appendLogToDbObject(updatedDb, req, params);
+      updatedDb.revision = (typeof currentDb.revision === 'number' ? currentDb.revision : 1) + 1;
+      updatedDb.updatedAt = new Date().toISOString();
+      updatedDb.checksum = crypto.createHash('sha256').update(JSON.stringify(updatedDb, null, 2)).digest('hex');
+
+      writeDatabase(updatedDb, true, false);
+      if (getPostgresStatus().connected) {
+        try {
+          await saveStateToPostgres(updatedDb);
+        } catch (pgErr: any) {
+          console.warn('[Postgres Audit Log Sync Notice]:', pgErr?.message);
+        }
+      }
+      return entry;
+    });
+  } catch (err: any) {
+    console.warn('[Audit Log Record Error]:', err?.message);
+    return null;
+  }
 }
 
 // -------------------------------------------------------------
@@ -1410,6 +1872,21 @@ app.post('/api/auth/recovery/request-telegram', authLoginLimiter, async (req, re
       lastSentAt: now,
     });
 
+    await recordServerActivityLog(req, {
+      userId: targetAdmin.id,
+      userName: targetAdmin.fullName || targetAdmin.username,
+      userRole: targetAdmin.role,
+      userRoleTitle: targetAdmin.roleTitle || 'مدیر سیستم',
+      category: 'auth',
+      actionType: 'password_recovery_request',
+      actionTitle: 'درخواست کد بازیابی رمز مدیر',
+      details: `ارسال کد تأیید ۶ رقمی بازیابی رمز عبور برای نام کاربری «${rawUsername}» به تلگرام`,
+      severity: 'warning',
+      entityType: 'user',
+      entityId: targetAdmin.id,
+      entityLabel: targetAdmin.username,
+    });
+
     return res.json({
       success: true,
       expiresInSeconds: Math.floor(ADMIN_RECOVERY_TTL_MS / 1000),
@@ -1506,6 +1983,20 @@ app.post('/api/auth/recovery/confirm-telegram', authLoginLimiter, async (req, re
         updatedAt: nowIso,
         lastUpdated: Date.now(),
       };
+      appendLogToDbObject(nextDb, req, {
+        userId: users[idx].id,
+        userName: updatedAdminName,
+        userRole: users[idx].role,
+        userRoleTitle: users[idx].roleTitle || 'مدیر سیستم',
+        category: 'auth',
+        actionType: 'password_recovery_reset',
+        actionTitle: 'بازنشانی رمز مدیر از طریق تلگرام',
+        details: `تغییر و بازنشانی رمز عبور حساب مدیر «${updatedAdminName}» (${rawUsername}) با تأیید کد تلگرام`,
+        severity: 'critical',
+        entityType: 'user',
+        entityId: users[idx].id,
+        entityLabel: rawUsername,
+      });
       nextDb.checksum = crypto.createHash('sha256').update(JSON.stringify(nextDb, null, 2)).digest('hex');
 
       writeDatabase(nextDb, false, false);
@@ -1569,6 +2060,18 @@ app.post('/api/auth/login', authLoginLimiter, async (req, res) => {
 
     if (!matchedUser) {
       const fail = recordFailedLoginAttempt(attemptKey);
+      await recordServerActivityLog(req, {
+        userId: 'unknown',
+        userName: `کاربر ناشناس (${rawUsername})`,
+        userRole: 'unknown',
+        category: 'auth',
+        actionType: fail.lockedSeconds > 0 ? 'failed_login_lockout' : 'failed_login',
+        actionTitle: fail.lockedSeconds > 0 ? 'مسدودسازی موقت ورود به سامانه' : 'تلاش ناموفق برای ورود',
+        details: fail.lockedSeconds > 0
+          ? `مسدودسازی ۶۰ ثانیه‌ای به دلیل ۵ تلاش ناموفق با نام کاربری نامعتبر «${rawUsername}»`
+          : `تلاش ناموفق ورود با نام کاربری یافت‌نشده «${rawUsername}» (${toPersianDigitsServer(fail.attemptsLeft)} تلاش باقی‌مانده)`,
+        severity: fail.lockedSeconds > 0 ? 'critical' : 'warning',
+      });
       return res.status(fail.lockedSeconds > 0 ? 429 : 401).json({
         success: false,
         attemptsLeft: fail.attemptsLeft,
@@ -1581,24 +2084,40 @@ app.post('/api/auth/login', authLoginLimiter, async (req, res) => {
     }
 
     if (matchedUser.isActive === false) {
+      await recordServerActivityLog(req, {
+        userId: matchedUser.id,
+        userName: matchedUser.fullName || matchedUser.username,
+        userRole: matchedUser.role,
+        userRoleTitle: matchedUser.roleTitle,
+        category: 'auth',
+        actionType: 'failed_login',
+        actionTitle: 'تلاش ورود به حساب غیرفعال',
+        details: `جلوگیری از ورود حساب کاربری غیرفعال «${matchedUser.fullName || matchedUser.username}» (${matchedUser.username})`,
+        severity: 'warning',
+      });
       return res.status(403).json({
         success: false,
         message: 'این حساب کاربری غیرفعال شده است. لطفاً با مدیر سیستم تماس بگیرید.',
       });
     }
 
-    const normalizedPassword = normalizePersianDigitsServer(rawPassword);
-    const storedPass = matchedUser.password || matchedUser.pin || '1234';
-    const isPasswordMatch =
-      verifySecret(rawPassword, storedPass) ||
-      (normalizedPassword !== rawPassword && verifySecret(normalizedPassword, storedPass)) ||
-      (matchedUser.pin && matchedUser.pin !== storedPass && (
-        verifySecret(rawPassword, matchedUser.pin) ||
-        (normalizedPassword !== rawPassword && verifySecret(normalizedPassword, matchedUser.pin))
-      ));
+    const isPasswordMatch = verifyUserPasswordServer(matchedUser, rawPassword);
 
     if (!isPasswordMatch) {
       const fail = recordFailedLoginAttempt(attemptKey);
+      await recordServerActivityLog(req, {
+        userId: matchedUser.id,
+        userName: matchedUser.fullName || matchedUser.username,
+        userRole: matchedUser.role,
+        userRoleTitle: matchedUser.roleTitle,
+        category: 'auth',
+        actionType: fail.lockedSeconds > 0 ? 'failed_login_lockout' : 'failed_login',
+        actionTitle: fail.lockedSeconds > 0 ? 'قفل شدن ورود به دلیل رمز اشتباه' : 'ورود ناموفق (رمز عبور نادرست)',
+        details: fail.lockedSeconds > 0
+          ? `مسدودسازی موقت ورود حساب «${matchedUser.fullName || matchedUser.username}» (${matchedUser.username}) پس از ۵ بار رمز اشتباه`
+          : `وارد کردن رمز عبور اشتباه برای «${matchedUser.fullName || matchedUser.username}» (${toPersianDigitsServer(fail.attemptsLeft)} تلاش باقی‌مانده)`,
+        severity: fail.lockedSeconds > 0 ? 'critical' : 'warning',
+      });
       return res.status(fail.lockedSeconds > 0 ? 429 : 401).json({
         success: false,
         attemptsLeft: fail.attemptsLeft,
@@ -1612,20 +2131,37 @@ app.post('/api/auth/login', authLoginLimiter, async (req, res) => {
 
     clearLoginAttempts(attemptKey);
 
-    // Transparently upgrade legacy plaintext password to scrypt hash on login
-    if (!isHashedSecret(matchedUser.password)) {
-      enqueueDbWrite(async () => {
-        const { data: latestDb } = await getLatestConvergedDatabase();
-        const hashedResult = ensureUsersPasswordsHashed(latestDb.users || []);
-        if (hashedResult.changed) {
-          latestDb.users = hashedResult.users;
-          writeDatabase(latestDb, false, false);
-          if (getPostgresStatus().connected) {
-            saveStateToPostgres(latestDb).catch(() => {});
-          }
-        }
-      }).catch(() => {});
-    }
+    // Upgrade legacy plaintext password (if needed) and record server-verified login log atomically
+    await enqueueDbWrite(async () => {
+      const { data: latestDb } = await getLatestConvergedDatabase();
+      const hashedResult = !isHashedSecret(matchedUser.password)
+        ? ensureUsersPasswordsHashed(latestDb.users || [])
+        : { changed: false, users: latestDb.users };
+      if (hashedResult.changed) {
+        latestDb.users = hashedResult.users;
+      }
+      appendLogToDbObject(latestDb, req, {
+        userId: matchedUser.id,
+        userName: matchedUser.fullName || matchedUser.username,
+        userRole: matchedUser.role,
+        userRoleTitle: matchedUser.roleTitle,
+        category: 'auth',
+        actionType: 'login',
+        actionTitle: 'ورود موفق به سامانه',
+        details: `ورود موفق کاربر «${matchedUser.fullName || matchedUser.username}» (${matchedUser.username}) با نقش ${matchedUser.roleTitle || matchedUser.role}`,
+        severity: 'info',
+        entityType: 'user',
+        entityId: matchedUser.id,
+        entityLabel: matchedUser.username,
+      });
+      latestDb.revision = (typeof latestDb.revision === 'number' ? latestDb.revision : 1) + 1;
+      latestDb.updatedAt = new Date().toISOString();
+      latestDb.checksum = crypto.createHash('sha256').update(JSON.stringify(latestDb, null, 2)).digest('hex');
+      writeDatabase(latestDb, true, false);
+      if (getPostgresStatus().connected) {
+        saveStateToPostgres(latestDb).catch(() => {});
+      }
+    }).catch(() => {});
 
     const token = signSessionToken(matchedUser);
     setSessionCookie(req, res, token);
@@ -1640,41 +2176,99 @@ app.post('/api/auth/login', authLoginLimiter, async (req, res) => {
   }
 });
 
-// 1.0.2 Public Logout Endpoint
-app.post('/api/auth/logout', (_req, res) => {
+// 1.0.2 Public Logout Endpoint (logs authenticated user logout cleanly before clearing cookie)
+app.post('/api/auth/logout', async (req, res) => {
+  try {
+    const token = extractAuthToken(req);
+    const payload = verifySessionToken(token);
+    if (payload) {
+      const { data: dbData } = await getLatestConvergedDatabase();
+      const liveUser = (dbData?.users || []).find((u: any) => u.id === payload.userId);
+      await recordServerActivityLog(req, {
+        userId: payload.userId,
+        userName: liveUser?.fullName || payload.username,
+        userRole: liveUser?.role || payload.role,
+        userRoleTitle: liveUser?.roleTitle,
+        category: 'auth',
+        actionType: 'logout',
+        actionTitle: 'خروج از حساب کاربری',
+        details: `خروج کاربر «${liveUser?.fullName || payload.username}» (${payload.username}) از سامانه`,
+        severity: 'info',
+        entityType: 'user',
+        entityId: payload.userId,
+        entityLabel: payload.username,
+      });
+    }
+  } catch {
+    // Do not block logout if logging fails
+  }
   clearSessionCookie(res);
   res.json({ success: true });
 });
 
-// 1.0.3 Central Authentication Middleware for all protected /api/* routes
-const authGuardMiddleware: express.RequestHandler = (req, res, next) => {
-  if (req.method === 'OPTIONS') return next();
-  const p = req.path;
-  if (
-    p === '/health' ||
-    p === '/auth/bootstrap' ||
-    p === '/auth/login' ||
-    p === '/auth/logout' ||
-    p === '/auth/recovery/request-telegram' ||
-    p === '/auth/recovery/confirm-telegram' ||
-    p === '/telegram/webhook' ||
-    p.startsWith('/public/invoice/')
-  ) {
-    return next();
-  }
+// 1.0.3 Central Authentication Middleware for all protected /api/* routes (hydrates live DB role, active state & password fingerprint)
+const authGuardMiddleware: express.RequestHandler = async (req, res, next) => {
+  try {
+    if (req.method === 'OPTIONS') return next();
+    const p = req.path;
+    if (
+      p === '/health' ||
+      p === '/auth/bootstrap' ||
+      p === '/auth/login' ||
+      p === '/auth/logout' ||
+      p === '/auth/recovery/request-telegram' ||
+      p === '/auth/recovery/confirm-telegram' ||
+      p === '/telegram/webhook' ||
+      p.startsWith('/public/invoice/')
+    ) {
+      return next();
+    }
 
-  const token = extractAuthToken(req);
-  const payload = verifySessionToken(token);
-  if (!payload) {
-    return res.status(401).json({
-      success: false,
-      code: 'UNAUTHORIZED',
-      message: 'نشست کاربری معتبر نیست یا منقضی شده است. لطفاً مجدداً وارد سیستم شوید.',
-    });
-  }
+    const token = extractAuthToken(req);
+    const payload = verifySessionToken(token);
+    if (!payload) {
+      return res.status(401).json({
+        success: false,
+        code: 'UNAUTHORIZED',
+        message: 'نشست کاربری معتبر نیست یا منقضی شده است. لطفاً مجدداً وارد سیستم شوید.',
+      });
+    }
 
-  (req as AuthenticatedRequest).authUser = payload;
-  next();
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const usersList = Array.isArray(dbData?.users) && dbData.users.length > 0
+      ? dbData.users
+      : DEFAULT_INITIAL_DATA.users;
+    const liveUser = usersList.find((u: any) => u?.id === payload.userId);
+
+    if (!liveUser || liveUser.isActive === false) {
+      clearSessionCookie(res);
+      return res.status(401).json({
+        success: false,
+        code: 'UNAUTHORIZED',
+        message: 'حساب کاربری غیرفعال یا حذف شده است. لطفاً مجدداً وارد سیستم شوید.',
+      });
+    }
+
+    // Revoke session immediately when the user's password/PIN was changed
+    if (payload.pwSig && payload.pwSig !== computeSessionFingerprint(liveUser)) {
+      clearSessionCookie(res);
+      return res.status(401).json({
+        success: false,
+        code: 'SESSION_REVOKED',
+        message: 'رمز عبور تغییر کرده است و نشست قبلی منقضی شد. لطفاً مجدداً وارد شوید.',
+      });
+    }
+
+    (req as AuthenticatedRequest).authUser = {
+      ...payload,
+      username: String(liveUser.username || payload.username),
+      role: String(liveUser.role || payload.role),
+      permissions: normalizeUserPermissionsServer(liveUser.role, liveUser.permissions),
+    };
+    next();
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
 };
 
 app.use('/api', authGuardMiddleware);
@@ -1710,17 +2304,6 @@ const readOnlyAccountantGuard: express.RequestHandler = async (req, res, next) =
       });
     }
 
-    // Re-verify live DB role in case the user was changed to 'accountant' while their session was active
-    const { data: dbData } = await getLatestConvergedDatabase();
-    const liveUser = (dbData?.users || []).find((u: any) => u.id === authUser.userId);
-    if (liveUser && isReadOnlyAccountant(liveUser)) {
-      return res.status(403).json({
-        success: false,
-        code: 'READ_ONLY_ACCOUNTANT',
-        message: 'حساب کاربری با سطح دسترسی حسابدار فقط مجاز به مشاهده اطلاعات است و امکان ثبت، ویرایش یا حذف ندارد.',
-      });
-    }
-
     return next();
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
@@ -1736,12 +2319,28 @@ const requireAdmin: express.RequestHandler = async (req, res, next) => {
     if (!authUser) {
       return res.status(401).json({ success: false, message: 'احراز هویت الزامی است.' });
     }
-    const { data: dbData } = await getLatestConvergedDatabase();
-    const liveUser = (dbData?.users || []).find((u: any) => u.id === authUser.userId);
-    if (!liveUser || liveUser.isActive === false || !isAdminUser(liveUser)) {
+    if (!isAdminUser(authUser)) {
       return res.status(403).json({
         success: false,
         message: 'این عملیات منحصراً برای مدیر سیستم مجاز است.',
+      });
+    }
+    next();
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const requireAdminOrInventory: express.RequestHandler = async (req, res, next) => {
+  try {
+    const authUser = (req as AuthenticatedRequest).authUser;
+    if (!authUser) {
+      return res.status(401).json({ success: false, message: 'احراز هویت الزامی است.' });
+    }
+    if (!isAdminUser(authUser) && !authUser.permissions?.canManageInventory) {
+      return res.status(403).json({
+        success: false,
+        message: 'این عملیات فقط برای مدیر سیستم یا مسئول انبار مجاز است.',
       });
     }
     next();
@@ -1822,15 +2421,25 @@ app.post('/api/auth/switch-user', authLoginLimiter, async (req, res) => {
         });
       }
 
-      const targetPass = targetUser.password || targetUser.pin || '1234';
-      const matchesTarget = verifySecret(rawPass, targetPass);
+      const matchesTarget = verifyUserPasswordServer(targetUser, rawPass);
       const matchesCallerAdmin =
         callerIsAdmin && callerUser
-          ? verifySecret(rawPass, callerUser.password || callerUser.pin || '1234')
+          ? verifyUserPasswordServer(callerUser, rawPass)
           : false;
 
       if (!matchesTarget && !matchesCallerAdmin) {
         const fail = recordFailedLoginAttempt(attemptKey);
+        await recordServerActivityLog(req, {
+          userId: targetUser.id,
+          userName: targetUser.fullName || targetUser.username,
+          userRole: targetUser.role,
+          userRoleTitle: targetUser.roleTitle,
+          category: 'auth',
+          actionType: fail.lockedSeconds > 0 ? 'failed_login_lockout' : 'failed_login',
+          actionTitle: fail.lockedSeconds > 0 ? 'قفل موقت تعویض کاربر' : 'تلاش ناموفق برای تعویض کاربر',
+          details: `رمز عبور اشتباه هنگام تعویض نشست به کاربر «${targetUser.fullName || targetUser.username}» توسط «${callerUser?.fullName || authUser.username}»`,
+          severity: fail.lockedSeconds > 0 ? 'critical' : 'warning',
+        });
         return res.status(fail.lockedSeconds > 0 ? 429 : 401).json({
           success: false,
           attemptsLeft: fail.attemptsLeft,
@@ -1843,6 +2452,21 @@ app.post('/api/auth/switch-user', authLoginLimiter, async (req, res) => {
       }
       clearLoginAttempts(attemptKey);
     }
+
+    await recordServerActivityLog(req, {
+      userId: targetUser.id,
+      userName: targetUser.fullName || targetUser.username,
+      userRole: targetUser.role,
+      userRoleTitle: targetUser.roleTitle,
+      category: 'auth',
+      actionType: 'switch_user',
+      actionTitle: directAdminSwitch ? 'تغییر مستقیم نشست کاربر توسط مدیر' : 'ورود / تعویض نشست کاربری',
+      details: `تغییر کاربر فعال از «${callerUser?.fullName || authUser.username}» به «${targetUser.fullName || targetUser.username}» (${targetUser.roleTitle || targetUser.role})`,
+      severity: directAdminSwitch ? 'warning' : 'info',
+      entityType: 'user',
+      entityId: targetUser.id,
+      entityLabel: targetUser.username,
+    });
 
     const token = signSessionToken(targetUser);
     setSessionCookie(req, res, token);
@@ -1980,6 +2604,21 @@ app.post('/api/database/import-sql', requireAdmin, express.text({ type: ['applic
     if (freshData) {
       writeDatabase(freshData, true);
     }
+
+    const authUser = (req as AuthenticatedRequest).authUser;
+    const liveUsers = freshData?.users || [];
+    const actor = liveUsers.find((u: any) => u.id === authUser?.userId);
+    await recordServerActivityLog(req, {
+      userId: authUser?.userId || 'admin',
+      userName: actor?.fullName || authUser?.username || 'مدیر سیستم',
+      userRole: actor?.role || authUser?.role || 'admin',
+      userRoleTitle: actor?.roleTitle,
+      category: 'system',
+      actionType: 'import_sql',
+      actionTitle: 'اجرای اسکریپت بازیابی SQL',
+      details: `اجرای مستقیم فایل SQL روی پایگاه‌داده PostgreSQL توسط مدیر سیستم (${actor?.fullName || authUser?.username || 'admin'})`,
+      severity: 'critical',
+    });
 
     res.json({
       success: true,
@@ -2126,21 +2765,42 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         incomingData.baseRevision > 0 &&
         incomingData.baseRevision < currentRev;
       
-      // Deep merge settings if provided so partial updates don't destroy existing settings
-      // Protect sensitive secrets (telegramBotToken, aiApiKey) from being cleared by non-admin clients
+      // Protect settings: only full admins may modify global settings; inventory managers may adjust safe warehouse/exit-slip fields only
       let mergedSettings = currentDb.settings;
       if (incomingData.settings && typeof incomingData.settings === 'object') {
-        mergedSettings = {
-          ...(currentDb.settings || {}),
-          ...incomingData.settings,
-          updatedAt: incomingData.settings.updatedAt || nowIso,
-        };
-        if (Array.isArray(incomingData.settings.warehouses)) {
-          mergedSettings.warehouses = incomingData.settings.warehouses;
-        }
-        if (!callerIsAdmin) {
-          mergedSettings.telegramBotToken = currentDb.settings?.telegramBotToken || '';
-          mergedSettings.aiApiKey = currentDb.settings?.aiApiKey || '';
+        if (callerIsAdmin) {
+          mergedSettings = {
+            ...(currentDb.settings || {}),
+            ...incomingData.settings,
+            updatedAt: incomingData.settings.updatedAt || nowIso,
+          };
+          if (Array.isArray(incomingData.settings.warehouses)) {
+            mergedSettings.warehouses = incomingData.settings.warehouses;
+          }
+        } else if (authUser?.permissions?.canManageInventory) {
+          const whPatch: Record<string, any> = {};
+          const safeWarehouseKeys = [
+            'warehouses',
+            'defaultWarehouseId',
+            'originWarehouseName',
+            'originWarehouseCode',
+            'originWarehouseAddress',
+            'originWarehousePhone',
+            'originWarehouseManager',
+            'exitSlipPrintLayout',
+          ];
+          for (const k of safeWarehouseKeys) {
+            if (Object.prototype.hasOwnProperty.call(incomingData.settings, k)) {
+              whPatch[k] = incomingData.settings[k];
+            }
+          }
+          if (Object.keys(whPatch).length > 0) {
+            mergedSettings = {
+              ...(currentDb.settings || {}),
+              ...whPatch,
+              updatedAt: nowIso,
+            };
+          }
         }
       }
 
@@ -2161,8 +2821,63 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
       const extraDeletedInvoiceIds = Array.isArray(incomingData.deletedInvoiceIds) ? incomingData.deletedInvoiceIds : [];
       const currentLegacyDeleted = Array.isArray(currentDb.deletedInvoiceIds) ? currentDb.deletedInvoiceIds : [];
 
+      const findAddedIds = (entityKey: string, extraIds: string[] = []): string[] => {
+        const prevSet = new Set(
+          (Array.isArray(prevTombstones[entityKey]) ? prevTombstones[entityKey] : []).map((x: any) => String(x || '').trim())
+        );
+        const incoming = Array.isArray(incomingTombstones[entityKey]) ? incomingTombstones[entityKey] : [];
+        const added: string[] = [];
+        for (const rawId of [...incoming, ...extraIds]) {
+          const clean = String(rawId || '').trim();
+          if (clean && !prevSet.has(clean)) added.push(clean);
+        }
+        return added;
+      };
+
+      const canDeleteInv = callerIsAdmin || Boolean(authUser?.permissions?.canDeleteInvoice);
+      const canManageInv = callerIsAdmin || Boolean(authUser?.permissions?.canManageInventory);
+      const canCreatePurch = callerIsAdmin || Boolean(authUser?.permissions?.canCreatePurchaseInvoice);
+      const canManageCust = callerIsAdmin || Boolean(authUser?.permissions?.canManageCustomers);
+      const canSettleInv = callerIsAdmin || Boolean(authUser?.permissions?.canSettleInvoices);
+
+      if (!canDeleteInv && findAddedIds('invoices', extraDeletedInvoiceIds).length > 0) {
+        const err: any = new Error('شما مجوز حذف یا ابطال فاکتورهای فروش را ندارید.');
+        err.statusCode = 403;
+        throw err;
+      }
+      if (!canManageInv && (
+        findAddedIds('products').length > 0 ||
+        findAddedIds('inboundReceipts').length > 0 ||
+        findAddedIds('directTransfers').length > 0 ||
+        findAddedIds('categories').length > 0
+      )) {
+        const err: any = new Error('شما مجوز حذف اقلام انبار، دسته‌بندی‌ها یا حواله‌ها را ندارید.');
+        err.statusCode = 403;
+        throw err;
+      }
+      if (!canDeleteInv && !canCreatePurch && findAddedIds('purchaseInvoices').length > 0) {
+        const err: any = new Error('شما مجوز حذف فاکتور خرید را ندارید.');
+        err.statusCode = 403;
+        throw err;
+      }
+      if (!canManageCust && findAddedIds('customers').length > 0) {
+        const err: any = new Error('شما مجوز حذف مشتریان را ندارید.');
+        err.statusCode = 403;
+        throw err;
+      }
+      if (!canManageCust && !canSettleInv && findAddedIds('customerTransactions').length > 0) {
+        const err: any = new Error('شما مجوز حذف تراکنش‌های مالی مشتری را ندارید.');
+        err.statusCode = 403;
+        throw err;
+      }
+      if (!callerCanManageUsers && findAddedIds('users').length > 0) {
+        const err: any = new Error('شما مجوز حذف کاربران را ندارید.');
+        err.statusCode = 403;
+        throw err;
+      }
+
       const revivedCatSet = new Set<string>(
-        Array.isArray(incomingData.reviveCategories)
+        canManageInv && Array.isArray(incomingData.reviveCategories)
           ? incomingData.reviveCategories.map((c: string) => String(c || '').trim().toLowerCase()).filter(Boolean)
           : []
       );
@@ -2177,9 +2892,9 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         savedVehicles: mergeTombstoneList('savedVehicles'),
         customerTransactions: mergeTombstoneList('customerTransactions'),
         users: callerCanManageUsers ? mergeTombstoneList('users') : (Array.isArray(prevTombstones.users) ? prevTombstones.users.map(String) : []),
-        categories: mergeTombstoneList('categories').filter(
-          (c: string) => !revivedCatSet.has(c.trim().toLowerCase())
-        ),
+        categories: canManageInv
+          ? mergeTombstoneList('categories').filter((c: string) => !revivedCatSet.has(c.trim().toLowerCase()))
+          : (Array.isArray(prevTombstones.categories) ? prevTombstones.categories.map(String) : []),
       };
 
       const invoiceDelSet = new Set<string>(combinedTombstones.invoices);
@@ -2203,15 +2918,96 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         return incomingArr.filter((item: any) => !delSet.has(item?.id));
       };
 
-      // Safe collections handling: filter tombstones & merge concurrent stale writes without losing peer records
-      const finalInvoices = resolveCollection(currentDb.invoices, incomingData.invoices, invoiceDelSet);
-      const finalProducts = resolveCollection(currentDb.products, incomingData.products, productDelSet);
-      const finalCustomers = resolveCollection(currentDb.customers, incomingData.customers, customerDelSet);
-      const finalPurchases = resolveCollection(currentDb.purchaseInvoices, incomingData.purchaseInvoices, purchaseDelSet);
-      const finalInbound = resolveCollection(currentDb.inboundReceipts, incomingData.inboundReceipts, inboundDelSet);
-      const finalTransfers = resolveCollection(currentDb.directTransfers, incomingData.directTransfers, transferDelSet);
-      const finalVehicles = resolveCollection(currentDb.savedVehicles, incomingData.savedVehicles, vehicleDelSet);
-      const finalTransactions = resolveCollection(currentDb.customerTransactions, incomingData.customerTransactions, transactionDelSet);
+      const preserveReminderMarkers = (prevArr: any[], resolvedArr: any[]) => {
+        const prevMap = new Map<string, any>();
+        (Array.isArray(prevArr) ? prevArr : []).forEach((item: any) => {
+          if (item?.id) prevMap.set(item.id, item);
+        });
+        return resolvedArr.map((item: any) => {
+          const prev = item?.id ? prevMap.get(item.id) : null;
+          if (!prev) return item;
+          const next = { ...item };
+          if (!next.proformaReminderSentAt && prev.proformaReminderSentAt) {
+            next.proformaReminderSentAt = prev.proformaReminderSentAt;
+          }
+          const prevDueNorm = normalizeJalaliDateServer(prev.chequeDueDate);
+          const nextDueNorm = normalizeJalaliDateServer(next.chequeDueDate);
+          if (
+            prev.chequeReminderSentForDate &&
+            prevDueNorm &&
+            nextDueNorm === prevDueNorm &&
+            !next.chequeReminderSentForDate
+          ) {
+            next.chequeReminderSentForDate = prev.chequeReminderSentForDate;
+            if (prev.chequeReminderSentAt) {
+              next.chequeReminderSentAt = prev.chequeReminderSentAt;
+            }
+          }
+          return next;
+        });
+      };
+
+      const canWriteSalesInvoices =
+        callerIsAdmin ||
+        Boolean(authUser?.permissions?.canCreateInvoice) ||
+        Boolean(authUser?.permissions?.canSettleInvoices) ||
+        Boolean(authUser?.permissions?.canDeleteInvoice);
+      const canWriteProducts =
+        callerIsAdmin ||
+        Boolean(authUser?.permissions?.canManageInventory) ||
+        Boolean(authUser?.permissions?.canCreateInvoice) ||
+        Boolean(authUser?.permissions?.canCreatePurchaseInvoice);
+      const canWriteCustomers =
+        callerIsAdmin ||
+        Boolean(authUser?.permissions?.canManageCustomers) ||
+        Boolean(authUser?.permissions?.canCreateInvoice) ||
+        Boolean(authUser?.permissions?.canSettleInvoices);
+      const canWritePurchases =
+        callerIsAdmin ||
+        Boolean(authUser?.permissions?.canCreatePurchaseInvoice) ||
+        Boolean(authUser?.permissions?.canManageInventory) ||
+        Boolean(authUser?.permissions?.canSettleInvoices) ||
+        Boolean(authUser?.permissions?.canDeleteInvoice);
+      const canWriteWarehouseDocs =
+        callerIsAdmin ||
+        Boolean(authUser?.permissions?.canManageInventory) ||
+        Boolean(authUser?.permissions?.canCreatePurchaseInvoice) ||
+        Boolean(authUser?.permissions?.canCreateInvoice);
+
+      // Safe collections handling: enforce per-collection RBAC + tombstones + concurrent merge
+      const finalInvoices = canWriteSalesInvoices
+        ? preserveReminderMarkers(
+            currentDb.invoices,
+            resolveCollection(currentDb.invoices, incomingData.invoices, invoiceDelSet)
+          )
+        : (Array.isArray(currentDb.invoices) ? currentDb.invoices : []);
+      const finalProducts = canWriteProducts
+        ? resolveCollection(currentDb.products, incomingData.products, productDelSet)
+        : (Array.isArray(currentDb.products) ? currentDb.products : []);
+      const finalCustomers = canWriteCustomers
+        ? resolveCollection(currentDb.customers, incomingData.customers, customerDelSet)
+        : (Array.isArray(currentDb.customers) ? currentDb.customers : []);
+      const finalPurchases = canWritePurchases
+        ? preserveReminderMarkers(
+            currentDb.purchaseInvoices,
+            resolveCollection(currentDb.purchaseInvoices, incomingData.purchaseInvoices, purchaseDelSet)
+          )
+        : (Array.isArray(currentDb.purchaseInvoices) ? currentDb.purchaseInvoices : []);
+      const finalInbound = canWriteWarehouseDocs
+        ? resolveCollection(currentDb.inboundReceipts, incomingData.inboundReceipts, inboundDelSet)
+        : (Array.isArray(currentDb.inboundReceipts) ? currentDb.inboundReceipts : []);
+      const finalTransfers = canManageInv
+        ? resolveCollection(currentDb.directTransfers, incomingData.directTransfers, transferDelSet)
+        : (Array.isArray(currentDb.directTransfers) ? currentDb.directTransfers : []);
+      const finalVehicles = canWriteWarehouseDocs
+        ? resolveCollection(currentDb.savedVehicles, incomingData.savedVehicles, vehicleDelSet)
+        : (Array.isArray(currentDb.savedVehicles) ? currentDb.savedVehicles : []);
+      const finalTransactions = (callerIsAdmin || canManageCust || canSettleInv)
+        ? preserveReminderMarkers(
+            currentDb.customerTransactions,
+            resolveCollection(currentDb.customerTransactions, incomingData.customerTransactions, transactionDelSet)
+          )
+        : (Array.isArray(currentDb.customerTransactions) ? currentDb.customerTransactions : []);
 
       // Protect users array: only admin / canManageUsers may alter users; always preserve & scrypt-hash passwords
       const existingUsersById = new Map<string, any>();
@@ -2223,9 +3019,86 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
       if (!callerCanManageUsers || !Array.isArray(incomingData.users)) {
         finalUsers = Array.isArray(currentDb.users) ? currentDb.users : [];
       } else {
+        // Guard: verify caller didn't add tombstone for protected user, self, or last admin
+        for (const delUid of userDelSet) {
+          const prevTarget = existingUsersById.get(delUid);
+          if (delUid === authUser?.userId) {
+            const err: any = new Error('امکان حذف حساب کاربری جاری خودتان وجود ندارد.');
+            err.statusCode = 403;
+            throw err;
+          }
+          if (!callerIsAdmin && prevTarget && isAdminUser(prevTarget)) {
+            const err: any = new Error('شما مجوز حذف حساب‌های مدیر سیستم را ندارید.');
+            err.statusCode = 403;
+            throw err;
+          }
+        }
+
         const candidateUsers = isStaleRevision
           ? mergeCollectionById(currentDb.users, incomingData.users, userDelSet)
           : incomingData.users.filter((u: any) => !userDelSet.has(u?.id));
+
+        // Enforce privilege escalation & self-lockout protections
+        for (const u of candidateUsers) {
+          const prev = u?.id ? existingUsersById.get(u.id) : null;
+          const nextNormPerms = normalizeUserPermissionsServer(String(u?.role || 'cashier'), u?.permissions);
+          const nextIsPrivileged = u?.role === 'admin' || nextNormPerms.canAccessAdmin === true;
+
+          if (!callerIsAdmin) {
+            // Non-admin manager cannot create/promote admin or grant canAccessAdmin
+            if (!prev && nextIsPrivileged) {
+              const err: any = new Error('فقط مدیر کل سیستم مجاز به تعریف کاربر مدیر یا اعطای دسترسی پنل مدیریت است.');
+              err.statusCode = 403;
+              throw err;
+            }
+            if (prev && isAdminUser(prev)) {
+              const incomingPass = typeof u.password === 'string' && u.password.trim() ? u.password.trim() : '';
+              const incomingPin = typeof u.pin === 'string' && u.pin.trim() ? u.pin.trim() : '';
+              const prevPermsJson = JSON.stringify(normalizeUserPermissionsServer(prev.role, prev.permissions));
+              const nextPermsJson = JSON.stringify(nextNormPerms);
+              if (
+                incomingPass ||
+                incomingPin ||
+                u.role !== prev.role ||
+                Boolean(u.isActive) !== Boolean(prev.isActive) ||
+                String(u.username || '').trim().toLowerCase() !== String(prev.username || '').trim().toLowerCase() ||
+                String(u.fullName || '').trim() !== String(prev.fullName || '').trim() ||
+                prevPermsJson !== nextPermsJson
+              ) {
+                const err: any = new Error('شما مجوز تغییر اطلاعات یا رمز حساب‌های مدیر سیستم را ندارید.');
+                err.statusCode = 403;
+                throw err;
+              }
+            }
+            if (prev && !isAdminUser(prev) && nextIsPrivileged) {
+              const err: any = new Error('شما مجوز ارتقای کاربر به مدیر کل یا اعطای دسترسی پنل مدیریت را ندارید.');
+              err.statusCode = 403;
+              throw err;
+            }
+          }
+
+          if (prev && prev.id === authUser?.userId) {
+            if (u.isActive === false) {
+              const err: any = new Error('امکان غیرفعال‌سازی حساب کاربری فعال خودتان وجود ندارد.');
+              err.statusCode = 400;
+              throw err;
+            }
+            if (callerIsAdmin && (!nextNormPerms.canAccessAdmin || u.role !== 'admin')) {
+              const err: any = new Error('امکان سلب دسترسی مدیر کل از حساب کاربری فعلی خودتان وجود ندارد.');
+              err.statusCode = 400;
+              throw err;
+            }
+          }
+        }
+
+        // Preserve any admin users omitted accidentally by a non-admin manager
+        if (!callerIsAdmin) {
+          for (const [id, prev] of existingUsersById.entries()) {
+            if (isAdminUser(prev) && !candidateUsers.some((cu: any) => cu?.id === id)) {
+              candidateUsers.push(prev);
+            }
+          }
+        }
 
         finalUsers = candidateUsers.map((u: any) => {
           const prev = existingUsersById.get(u.id);
@@ -2254,26 +3127,43 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
             ? (isHashedSecret(prev.pin) ? prev.pin : hashSecret(prev.pin))
             : nextPassword;
           const { hasPassword: _hp, ...cleanUser } = u;
+          const normalizedPerms = normalizeUserPermissionsServer(String(cleanUser.role || 'cashier'), cleanUser.permissions);
           return {
             ...cleanUser,
+            permissions: normalizedPerms,
             password: nextPassword,
             pin: nextPin,
           };
         });
+
+        const activeAdminCount = finalUsers.filter((u: any) => u?.role === 'admin' && u?.isActive !== false).length;
+        if (activeAdminCount < 1) {
+          const err: any = new Error('حداقل یک حساب مدیر کل فعال باید در سامانه باقی بماند.');
+          err.statusCode = 400;
+          throw err;
+        }
       }
 
-      let finalCategories = Array.isArray(incomingData.categories) ? incomingData.categories : (currentDb.categories || []);
+      let finalCategories = canManageInv && Array.isArray(incomingData.categories)
+        ? incomingData.categories
+        : (currentDb.categories || []);
       finalCategories = finalCategories.filter((c: string) => !categoryDelSet.has(String(c).trim().toLowerCase()));
 
       // Also clean up exitSlipLogs so deleted invoices never leave ghost slips
-      const currentExitLogs = { ...(currentDb.exitSlipLogs || {}), ...(incomingData.exitSlipLogs || {}) };
+      const currentExitLogs = canWriteWarehouseDocs
+        ? { ...(currentDb.exitSlipLogs || {}), ...(incomingData.exitSlipLogs || {}) }
+        : { ...(currentDb.exitSlipLogs || {}) };
       invoiceDelSet.forEach((delId) => {
         delete currentExitLogs[delId];
       });
 
+      // Append-only ID-based union merge for activityLogs: concurrent devices never wipe peer logs & POST /api/db cannot erase audit history
+      const finalActivityLogs = Array.isArray(incomingData.activityLogs)
+        ? mergeActivityLogs(currentDb.activityLogs, incomingData.activityLogs)
+        : mergeActivityLogs(currentDb.activityLogs, []);
+
       const updatedDb: any = {
         ...currentDb,
-        ...incomingData,
         invoices: finalInvoices,
         products: finalProducts,
         customers: finalCustomers,
@@ -2284,6 +3174,7 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         customerTransactions: finalTransactions,
         users: finalUsers,
         categories: finalCategories,
+        activityLogs: finalActivityLogs,
         exitSlipLogs: currentExitLogs,
         deletedInvoiceIds: combinedTombstones.invoices,
         tombstones: combinedTombstones,
@@ -2331,8 +3222,172 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
     });
 
     res.json(result);
+    scheduleServerChequeReminderCheck();
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    const status = typeof error?.statusCode === 'number' ? error.statusCode : 500;
+    res.status(status).json({ success: false, message: error.message });
+  }
+});
+
+// -------------------------------------------------------------
+// DEDICATED ACTIVITY LOGS AUDIT ENDPOINTS
+// -------------------------------------------------------------
+app.get('/api/activity-logs', async (req, res) => {
+  try {
+    setNoCacheHeaders(res);
+    const authUser = (req as AuthenticatedRequest).authUser;
+    if (!authUser) {
+      return res.status(401).json({ success: false, message: 'احراز هویت الزامی است.' });
+    }
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const liveUser = (dbData?.users || []).find((u: any) => u.id === authUser.userId);
+    const canViewLogs =
+      liveUser &&
+      liveUser.isActive !== false &&
+      (isAdminUser(liveUser) || Boolean(liveUser.permissions?.canManageUsers));
+    if (!canViewLogs) {
+      return res.status(403).json({
+        success: false,
+        message: 'فقط مدیر سیستم یا مسئول مدیریت کاربران مجاز به مشاهده لاگ‌های ممیزی است.',
+      });
+    }
+
+    const logs = mergeActivityLogs(dbData?.activityLogs, []);
+    res.json({
+      success: true,
+      logs,
+      total: logs.length,
+      serverTime: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/activity-logs', dbWriteLimiter, async (req, res) => {
+  try {
+    setNoCacheHeaders(res);
+    const authUser = (req as AuthenticatedRequest).authUser;
+    if (!authUser) {
+      return res.status(401).json({ success: false, message: 'احراز هویت الزامی است.' });
+    }
+    const body = req.body || {};
+    const category = String(body.category || '').trim();
+    const actionType = String(body.actionType || '').trim();
+    const actionTitle = String(body.actionTitle || '').trim();
+    const details = String(body.details || '').trim();
+
+    if (!category || !actionType || !actionTitle) {
+      return res.status(400).json({ success: false, message: 'اطلاعات رویداد ناقص است.' });
+    }
+
+    const savedLog = await enqueueDbWrite(async () => {
+      const { data: currentDb } = await getLatestConvergedDatabase();
+      const liveUser = (currentDb?.users || []).find((u: any) => u.id === authUser.userId);
+      if (!liveUser || liveUser.isActive === false) {
+        throw new Error('حساب کاربری معتبر نیست.');
+      }
+
+      const dt = getTehranJalaliDateTime();
+      const clientId = typeof body.id === 'string' && body.id.trim() ? body.id.trim().slice(0, 80) : '';
+      const validSeverity =
+        body.severity === 'critical' || body.severity === 'warning' || body.severity === 'info'
+          ? body.severity
+          : inferActivitySeverityServer(actionType, category);
+
+      const entry: any = {
+        id: clientId || `log-${dt.createdAtMs}-${crypto.randomBytes(3).toString('hex')}`,
+        // Always derive actor identity authoritatively from the authenticated user
+        userId: liveUser.id,
+        userName: liveUser.fullName || liveUser.username,
+        userRole: liveUser.role,
+        userRoleTitle: liveUser.roleTitle,
+        category: category.slice(0, 40),
+        actionType: actionType.slice(0, 80),
+        actionTitle: actionTitle.slice(0, 140),
+        details: details.slice(0, 1000),
+        timestamp: typeof body.timestamp === 'string' && body.timestamp.trim() ? body.timestamp.trim().slice(0, 60) : dt.timestamp,
+        dateOnly: typeof body.dateOnly === 'string' && body.dateOnly.trim() ? body.dateOnly.trim().slice(0, 20) : dt.dateOnly,
+        createdAtMs: dt.createdAtMs,
+        severity: validSeverity,
+        source: 'client',
+        ipAddress: getRequestClientIp(req),
+        deviceInfo:
+          typeof body.deviceInfo === 'string' && body.deviceInfo.trim()
+            ? body.deviceInfo.trim().slice(0, 120)
+            : parseUserAgentSummary(req),
+        ...(typeof body.entityType === 'string' && body.entityType.trim() ? { entityType: body.entityType.trim().slice(0, 40) } : {}),
+        ...(typeof body.entityId === 'string' && body.entityId.trim() ? { entityId: body.entityId.trim().slice(0, 80) } : {}),
+        ...(typeof body.entityLabel === 'string' && body.entityLabel.trim() ? { entityLabel: body.entityLabel.trim().slice(0, 120) } : {}),
+        ...(normalizeLogMetadata(body.metadata) ? { metadata: normalizeLogMetadata(body.metadata) } : {}),
+      };
+
+      const updatedDb = { ...currentDb };
+      updatedDb.activityLogs = mergeActivityLogs([entry], currentDb.activityLogs);
+      updatedDb.revision = (typeof currentDb.revision === 'number' ? currentDb.revision : 1) + 1;
+      updatedDb.updatedAt = new Date().toISOString();
+      updatedDb.checksum = crypto.createHash('sha256').update(JSON.stringify(updatedDb, null, 2)).digest('hex');
+
+      writeDatabase(updatedDb, true, false);
+      if (getPostgresStatus().connected) {
+        try {
+          await saveStateToPostgres(updatedDb);
+        } catch (pgErr: any) {
+          console.warn('[Postgres Activity Log Sync Notice]:', pgErr?.message);
+        }
+      }
+      return entry;
+    });
+
+    res.json({ success: true, log: savedLog });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.delete('/api/activity-logs', requireAdmin, async (req, res) => {
+  try {
+    setNoCacheHeaders(res);
+    const authUser = (req as AuthenticatedRequest).authUser!;
+    const result = await enqueueDbWrite(async () => {
+      const { data: currentDb } = await getLatestConvergedDatabase();
+      const prevCount = Array.isArray(currentDb.activityLogs) ? currentDb.activityLogs.length : 0;
+      const liveUser = (currentDb?.users || []).find((u: any) => u.id === authUser.userId);
+      const updatedDb = { ...currentDb, activityLogs: [] as any[] };
+      const clearEntry = appendLogToDbObject(updatedDb, req, {
+        userId: authUser.userId,
+        userName: liveUser?.fullName || authUser.username,
+        userRole: liveUser?.role || authUser.role,
+        userRoleTitle: liveUser?.roleTitle,
+        category: 'system',
+        actionType: 'clear_logs',
+        actionTitle: 'پاکسازی آرشیو لاگ‌های فعالیت',
+        details: `پاکسازی کامل ${toPersianDigitsServer(prevCount)} رکورد لاگ سیستم توسط مدیر «${liveUser?.fullName || authUser.username}»`,
+        severity: 'critical',
+        metadata: { clearedCount: prevCount },
+      });
+      updatedDb.revision = (typeof currentDb.revision === 'number' ? currentDb.revision : 1) + 1;
+      updatedDb.updatedAt = new Date().toISOString();
+      updatedDb.checksum = crypto.createHash('sha256').update(JSON.stringify(updatedDb, null, 2)).digest('hex');
+
+      writeDatabase(updatedDb, true, false);
+      if (getPostgresStatus().connected) {
+        try {
+          await saveStateToPostgres(updatedDb);
+        } catch (pgErr: any) {
+          console.warn('[Postgres Clear Logs Notice]:', pgErr?.message);
+        }
+      }
+      return { logs: updatedDb.activityLogs, auditEntry: clearEntry };
+    });
+
+    res.json({
+      success: true,
+      logs: result.logs,
+      message: 'آرشیو لاگ‌های قبلی با ثبت رکورد ممیزی جدید پاکسازی شد.',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -2352,16 +3407,72 @@ app.post('/api/db/delete-item', dbWriteLimiter, async (req, res) => {
     if (!type || !id || typeof id !== 'string') {
       return res.status(400).json({ success: false, message: 'نوع موجودیت و شناسه برای حذف الزامی است.' });
     }
-    if (type === 'user' && !isAdminUser(authUser) && !authUser?.permissions?.canManageUsers) {
+    const callerIsAdmin = isAdminUser(authUser);
+    const callerCanManageUsers = callerIsAdmin || Boolean(authUser?.permissions?.canManageUsers);
+    const callerCanDeleteInvoice = callerIsAdmin || Boolean(authUser?.permissions?.canDeleteInvoice);
+    const callerCanManageInventory = callerIsAdmin || Boolean(authUser?.permissions?.canManageInventory);
+    const callerCanManageCustomers = callerIsAdmin || Boolean(authUser?.permissions?.canManageCustomers);
+    const callerCanSettle = callerIsAdmin || Boolean(authUser?.permissions?.canSettleInvoices);
+    const callerCanCreatePurchase = callerIsAdmin || Boolean(authUser?.permissions?.canCreatePurchaseInvoice);
+
+    if (type === 'user' && !callerCanManageUsers) {
       return res.status(403).json({ success: false, message: 'شما مجوز حذف کاربران را ندارید.' });
     }
-    if (type === 'invoice' && !isAdminUser(authUser) && !authUser?.permissions?.canDeleteInvoice) {
+    if (type === 'invoice' && !callerCanDeleteInvoice) {
       return res.status(403).json({ success: false, message: 'شما مجوز حذف فاکتور را ندارید.' });
+    }
+    if ((type === 'product' || type === 'inboundReceipt' || type === 'directTransfer' || type === 'category') && !callerCanManageInventory) {
+      return res.status(403).json({ success: false, message: 'شما مجوز حذف اقلام انبار یا دسته‌بندی را ندارید.' });
+    }
+    if (type === 'purchaseInvoice' && !callerCanDeleteInvoice && !callerCanCreatePurchase) {
+      return res.status(403).json({ success: false, message: 'شما مجوز حذف فاکتور خرید را ندارید.' });
+    }
+    if (type === 'customer' && !callerCanManageCustomers) {
+      return res.status(403).json({ success: false, message: 'شما مجوز حذف مشتریان را ندارید.' });
+    }
+    if (type === 'customerTransaction' && !callerCanManageCustomers && !callerCanSettle) {
+      return res.status(403).json({ success: false, message: 'شما مجوز حذف اسناد مالی مشتری را ندارید.' });
+    }
+    if (type === 'savedVehicle' && !callerCanManageInventory && !authUser?.permissions?.canCreateInvoice) {
+      return res.status(403).json({ success: false, message: 'شما مجوز حذف خودروی ثبت‌شده را ندارید.' });
+    }
+
+    const allowedTypes = new Set([
+      'customerTransaction', 'invoice', 'product', 'customer',
+      'purchaseInvoice', 'inboundReceipt', 'directTransfer',
+      'savedVehicle', 'user', 'category'
+    ]);
+    if (!allowedTypes.has(type)) {
+      return res.status(400).json({ success: false, message: 'نوع موجودیت نامعتبر است.' });
     }
 
     const cleanId = id.trim();
     const result = await enqueueDbWrite(async () => {
       const { data: currentDb } = await getLatestConvergedDatabase();
+      if (type === 'user') {
+        if (cleanId === authUser?.userId) {
+          const err: any = new Error('امکان حذف حساب کاربری فعال خودتان وجود ندارد.');
+          err.statusCode = 400;
+          throw err;
+        }
+        const currentUsers = Array.isArray(currentDb.users) ? currentDb.users : [];
+        const targetUser = currentUsers.find((u: any) => u?.id === cleanId);
+        if (targetUser && !callerIsAdmin && isAdminUser(targetUser)) {
+          const err: any = new Error('فقط مدیر کل مجاز به حذف حساب‌های مدیر است.');
+          err.statusCode = 403;
+          throw err;
+        }
+        if (targetUser && targetUser.role === 'admin' && targetUser.isActive !== false) {
+          const remainingActiveAdmins = currentUsers.filter(
+            (u: any) => u?.id !== cleanId && u?.role === 'admin' && u?.isActive !== false
+          );
+          if (remainingActiveAdmins.length < 1) {
+            const err: any = new Error('حداقل یک کاربر مدیر کل فعال باید در سامانه باقی بماند.');
+            err.statusCode = 400;
+            throw err;
+          }
+        }
+      }
       const currentRev = typeof currentDb.revision === 'number' ? currentDb.revision : 1;
       const nowIso = new Date().toISOString();
 
@@ -2459,12 +3570,13 @@ app.post('/api/db/delete-item', dbWriteLimiter, async (req, res) => {
 
     res.json(result);
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    const status = typeof error?.statusCode === 'number' ? error.statusCode : 500;
+    res.status(status).json({ success: false, message: error.message });
   }
 });
 
 // 4. Security & Backup Engine Status check
-app.get('/api/security/status', (req, res) => {
+app.get('/api/security/status', requireAdmin, (req, res) => {
   const backups = getBackupsList();
   res.json({
     success: true,
@@ -2500,7 +3612,7 @@ app.get('/api/security/status', (req, res) => {
 });
 
 // 5. Backups API: List all backups
-app.get('/api/backups', (req, res) => {
+app.get('/api/backups', requireAdmin, (req, res) => {
   try {
     const backups = getBackupsList();
     res.json({
@@ -2516,7 +3628,7 @@ app.get('/api/backups', (req, res) => {
 });
 
 // 6. Backups API: Create manual backup on-demand
-app.post('/api/backups/create', async (req, res) => {
+app.post('/api/backups/create', requireAdmin, async (req, res) => {
   try {
     const label = req.body?.label?.trim() || 'پشتیبان دستی کاربر';
     const { data: currentData } = await getLatestConvergedDatabase();
@@ -2524,6 +3636,22 @@ app.post('/api/backups/create', async (req, res) => {
     if (!result.success) {
       return res.status(500).json({ success: false, message: result.error });
     }
+    const authUser = (req as AuthenticatedRequest).authUser;
+    const actor = (currentData?.users || []).find((u: any) => u.id === authUser?.userId);
+    await recordServerActivityLog(req, {
+      userId: authUser?.userId || 'admin',
+      userName: actor?.fullName || authUser?.username || 'کاربر',
+      userRole: actor?.role || authUser?.role || 'admin',
+      userRoleTitle: actor?.roleTitle,
+      category: 'system',
+      actionType: 'create_backup',
+      actionTitle: 'ایجاد نسخه پشتیبان دستی در سرور',
+      details: `ایجاد فایل پشتیبان «${result.filename}» با برچسب «${label}»`,
+      severity: 'info',
+      entityType: 'backup',
+      entityId: result.filename,
+      entityLabel: label,
+    });
     const backups = getBackupsList();
     res.json({
       success: true,
@@ -2537,7 +3665,7 @@ app.post('/api/backups/create', async (req, res) => {
 });
 
 // 6.5. Backups API: Inspect & verify a specific backup file before restore
-app.get('/api/backups/inspect/:filename', (req, res) => {
+app.get('/api/backups/inspect/:filename', requireAdmin, (req, res) => {
   try {
     const safeFilename = path.basename(req.params.filename);
     const backupFilePath = path.join(BACKUPS_DIR, safeFilename);
@@ -2652,6 +3780,22 @@ app.post('/api/backups/restore', requireAdmin, async (req, res) => {
         finalState.users = hashed.users;
       }
 
+      const authUser = (req as AuthenticatedRequest).authUser;
+      const actor = (finalState?.users || currentDb?.users || []).find((u: any) => u.id === authUser?.userId);
+      appendLogToDbObject(finalState, req, {
+        userId: authUser?.userId || 'admin',
+        userName: actor?.fullName || authUser?.username || 'مدیر سیستم',
+        userRole: actor?.role || authUser?.role || 'admin',
+        userRoleTitle: actor?.roleTitle,
+        category: 'system',
+        actionType: 'restore_backup',
+        actionTitle: selectedModules && selectedModules.length > 0 ? 'بازیابی انتخابی از نسخه پشتیبان' : 'بازیابی کامل پایگاه‌داده از پشتیبان',
+        details: `بازیابی از فایل «${safeFilename}»${selectedModules && selectedModules.length > 0 ? ` (بخش‌ها: ${selectedModules.join('، ')})` : ' (کامل)'}`,
+        severity: 'critical',
+        entityType: 'backup',
+        entityId: safeFilename,
+      });
+
       // Overwrite database with target backup
       const ok = writeDatabase(finalState, false);
       if (!ok) {
@@ -2707,7 +3851,7 @@ app.get('/api/backups/download/:filename', requireAdmin, (req, res) => {
 });
 
 // 9. Backups API: Delete a backup file
-app.delete('/api/backups/:filename', requireAdmin, (req, res) => {
+app.delete('/api/backups/:filename', requireAdmin, async (req, res) => {
   try {
     const safeFilename = path.basename(req.params.filename);
     const backupFilePath = path.join(BACKUPS_DIR, safeFilename);
@@ -2718,6 +3862,19 @@ app.delete('/api/backups/:filename', requireAdmin, (req, res) => {
 
     fs.unlinkSync(backupFilePath);
     console.log(`[Backup Engine] Deleted backup file: ${safeFilename}`);
+    const authUser = (req as AuthenticatedRequest).authUser;
+    await recordServerActivityLog(req, {
+      userId: authUser?.userId || 'admin',
+      userName: authUser?.username || 'مدیر سیستم',
+      userRole: authUser?.role || 'admin',
+      category: 'system',
+      actionType: 'delete_backup',
+      actionTitle: 'حذف فایل نسخه پشتیبان از سرور',
+      details: `حذف فایل پشتیبان «${safeFilename}» از آرشیو سرور`,
+      severity: 'critical',
+      entityType: 'backup',
+      entityId: safeFilename,
+    });
     const backups = getBackupsList();
     res.json({
       success: true,
@@ -2782,6 +3939,21 @@ app.post('/api/backups/upload', requireAdmin, async (req, res) => {
           const hashed = ensureUsersPasswordsHashed(finalState.users);
           finalState.users = hashed.users;
         }
+        const authUser = (req as AuthenticatedRequest).authUser;
+        const actor = (finalState?.users || currentDb?.users || []).find((u: any) => u.id === authUser?.userId);
+        appendLogToDbObject(finalState, req, {
+          userId: authUser?.userId || 'admin',
+          userName: actor?.fullName || authUser?.username || 'مدیر سیستم',
+          userRole: actor?.role || authUser?.role || 'admin',
+          userRoleTitle: actor?.roleTitle,
+          category: 'system',
+          actionType: 'upload_restore_backup',
+          actionTitle: 'بارگذاری و بازیابی فایل پشتیبان خارجی',
+          details: `بارگذاری فایل «${filename}» و بازیابی${selectedModules && selectedModules.length > 0 ? ` بخش‌های (${selectedModules.join('، ')})` : ' کامل سیستم'}`,
+          severity: 'critical',
+          entityType: 'backup',
+          entityId: filename,
+        });
         writeDatabase(finalState, false);
         if (getPostgresStatus().connected) {
           try {
@@ -2790,6 +3962,20 @@ app.post('/api/backups/upload', requireAdmin, async (req, res) => {
             console.warn('[PostgreSQL Upload-Restore Sync Notice]:', pgErr.message);
           }
         }
+      });
+    } else {
+      const authUser = (req as AuthenticatedRequest).authUser;
+      await recordServerActivityLog(req, {
+        userId: authUser?.userId || 'admin',
+        userName: authUser?.username || 'مدیر سیستم',
+        userRole: authUser?.role || 'admin',
+        category: 'system',
+        actionType: 'upload_backup',
+        actionTitle: 'بارگذاری فایل پشتیبان در آرشیو سرور',
+        details: `ذخیره فایل پشتیبان «${filename}» در آرشیو بدون بازیابی فوری`,
+        severity: 'warning',
+        entityType: 'backup',
+        entityId: filename,
       });
     }
 
@@ -3073,7 +4259,7 @@ async function callTelegramApi(endpoint: string, options: TelegramCallOptions = 
 }
 
 // 12.1 Test Bot Connection (getMe)
-app.post('/api/telegram/test-connection', async (req, res) => {
+app.post('/api/telegram/test-connection', requireAdmin, async (req, res) => {
   try {
     const rawBotToken = req.body?.botToken || process.env.TELEGRAM_BOT_TOKEN || '';
     const botToken = sanitizeTelegramBotToken(rawBotToken);
@@ -3118,7 +4304,7 @@ app.post('/api/telegram/test-connection', async (req, res) => {
 });
 
 // 12.2 Test Message to Chat/Channel/Group (sendMessage)
-app.post('/api/telegram/test-message', async (req, res) => {
+app.post('/api/telegram/test-message', requireAdmin, async (req, res) => {
   try {
     const rawBotToken = req.body?.botToken || process.env.TELEGRAM_BOT_TOKEN || '';
     const botToken = sanitizeTelegramBotToken(rawBotToken);
@@ -3178,17 +4364,19 @@ app.post('/api/telegram/test-message', async (req, res) => {
 // 12.2.1 Send Text Report / Message to Chat/Channel/Group (Direct & Unfiltered)
 app.post('/api/telegram/send-message', async (req, res) => {
   try {
+    const authUser = (req as AuthenticatedRequest).authUser;
+    const callerIsAdmin = isAdminUser(authUser);
     const dbData = readDatabase();
     const serverSettings = dbData?.settings || {};
 
     const botToken = sanitizeTelegramBotToken(
-      req.body?.botToken ||
+      (callerIsAdmin ? req.body?.botToken : '') ||
       serverSettings?.telegramBotToken ||
       process.env.TELEGRAM_BOT_TOKEN
     );
 
     const chatId = (
-      req.body?.chatId ||
+      (callerIsAdmin ? req.body?.chatId : '') ||
       serverSettings?.telegramChatId ||
       process.env.TELEGRAM_CHAT_ID ||
       ''
@@ -3196,8 +4384,8 @@ app.post('/api/telegram/send-message', async (req, res) => {
 
     const text = (req.body?.text || '').trim();
     const parseMode = req.body?.parse_mode || 'HTML';
-    const apiUrl = req.body?.apiUrl;
-    const proxyUrl = req.body?.proxyUrl;
+    const apiUrl = callerIsAdmin ? req.body?.apiUrl : undefined;
+    const proxyUrl = callerIsAdmin ? req.body?.proxyUrl : undefined;
 
     if (!botToken) {
       return res.status(400).json({ success: false, error: 'توکن ربات تلگرام مشخص نشده است.' });
@@ -3449,7 +4637,7 @@ async function checkAndSendServerProformaReminders(overrides?: {
 }
 
 // Check proforma reminders endpoint
-app.post('/api/telegram/check-proforma-reminders', async (req, res) => {
+app.post('/api/telegram/check-proforma-reminders', requireAdmin, async (req, res) => {
   try {
     const customBotToken = req.body?.botToken;
     const customChatId = req.body?.chatId;
@@ -3479,7 +4667,7 @@ app.post('/api/telegram/check-proforma-reminders', async (req, res) => {
 });
 
 // Proforma reminders status endpoint
-app.get('/api/telegram/proforma-reminders-status', (req, res) => {
+app.get('/api/telegram/proforma-reminders-status', requireAdmin, (req, res) => {
   try {
     const dbData = readDatabase();
     const invoices = Array.isArray(dbData?.invoices) ? dbData.invoices : [];
@@ -3700,9 +4888,17 @@ async function checkAndSendCustomerFollowUpReminders(overrides?: {
 
 app.post('/api/telegram/check-followup-reminders', async (req, res) => {
   try {
+    const authUser = (req as AuthenticatedRequest).authUser;
+    const callerIsAdmin = isAdminUser(authUser);
+    if (!callerIsAdmin && !authUser?.permissions?.canManageCustomers) {
+      return res.status(403).json({
+        success: false,
+        error: 'فقط مدیر سیستم یا مسئول بخش مشتریان مجاز به ارسال یادآور پیگیری مشتری است.',
+      });
+    }
     const result = await checkAndSendCustomerFollowUpReminders({
-      botToken: req.body?.botToken,
-      chatId: req.body?.chatId,
+      botToken: callerIsAdmin ? req.body?.botToken : undefined,
+      chatId: callerIsAdmin ? req.body?.chatId : undefined,
       customerId: req.body?.customerId,
       noteId: req.body?.noteId,
       forceSend: Boolean(req.body?.forceSend),
@@ -3739,21 +4935,471 @@ setInterval(() => {
   checkAndSendCustomerFollowUpReminders().catch((e) => console.warn('[Follow-Up Reminder] Interval check error:', e));
 }, 15 * 60 * 1000);
 
+// 12.2.4 Receivable & Payable Cheque 7-Day Advance Telegram Reminders (یادآوری یک هفته قبل از سررسید چک‌ها)
+let chequeReminderDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let isChequeReminderCheckRunning = false;
+
+function scheduleServerChequeReminderCheck() {
+  if (chequeReminderDebounceTimer) {
+    clearTimeout(chequeReminderDebounceTimer);
+  }
+  chequeReminderDebounceTimer = setTimeout(() => {
+    chequeReminderDebounceTimer = null;
+    checkAndSendServerChequeReminders().catch((e) =>
+      console.warn('[Cheque Reminder] Debounced check error:', e)
+    );
+  }, 2500);
+}
+
+function calculateDaysUntilJalaliDueServer(dueDateRaw?: string | null, todayJalaliOverride?: string): number | null {
+  const normDue = normalizeJalaliDateServer(dueDateRaw);
+  if (!normDue) return null;
+  const dueParts = normDue.split('/').map(Number);
+  if (dueParts.length !== 3 || !dueParts[0] || !dueParts[1] || !dueParts[2]) return null;
+
+  const todayStr = todayJalaliOverride || getTehranJalaliDateTime().dateOnly;
+  const todayParts = normalizeJalaliDateServer(todayStr).split('/').map(Number);
+  if (todayParts.length !== 3 || !todayParts[0] || !todayParts[1] || !todayParts[2]) return null;
+
+  try {
+    const [dgy, dgm, dgd] = jalaliToGregorianServer(dueParts[0], dueParts[1], dueParts[2]);
+    const [tgy, tgm, tgd] = jalaliToGregorianServer(todayParts[0], todayParts[1], todayParts[2]);
+    const dueUtc = Date.UTC(dgy, dgm - 1, dgd);
+    const todayUtc = Date.UTC(tgy, tgm - 1, tgd);
+    if (!Number.isFinite(dueUtc) || !Number.isFinite(todayUtc)) return null;
+    return Math.round((dueUtc - todayUtc) / (1000 * 60 * 60 * 24));
+  } catch {
+    return null;
+  }
+}
+
+interface ChequeReminderCandidate {
+  kind: 'invoice' | 'purchase' | 'transaction';
+  direction: 'receivable' | 'payable';
+  record: any;
+  chequeNumber: string;
+  dueDate: string;
+  daysRemaining: number;
+  amount: number;
+  counterpartyName: string;
+  counterpartyPhone?: string;
+  accountHolder?: string;
+  sourceLabel: string;
+  notes?: string;
+}
+
+function collectActiveChequesForReminder(
+  dbData: any,
+  todayJalali: string
+): ChequeReminderCandidate[] {
+  const candidates: ChequeReminderCandidate[] = [];
+  const invoices = Array.isArray(dbData?.invoices) ? dbData.invoices : [];
+  const purchases = Array.isArray(dbData?.purchaseInvoices) ? dbData.purchaseInvoices : [];
+  const transactions = Array.isArray(dbData?.customerTransactions) ? dbData.customerTransactions : [];
+  const customers = Array.isArray(dbData?.customers) ? dbData.customers : [];
+
+  const customerMap = new Map<string, any>();
+  customers.forEach((c: any) => {
+    if (c?.id) customerMap.set(c.id, c);
+  });
+
+  const invoiceChequeKeys = new Set<string>();
+
+  // 1. Sales Invoices -> Receivable Cheques (چک‌های دریافتی بابت فاکتور فروش)
+  for (const inv of invoices) {
+    if (!inv || inv.isProforma === true || inv.isProforma === 'true') continue;
+    if (inv.isDeleted || inv.deleted === true) continue;
+    if (inv.paymentStatus === 'unpaid') continue;
+    if (inv.paymentMethod !== 'cheque' && !inv.chequeNumber) continue;
+
+    const dueDate = normalizeJalaliDateServer(inv.chequeDueDate);
+    const daysRemaining = calculateDaysUntilJalaliDueServer(dueDate, todayJalali);
+    if (!dueDate || daysRemaining === null) continue;
+
+    const chequeNumber = String(inv.chequeNumber || '').trim();
+    const cust = inv.customerId ? customerMap.get(inv.customerId) : null;
+    if (inv.id) {
+      invoiceChequeKeys.add(`${inv.id}::${dueDate}::${toEnglishDigitsServer(chequeNumber)}`);
+    }
+
+    candidates.push({
+      kind: 'invoice',
+      direction: 'receivable',
+      record: inv,
+      chequeNumber,
+      dueDate,
+      daysRemaining,
+      amount: Number(inv.paidAmount) > 0 ? Number(inv.paidAmount) : Number(inv.finalTotal) || 0,
+      counterpartyName: inv.customerName || cust?.name || 'مشتری',
+      counterpartyPhone: inv.customerPhone || cust?.phone || '',
+      accountHolder: inv.chequeName || '',
+      sourceLabel: `فاکتور فروش #${inv.invoiceNumber || inv.id}`,
+      notes: inv.notes || '',
+    });
+  }
+
+  // 2. Purchase Invoices -> Payable Cheques (چک‌های پرداختی بابت فاکتور خرید)
+  for (const pur of purchases) {
+    if (!pur || pur.isDeleted || pur.deleted === true) continue;
+    if (pur.paymentStatus === 'unpaid') continue;
+    if (pur.paymentMethod !== 'cheque' && !pur.chequeNumber) continue;
+
+    const dueDate = normalizeJalaliDateServer(pur.chequeDueDate);
+    const daysRemaining = calculateDaysUntilJalaliDueServer(dueDate, todayJalali);
+    if (!dueDate || daysRemaining === null) continue;
+
+    candidates.push({
+      kind: 'purchase',
+      direction: 'payable',
+      record: pur,
+      chequeNumber: String(pur.chequeNumber || '').trim(),
+      dueDate,
+      daysRemaining,
+      amount: Number(pur.paidAmount) > 0 ? Number(pur.paidAmount) : Number(pur.finalTotal) || 0,
+      counterpartyName: pur.supplierName || 'تامین‌کننده',
+      counterpartyPhone: pur.supplierPhone || '',
+      accountHolder: pur.chequeName || '',
+      sourceLabel: `فاکتور خرید #${pur.invoiceNumber || pur.id}`,
+      notes: pur.notes || '',
+    });
+  }
+
+  // 3. Customer Ledger Transactions -> Deposit (Receivable) or Debt/Payable (چک دریافتی یا پرداختی دفتر طرف‌حساب)
+  for (const tx of transactions) {
+    if (!tx || tx.isDeleted || tx.deleted === true) continue;
+    if (tx.paymentMethod !== 'cheque' && !tx.chequeDueDate) continue;
+
+    const dueDate = normalizeJalaliDateServer(tx.chequeDueDate);
+    const daysRemaining = calculateDaysUntilJalaliDueServer(dueDate, todayJalali);
+    if (!dueDate || daysRemaining === null) continue;
+
+    const chequeNumber = String(tx.trackingNumber || tx.chequeNumber || '').trim();
+    if (
+      tx.invoiceId &&
+      invoiceChequeKeys.has(`${tx.invoiceId}::${dueDate}::${toEnglishDigitsServer(chequeNumber)}`)
+    ) {
+      continue;
+    }
+
+    const cust = tx.customerId ? customerMap.get(tx.customerId) : null;
+    const isPayable = tx.type === 'debt';
+
+    candidates.push({
+      kind: 'transaction',
+      direction: isPayable ? 'payable' : 'receivable',
+      record: tx,
+      chequeNumber,
+      dueDate,
+      daysRemaining,
+      amount: Number(tx.amount) || 0,
+      counterpartyName: tx.customerName || cust?.name || 'طرف حساب',
+      counterpartyPhone: cust?.phone || '',
+      accountHolder: tx.bankName || '',
+      sourceLabel: tx.title || (isPayable ? 'چک پرداختی دفتر حساب' : 'چک دریافتی دفتر حساب'),
+      notes: tx.notes || '',
+    });
+  }
+
+  return candidates;
+}
+
+async function checkAndSendServerChequeReminders(overrides?: {
+  botToken?: string;
+  chatId?: string;
+  forceSend?: boolean;
+}): Promise<{
+  checkedCount: number;
+  upcomingCount: number;
+  receivableDueCount: number;
+  payableDueCount: number;
+  sentCount: number;
+  sentCheques: Array<{ direction: 'receivable' | 'payable'; chequeNumber: string; dueDate: string; counterparty: string }>;
+  errors: string[];
+}> {
+  if (isChequeReminderCheckRunning) {
+    return {
+      checkedCount: 0,
+      upcomingCount: 0,
+      receivableDueCount: 0,
+      payableDueCount: 0,
+      sentCount: 0,
+      sentCheques: [],
+      errors: [],
+    };
+  }
+
+  isChequeReminderCheckRunning = true;
+  try {
+    const { data: dbData } = await getLatestConvergedDatabase();
+    const serverSettings = dbData?.settings || {};
+
+    const isManualForce = Boolean(overrides?.forceSend);
+    const isManualCheck = Boolean(overrides?.botToken && overrides?.chatId) || isManualForce;
+    const isEnabled =
+      isManualCheck ||
+      (Boolean(serverSettings?.telegramBotEnabled) && serverSettings?.telegramAutoSendChequeReminder !== false);
+    const botToken = sanitizeTelegramBotToken(
+      overrides?.botToken || serverSettings?.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || ''
+    );
+    const targetChatId = String(
+      overrides?.chatId || serverSettings?.telegramChatId || process.env.TELEGRAM_CHAT_ID || ''
+    ).trim();
+
+    if (!isEnabled || !botToken || !targetChatId) {
+      return {
+        checkedCount: 0,
+        upcomingCount: 0,
+        receivableDueCount: 0,
+        payableDueCount: 0,
+        sentCount: 0,
+        sentCheques: [],
+        errors: [
+          !isEnabled
+            ? 'یادآوری خودکار چک در تنظیمات تلگرام غیرفعال است.'
+            : 'تنظیمات ربات تلگرام ناقص است (توکن ربات یا شناسه چت وارد نشده است).',
+        ],
+      };
+    }
+
+    const todayJalali = getTehranJalaliDateTime().dateOnly;
+    const allCheques = collectActiveChequesForReminder(dbData, todayJalali);
+    const upcomingCheques = allCheques.filter((c) => c.daysRemaining >= 0 && c.daysRemaining <= 7);
+
+    const receivableDueCount = upcomingCheques.filter((c) => c.direction === 'receivable').length;
+    const payableDueCount = upcomingCheques.filter((c) => c.direction === 'payable').length;
+
+    const sentCheques: Array<{
+      direction: 'receivable' | 'payable';
+      chequeNumber: string;
+      dueDate: string;
+      counterparty: string;
+    }> = [];
+    const errors: string[] = [];
+    let modified = false;
+
+    const store = serverSettings.storeName || 'سامانه حسابداری و انبارداری';
+    const currency = serverSettings.currency || 'تومان';
+
+    for (const item of upcomingCheques) {
+      const alreadySentForDate = normalizeJalaliDateServer(item.record?.chequeReminderSentForDate);
+      if (!isManualForce && alreadySentForDate === item.dueDate) {
+        continue;
+      }
+
+      const isPayable = item.direction === 'payable';
+      const directionBadge = isPayable ? '📤 چک پرداختی (تعهد مالی)' : '📥 چک دریافتی (وصولی)';
+      const headerLine = isPayable
+        ? `🔴 <b>یادآوری سررسید چک پرداختی</b>`
+        : `🟢 <b>یادآوری سررسید چک دریافتی</b>`;
+
+      const countdownLabel =
+        item.daysRemaining === 0
+          ? 'موعد سررسید امروز است!'
+          : item.daysRemaining === 7
+          ? 'دقیقاً ۷ روز (یک هفته) تا سررسید'
+          : `${toPersianDigitsServer(item.daysRemaining)} روز مانده تا سررسید`;
+
+      const actionHint = isPayable
+        ? 'لطفاً جهت تامین موجودی حساب بانکی و جلوگیری از برگشت چک اقدام فرمایید.'
+        : 'لطفاً جهت یادآوری به صادرکننده و پیگیری وصول چک در موعد مقرر اقدام فرمایید.';
+
+      const messageLines = [
+        headerLine,
+        `━━━━━━━━━━━━━━━━━━━━`,
+        `🏷️ <b>نوع چک:</b> ${directionBadge}`,
+        `⏳ <b>وضعیت موعد:</b> <b>${countdownLabel}</b>`,
+        `📅 <b>تاریخ سررسید:</b> <code>${escapeTelegramHtml(toPersianDigitsServer(item.dueDate))}</code>`,
+        item.chequeNumber
+          ? `🧾 <b>شماره چک / صیاد:</b> <code>${escapeTelegramHtml(toPersianDigitsServer(item.chequeNumber))}</code>`
+          : '',
+        `💰 <b>مبلغ چک:</b> <b>${toPersianDigitsServer(formatPriceServer(item.amount))} ${escapeTelegramHtml(currency)}</b>`,
+        `👤 <b>${isPayable ? 'در وجه / تامین‌کننده' : 'صادرکننده / مشتری'}:</b> <b>${escapeTelegramHtml(item.counterpartyName)}</b>`,
+        item.counterpartyPhone
+          ? `📞 <b>تلفن:</b> <code>${escapeTelegramHtml(toPersianDigitsServer(item.counterpartyPhone))}</code>`
+          : '',
+        item.accountHolder
+          ? `🏦 <b>بانک / صاحب حساب:</b> ${escapeTelegramHtml(item.accountHolder)}`
+          : '',
+        `📄 <b>مستند ثبت:</b> ${escapeTelegramHtml(item.sourceLabel)}`,
+        item.notes ? `📝 <b>توضیحات:</b> <i>${escapeTelegramHtml(item.notes)}</i>` : '',
+        `━━━━━━━━━━━━━━━━━━━━`,
+        `🔔 <b>توصیه:</b> ${actionHint}`,
+        store ? `🏪 <i>${escapeTelegramHtml(store)}</i>` : '',
+      ].filter(Boolean);
+
+      try {
+        const { ok, data } = await callTelegramApi('sendMessage', {
+          token: botToken,
+          body: {
+            chat_id: targetChatId,
+            text: messageLines.join('\n'),
+            parse_mode: 'HTML',
+          },
+        });
+
+        if (ok && data.ok) {
+          const nowIso = new Date().toISOString();
+          item.record.chequeReminderSentAt = nowIso;
+          item.record.chequeReminderSentForDate = item.dueDate;
+          modified = true;
+
+          sentCheques.push({
+            direction: item.direction,
+            chequeNumber: item.chequeNumber || 'بدون شماره',
+            dueDate: item.dueDate,
+            counterparty: item.counterpartyName,
+          });
+          console.log(
+            `[Cheque Reminder] Sent 7-day alert for ${item.direction} cheque (${item.chequeNumber || item.sourceLabel}, due ${item.dueDate}) to Telegram.`
+          );
+        } else {
+          errors.push(
+            `چک ${item.chequeNumber || item.counterpartyName}: ${data.description || 'خطا در ارسال به تلگرام'}`
+          );
+        }
+      } catch (err: any) {
+        errors.push(
+          `چک ${item.chequeNumber || item.counterpartyName}: ${err?.message || 'خطا در ارتباط با تلگرام'}`
+        );
+      }
+    }
+
+    if (modified) {
+      recordServerActivityLog(dbData, {
+        actionType: 'cheque_telegram_reminder_sent',
+        actionTitle: 'ارسال خودکار یادآوری سررسید چک به تلگرام',
+        details: `یادآوری یک هفته قبل برای ${toPersianDigitsServer(sentCheques.length)} فقره چک (${sentCheques
+          .map((c) => `${c.direction === 'payable' ? 'پرداختی' : 'دریافتی'} ${c.counterparty} - سررسید ${c.dueDate}`)
+          .join('، ')}) به تلگرام ارسال شد.`,
+        category: 'system',
+        severity: 'info',
+        entityType: 'cheque',
+        entityLabel: `${toPersianDigitsServer(sentCheques.length)} چک`,
+        metadata: {
+          sentCount: sentCheques.length,
+          receivableDueCount,
+          payableDueCount,
+        },
+      });
+      writeDatabase(dbData, true, true);
+      if (getPostgresStatus().connected) {
+        saveStateToPostgres(dbData).catch(() => {});
+      }
+    }
+
+    return {
+      checkedCount: allCheques.length,
+      upcomingCount: upcomingCheques.length,
+      receivableDueCount,
+      payableDueCount,
+      sentCount: sentCheques.length,
+      sentCheques,
+      errors,
+    };
+  } catch (err: any) {
+    console.error('[Cheque Reminder] Error running check:', err);
+    return {
+      checkedCount: 0,
+      upcomingCount: 0,
+      receivableDueCount: 0,
+      payableDueCount: 0,
+      sentCount: 0,
+      sentCheques: [],
+      errors: [err?.message || 'خطای سرور در بررسی سررسید چک‌ها'],
+    };
+  } finally {
+    isChequeReminderCheckRunning = false;
+  }
+}
+
+app.post('/api/telegram/check-cheque-reminders', requireAdmin, async (req, res) => {
+  try {
+    const result = await checkAndSendServerChequeReminders({
+      botToken: req.body?.botToken,
+      chatId: req.body?.chatId,
+      forceSend: Boolean(req.body?.forceSend),
+    });
+
+    if (result.errors.length > 0 && result.sentCount === 0) {
+      return res.json({
+        success: false,
+        result,
+        error: result.errors.join(' | '),
+      });
+    }
+
+    return res.json({
+      success: true,
+      result,
+      message:
+        result.sentCount > 0
+          ? `یادآوری یک هفته قبل برای ${toPersianDigitsServer(result.sentCount)} فقره چک (دریافتی و پرداختی) با موفقیت به تلگرام ارسال شد.`
+          : result.upcomingCount > 0
+          ? `تمام ${toPersianDigitsServer(result.upcomingCount)} چک در بازه ۷ روز آینده قبلاً یادآوری تلگرام دریافت کرده‌اند.`
+          : `بررسی انجام شد (${toPersianDigitsServer(result.checkedCount)} چک ثبت‌شده): هیچ چکی با سررسید در ۷ روز آینده یافت نشد.`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'خطای سرور' });
+  }
+});
+
+app.get('/api/telegram/cheque-reminders-status', requireAdmin, (_req, res) => {
+  try {
+    const dbData = readDatabase();
+    const todayJalali = getTehranJalaliDateTime().dateOnly;
+    const allCheques = collectActiveChequesForReminder(dbData, todayJalali);
+    const upcomingList = allCheques
+      .filter((c) => c.daysRemaining >= 0 && c.daysRemaining <= 7)
+      .map((c) => ({
+        kind: c.kind,
+        direction: c.direction,
+        chequeNumber: c.chequeNumber,
+        dueDate: c.dueDate,
+        daysRemaining: c.daysRemaining,
+        amount: c.amount,
+        counterpartyName: c.counterpartyName,
+        sourceLabel: c.sourceLabel,
+        reminderSentAt: c.record?.chequeReminderSentAt || null,
+        reminderSentForDate: c.record?.chequeReminderSentForDate || null,
+      }));
+
+    return res.json({
+      success: true,
+      todayJalali,
+      totalActiveCheques: allCheques.length,
+      upcomingCount: upcomingList.length,
+      upcomingList,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'خطای سرور' });
+  }
+});
+
+// Run background 7-day cheque reminder check periodically (every 30 mins) & 15 seconds after startup
+setTimeout(() => {
+  checkAndSendServerChequeReminders().catch((e) => console.warn('[Cheque Reminder] Initial check error:', e));
+}, 15000);
+setInterval(() => {
+  checkAndSendServerChequeReminders().catch((e) => console.warn('[Cheque Reminder] Interval check error:', e));
+}, 30 * 60 * 1000);
+
 // 12.3 Send PDF Document to Chat/Channel/Group (sendDocument)
 app.post('/api/telegram/send-pdf', async (req, res) => {
   try {
+    const authUser = (req as AuthenticatedRequest).authUser;
+    const callerIsAdmin = isAdminUser(authUser);
     const dbData = readDatabase();
     const serverSettings = dbData?.settings || {};
 
     const botToken = (
-      req.body?.botToken ||
+      (callerIsAdmin ? req.body?.botToken : '') ||
       serverSettings?.telegramBotToken ||
       process.env.TELEGRAM_BOT_TOKEN ||
       ''
     ).trim();
 
     const chatId = (
-      req.body?.chatId ||
+      (callerIsAdmin ? req.body?.chatId : '') ||
       serverSettings?.telegramChatId ||
       process.env.TELEGRAM_CHAT_ID ||
       ''
@@ -3829,7 +5475,7 @@ app.post('/api/telegram/send-pdf', async (req, res) => {
 });
 
 // 12.3.5 Send Database Backup JSON to Chat/Channel/Group via Telegram
-app.post('/api/telegram/send-backup', async (req, res) => {
+app.post('/api/telegram/send-backup', requireAdmin, async (req, res) => {
   try {
     const { data: dbData } = await getLatestConvergedDatabase();
     const serverSettings = dbData?.settings || {};
@@ -4050,7 +5696,7 @@ function getJalaliDateStr(date: Date = new Date()): string {
 }
 
 // 12.4.1 Test AI Connection & API Key
-app.post('/api/ai/test-connection', async (req, res) => {
+app.post('/api/ai/test-connection', requireAdmin, async (req, res) => {
   try {
     const { data: dbData } = await getLatestConvergedDatabase();
     const settings = dbData?.settings || {};
@@ -4283,7 +5929,7 @@ ${settings?.aiCustomPrompt ? `دستورالعمل اختصاصی کاربر: ${
 }
 
 // 12.4.2 Direct Voice Audio Analysis (for testing from UI or direct upload)
-app.post('/api/ai/process-voice', async (req, res) => {
+app.post('/api/ai/process-voice', requireAdminOrInventory, async (req, res) => {
   try {
     const { audioBase64, mimeType } = req.body;
     if (!audioBase64) {
@@ -4537,7 +6183,7 @@ app.post('/api/telegram/set-webhook', requireAdmin, async (req, res) => {
 });
 
 // 12.4.5 Get Webhook Info
-app.get('/api/telegram/webhook-info', async (req, res) => {
+app.get('/api/telegram/webhook-info', requireAdmin, async (req, res) => {
   try {
     const { data: dbData } = await getLatestConvergedDatabase();
     const settings = dbData?.settings || {};
@@ -5191,6 +6837,18 @@ app.get('/api/public/invoice/:token', async (req, res) => {
 // 13.2 Generate or Update Share Link for an Invoice (Store manager / cashier action)
 app.post('/api/invoices/:id/share-link', async (req, res) => {
   try {
+    const authUser = (req as AuthenticatedRequest).authUser;
+    if (
+      !isAdminUser(authUser) &&
+      !authUser?.permissions?.canCreateInvoice &&
+      !authUser?.permissions?.canViewInvoices &&
+      !authUser?.permissions?.canManageCustomers
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'شما مجوز صدور یا مدیریت پیوند تحت وب را ندارید.',
+      });
+    }
     const invoiceId = req.params.id;
     const {
       enabled = true,
@@ -5251,10 +6909,31 @@ app.post('/api/invoices/:id/share-link', async (req, res) => {
 
     await enqueueDbWrite(async () => {
       const current = readDatabase();
+      const authUser = (req as AuthenticatedRequest).authUser;
+      const actor = (current?.users || []).find((u: any) => u.id === authUser?.userId);
+      const targetLabel =
+        invoiceIndex !== -1
+          ? `فاکتور #${invoices[invoiceIndex]?.invoiceNumber || invoiceId}`
+          : `پورتال مشتری «${customers[customerIndex]?.name || rawCustomerId}»`;
+
       if (invoiceIndex !== -1 && Array.isArray(current.invoices)) {
         const idx = current.invoices.findIndex((i: any) => i.id === invoiceId);
         if (idx !== -1) {
           current.invoices[idx].shareLink = updatedShareLink;
+          appendLogToDbObject(current, req, {
+            userId: authUser?.userId || 'sys',
+            userName: actor?.fullName || authUser?.username || 'کاربر',
+            userRole: actor?.role || authUser?.role || 'cashier',
+            userRoleTitle: actor?.roleTitle,
+            category: 'sales',
+            actionType: updatedShareLink.enabled ? 'share_link_update' : 'share_link_revoke',
+            actionTitle: updatedShareLink.enabled ? 'صدور یا تنظیم لینک اشتراک تحت وب' : 'غیرفعال‌سازی لینک اشتراک فاکتور',
+            details: `${updatedShareLink.enabled ? 'تنظیم لینک تحت وب برای' : 'ابطال لینک تحت وب'} ${targetLabel}`,
+            severity: 'warning',
+            entityType: 'invoice',
+            entityId: invoiceId,
+            entityLabel: targetLabel,
+          });
           writeDatabase(current, false);
           if (getPostgresStatus().connected) {
             saveStateToPostgres(current).catch(() => {});
@@ -5264,6 +6943,20 @@ app.post('/api/invoices/:id/share-link', async (req, res) => {
         const cIdx = current.customers.findIndex((c: any) => c.id === rawCustomerId);
         if (cIdx !== -1) {
           current.customers[cIdx].shareLink = updatedShareLink;
+          appendLogToDbObject(current, req, {
+            userId: authUser?.userId || 'sys',
+            userName: actor?.fullName || authUser?.username || 'کاربر',
+            userRole: actor?.role || authUser?.role || 'cashier',
+            userRoleTitle: actor?.roleTitle,
+            category: 'customer',
+            actionType: updatedShareLink.enabled ? 'share_link_update' : 'share_link_revoke',
+            actionTitle: updatedShareLink.enabled ? 'صدور لینک پورتال حساب مشتری' : 'لغو لینک پورتال حساب مشتری',
+            details: `${updatedShareLink.enabled ? 'تنظیم لینک اشتراک برای' : 'لغو لینک اشتراک'} ${targetLabel}`,
+            severity: 'warning',
+            entityType: 'customer',
+            entityId: rawCustomerId,
+            entityLabel: targetLabel,
+          });
           writeDatabase(current, false);
           if (getPostgresStatus().connected) {
             saveStateToPostgres(current).catch(() => {});
@@ -5291,6 +6984,18 @@ app.post('/api/invoices/:id/share-link', async (req, res) => {
 // 13.3 Revoke or Disable Share Link for an Invoice
 app.delete('/api/invoices/:id/share-link', async (req, res) => {
   try {
+    const authUser = (req as AuthenticatedRequest).authUser;
+    if (
+      !isAdminUser(authUser) &&
+      !authUser?.permissions?.canCreateInvoice &&
+      !authUser?.permissions?.canViewInvoices &&
+      !authUser?.permissions?.canManageCustomers
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'شما مجوز لغو پیوند تحت وب را ندارید.',
+      });
+    }
     const invoiceId = req.params.id;
     const { data: dbData } = await getLatestConvergedDatabase();
     const invoices = Array.isArray(dbData?.invoices) ? dbData.invoices : [];

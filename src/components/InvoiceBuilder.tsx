@@ -95,6 +95,11 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
   onToggleSidebar,
 }) => {
   const isEditing = !!editingInvoice;
+  const canEditCatalogProducts =
+    !currentUser ||
+    (currentUser.role !== 'accountant' &&
+      (currentUser.role === 'admin' ||
+        Boolean(currentUser.permissions?.canAccessAdmin || currentUser.permissions?.canManageInventory)));
 
   // Document mode (Regular invoice vs Proforma)
   const [isProforma, setIsProforma] = useState<boolean>(() => {
@@ -3456,18 +3461,20 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
                           </button>
 
                           {/* Button to edit product right here */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenEditProduct(p);
-                            }}
-                            className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 transition-all cursor-pointer shadow-2xs active:scale-[0.98] whitespace-nowrap"
-                            title="ویرایش مشخصات کالا در همینجا"
-                          >
-                            <Pencil className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                            <span className="text-[11px] font-black">ویرایش</span>
-                          </button>
+                          {canEditCatalogProducts && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenEditProduct(p);
+                              }}
+                              className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 transition-all cursor-pointer shadow-2xs active:scale-[0.98] whitespace-nowrap"
+                              title="ویرایش مشخصات کالا در همینجا"
+                            >
+                              <Pencil className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span className="text-[11px] font-black">ویرایش</span>
+                            </button>
+                          )}
 
                           {/* Add button / Variants */}
                           {p.hasVariants && p.variants && p.variants.length > 0 ? (
@@ -3809,18 +3816,22 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
             {/* Footer */}
             <div className="px-3.5 py-3 sm:px-5 sm:py-3.5 bg-slate-50/80 border-t border-slate-200/80 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  const p = viewingCatalogProduct;
-                  setViewingCatalogProduct(null);
-                  handleOpenEditProduct(p);
-                }}
-                className="flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-all cursor-pointer shadow-2xs active:scale-[0.98]"
-              >
-                <Pencil className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                <span>ویرایش این کالا</span>
-              </button>
+              {canEditCatalogProducts ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const p = viewingCatalogProduct;
+                    setViewingCatalogProduct(null);
+                    handleOpenEditProduct(p);
+                  }}
+                  className="flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-all cursor-pointer shadow-2xs active:scale-[0.98]"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span>ویرایش این کالا</span>
+                </button>
+              ) : (
+                <div />
+              )}
 
               <div className="flex items-center gap-2">
                 <button

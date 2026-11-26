@@ -212,10 +212,10 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
           amount: cleanAmount,
           date: date.trim() || getCurrentJalaliDate(),
           title: title.trim() || (txnType === 'deposit' ? 'واریز' : 'ثبت بدهی'),
-          paymentMethod: txnType === 'deposit' ? paymentMethod : undefined,
+          paymentMethod,
           trackingNumber: trackingNumber.trim() || undefined,
           bankName: bankName.trim() || undefined,
-          chequeDueDate: paymentMethod === 'cheque' ? chequeDueDate.trim() : undefined,
+          chequeDueDate: paymentMethod === 'cheque' ? chequeDueDate.trim() || undefined : undefined,
           notes: notes.trim() || undefined,
           updatedAt: getCurrentJalaliDate(),
         }
@@ -227,10 +227,10 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
           amount: cleanAmount,
           date: date.trim() || getCurrentJalaliDate(),
           title: title.trim() || (txnType === 'deposit' ? 'واریز' : 'ثبت بدهی'),
-          paymentMethod: txnType === 'deposit' ? paymentMethod : undefined,
+          paymentMethod,
           trackingNumber: trackingNumber.trim() || undefined,
           bankName: bankName.trim() || undefined,
-          chequeDueDate: paymentMethod === 'cheque' ? chequeDueDate.trim() : undefined,
+          chequeDueDate: paymentMethod === 'cheque' ? chequeDueDate.trim() || undefined : undefined,
           notes: notes.trim() || undefined,
           recordedBy: currentUser?.fullName || currentUser?.username || 'مدیر سیستم',
           createdAt: getCurrentJalaliDate(),
@@ -454,35 +454,37 @@ export const CustomerTransactionModal: React.FC<CustomerTransactionModalProps> =
             </div>
           </div>
 
-          {/* Row 2: Payment Method (Segmented Row for Deposit) */}
-          {isDeposit && (
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">روش واریز وجه:</label>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {[
-                  { id: 'card', label: 'کارت به کارت' },
-                  { id: 'pos', label: 'کارتخوان' },
-                  { id: 'transfer', label: 'حواله بانکی / پایا' },
-                  { id: 'cash', label: 'نقدی' },
-                  { id: 'cheque', label: 'چک' },
-                  { id: 'other', label: 'سایر' },
-                ].map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setPaymentMethod(m.id as CustomerPaymentMethod)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
-                      paymentMethod === m.id
+          {/* Row 2: Payment Method (Supports both Receivable and Payable Cheques) */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              {isDeposit ? 'روش واریز وجه (دریافتی):' : 'روش پرداخت / نوع سند (پرداختی):'}
+            </label>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                { id: 'card', label: 'کارت به کارت' },
+                { id: 'pos', label: 'کارتخوان' },
+                { id: 'transfer', label: 'حواله بانکی / پایا' },
+                { id: 'cash', label: 'نقدی' },
+                { id: 'cheque', label: isDeposit ? 'چک دریافتی' : 'چک پرداختی' },
+                { id: 'other', label: isDeposit ? 'سایر' : 'بدهی دفتری / سایر' },
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setPaymentMethod(m.id as CustomerPaymentMethod)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                    paymentMethod === m.id
+                      ? isDeposit
                         ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
+                        : 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
             </div>
-          )}
+          </div>
 
           {/* Row 3: Reference/Tracking Number & Bank Name (or Cheque Due Date) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

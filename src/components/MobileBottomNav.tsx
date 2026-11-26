@@ -32,6 +32,8 @@ interface MobileBottomNavProps {
   onNewInvoice?: () => void;
   onLogout?: () => void;
   onOpenSidebar?: () => void;
+  onOpenSettings?: () => void;
+  onOpenDirectTransfers?: () => void;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -43,6 +45,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   onNewInvoice,
   onLogout,
   onOpenSidebar,
+  onOpenSettings,
+  onOpenDirectTransfers,
 }) => {
   const safeSettings = settings || StorageService.getSettings();
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -57,6 +61,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   const canCustomers = isTabPermitted('customers', currentUser, safeSettings);
   const canReports = isTabPermitted('reports', currentUser, safeSettings);
   const canAdmin = isTabPermitted('admin', currentUser, safeSettings);
+  const canFullAdminSettings = Boolean(currentUser && (currentUser.role === 'admin' || currentUser.permissions?.canAccessAdmin));
 
   const handleUpdateApp = async () => {
     setIsUpdatingCache(true);
@@ -252,7 +257,11 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                   id="drawer-btn-transfers"
                   onClick={() => {
                     setShowMoreMenu(false);
-                    setActiveTab('direct-transfers');
+                    if (onOpenDirectTransfers) {
+                      onOpenDirectTransfers();
+                    } else {
+                      setActiveTab('inventory');
+                    }
                   }}
                   className="flex flex-col items-center justify-center p-3 rounded-2xl bg-cyan-50 border border-cyan-100 text-cyan-800 hover:bg-cyan-100 transition-colors cursor-pointer"
                 >
@@ -299,7 +308,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                 </button>
               )}
 
-              {/* مدیریت کاربران */}
+              {/* مدیریت کاربران / پنل مدیریت */}
               {canAdmin && (
                 <button
                   type="button"
@@ -313,18 +322,22 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                   <div className="w-10 h-10 rounded-xl bg-slate-700 text-white flex items-center justify-center shadow-sm mb-1.5">
                     <ShieldCheck className="w-5 h-5" />
                   </div>
-                  <span className="text-xs font-bold">مدیریت</span>
+                  <span className="text-xs font-bold">{canFullAdminSettings ? 'مدیریت' : 'مدیریت کاربران'}</span>
                 </button>
               )}
 
               {/* تنظیمات */}
-              {canAdmin && (
+              {canFullAdminSettings && (
                 <button
                   type="button"
                   id="drawer-btn-settings"
                   onClick={() => {
                     setShowMoreMenu(false);
-                    setActiveTab('admin');
+                    if (onOpenSettings) {
+                      onOpenSettings();
+                    } else {
+                      setActiveTab('admin');
+                    }
                   }}
                   className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
                 >

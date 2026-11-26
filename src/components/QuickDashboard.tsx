@@ -153,10 +153,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
     currentUser?.role === 'admin' ||
     (!isReadOnly && userPerms.canCreatePurchaseInvoice)
   );
-  const canPurchases = Boolean(
-    isTabPermitted('purchases', currentUser, settings) ||
-    canCreatePurchase || canInventory || canAdmin
-  );
+  const canPurchases = Boolean(isTabPermitted('purchases', currentUser, settings));
 
   const roleConfig = useMemo(() => {
     return currentUser ? getRoleBadgeConfig(currentUser.role) : null;

@@ -346,8 +346,8 @@ export const Header: React.FC<HeaderProps> = ({
                           <span>خروج از حساب و قفل برنامه</span>
                         </button>
 
-                        {/* Direct link to Users management if admin */}
-                        {currentUser.role === 'admin' && currentUser.permissions.canManageUsers && (
+                        {/* Direct link to Users management if permitted */}
+                        {(currentUser.role === 'admin' || currentUser.permissions.canAccessAdmin || currentUser.permissions.canManageUsers) && (
                           <button
                             type="button"
                             id="header-user-manage-btn"

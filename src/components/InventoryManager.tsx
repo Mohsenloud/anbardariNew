@@ -2475,8 +2475,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                             <th className="p-3">نام تنوع / رنگ *</th>
                             <th className="p-3">کد تنوع (سیستم)</th>
                             <th className="p-3 text-center w-24">موجودی</th>
-                            {currentUser?.role === 'admin' && <th className="p-3 text-center w-28">قیمت فروش عادی</th>}
-                            {currentUser?.role === 'admin' && <th className="p-3 text-center w-28">قیمت همکار</th>}
+                            {(currentUser?.role === 'admin' || currentUser?.permissions?.canAccessAdmin) && <th className="p-3 text-center w-28">قیمت فروش عادی</th>}
+                            {(currentUser?.role === 'admin' || currentUser?.permissions?.canAccessAdmin) && <th className="p-3 text-center w-28">قیمت همکار</th>}
                             <th className="p-3 text-center w-10">حذف</th>
                           </tr>
                         </thead>
@@ -2511,7 +2511,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                                   className="w-full bg-slate-50 focus:bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-center font-bold font-mono outline-none focus:border-purple-500"
                                 />
                               </td>
-                              {currentUser?.role === 'admin' && (
+                              {(currentUser?.role === 'admin' || currentUser?.permissions?.canAccessAdmin) && (
                                 <td className="p-2">
                                   <NumericInput
                                     min={0}
@@ -2522,7 +2522,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                                   />
                                 </td>
                               )}
-                              {currentUser?.role === 'admin' && (
+                              {(currentUser?.role === 'admin' || currentUser?.permissions?.canAccessAdmin) && (
                                 <td className="p-2">
                                   <NumericInput
                                     min={0}
@@ -2596,7 +2596,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                               />
                             </div>
                           </div>
-                          {currentUser?.role === 'admin' && (
+                          {(currentUser?.role === 'admin' || currentUser?.permissions?.canAccessAdmin) && (
                             <div className="grid grid-cols-2 gap-2">
                               <div>
                                 <label className="block text-[10px] font-medium text-slate-500 mb-1">قیمت فروش عادی ({settings.currency})</label>

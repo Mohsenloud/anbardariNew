@@ -26,8 +26,8 @@ import {
 interface UsersManagerProps {
   users: AppUser[];
   currentUser: AppUser;
-  onAddUser: (userData: Omit<AppUser, 'id' | 'createdAt'>) => void;
-  onUpdateUser: (user: AppUser) => void;
+  onAddUser: (userData: Omit<AppUser, 'id' | 'createdAt'>) => { success: boolean; message?: string } | void;
+  onUpdateUser: (user: AppUser) => { success: boolean; message?: string } | void;
   onDeleteUser: (userId: string) => { success: boolean; message?: string };
   onSwitchUser: (user: AppUser) => void;
 }
@@ -161,6 +161,16 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
     setTimeout(() => setActionError(''), 4000);
   };
 
+  const callerIsFullAdmin = currentUser.role === 'admin' || Boolean(currentUser.permissions?.canAccessAdmin);
+  const activeCount = users.filter((u) => u.isActive).length;
+  const adminCount = users.filter((u) => (u.role === 'admin' || Boolean(u.permissions?.canAccessAdmin)) && u.isActive).length;
+
+  const isTargetProtectedAdmin = (u?: AppUser | null): boolean =>
+    Boolean(u && (u.role === 'admin' || u.permissions?.canAccessAdmin));
+
+  const isLastActiveAdminTarget = (u?: AppUser | null): boolean =>
+    Boolean(u && isTargetProtectedAdmin(u) && u.isActive && adminCount <= 1);
+
   // Open Modal for Add
   const handleOpenAdd = () => {
     setEditingUser(null);
@@ -182,6 +192,10 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
 
   // Open Modal for Edit
   const handleOpenEdit = (user: AppUser) => {
+    if (!callerIsFullAdmin && isTargetProtectedAdmin(user)) {
+      showError('تغییر یا مدیریت حساب‌های مدیر کل فقط برای مدیر سیستم مجاز است.');
+      return;
+    }
     setEditingUser(user);
     setShowFormPassword(false);
     setFormData({
@@ -201,6 +215,14 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
 
   // Handle Preset Role Selection in Form
   const handleRolePresetSelect = (role: UserRole) => {
+    if (!callerIsFullAdmin && role === 'admin') {
+      showError('ارتقاء یا تعریف کاربر با نقش مدیر کل فقط برای مدیر سیستم مجاز است.');
+      return;
+    }
+    if (editingUser?.id === currentUser.id && callerIsFullAdmin && role !== 'admin') {
+      showError('امکان تغییر نقش حساب مدیر فعلی خودتان وجود ندارد.');
+      return;
+    }
     setFormData((prev) => {
       const isDefaultTitle =
         !prev.roleTitle.trim() ||
@@ -234,6 +256,18 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
 
   // Toggle specific permission
   const handleTogglePermission = (key: keyof UserPermissions) => {
+    if (!callerIsFullAdmin && key === 'canAccessAdmin') {
+      showError('اعطای دسترسی پنل مدیریت کل فقط توسط مدیر سیستم مجاز است.');
+      return;
+    }
+    if (
+      editingUser?.id === currentUser.id &&
+      (key === 'canManageUsers' || (callerIsFullAdmin && key === 'canAccessAdmin')) &&
+      formData.permissions[key]
+    ) {
+      showError('امکان سلب دسترسی مدیریت یا پنل از حساب فعلی خودتان وجود ندارد.');
+      return;
+    }
     setFormData((prev) => {
       const updatedPermissions = {
         ...prev.permissions,
@@ -256,11 +290,13 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
       errors.fullName = 'لطفاً نام و نام خانوادگی کاربر را وارد کنید.';
     }
 
-    if (!formData.username.trim()) {
+    const normalizedUsername = formData.username.trim().toLowerCase();
+    if (!normalizedUsername) {
       errors.username = 'لطفاً نام کاربری را وارد کنید.';
+    } else if (normalizedUsername.length < 3 || !/^[a-z0-9._-]+$/i.test(normalizedUsername)) {
+      errors.username = 'نام کاربری باید حداقل ۳ کاراکتر لاتین (حروف، اعداد، نقطه، خط تیره یا زیرخط) باشد.';
     } else {
       // Check unique username
-      const normalizedUsername = formData.username.trim().toLowerCase();
       const existing = users.find(
         (u) => u.username.toLowerCase() === normalizedUsername && (!editingUser || u.id !== editingUser.id)
       );
@@ -269,27 +305,49 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
       }
     }
 
+    const enteredPass = formData.pin.trim();
+    if (enteredPass && enteredPass.length < 4) {
+      errors.pin = 'رمز عبور باید حداقل ۴ کاراکتر باشد.';
+    }
+
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
       return;
     }
 
-    const enteredPass = formData.pin.trim();
+    if (!callerIsFullAdmin && (formData.role === 'admin' || formData.permissions.canAccessAdmin)) {
+      showError('تعریف یا ارتقای دسترسی مدیر کل فقط توسط مدیر سیستم مجاز است.');
+      return;
+    }
 
     if (editingUser) {
+      const isEditingSelf = editingUser.id === currentUser.id;
+      if (isEditingSelf && !formData.isActive) {
+        showError('امکان غیرفعال‌سازی حساب کاربری فعال خودتان وجود ندارد.');
+        return;
+      }
+      if (isLastActiveAdminTarget(editingUser) && (!formData.isActive || (formData.role !== 'admin' && !formData.permissions.canAccessAdmin))) {
+        showError('حداقل یک کاربر مدیر کل فعال باید در سیستم باقی بماند.');
+        return;
+      }
+
       const updatedUser: AppUser = {
         ...editingUser,
         fullName: formData.fullName.trim(),
-        username: formData.username.trim(),
+        username: normalizedUsername,
         role: formData.role,
         roleTitle: formData.roleTitle.trim() || ROLE_LABELS[formData.role],
         phone: formData.phone.trim() || undefined,
         ...(enteredPass ? { pin: enteredPass, password: enteredPass } : {}),
         isActive: formData.isActive,
         avatarColor: formData.avatarColor,
-        permissions: formData.permissions,
+        permissions: callerIsFullAdmin ? formData.permissions : { ...formData.permissions, canAccessAdmin: false },
       };
-      onUpdateUser(updatedUser);
+      const res = onUpdateUser(updatedUser);
+      if (res && res.success === false) {
+        showError(res.message || 'خطا در به‌روزرسانی کاربر.');
+        return;
+      }
       showSuccess(
         enteredPass
           ? `اطلاعات، رمز ورود جدید و دسترسی‌های کاربر «${updatedUser.fullName}» به‌روزرسانی شد.`
@@ -297,9 +355,9 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
       );
     } else {
       const initialPass = enteredPass || '1234';
-      onAddUser({
+      const res = onAddUser({
         fullName: formData.fullName.trim(),
-        username: formData.username.trim(),
+        username: normalizedUsername,
         role: formData.role,
         roleTitle: formData.roleTitle.trim() || ROLE_LABELS[formData.role],
         phone: formData.phone.trim() || undefined,
@@ -307,9 +365,13 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
         password: initialPass,
         isActive: formData.isActive,
         avatarColor: formData.avatarColor,
-        permissions: formData.permissions,
+        permissions: callerIsFullAdmin ? formData.permissions : { ...formData.permissions, canAccessAdmin: false },
       });
-      showSuccess(`کاربر جدید «${formData.fullName}» با موفقیت تعریف و رمزنگاری شد.`);
+      if (res && res.success === false) {
+        showError(res.message || 'خطا در تعریف کاربر جدید.');
+        return;
+      }
+      showSuccess(`کاربر جدید «${formData.fullName.trim()}» با موفقیت تعریف و رمزنگاری شد.`);
     }
 
     setIsModalOpen(false);
@@ -334,9 +396,6 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
     const found = AVATAR_COLORS.find((c) => c.id === color) || AVATAR_COLORS[0];
     return found;
   };
-
-  const activeCount = users.filter((u) => u.isActive).length;
-  const adminCount = users.filter((u) => u.role === 'admin' && u.isActive).length;
 
   if (currentUser.role !== 'admin' && !currentUser.permissions?.canManageUsers) {
     return (
@@ -487,6 +546,10 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
           filteredUsers.map((user, userIndex) => {
             const avatarStyle = getAvatarStyle(user.avatarColor);
             const isSelf = user.id === currentUser.id;
+            const isProtectedAdmin = !callerIsFullAdmin && isTargetProtectedAdmin(user);
+            const isOnlyActiveAdmin = isLastActiveAdminTarget(user);
+            const cannotToggleActive = isSelf || isProtectedAdmin || isOnlyActiveAdmin;
+            const cannotDeleteUser = isSelf || isProtectedAdmin || isOnlyActiveAdmin;
             const grantedCount = PERMISSION_CONFIG.filter((p) => Boolean(user.permissions[p.key])).length;
             const cardKey = user.id ? `user-card-${user.id}` : `user-card-${userIndex}-${user.username}`;
 
@@ -531,16 +594,28 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                     {/* Active/Inactive Badge with quick toggle */}
                     <button
                       type="button"
-                      disabled={isSelf}
+                      disabled={cannotToggleActive}
                       onClick={() => {
-                        if (isSelf) return;
+                        if (cannotToggleActive) return;
                         const updated = { ...user, isActive: !user.isActive };
-                        onUpdateUser(updated);
+                        const res = onUpdateUser(updated);
+                        if (res && res.success === false) {
+                          showError(res.message || 'خطا در تغییر وضعیت کاربر.');
+                          return;
+                        }
                         showSuccess(`وضعیت حساب کاربری «${user.fullName}» به ${updated.isActive ? 'فعال' : 'غیرفعال'} تغییر یافت.`);
                       }}
-                      title={isSelf ? 'امکان غیرفعال‌سازی کاربر جاری وجود ندارد' : 'کلیک کنید تا وضعیت فعال/غیرفعال تغییر یابد'}
+                      title={
+                        isSelf
+                          ? 'امکان غیرفعال‌سازی کاربر جاری وجود ندارد'
+                          : isProtectedAdmin
+                          ? 'تغییر وضعیت حساب مدیر کل فقط برای مدیر سیستم مجاز است'
+                          : isOnlyActiveAdmin
+                          ? 'حداقل یک کاربر مدیر فعال باید در سیستم باقی بماند'
+                          : 'کلیک کنید تا وضعیت فعال/غیرفعال تغییر یابد'
+                      }
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1 transition-all ${
-                        isSelf ? 'cursor-default' : 'cursor-pointer hover:opacity-80'
+                        cannotToggleActive ? 'cursor-default opacity-80' : 'cursor-pointer hover:opacity-80'
                       } ${
                         user.isActive
                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
@@ -627,8 +702,14 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                     </div>
                     <button
                       type="button"
+                      disabled={isProtectedAdmin}
                       onClick={() => handleOpenEdit(user)}
-                      className="text-[11px] text-emerald-700 hover:text-emerald-800 font-semibold cursor-pointer shrink-0"
+                      title={isProtectedAdmin ? 'تغییر رمز مدیر کل فقط توسط مدیر سیستم مجاز است' : 'تغییر رمز عبور'}
+                      className={`text-[11px] font-semibold shrink-0 ${
+                        isProtectedAdmin
+                          ? 'text-slate-300 cursor-not-allowed'
+                          : 'text-emerald-700 hover:text-emerald-800 cursor-pointer'
+                      }`}
                     >
                       تغییر رمز
                     </button>
@@ -643,7 +724,6 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                     disabled={isSelf || !user.isActive}
                     onClick={() => {
                       onSwitchUser(user);
-                      showSuccess(`نشست فعال به کاربر «${user.fullName}» تغییر یافت.`);
                     }}
                     title={
                       isSelf
@@ -669,9 +749,18 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                     <button
                       type="button"
                       id={`edit-user-btn-${user.id}`}
+                      disabled={isProtectedAdmin}
                       onClick={() => handleOpenEdit(user)}
-                      title="ویرایش مشخصات و دسترسی‌ها"
-                      className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-colors cursor-pointer"
+                      title={
+                        isProtectedAdmin
+                          ? 'ویرایش حساب‌های مدیر کل فقط برای مدیر سیستم مجاز است'
+                          : 'ویرایش مشخصات و دسترسی‌ها'
+                      }
+                      className={`p-1.5 rounded-xl transition-colors ${
+                        isProtectedAdmin
+                          ? 'text-slate-300 cursor-not-allowed opacity-40'
+                          : 'text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 cursor-pointer'
+                      }`}
                     >
                       <Edit className="w-4 h-4" />
                     </button>
@@ -680,17 +769,19 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                     <button
                       type="button"
                       id={`delete-user-btn-${user.id}`}
-                      disabled={isSelf || (user.role === 'admin' && adminCount <= 1)}
+                      disabled={cannotDeleteUser}
                       onClick={() => setUserToDelete(user)}
                       title={
                         isSelf
                           ? 'حساب کاربری فعال جاری قابل حذف نیست'
-                          : user.role === 'admin' && adminCount <= 1
+                          : isProtectedAdmin
+                          ? 'حذف حساب‌های مدیر کل فقط برای مدیر سیستم مجاز است'
+                          : isOnlyActiveAdmin
                           ? 'حداقل یک کاربر مدیر فعال باید در سامانه باقی بماند'
                           : 'حذف کاربر'
                       }
                       className={`p-1.5 rounded-xl transition-colors ${
-                        isSelf || (user.role === 'admin' && adminCount <= 1)
+                        cannotDeleteUser
                           ? 'text-slate-300 cursor-not-allowed opacity-40'
                           : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer'
                       }`}
@@ -860,6 +951,9 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                     <p className="text-[10px] text-slate-400 mt-1 leading-normal">
                       کاربر با وارد کردن نام کاربری و این رمز وارد می‌شود. جهت امنیت، نام سایر کاربران به یکدیگر نمایش داده نمی‌شود.
                     </p>
+                    {formErrors.pin && (
+                      <p className="text-[11px] text-rose-500 mt-1">{formErrors.pin}</p>
+                    )}
                   </div>
 
                   <div>
@@ -867,15 +961,20 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                       وضعیت حساب کاربری
                     </label>
                     <div className="flex items-center gap-3 pt-1.5">
-                      <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                      <label className={`flex items-center gap-2 text-xs font-medium ${
+                        editingUser && (editingUser.id === currentUser.id || isLastActiveAdminTarget(editingUser))
+                          ? 'text-slate-400 cursor-not-allowed'
+                          : 'text-slate-700 cursor-pointer'
+                      }`}>
                         <input
                           type="checkbox"
                           id="user-active-checkbox"
+                          disabled={Boolean(editingUser && (editingUser.id === currentUser.id || isLastActiveAdminTarget(editingUser)))}
                           checked={formData.isActive}
                           onChange={(e) =>
                             setFormData((p) => ({ ...p, isActive: e.target.checked }))
                           }
-                          className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
+                          className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 disabled:opacity-50"
                         />
                         <span>حساب کاربری فعال و مجاز به ورود است</span>
                       </label>
@@ -897,18 +996,20 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleRolePresetSelect('admin')}
-                    className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
-                      formData.role === 'admin'
-                        ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-200'
-                        : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
-                    }`}
-                  >
-                    <div className="text-xs font-bold text-slate-800">مدیر کل</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">تمام اختیارات سیستم</div>
-                  </button>
+                  {callerIsFullAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => handleRolePresetSelect('admin')}
+                      className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
+                        formData.role === 'admin'
+                          ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-200'
+                          : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
+                      }`}
+                    >
+                      <div className="text-xs font-bold text-slate-800">مدیر کل</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">تمام اختیارات سیستم</div>
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -977,8 +1078,10 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                       onClick={() =>
                         setFormData((p) => ({
                           ...p,
-                          role: 'admin',
-                          permissions: { ...DEFAULT_ROLE_PERMISSIONS.admin },
+                          role: callerIsFullAdmin ? 'admin' : 'custom',
+                          permissions: callerIsFullAdmin
+                            ? { ...DEFAULT_ROLE_PERMISSIONS.admin }
+                            : { ...DEFAULT_ROLE_PERMISSIONS.admin, canAccessAdmin: false },
                         }))
                       }
                       className="text-[11px] text-emerald-700 font-bold hover:underline cursor-pointer"
@@ -1002,6 +1105,7 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                             canManageInventory: false,
                             canManageCustomers: false,
                             canViewReports: false,
+                            canViewBuyPrices: false,
                             canAccessAdmin: false,
                             canManageUsers: false,
                           },
@@ -1017,22 +1121,32 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {PERMISSION_CONFIG.map((perm) => {
                     const isChecked = formData.permissions[perm.key];
+                    const isLockedPerm =
+                      (!callerIsFullAdmin && perm.key === 'canAccessAdmin') ||
+                      Boolean(
+                        editingUser?.id === currentUser.id &&
+                        (perm.key === 'canManageUsers' || (callerIsFullAdmin && perm.key === 'canAccessAdmin')) &&
+                        isChecked
+                      );
 
                     return (
                       <label
                         key={perm.key}
                         id={`perm-toggle-${perm.key}`}
-                        className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-all ${
-                          isChecked
-                            ? 'bg-emerald-50/60 border-emerald-300 shadow-xs'
-                            : 'bg-slate-50/70 border-slate-200 hover:bg-slate-100/60'
+                        className={`p-3 rounded-xl border flex items-start gap-3 transition-all ${
+                          isLockedPerm
+                            ? 'bg-slate-100/80 border-slate-200 cursor-not-allowed opacity-70'
+                            : isChecked
+                            ? 'bg-emerald-50/60 border-emerald-300 shadow-xs cursor-pointer'
+                            : 'bg-slate-50/70 border-slate-200 hover:bg-slate-100/60 cursor-pointer'
                         }`}
                       >
                         <input
                           type="checkbox"
+                          disabled={isLockedPerm}
                           checked={isChecked}
                           onChange={() => handleTogglePermission(perm.key)}
-                          className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 mt-0.5 shrink-0"
+                          className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 mt-0.5 shrink-0 disabled:opacity-50"
                         />
                         <div className="min-w-0">
                           <span

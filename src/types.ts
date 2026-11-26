@@ -94,6 +94,8 @@ export interface CustomerTransaction {
   invoiceNumber?: string; // شماره فاکتور فروش مرتبط
   notes?: string; // توضیحات و بابت سند
   recordedBy?: string; // نام کاربر یا صندوق‌دار ثبت‌کننده
+  chequeReminderSentAt?: string; // زمان ارسال یادآوری سررسید چک به تلگرام
+  chequeReminderSentForDate?: string; // تاریخ سررسید چکی که یادآوری آن ارسال شده
   createdAt: string; // زمان ثبت سیستمی
   updatedAt?: string;
 }
@@ -271,6 +273,8 @@ export interface Invoice {
   convertedAt?: string; // تاریخ تبدیل به فاکتور اصلی فروش
   convertedFromProforma?: string; // شماره پیش‌فاکتور اولیه قبل از تبدیل به فاکتور رسمی
   proformaReminderSentAt?: string; // تاریخ و زمان ارسال آخرین پیام هشدار پیگیری ۷ روزه به تلگرام
+  chequeReminderSentAt?: string; // زمان ارسال یادآوری سررسید چک به تلگرام
+  chequeReminderSentForDate?: string; // تاریخ سررسید چکی که یادآوری آن ارسال شده
   telegramChatId?: string; // شناسه یا چت‌آیدی اختصاصی تلگرام مقصد برای ارسال مستقیم PDF این فاکتور
   shareLink?: InvoiceShareLink; // تنظیمات و شناسه لینک اشتراک آنلاین نسخه تحت وب فاکتور برای مشتری
   // مشخصات فروشنده رسمی در زمان صدور فاکتور (جهت استعلام و سابقه فاکتورهای رسمی دارایی)
@@ -414,6 +418,7 @@ export interface StoreSettings {
   telegramAutoSendOnlyConfirmed?: boolean; // ارسال خودکار فاکتور فقط پس از تایید نهایی (عدم ارسال پیش‌فاکتور بدون تایید)
   telegramAutoSendOnProformaConvert?: boolean; // ارسال خودکار به محض تایید و تبدیل پیش‌فاکتور به فاکتور قطعی
   telegramAutoSendProformaReminder?: boolean; // ارسال خودکار پیام هشدار پیگیری پیش‌فاکتور بعد از گذشت ۷ روز جهت تبدیل به فاکتور
+  telegramAutoSendChequeReminder?: boolean; // ارسال خودکار پیام یادآوری تلگرام یک هفته قبل از سررسید چک‌های دریافتی و پرداختی
   telegramAutoSendExitSlip?: boolean; // ارسال خودکار حواله خروج
   telegramAutoSendExitSlipIssue?: boolean; // ارسال خودکار به محض صدور حواله خروج
   telegramAutoSendExitSlipConfirm?: boolean; // ارسال خودکار پس از تایید تحویل و خروج بار
@@ -720,6 +725,8 @@ export interface PurchaseInvoice {
   chequeNumber?: string;
   chequeDueDate?: string;
   chequeName?: string;
+  chequeReminderSentAt?: string; // زمان ارسال یادآوری سررسید چک به تلگرام
+  chequeReminderSentForDate?: string; // تاریخ سررسید چکی که یادآوری آن ارسال شده
   transferDescription?: string;
   notes?: string;
   status: PurchaseStatus; // وضعیت تحویل و ورود به انبار
@@ -790,6 +797,8 @@ export type ActivityActionCategory =
   | 'settings' 
   | 'system';
 
+export type ActivityLogSeverity = 'info' | 'warning' | 'critical';
+
 export interface ActivityLog {
   id: string;
   userId: string;
@@ -802,7 +811,15 @@ export interface ActivityLog {
   details: string; // توضیحات تکمیلی و مشخصات رکورد
   timestamp: string; // تاریخ و ساعت فارسی
   dateOnly: string; // تاریخ شمسی جهت فیلتر سریع
-  deviceInfo?: string; // مشخصات مرورگر یا دستگاه
+  createdAtMs?: number; // زمان دقیق (epoch ms) جهت مرتب‌سازی و محاسبه بازه زمانی
+  severity?: ActivityLogSeverity; // سطح حساسیت رویداد
+  source?: 'client' | 'server'; // مبدا ثبت رویداد (کلاینت یا سرور)
+  ipAddress?: string; // نشانی IP ثبت‌شده توسط سرور
+  entityType?: string; // نوع موجودیت هدف (فاکتور، کالا، کاربر، پشتیبان و...)
+  entityId?: string; // شناسه رکورد هدف
+  entityLabel?: string; // برچسب خوانای رکورد هدف
+  metadata?: Record<string, string | number | boolean | null>; // اطلاعات ساخت‌یافته تکمیلی
+  deviceInfo?: string; // مشخصات مرورگر، سیستم‌عامل یا دستگاه
 }
 
 export type RestoreModuleKey =

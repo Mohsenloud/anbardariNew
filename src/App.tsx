@@ -14,7 +14,16 @@ import {
   verifySessionWithServer,
 } from './utils/authClient';
 import { getCurrentJalaliDate } from './utils/jalali';
-import { isTabPermitted, getDefaultTabForUser, getRoleBadgeConfig, isReadOnlyUser } from './utils/permissions';
+import {
+  isTabPermitted,
+  getDefaultTabForUser,
+  getRoleBadgeConfig,
+  isReadOnlyUser,
+  canUserCreateSalesInvoice,
+  canUserDeleteInvoice,
+  canUserSettleInvoice,
+  canUserModifyCustomers,
+} from './utils/permissions';
 import { ConfirmDialogHost } from './components/ConfirmDialogHost';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -310,6 +319,10 @@ export default function App() {
 
   // 1. INVOICE SAVE WITH AUTOMATIC STOCK DEDUCTION (پیش‌فاکتورها کسر از انبار ندارند)
   const handleSaveInvoice = (newInvoice: Invoice, shouldPrint: boolean) => {
+    if (currentUser && !canUserCreateSalesInvoice(currentUser)) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز صدور فاکتور فروش را ندارد.');
+      return;
+    }
     // 1. Update Invoices list
     const updatedInvoices = [newInvoice, ...invoices];
     setInvoices(updatedInvoices);
@@ -432,7 +445,24 @@ export default function App() {
       category: 'sales',
       actionType: newInvoice.isProforma ? 'create_proforma' : 'create_invoice',
       actionTitle: newInvoice.isProforma ? 'صدور پیش‌فاکتور' : 'صدور فاکتور فروش',
-      details: `${newInvoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${newInvoice.invoiceNumber} به مبلغ ${newInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency} برای مشتری «${newInvoice.customerName}»`,
+      details: `${newInvoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${newInvoice.invoiceNumber} (${newInvoice.items.length} قلم) به مبلغ ${newInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency} برای مشتری «${newInvoice.customerName}»`,
+      severity: 'info',
+      entityType: 'invoice',
+      entityId: newInvoice.id,
+      entityLabel: `#${newInvoice.invoiceNumber} (${newInvoice.customerName})`,
+      metadata: {
+        invoiceNumber: newInvoice.invoiceNumber,
+        customerName: newInvoice.customerName,
+        itemsCount: newInvoice.items.length,
+        subtotal: newInvoice.subtotal,
+        discount: newInvoice.totalDiscount,
+        taxAmount: newInvoice.taxAmount,
+        finalTotal: newInvoice.finalTotal,
+        paidAmount: newInvoice.paidAmount,
+        paymentStatus: newInvoice.paymentStatus,
+        paymentMethod: newInvoice.paymentMethod,
+        isProforma: Boolean(newInvoice.isProforma),
+      },
     });
 
     if (shouldPrint) {
@@ -453,6 +483,10 @@ export default function App() {
   };
 
   const handleUpdateInvoice = (originalInvoice: Invoice, updatedInvoice: Invoice, shouldPrint: boolean) => {
+    if (currentUser && !canUserCreateSalesInvoice(currentUser)) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز ویرایش فاکتور فروش را ندارد.');
+      return;
+    }
     const today = getCurrentJalaliDate();
 
     // If auto-deduct stock is enabled, adjust inventory stock based on quantity changes
@@ -611,7 +645,20 @@ export default function App() {
       category: 'sales',
       actionType: updatedInvoice.isProforma ? 'edit_proforma' : 'edit_invoice',
       actionTitle: updatedInvoice.isProforma ? 'ویرایش پیش‌فاکتور' : 'ویرایش فاکتور فروش',
-      details: `ویرایش ${updatedInvoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${updatedInvoice.invoiceNumber} (مبلغ جدید: ${updatedInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency})`,
+      details: `ویرایش ${updatedInvoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${updatedInvoice.invoiceNumber} — مشتری: «${updatedInvoice.customerName}» | مبلغ قبلی: ${originalInvoice.finalTotal.toLocaleString('fa-IR')} ← جدید: ${updatedInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency}`,
+      severity: 'warning',
+      entityType: 'invoice',
+      entityId: updatedInvoice.id,
+      entityLabel: `#${updatedInvoice.invoiceNumber} (${updatedInvoice.customerName})`,
+      metadata: {
+        invoiceNumber: updatedInvoice.invoiceNumber,
+        customerName: updatedInvoice.customerName,
+        previousTotal: originalInvoice.finalTotal,
+        newTotal: updatedInvoice.finalTotal,
+        previousItemsCount: originalInvoice.items.length,
+        newItemsCount: updatedInvoice.items.length,
+        paymentStatus: updatedInvoice.paymentStatus,
+      },
     });
 
     if (shouldPrint) {
@@ -761,7 +808,18 @@ export default function App() {
       category: 'sales',
       actionType: 'convert_proforma',
       actionTitle: 'تبدیل پیش‌فاکتور به فاکتور قطعی',
-      details: `تبدیل پیش‌فاکتور ${proformaInvoice.invoiceNumber} به فاکتور قطعی ${finalNumber} و کسر از موجودی انبار`,
+      details: `تبدیل پیش‌فاکتور ${proformaInvoice.invoiceNumber} به فاکتور قطعی ${finalNumber} برای «${proformaInvoice.customerName}» به مبلغ ${proformaInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency}`,
+      severity: 'warning',
+      entityType: 'invoice',
+      entityId: proformaInvoice.id,
+      entityLabel: `${proformaInvoice.invoiceNumber} -> ${finalNumber}`,
+      metadata: {
+        fromProforma: proformaInvoice.invoiceNumber,
+        toInvoiceNumber: finalNumber,
+        customerName: proformaInvoice.customerName,
+        finalTotal: proformaInvoice.finalTotal,
+        itemsCount: proformaInvoice.items.length,
+      },
     });
 
     // هنگام تبدیل پیش‌فاکتور به فاکتور رسمی، فقط در صورت داشتن کالای فیزیکی حواله خروج کالا صادر می‌گردد (ثبت خدمات حواله خروج ندارد)
@@ -792,6 +850,10 @@ export default function App() {
 
   // 2. RETURN INVOICE TO INVENTORY (مرجوعی به انبار)
   const handleReturnInvoiceToStock = (invoice: Invoice) => {
+    if (currentUser && (isReadOnlyUser(currentUser) || !canUserDeleteInvoice(currentUser))) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز مرجوعی یا ابطال فاکتور را ندارد.');
+      return;
+    }
     const today = getCurrentJalaliDate();
     let currentProducts = [...products];
     const returnMovements: StockMovement[] = [];
@@ -844,7 +906,17 @@ export default function App() {
       category: 'warehouse',
       actionType: 'return_stock',
       actionTitle: 'مرجوع اقلام فاکتور به انبار',
-      details: `ابطال فاکتور شماره ${invoice.invoiceNumber} و بازگرداندن کلیه اقلام به موجودی انبار`,
+      details: `ابطال فاکتور شماره ${invoice.invoiceNumber} («${invoice.customerName}»، ${invoice.items.length} قلم، مبلغ ${invoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency}) و بازگرداندن اقلام به انبار`,
+      severity: 'critical',
+      entityType: 'invoice',
+      entityId: invoice.id,
+      entityLabel: `#${invoice.invoiceNumber} (${invoice.customerName})`,
+      metadata: {
+        invoiceNumber: invoice.invoiceNumber,
+        customerName: invoice.customerName,
+        itemsCount: invoice.items.length,
+        finalTotal: invoice.finalTotal,
+      },
     });
 
     showToast(`کالاهای فاکتور ${invoice.invoiceNumber} به انبار بازگردانده شدند.`);
@@ -852,7 +924,10 @@ export default function App() {
 
   // 3. DELETE INVOICE (بدون بازگردانی کالا)
   const handleDeleteInvoice = (invoiceId: string) => {
-    if (isReadOnlyUser(currentUser)) return;
+    if (currentUser && (isReadOnlyUser(currentUser) || !canUserDeleteInvoice(currentUser))) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز حذف فاکتور را ندارد.');
+      return;
+    }
     const inv = invoices.find((i) => i.id === invoiceId);
     StorageService.markInvoiceDeleted(invoiceId);
     StorageService.deleteExitSlipLog(invoiceId);
@@ -865,7 +940,16 @@ export default function App() {
       category: 'sales',
       actionType: 'delete_invoice',
       actionTitle: 'حذف فاکتور فروش',
-      details: `حذف فاکتور شماره ${inv?.invoiceNumber || invoiceId} متعلق به «${inv?.customerName || '-'}»`,
+      details: `حذف فاکتور شماره ${inv?.invoiceNumber || invoiceId} متعلق به «${inv?.customerName || '-'}» به مبلغ ${(inv?.finalTotal || 0).toLocaleString('fa-IR')} ${settings.currency}`,
+      severity: 'critical',
+      entityType: 'invoice',
+      entityId: invoiceId,
+      entityLabel: inv ? `#${inv.invoiceNumber} (${inv.customerName})` : invoiceId,
+      metadata: {
+        invoiceNumber: inv?.invoiceNumber || null,
+        customerName: inv?.customerName || null,
+        finalTotal: inv?.finalTotal ?? null,
+      },
     });
 
     showToast('فاکتور مورد نظر حذف شد.');
@@ -877,7 +961,11 @@ export default function App() {
     status: 'paid' | 'unpaid' | 'partial',
     paidAmount?: number
   ) => {
-    if (isReadOnlyUser(currentUser)) return;
+    if (currentUser && (isReadOnlyUser(currentUser) || !canUserSettleInvoice(currentUser))) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز ثبت دریافت و تسویه فاکتور را ندارد.');
+      return;
+    }
+    const prevInv = invoices.find((i) => i.id === invoiceId);
     const updated = invoices.map((inv) => {
       if (inv.id === invoiceId) {
         return {
@@ -892,12 +980,25 @@ export default function App() {
     StorageService.saveInvoices(updated);
 
     const inv = invoices.find((i) => i.id === invoiceId);
+    const nextPaid = status === 'paid' ? (inv?.finalTotal || 0) : (paidAmount !== undefined ? paidAmount : (inv?.paidAmount || 0));
     const statusLabels: Record<string, string> = { paid: 'تسویه کامل', partial: 'پرداخت قسطی/بیعانه', unpaid: 'نسیه/پرداخت‌نشده' };
     StorageService.logActivity({
       category: 'sales',
       actionType: 'update_payment',
       actionTitle: 'تغییر وضعیت تسویه فاکتور',
-      details: `تغییر وضعیت پرداخت فاکتور ${inv?.invoiceNumber || invoiceId} به «${statusLabels[status] || status}»`,
+      details: `تغییر وضعیت پرداخت فاکتور ${inv?.invoiceNumber || invoiceId} («${inv?.customerName || '-'}») به «${statusLabels[status] || status}» — مبلغ پرداختی: ${nextPaid.toLocaleString('fa-IR')} ${settings.currency}`,
+      severity: 'warning',
+      entityType: 'invoice',
+      entityId: invoiceId,
+      entityLabel: inv ? `#${inv.invoiceNumber} (${inv.customerName})` : invoiceId,
+      metadata: {
+        invoiceNumber: inv?.invoiceNumber || null,
+        previousStatus: prevInv?.paymentStatus || null,
+        newStatus: status,
+        previousPaidAmount: prevInv?.paidAmount ?? null,
+        newPaidAmount: nextPaid,
+        finalTotal: inv?.finalTotal ?? null,
+      },
     });
 
     showToast('وضعیت تسویه فاکتور بروزرسانی شد.');
@@ -944,7 +1045,10 @@ export default function App() {
     updates: { invoiceId: string; status: 'paid' | 'unpaid' | 'partial'; paidAmount: number }[],
     details?: string
   ) => {
-    if (isReadOnlyUser(currentUser)) return;
+    if (currentUser && (isReadOnlyUser(currentUser) || !canUserSettleInvoice(currentUser))) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز تسویه تجمیعی فاکتورها را ندارد.');
+      return;
+    }
     const updateMap = new Map(updates.map((u) => [u.invoiceId, u]));
     const updated = invoices.map((inv) => {
       const up = updateMap.get(inv.id);
@@ -963,9 +1067,15 @@ export default function App() {
 
     StorageService.logActivity({
       category: 'sales',
-      actionType: 'update_payment',
+      actionType: 'batch_update_payment',
       actionTitle: 'ثبت واریزی و تسویه تجمیعی فاکتورها',
       details: details || `تسویه تجمیعی ${updates.length} فاکتور`,
+      severity: 'warning',
+      entityType: 'invoice',
+      metadata: {
+        updatedInvoicesCount: updates.length,
+        totalPaidAmount: updates.reduce((s, u) => s + (u.paidAmount || 0), 0),
+      },
     });
 
     showToast(`${updates.length} فاکتور با موفقیت تسویه و در حساب مشتری ثبت گردید.`);
@@ -1007,7 +1117,20 @@ export default function App() {
   };
 
   // 5. INVENTORY PRODUCT MANAGEMENT
+  const canCurrentUserManageInventory = (): boolean => {
+    if (!currentUser) return true;
+    if (isReadOnlyUser(currentUser)) return false;
+    return (
+      currentUser.role === 'admin' ||
+      Boolean(currentUser.permissions?.canAccessAdmin || currentUser.permissions?.canManageInventory)
+    );
+  };
+
   const handleSaveProduct = (rawProduct: Product) => {
+    if (!canCurrentUserManageInventory()) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز تعریف یا ویرایش کالاها را ندارد.');
+      return;
+    }
     let product = { ...rawProduct };
     let updatedProducts: Product[];
     const exists = products.some((p) => p.id === product.id);
@@ -1100,15 +1223,34 @@ export default function App() {
     setProducts(updatedProducts);
     StorageService.saveProducts(updatedProducts);
 
+    const oldProdForLog = exists ? products.find((p) => p.id === product.id) : undefined;
     StorageService.logActivity({
       category: 'warehouse',
       actionType: exists ? 'edit_product' : 'create_product',
       actionTitle: exists ? 'ویرایش مشخصات کالا' : 'تعریف کالای جدید',
-      details: `${exists ? 'ویرایش مشخصات کالا' : 'تعریف کالای جدید'}: «${product.name}» (موجودی: ${product.stock} ${product.unit})`,
+      details: `${exists ? 'ویرایش مشخصات کالا' : 'تعریف کالای جدید'}: «${product.name}» (${product.code || '-'} • دسته: ${product.category || 'عمومی'} • موجودی: ${product.stock} ${product.unit} • فروش: ${Number(product.sellPrice || 0).toLocaleString('fa-IR')} ${settings.currency})`,
+      severity: exists ? 'warning' : 'info',
+      entityType: 'product',
+      entityId: product.id,
+      entityLabel: `${product.name} (${product.code || ''})`,
+      metadata: {
+        code: product.code || null,
+        category: product.category || 'عمومی',
+        previousStock: oldProdForLog ? oldProdForLog.stock : null,
+        newStock: product.stock,
+        previousBuyPrice: oldProdForLog ? oldProdForLog.buyPrice : null,
+        newBuyPrice: product.buyPrice,
+        previousSellPrice: oldProdForLog ? oldProdForLog.sellPrice : null,
+        newSellPrice: product.sellPrice,
+      },
     });
   };
 
   const handleDeleteProduct = (productId: string) => {
+    if (!canCurrentUserManageInventory()) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز حذف کالا از انبار را ندارد.');
+      return;
+    }
     const prod = products.find((p) => p.id === productId);
     StorageService.deleteProduct(productId);
     const updated = StorageService.getProducts();
@@ -1118,7 +1260,16 @@ export default function App() {
       category: 'warehouse',
       actionType: 'delete_product',
       actionTitle: 'حذف کالا از انبار',
-      details: `حذف کالای «${prod?.name || productId}» از انبار کالاها`,
+      details: `حذف کالای «${prod?.name || productId}» (کد: ${prod?.code || '-'} • آخرین موجودی: ${prod?.stock ?? 0} ${prod?.unit || ''})`,
+      severity: 'critical',
+      entityType: 'product',
+      entityId: productId,
+      entityLabel: prod?.name || productId,
+      metadata: {
+        code: prod?.code || null,
+        lastStock: prod?.stock ?? null,
+        category: prod?.category || null,
+      },
     });
 
     showToast('کالای مورد نظر از انبار حذف شد.');
@@ -1133,6 +1284,10 @@ export default function App() {
     variantId?: string,
     exactStock?: number
   ) => {
+    if (!canCurrentUserManageInventory()) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز تعدیل موجودی انبار را ندارد.');
+      return;
+    }
     const prodIndex = products.findIndex((p) => p.id === productId);
     if (prodIndex === -1) return;
 
@@ -1219,7 +1374,19 @@ export default function App() {
       category: 'warehouse',
       actionType: 'adjust_stock',
       actionTitle: type === 'purchase' ? 'ورود دستی به انبار' : type === 'set_stock' ? 'ثبت انبارگردانی واقعی' : type === 'return' ? 'مرجوعی به انبار' : 'تعدیل دستی موجودی',
-      details: `تغییر موجودی «${prod.name}${variantLabel}» به میزان ${delta >= 0 ? `+${delta}` : delta} ${prod.unit} (موجودی جدید: ${newStock})`,
+      details: `تغییر موجودی «${prod.name}${variantLabel}» از ${currentStock} به ${newStock} ${prod.unit} (تغییر: ${delta >= 0 ? `+${delta}` : delta})${note ? ` — شرح: ${note}` : ''}`,
+      severity: 'warning',
+      entityType: 'product',
+      entityId: prod.id,
+      entityLabel: `${prod.name}${variantLabel}`,
+      metadata: {
+        adjustType: type,
+        previousStock: currentStock,
+        delta,
+        newStock,
+        unit: prod.unit,
+        note: note || null,
+      },
     });
 
     showToast(`موجودی انبار "${prod.name}${variantLabel}" به ${newStock} ${prod.unit} تغییر یافت.`);
@@ -1227,6 +1394,10 @@ export default function App() {
 
   // 6.1 IMPORT PRODUCTS FROM EXCEL
   const handleImportProducts = (importedProducts: Product[], mode: 'merge' | 'replace') => {
+    if (!canCurrentUserManageInventory()) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز ایمپورت دسته‌جمعی کالاها را ندارد.');
+      return;
+    }
     let updated: Product[];
     if (mode === 'replace') {
       updated = importedProducts;
@@ -1240,9 +1411,16 @@ export default function App() {
 
     StorageService.logActivity({
       category: 'warehouse',
-      actionType: 'create_product',
+      actionType: 'import_products_excel',
       actionTitle: 'ایمپورت اکسل کالاها',
       details: `ورود ${importedProducts.length} کالا از فایل اکسل به شیوه ${mode === 'replace' ? 'جایگزینی کل' : 'ترکیب و بروزرسانی'}`,
+      severity: mode === 'replace' ? 'critical' : 'warning',
+      entityType: 'product',
+      metadata: {
+        importedCount: importedProducts.length,
+        mode,
+        totalAfterImport: updated.length,
+      },
     });
 
     showToast(`تعداد ${importedProducts.length.toLocaleString('fa-IR')} کالا با موفقیت از فایل اکسل وارد انبار شد.`);
@@ -1250,7 +1428,10 @@ export default function App() {
 
   // 6.2 IMPORT CUSTOMERS FROM EXCEL
   const handleImportCustomers = (importedCustomers: Customer[], mode: 'merge' | 'replace') => {
-    if (isReadOnlyUser(currentUser)) return;
+    if (currentUser && !canUserModifyCustomers(currentUser)) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز ایمپورت مشتریان را ندارد.');
+      return;
+    }
     let updated: Customer[];
     if (mode === 'replace') {
       updated = importedCustomers;
@@ -1264,9 +1445,16 @@ export default function App() {
 
     StorageService.logActivity({
       category: 'customer',
-      actionType: 'create_customer',
+      actionType: 'import_customers_excel',
       actionTitle: 'ایمپورت اکسل مشتریان',
       details: `ورود ${importedCustomers.length} طرف‌حساب از فایل اکسل به شیوه ${mode === 'replace' ? 'جایگزینی کل' : 'ترکیب و بروزرسانی'}`,
+      severity: mode === 'replace' ? 'critical' : 'warning',
+      entityType: 'customer',
+      metadata: {
+        importedCount: importedCustomers.length,
+        mode,
+        totalAfterImport: updated.length,
+      },
     });
 
     showToast(`تعداد ${importedCustomers.length.toLocaleString('fa-IR')} مشتری با موفقیت از فایل اکسل وارد سامانه شد.`);
@@ -1274,7 +1462,10 @@ export default function App() {
 
   // 7. CUSTOMERS MANAGEMENT
   const handleSaveCustomer = (customer: Customer) => {
-    if (isReadOnlyUser(currentUser)) return;
+    if (currentUser && !canUserModifyCustomers(currentUser)) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز ثبت یا ویرایش مشتریان را ندارد.');
+      return;
+    }
     let updated: Customer[];
     const exists = customers.some((c) => c.id === customer.id);
     if (exists) {
@@ -1289,7 +1480,16 @@ export default function App() {
       category: 'customer',
       actionType: exists ? 'edit_customer' : 'create_customer',
       actionTitle: exists ? 'ویرایش طرف‌حساب' : 'تعریف مشتری جدید',
-      details: `ذخیره اطلاعات مشتری «${customer.name}» (${customer.phone || 'بدون تماس'})`,
+      details: `ذخیره اطلاعات مشتری «${customer.name}» (${customer.phone || 'بدون تماس'}${customer.address ? ` • ${customer.address}` : ''})`,
+      severity: exists ? 'warning' : 'info',
+      entityType: 'customer',
+      entityId: customer.id,
+      entityLabel: customer.name,
+      metadata: {
+        phone: customer.phone || null,
+        nationalId: customer.nationalId || null,
+        customerType: customer.customerType || 'regular',
+      },
     });
 
     showToast(`اطلاعات مشتری "${customer.name}" ذخیره شد.`);
@@ -1301,16 +1501,39 @@ export default function App() {
       id: `cust-${Date.now()}`,
       createdAt: getCurrentJalaliDate(),
     };
-    if (isReadOnlyUser(currentUser)) return newCust;
+    if (
+      currentUser &&
+      !canUserModifyCustomers(currentUser) &&
+      !canUserCreateSalesInvoice(currentUser)
+    ) {
+      return newCust;
+    }
     const updated = [newCust, ...customers];
     setCustomers(updated);
     StorageService.saveCustomers(updated);
+    StorageService.logActivity({
+      category: 'customer',
+      actionType: 'create_customer',
+      actionTitle: 'ثبت سریع مشتری جدید (حین صدور فاکتور)',
+      details: `تعریف سریع مشتری «${newCust.name}» (${newCust.phone || 'بدون تماس'})`,
+      severity: 'info',
+      entityType: 'customer',
+      entityId: newCust.id,
+      entityLabel: newCust.name,
+      metadata: {
+        phone: newCust.phone || null,
+        quickAdd: true,
+      },
+    });
     showToast(`مشتری "${newCust.name}" در دفترچه مشتریان ذخیره شد.`);
     return newCust;
   };
 
   const handleDeleteCustomer = (customerId: string) => {
-    if (isReadOnlyUser(currentUser)) return;
+    if (currentUser && !canUserModifyCustomers(currentUser)) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز حذف مشتریان را ندارد.');
+      return;
+    }
     const cust = customers.find((c) => c.id === customerId);
     StorageService.deleteCustomer(customerId);
     const updated = StorageService.getCustomers();
@@ -1320,20 +1543,37 @@ export default function App() {
       category: 'customer',
       actionType: 'delete_customer',
       actionTitle: 'حذف طرف‌حساب/مشتری',
-      details: `حذف مشتری «${cust?.name || customerId}» از دفترچه طرف‌حساب‌ها`,
+      details: `حذف مشتری «${cust?.name || customerId}» (${cust?.phone || 'بدون تماس'}) از دفترچه طرف‌حساب‌ها`,
+      severity: 'critical',
+      entityType: 'customer',
+      entityId: customerId,
+      entityLabel: cust?.name || customerId,
+      metadata: {
+        phone: cust?.phone || null,
+      },
     });
 
     showToast('مشتری حذف شد.');
   };
 
   const handleSelectCustomerForInvoice = (customer: Customer) => {
-    if (isReadOnlyUser(currentUser)) return;
+    if (currentUser && !canUserCreateSalesInvoice(currentUser)) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز صدور فاکتور فروش را ندارد.');
+      return;
+    }
     setActiveTab('new-invoice');
   };
 
   // 7.1 CUSTOMER TRANSACTIONS (صورتحساب، ثبت واریزی و بدهی مشتری)
   const handleSaveCustomerTransaction = (txn: CustomerTransaction) => {
-    if (isReadOnlyUser(currentUser)) return;
+    if (
+      currentUser &&
+      (isReadOnlyUser(currentUser) ||
+        (!canUserModifyCustomers(currentUser) && !canUserSettleInvoice(currentUser)))
+    ) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز ثبت تراکنش مالی را ندارد.');
+      return;
+    }
     StorageService.addCustomerTransaction(txn);
     const updatedTxns = StorageService.getCustomerTransactions();
     setCustomerTransactions(updatedTxns);
@@ -1343,6 +1583,17 @@ export default function App() {
       actionType: txn.type === 'deposit' ? 'customer_deposit' : 'customer_debt',
       actionTitle: txn.type === 'deposit' ? 'ثبت واریزی طرف‌حساب' : 'ثبت سند بدهی مشتری',
       details: `${txn.type === 'deposit' ? 'واریز' : 'بدهی'} به مبلغ ${txn.amount.toLocaleString('fa-IR')} ${settings.currency} برای «${txn.customerName}» (${txn.title || 'سند مالی'})`,
+      severity: 'info',
+      entityType: 'transaction',
+      entityId: txn.id,
+      entityLabel: `${txn.customerName} (${txn.amount.toLocaleString('fa-IR')})`,
+      metadata: {
+        type: txn.type,
+        amount: txn.amount,
+        paymentMethod: txn.paymentMethod || null,
+        customerName: txn.customerName,
+        title: txn.title || null,
+      },
     });
 
     showToast(
@@ -1353,7 +1604,14 @@ export default function App() {
   };
 
   const handleDeleteCustomerTransaction = (txnId: string) => {
-    if (isReadOnlyUser(currentUser)) return;
+    if (
+      currentUser &&
+      (isReadOnlyUser(currentUser) ||
+        (!canUserModifyCustomers(currentUser) && !canUserSettleInvoice(currentUser)))
+    ) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز حذف تراکنش مالی را ندارد.');
+      return;
+    }
     const txn = customerTransactions.find((t) => t.id === txnId);
     StorageService.deleteCustomerTransaction(txnId);
     const updated = StorageService.getCustomerTransactions();
@@ -1364,6 +1622,15 @@ export default function App() {
       actionType: 'delete_customer_transaction',
       actionTitle: 'حذف تراکنش مالی مشتری',
       details: `حذف سند مالی به مبلغ ${txn?.amount.toLocaleString('fa-IR') || '-'} ${settings.currency} از پرونده «${txn?.customerName || '-'}»`,
+      severity: 'critical',
+      entityType: 'transaction',
+      entityId: txnId,
+      entityLabel: txn?.customerName || txnId,
+      metadata: {
+        type: txn?.type || null,
+        amount: txn?.amount ?? null,
+        customerName: txn?.customerName || null,
+      },
     });
 
     showToast('سند مالی مورد نظر حذف شد.');
@@ -1451,6 +1718,19 @@ export default function App() {
         : isServiceOnly
         ? `ثبت فاکتور خرید خدمات ${newPurchaseInvoice.invoiceNumber} از «${newPurchaseInvoice.supplierName}» به مبلغ ${newPurchaseInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency}`
         : `ثبت فاکتور خرید ${newPurchaseInvoice.invoiceNumber} از «${newPurchaseInvoice.supplierName}» به مبلغ ${newPurchaseInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency} و صدور حواله ورود ${newInboundReceipt?.receiptNumber || ''}`,
+      severity: isEdit ? 'warning' : 'info',
+      entityType: 'purchase',
+      entityId: newPurchaseInvoice.id,
+      entityLabel: `#${newPurchaseInvoice.invoiceNumber} (${newPurchaseInvoice.supplierName})`,
+      metadata: {
+        invoiceNumber: newPurchaseInvoice.invoiceNumber,
+        supplierName: newPurchaseInvoice.supplierName,
+        itemsCount: newPurchaseInvoice.items.length,
+        finalTotal: newPurchaseInvoice.finalTotal,
+        paidAmount: newPurchaseInvoice.paidAmount,
+        isServiceOnly,
+        inboundReceiptNumber: newInboundReceipt?.receiptNumber || null,
+      },
     });
 
     showToast(
@@ -1521,7 +1801,16 @@ export default function App() {
       category: 'purchase',
       actionType: 'delete_purchase_invoice',
       actionTitle: 'حذف فاکتور خرید',
-      details: `حذف فاکتور خرید شماره ${inv?.invoiceNumber || invoiceId} تامین‌کننده «${inv?.supplierName || '-'}»`,
+      details: `حذف فاکتور خرید شماره ${inv?.invoiceNumber || invoiceId} تامین‌کننده «${inv?.supplierName || '-'}» به مبلغ ${(inv?.finalTotal || 0).toLocaleString('fa-IR')} ${settings.currency}`,
+      severity: 'critical',
+      entityType: 'purchase',
+      entityId: invoiceId,
+      entityLabel: inv ? `#${inv.invoiceNumber} (${inv.supplierName})` : invoiceId,
+      metadata: {
+        invoiceNumber: inv?.invoiceNumber || null,
+        supplierName: inv?.supplierName || null,
+        finalTotal: inv?.finalTotal ?? null,
+      },
     });
 
     showToast('فاکتور خرید حذف گردید.');
@@ -1533,6 +1822,10 @@ export default function App() {
     warehouseNotes: string,
     verifiedBy: string
   ) => {
+    if (!canCurrentUserManageInventory()) {
+      showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز تایید حواله ورود به انبار را ندارد.');
+      return;
+    }
     const receipt = inboundReceipts.find((r) => r.id === receiptId);
     if (!receipt) return;
 
@@ -1596,6 +1889,18 @@ export default function App() {
       actionType: hasDiscrepancy ? 'verify_inbound_discrepancy' : 'verify_inbound_success',
       actionTitle: hasDiscrepancy ? 'تایید حواله ورود با مغایرت' : 'تایید حواله ورود به انبار',
       details: `تایید حواله ورود ${receipt.receiptNumber} مربوط به فاکتور خرید ${receipt.purchaseInvoiceNumber} توسط ${verifiedBy}${hasDiscrepancy ? ' (همراه با ثبت مغایرت)' : ''}`,
+      severity: hasDiscrepancy ? 'warning' : 'info',
+      entityType: 'inbound_receipt',
+      entityId: receipt.id,
+      entityLabel: receipt.receiptNumber,
+      metadata: {
+        receiptNumber: receipt.receiptNumber,
+        purchaseInvoiceNumber: receipt.purchaseInvoiceNumber,
+        verifiedBy,
+        totalReceivedQuantity: updatedReceipt.totalReceivedQuantity,
+        totalDiscrepancy: updatedReceipt.totalDiscrepancy,
+        hasDiscrepancy,
+      },
     });
 
     showToast(
@@ -1606,8 +1911,28 @@ export default function App() {
   };
 
   // 8. USERS & ACCESS MANAGEMENT
-  const handleAddUser = (userData: Omit<AppUser, 'id' | 'createdAt'>) => {
-    const newUser = StorageService.addUser(userData);
+  const handleAddUser = (userData: Omit<AppUser, 'id' | 'createdAt'>): { success: boolean; message?: string } => {
+    const callerIsFullAdmin = !currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions?.canAccessAdmin);
+    const callerCanManage = !currentUser || callerIsFullAdmin || Boolean(currentUser.permissions?.canManageUsers);
+    if (!callerCanManage || isReadOnlyUser(currentUser)) {
+      const msg = 'دسترسی غیرمجاز: شما مجوز تعریف کاربر جدید را ندارید.';
+      showToast(msg);
+      return { success: false, message: msg };
+    }
+    if (!callerIsFullAdmin && (userData.role === 'admin' || userData.permissions?.canAccessAdmin)) {
+      const msg = 'تعریف کاربر مدیر کل فقط توسط مدیر سیستم مجاز است.';
+      showToast(msg);
+      return { success: false, message: msg };
+    }
+
+    const sanitizedInput = callerIsFullAdmin
+      ? userData
+      : {
+          ...userData,
+          permissions: { ...userData.permissions, canAccessAdmin: false },
+        };
+
+    const newUser = StorageService.addUser(sanitizedInput);
     const updatedUsers = StorageService.getUsers();
     setUsers(updatedUsers);
 
@@ -1616,42 +1941,130 @@ export default function App() {
       actionType: 'create_user',
       actionTitle: 'تعریف کاربر جدید',
       details: `تعریف حساب کاربری جدید برای «${newUser.fullName}» (${newUser.username}) با نقش ${newUser.roleTitle || newUser.role}`,
+      severity: 'warning',
+      entityType: 'user',
+      entityId: newUser.id,
+      entityLabel: `${newUser.fullName} (${newUser.username})`,
+      metadata: {
+        role: newUser.role,
+        roleTitle: newUser.roleTitle || newUser.role,
+        isActive: newUser.isActive !== false,
+      },
     });
 
     showToast(`کاربر جدید «${newUser.fullName}» با موفقیت ثبت شد.`);
+    return { success: true };
   };
 
-  const handleUpdateUser = (user: AppUser) => {
-    StorageService.updateUser(user);
+  const handleUpdateUser = (user: AppUser): { success: boolean; message?: string } => {
+    const callerIsFullAdmin = !currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions?.canAccessAdmin);
+    const callerCanManage = !currentUser || callerIsFullAdmin || Boolean(currentUser.permissions?.canManageUsers);
+    if (!callerCanManage || isReadOnlyUser(currentUser)) {
+      const msg = 'دسترسی غیرمجاز: شما مجوز ویرایش کاربران را ندارید.';
+      showToast(msg);
+      return { success: false, message: msg };
+    }
+
+    const prevUser = users.find((u) => u.id === user.id);
+    if (!callerIsFullAdmin) {
+      if (prevUser && (prevUser.role === 'admin' || prevUser.permissions?.canAccessAdmin)) {
+        const msg = 'تغییر یا مدیریت حساب‌های مدیر کل فقط برای مدیر سیستم مجاز است.';
+        showToast(msg);
+        return { success: false, message: msg };
+      }
+      if (user.role === 'admin' || user.permissions?.canAccessAdmin) {
+        const msg = 'ارتقاء سطح دسترسی به مدیر کل فقط برای مدیر سیستم مجاز است.';
+        showToast(msg);
+        return { success: false, message: msg };
+      }
+    }
+
+    if (currentUser?.id === user.id && !user.isActive) {
+      const msg = 'امکان غیرفعال‌سازی حساب کاربری فعال فعلی وجود ندارد.';
+      showToast(msg);
+      return { success: false, message: msg };
+    }
+
+    const activeAdminsBefore = users.filter((u) => (u.role === 'admin' || u.permissions?.canAccessAdmin) && u.isActive);
+    const prevWasAdmin = Boolean(prevUser && (prevUser.role === 'admin' || prevUser.permissions?.canAccessAdmin) && prevUser.isActive);
+    const nextIsAdmin = Boolean((user.role === 'admin' || user.permissions?.canAccessAdmin) && user.isActive);
+    if (prevWasAdmin && !nextIsAdmin && activeAdminsBefore.length <= 1) {
+      const msg = 'حداقل یک کاربر مدیر کل فعال باید در سیستم باقی بماند.';
+      showToast(msg);
+      return { success: false, message: msg };
+    }
+
+    const sanitizedUser: AppUser = callerIsFullAdmin
+      ? user
+      : {
+          ...user,
+          permissions: { ...user.permissions, canAccessAdmin: false },
+        };
+
+    StorageService.updateUser(sanitizedUser);
     const updatedUsers = StorageService.getUsers();
     setUsers(updatedUsers);
 
-    if (currentUser?.id === user.id) {
-      setCurrentUser(user);
-      StorageService.setCurrentUser(user);
+    if (currentUser?.id === sanitizedUser.id) {
+      const refreshedSelf = updatedUsers.find((u) => u.id === sanitizedUser.id) || sanitizedUser;
+      setCurrentUser(refreshedSelf);
+      StorageService.setCurrentUser(refreshedSelf);
+    }
+
+    const changeNotes: string[] = [];
+    if (prevUser && prevUser.role !== sanitizedUser.role) {
+      changeNotes.push(`تغییر نقش از «${prevUser.roleTitle || prevUser.role}» به «${sanitizedUser.roleTitle || sanitizedUser.role}»`);
+    }
+    if (prevUser && prevUser.isActive !== sanitizedUser.isActive) {
+      changeNotes.push(sanitizedUser.isActive ? 'فعال‌سازی حساب' : 'غیرفعال‌سازی حساب');
+    }
+    if (sanitizedUser.password && sanitizedUser.password.trim()) {
+      changeNotes.push('تغییر رمز عبور');
     }
 
     StorageService.logActivity({
       category: 'users',
       actionType: 'edit_user',
-      actionTitle: 'ویرایش اطلاعات کاربر',
-      details: `به‌روزرسانی اطلاعات و دسترسی‌های کاربر «${user.fullName}» (${user.username})`,
+      actionTitle: 'ویرایش اطلاعات و دسترسی کاربر',
+      details: `به‌روزرسانی اطلاعات و دسترسی‌های کاربر «${sanitizedUser.fullName}» (${sanitizedUser.username})${changeNotes.length > 0 ? ` — ${changeNotes.join('، ')}` : ''}`,
+      severity: sanitizedUser.password || (prevUser && prevUser.role !== sanitizedUser.role) ? 'critical' : 'warning',
+      entityType: 'user',
+      entityId: sanitizedUser.id,
+      entityLabel: `${sanitizedUser.fullName} (${sanitizedUser.username})`,
+      metadata: {
+        role: sanitizedUser.role,
+        isActive: sanitizedUser.isActive !== false,
+        passwordChanged: Boolean(sanitizedUser.password && sanitizedUser.password.trim()),
+      },
     });
 
-    showToast(`اطلاعات کاربر «${user.fullName}» به‌روزرسانی شد.`);
+    showToast(`اطلاعات کاربر «${sanitizedUser.fullName}» به‌روزرسانی شد.`);
+    return { success: true };
   };
 
   const handleDeleteUser = (userId: string): { success: boolean; message?: string } => {
+    const callerIsFullAdmin = !currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions?.canAccessAdmin);
+    const callerCanManage = !currentUser || callerIsFullAdmin || Boolean(currentUser.permissions?.canManageUsers);
+    if (!callerCanManage || isReadOnlyUser(currentUser)) {
+      const msg = 'دسترسی غیرمجاز: شما مجوز حذف کاربران را ندارید.';
+      showToast(msg);
+      return { success: false, message: msg };
+    }
     if (currentUser?.id === userId) {
       showToast('امکان حذف کاربر فعال فعلی وجود ندارد.');
       return { success: false, message: 'امکان حذف کاربر فعال فعلی وجود ندارد.' };
     }
     const targetUser = users.find((u) => u.id === userId);
+    if (!callerIsFullAdmin && targetUser && (targetUser.role === 'admin' || targetUser.permissions?.canAccessAdmin)) {
+      const msg = 'حذف حساب‌های مدیر کل فقط برای مدیر سیستم مجاز است.';
+      showToast(msg);
+      return { success: false, message: msg };
+    }
     const result = StorageService.deleteUser(userId);
     if (result.success) {
       const updatedUsers = StorageService.getUsers();
       setUsers(updatedUsers);
-      const active = StorageService.getCurrentUser();
+      const active = StorageService.getLoggedInUser() || StorageService.getCurrentUser();
       setCurrentUser(active);
 
       StorageService.logActivity({
@@ -1659,6 +2072,10 @@ export default function App() {
         actionType: 'delete_user',
         actionTitle: 'حذف حساب کاربری',
         details: `حذف حساب کاربری «${targetUser?.fullName || userId}» (${targetUser?.username || ''})`,
+        severity: 'critical',
+        entityType: 'user',
+        entityId: userId,
+        entityLabel: targetUser ? `${targetUser.fullName} (${targetUser.username})` : userId,
       });
 
       showToast('کاربر با موفقیت حذف شد.');
@@ -1677,7 +2094,7 @@ export default function App() {
     setIsLoginModalOpen(false);
     setLoginTargetUser(null);
 
-    // Pull authoritative server state right after login
+    // Pull authoritative server state (including server-recorded login audit entry) right after login
     StorageService.syncFromServer(true).then(() => {
       loadData(true);
     });
@@ -1686,34 +2103,10 @@ export default function App() {
     const landingTab = getDefaultTabForUser(user, settings);
     setActiveTab(landingTab);
 
-    StorageService.logActivity({
-      userId: user.id,
-      userName: user.fullName,
-      userRole: user.role,
-      userRoleTitle: user.roleTitle,
-      category: 'auth',
-      actionType: 'login',
-      actionTitle: 'ورود موفق به سامانه',
-      details: `ورود کاربر «${user.fullName}» با نقش سازمانی ${user.roleTitle || user.role}`,
-    });
-
     showToast(`ورود موفقیت‌آمیز بود. خوش آمدید «${user.fullName}» (${user.roleTitle || user.role}).`);
   };
 
   const handleLogout = () => {
-    if (currentUser) {
-      StorageService.logActivity({
-        userId: currentUser.id,
-        userName: currentUser.fullName,
-        userRole: currentUser.role,
-        userRoleTitle: currentUser.roleTitle,
-        category: 'auth',
-        actionType: 'logout',
-        actionTitle: 'خروج از حساب کاربری',
-        details: `خروج کاربر «${currentUser.fullName}» از سامانه`,
-      });
-    }
-
     logoutFromServer();
     StorageService.logout();
     setCurrentUser(null);
@@ -1728,14 +2121,63 @@ export default function App() {
 
   // 9. SETTINGS
   const handleSaveSettings = (newSettings: StoreSettings) => {
-    setSettings(newSettings);
-    StorageService.saveSettings(newSettings);
+    if (isReadOnlyUser(currentUser)) {
+      showToast('دسترسی غیرمجاز: حساب کاربری حسابدار فقط امکان مشاهده دارد.');
+      return;
+    }
+
+    const callerIsFullAdmin = !currentUser || currentUser.role === 'admin' || Boolean(currentUser.permissions?.canAccessAdmin);
+    let effectiveSettings = newSettings;
+
+    if (!callerIsFullAdmin) {
+      if (!currentUser?.permissions?.canManageInventory) {
+        showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز تغییر تنظیمات سامانه را ندارد.');
+        return;
+      }
+      // Inventory managers may only save warehouse definitions, origin warehouse info, and exit slip layout
+      effectiveSettings = {
+        ...settings,
+        warehouses: newSettings.warehouses,
+        defaultWarehouseId: newSettings.defaultWarehouseId,
+        originWarehouseName: newSettings.originWarehouseName,
+        originWarehouseCode: newSettings.originWarehouseCode,
+        originWarehouseAddress: newSettings.originWarehouseAddress,
+        originWarehousePhone: newSettings.originWarehousePhone,
+        originWarehouseManager: newSettings.originWarehouseManager,
+        updatedAt: newSettings.updatedAt || new Date().toISOString(),
+      };
+    }
+
+    const changedSections: string[] = [];
+    if (settings.storeName !== effectiveSettings.storeName) changedSections.push('نام فروشگاه');
+    if (settings.autoDeductStock !== effectiveSettings.autoDeductStock) changedSections.push(`کسر خودکار انبار (${effectiveSettings.autoDeductStock ? 'فعال' : 'غیرفعال'})`);
+    if (settings.taxPercent !== effectiveSettings.taxPercent || settings.taxEnabled !== effectiveSettings.taxEnabled) {
+      changedSections.push(`تنظیمات مالیات (${effectiveSettings.taxEnabled ? `${effectiveSettings.taxPercent}٪` : 'غیرفعال'})`);
+    }
+    if (settings.telegramBotToken !== effectiveSettings.telegramBotToken || settings.telegramChatId !== effectiveSettings.telegramChatId) {
+      changedSections.push('تنظیمات ربات تلگرام');
+    }
+    if ((settings.warehouses?.length || 0) !== (effectiveSettings.warehouses?.length || 0)) {
+      changedSections.push('ساختار انبارها');
+    }
+
+    setSettings(effectiveSettings);
+    StorageService.saveSettings(effectiveSettings);
 
     StorageService.logActivity({
       category: 'settings',
       actionType: 'update_settings',
-      actionTitle: 'به‌روزرسانی تنظیمات سامانه',
-      details: `ذخیره پیکربندی، قوانین فاکتور و اطلاعات فروشگاه توسط مدیر`,
+      actionTitle: callerIsFullAdmin ? 'به‌روزرسانی تنظیمات سامانه' : 'به‌روزرسانی تنظیمات انبار و حواله',
+      details: `ذخیره پیکربندی سامانه${changedSections.length > 0 ? `: ${changedSections.join('، ')}` : ' (قوانین فاکتور و اطلاعات فروشگاه)'}`,
+      severity: 'warning',
+      entityType: 'settings',
+      entityLabel: effectiveSettings.storeName || 'تنظیمات کلی',
+      metadata: {
+        autoDeductStock: Boolean(effectiveSettings.autoDeductStock),
+        taxEnabled: Boolean(effectiveSettings.taxEnabled),
+        taxPercent: Number(effectiveSettings.taxPercent || 0),
+        warehousesCount: Array.isArray(effectiveSettings.warehouses) ? effectiveSettings.warehouses.length : 0,
+      },
     });
 
     showToast('تنظیمات فروشگاه با موفقیت ذخیره شد.');
@@ -1818,7 +2260,11 @@ export default function App() {
           setEditingInvoice(null);
           setActiveTab('new-invoice');
         }}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenSettings={() => {
+          if (currentUser.role === 'admin' || currentUser.permissions?.canAccessAdmin) {
+            setIsSettingsOpen(true);
+          }
+        }}
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
         isCollapsedDesktop={isDesktopSidebarCollapsed}
@@ -1842,7 +2288,11 @@ export default function App() {
             setEditingInvoice(null);
             setActiveTab('new-invoice');
           }}
-          onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenSettings={() => {
+            if (currentUser.role === 'admin' || currentUser.permissions?.canAccessAdmin) {
+              setIsSettingsOpen(true);
+            }
+          }}
           onToggleSidebar={handleToggleSidebar}
         />
 
@@ -1883,7 +2333,11 @@ export default function App() {
               }
             }}
             onViewInvoice={(inv) => setViewingInvoice(inv)}
-            onOpenSettings={() => setIsSettingsOpen(true)}
+            onOpenSettings={() => {
+              if (currentUser.role === 'admin' || currentUser.permissions?.canAccessAdmin) {
+                setIsSettingsOpen(true);
+              }
+            }}
             onUpdateSettings={handleSaveSettings}
             onLogout={handleLogout}
             onRequestLogin={handleRequestLogin}
@@ -1898,6 +2352,7 @@ export default function App() {
             customers={customers}
             settings={settings}
             editingInvoice={editingInvoice}
+            currentUser={currentUser || undefined}
             onToggleSidebar={handleToggleSidebar}
             onSaveInvoice={handleSaveInvoice}
             onUpdateInvoice={handleUpdateInvoice}
@@ -2095,7 +2550,7 @@ export default function App() {
       )}
 
       {/* Settings & Backup Modal */}
-      {isSettingsOpen && (
+      {isSettingsOpen && (currentUser.role === 'admin' || currentUser.permissions?.canAccessAdmin) && (
         <SettingsModal
           settings={settings}
           isOpen={isSettingsOpen}
@@ -2150,6 +2605,17 @@ export default function App() {
         }}
         onLogout={handleLogout}
         onOpenSidebar={() => setIsMobileSidebarOpen(true)}
+        onOpenSettings={() => {
+          if (currentUser.role === 'admin' || currentUser.permissions?.canAccessAdmin) {
+            setIsSettingsOpen(true);
+          }
+        }}
+        onOpenDirectTransfers={() => {
+          if (isTabPermitted('inventory', currentUser, settings)) {
+            setInventorySubTab('direct-transfers');
+            setActiveTab('inventory');
+          }
+        }}
       />
       </div>
       <ConfirmDialogHost />

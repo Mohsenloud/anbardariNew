@@ -86,8 +86,8 @@ interface AdminPanelProps {
   onSaveSettings: (newSettings: StoreSettings) => void;
   onReloadData: () => void;
   onNavigateToTab: (tab: string) => void;
-  onAddUser: (userData: Omit<AppUser, 'id' | 'createdAt'>) => void;
-  onUpdateUser: (user: AppUser) => void;
+  onAddUser: (userData: Omit<AppUser, 'id' | 'createdAt'>) => { success: boolean; message?: string } | void;
+  onUpdateUser: (user: AppUser) => { success: boolean; message?: string } | void;
   onDeleteUser: (userId: string) => { success: boolean; message?: string };
   onSwitchUser: (user: AppUser) => void;
 }
@@ -111,16 +111,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const safeInitialSettings = settings || StorageService.getSettings();
   const [formData, setFormData] = useState<StoreSettings>({ ...safeInitialSettings });
 
-  const canAccessFullAdmin = !currentUser || currentUser.permissions.canAccessAdmin;
-  const canManageUsers = !currentUser || currentUser.permissions.canManageUsers;
+  const canAccessFullAdmin = Boolean(
+    currentUser && (currentUser.role === 'admin' || currentUser.permissions.canAccessAdmin)
+  );
+  const canManageUsers = Boolean(
+    currentUser && (currentUser.role === 'admin' || currentUser.permissions.canManageUsers)
+  );
 
   const [activeSection, setActiveSection] = useState<'overview' | 'invoices' | 'logs' | 'warehouses' | 'categories' | 'modules' | 'invoice' | 'templates' | 'telegram' | 'ai-voice' | 'weblink' | 'store' | 'users' | 'data'>(() => {
     try {
       const saved = localStorage.getItem('sepehr_admin_active_section');
-      if (saved) return saved as any;
+      if (saved) {
+        if (canAccessFullAdmin) return saved as any;
+        if (canManageUsers && saved === 'users') return 'users';
+      }
     } catch {}
     return canAccessFullAdmin ? 'overview' : 'users';
   });
+
+  useEffect(() => {
+    if (!canAccessFullAdmin && activeSection !== 'users') {
+      if (canManageUsers) {
+        setActiveSection('users');
+      }
+      return;
+    }
+    if (activeSection === 'users' && !canManageUsers && canAccessFullAdmin) {
+      setActiveSection('overview');
+    }
+  }, [canAccessFullAdmin, canManageUsers, activeSection]);
 
   useEffect(() => {
     try {
@@ -150,6 +169,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Proforma 7-day reminder manual check states
   const [isCheckingProformaReminders, setIsCheckingProformaReminders] = useState(false);
   const [proformaReminderCheckMsg, setProformaReminderCheckMsg] = useState<{ success: boolean; text: string } | null>(null);
+
+  // Cheque 7-day advance reminder manual check states
+  const [isCheckingChequeReminders, setIsCheckingChequeReminders] = useState(false);
+  const [chequeReminderCheckMsg, setChequeReminderCheckMsg] = useState<{ success: boolean; text: string } | null>(null);
 
   // AI & Voice Assistant states
   const [showAiApiKey, setShowAiApiKey] = useState(false);
@@ -363,6 +386,40 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  const handleCheckChequeReminders = async () => {
+    setIsCheckingChequeReminders(true);
+    setChequeReminderCheckMsg(null);
+    try {
+      const res = await apiFetch('/api/telegram/check-cheque-reminders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          botToken: formData.telegramBotToken,
+          chatId: formData.telegramChatId,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setChequeReminderCheckMsg({ success: true, text: data.message });
+        if (data.result?.sentCount > 0 && onReloadData) {
+          onReloadData();
+        }
+      } else {
+        setChequeReminderCheckMsg({
+          success: false,
+          text: data.error || 'خطا در بررسی سررسید چک‌ها',
+        });
+      }
+    } catch (err: any) {
+      setChequeReminderCheckMsg({
+        success: false,
+        text: err?.message || 'خطا در برقراری ارتباط با سرور',
+      });
+    } finally {
+      setIsCheckingChequeReminders(false);
+    }
+  };
+
 
   const storageStats = StorageService.getStorageStats();
   const totalRevenue = invoices.reduce((sum, inv) => sum + inv.finalTotal, 0);
@@ -407,11 +464,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const jsonStr = StorageService.exportAllData();
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
+    const fileName = `backup-${new Date().toISOString().slice(0, 10)}.json`;
     const link = document.createElement('a');
     link.href = url;
-    link.download = `backup-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = fileName;
     link.click();
     URL.revokeObjectURL(url);
+    StorageService.logActivity({
+      actionType: 'create_backup',
+      actionTitle: 'دریافت فایل پشتیبان سیستم (JSON)',
+      details: `فایل پشتیبان کامل سامانه با نام «${fileName}» دانلود شد.`,
+      category: 'system',
+      severity: 'warning',
+      entityType: 'backup',
+      entityLabel: fileName,
+      metadata: {
+        fileName,
+        sizeBytes: jsonStr.length,
+      },
+    });
   };
 
   // Import JSON backup file
@@ -526,36 +597,40 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 id="admin-access-badge"
                 className="w-[110px] h-[21px] inline-flex items-center justify-center text-center bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full"
               >
-                دسترسی مدیر
+                {canAccessFullAdmin ? 'دسترسی مدیر' : 'مدیریت کاربران'}
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              کنترل یکپارچه ماژول‌ها، فعال‌سازی ابزارها، قوانین صدور فاکتور و مدیریت پایگاه‌داده
+              {canAccessFullAdmin
+                ? 'کنترل یکپارچه ماژول‌ها، فعال‌سازی ابزارها، قوانین صدور فاکتور و مدیریت پایگاه‌داده'
+                : 'تعریف، ویرایش و مدیریت کاربران و سطوح دسترسی مجاز'}
             </p>
           </div>
         </div>
 
-        {/* Action Save Button */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            id="admin-save-btn"
-            onClick={() => handleSave()}
-            className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-300 cursor-pointer w-full sm:w-auto"
-          >
-            {saveSuccess ? (
-              <>
-                <Check className="w-4 h-4 text-emerald-200" />
-                <span>تغییرات ذخیره شد</span>
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" />
-                <span>ذخیره کلیه تنظیمات</span>
-              </>
-            )}
-          </button>
-        </div>
+        {/* Action Save Button (only for full admin settings) */}
+        {canAccessFullAdmin && (
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              id="admin-save-btn"
+              onClick={() => handleSave()}
+              className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-300 cursor-pointer w-full sm:w-auto"
+            >
+              {saveSuccess ? (
+                <>
+                  <Check className="w-4 h-4 text-emerald-200" />
+                  <span>تغییرات ذخیره شد</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>ذخیره کلیه تنظیمات</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       {importStatus && (
@@ -629,7 +704,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {/* Content Section Panel */}
         <div className="lg:col-span-9 space-y-6">
           {/* 1. OVERVIEW & COMPONENTS STATUS */}
-          {activeSection === 'overview' && (
+          {canAccessFullAdmin && activeSection === 'overview' && (
             <div className="space-y-6">
               {/* Component Health Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
@@ -784,14 +859,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </div>
                       <span className="text-xs font-bold text-slate-800">لاگ فعالیت سیستم</span>
                     </div>
-                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 shadow-xs"></span>
                   </div>
                   <div>
-                    <div className="text-xl font-black text-slate-900">
+                    <div className="text-xl font-black text-slate-900 tabular-nums">
                       {toPersianDigits(StorageService.getActivityLogs().length)} رویداد
                     </div>
                     <div className="text-[11px] text-slate-500 mt-1 truncate">
-                      ردگیری آنی کلیه اقدامات کاربران
+                      ردگیری آنی و ممیزی اقدامات کاربران
                     </div>
                   </div>
                   <button
@@ -800,7 +874,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     onClick={() => setActiveSection('logs')}
                     className="mt-3 text-xs text-indigo-700 font-bold hover:underline text-right flex items-center gap-1 cursor-pointer"
                   >
-                    <span>مشاهده جزئیات لاگ‌ها</span>
+                    <span>مشاهده نمای ویژوال و جدول فیلترپذیر</span>
                     <span>←</span>
                   </button>
                 </div>
@@ -849,7 +923,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )}
 
           {/* 1.5. INVOICES & ACCOUNTING CSV EXPORT (لیست فاکتورها و خروجی حسابداری) */}
-          {activeSection === 'invoices' && (
+          {canAccessFullAdmin && activeSection === 'invoices' && (
             <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
@@ -1089,12 +1163,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )}
 
           {/* ACTIVITY LOGS (لاگ فعالیت و رویدادها) */}
-          {activeSection === 'logs' && (
+          {canAccessFullAdmin && activeSection === 'logs' && (
             <ActivityLogsViewer currentUser={currentUser} users={users} />
           )}
 
           {/* WAREHOUSE SETTINGS & DEFINITIONS SECTION (تنظیمات و تعریف انبارها) */}
-          {activeSection === 'warehouses' && (
+          {canAccessFullAdmin && activeSection === 'warehouses' && (
             <WarehouseSettingsManager
               settings={formData}
               products={products}
@@ -1111,7 +1185,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )}
 
           {/* PRODUCT CATEGORIES MANAGEMENT SECTION (مدیریت پیشرفته و بهینه دسته‌بندی کالاها) */}
-          {activeSection === 'categories' && (
+          {canAccessFullAdmin && activeSection === 'categories' && (
             <CategoryManagerModal
               categories={StorageService.getCategories()}
               products={products}
@@ -1124,7 +1198,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )}
 
           {/* 2. MODULES CONTROL (کنترل ماژول‌های سیستم) */}
-          {activeSection === 'modules' && (
+          {canAccessFullAdmin && activeSection === 'modules' && (
             <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
               <div>
                 <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
@@ -1354,7 +1428,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )}
 
           {/* 3. INVOICE BUILDER RULES (قوانین و رفتار فاکتورساز) */}
-          {activeSection === 'invoice' && (
+          {canAccessFullAdmin && activeSection === 'invoice' && (
             <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
               <div>
                 <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
@@ -1663,7 +1737,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )}
 
           {/* 4. TEMPLATES & PRINT / PDF CUSTOMIZER (تنظیمات چاپ و خروجی PDF) */}
-          {activeSection === 'templates' && (
+          {canAccessFullAdmin && activeSection === 'templates' && (
             <div className="space-y-6">
               {/* Navigation Sub-Tabs */}
               <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-1.5 flex-wrap">
@@ -2230,7 +2304,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         )}
 
         {/* 5. STORE IDENTITY (مشخصات فروشگاه و برند) */}
-          {activeSection === 'store' && (
+          {canAccessFullAdmin && activeSection === 'store' && (
             <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
               <div>
                 <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
@@ -2581,7 +2655,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )}
 
           {/* TELEGRAM BOT SETTINGS (ارسال مستقیم فایل PDF به تلگرام) */}
-          {activeSection === 'telegram' && (
+          {canAccessFullAdmin && activeSection === 'telegram' && (
             <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
               {/* Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
@@ -3153,6 +3227,75 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     )}
                   </div>
 
+                  {/* 3.2 Cheque 7-day Advance Reminder (Receivable & Payable) */}
+                  <div className="p-4 rounded-2xl border-2 border-indigo-200 bg-indigo-50/70 shadow-xs space-y-3 sm:col-span-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <label className="flex items-start gap-2.5 cursor-pointer flex-1">
+                        <input
+                          type="checkbox"
+                          name="telegramAutoSendChequeReminder"
+                          checked={formData.telegramAutoSendChequeReminder !== false}
+                          onChange={(e) => setFormData(prev => ({ ...prev, telegramAutoSendChequeReminder: e.target.checked }))}
+                          className="w-4 h-4 mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-black text-indigo-950 text-xs sm:text-sm">
+                              🧾 یادآوری خودکار سررسید چک‌ها (یک هفته قبل)
+                            </span>
+                            <span className="text-[10px] bg-indigo-200 text-indigo-900 px-2 py-0.5 rounded-md font-black">
+                              دریافتی و پرداختی
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-indigo-900/90 leading-relaxed block mt-1">
+                            یک هفته (۷ روز) پیش از سررسید تمام چک‌های دریافتی (فروش و واریز مشتریان) و چک‌های پرداختی (خرید و پرداخت به تامین‌کنندگان)، پیام یادآوری خودکار با جزئیات مبلغ، شماره چک و طرف‌حساب به تلگرام ارسال می‌شود.
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+
+                    <div className="pt-2.5 border-t border-indigo-200/80 flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-950">
+                        <span>🔔 بررسی دستی سررسید چک‌ها:</span>
+                        <span className="text-[10px] text-indigo-800 font-normal">
+                          بررسی چک‌های دریافتی و پرداختی در ۷ روز آینده
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleCheckChequeReminders}
+                        disabled={isCheckingChequeReminders || !formData.telegramBotToken?.trim() || !formData.telegramChatId?.trim()}
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black text-xs flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                        title="بررسی فوری سررسید چک‌های ۷ روز آینده و ارسال یادآوری به تلگرام"
+                      >
+                        {isCheckingChequeReminders ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>در حال بررسی چک‌ها...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-3.5 h-3.5" />
+                            <span>بررسی فوری و ارسال یادآوری چک‌ها</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {chequeReminderCheckMsg && (
+                      <div
+                        className={`text-xs font-bold p-2.5 rounded-xl ${
+                          chequeReminderCheckMsg.success
+                            ? 'bg-emerald-100 text-emerald-950 border border-emerald-300'
+                            : 'bg-rose-100 text-rose-950 border border-rose-300'
+                        }`}
+                      >
+                        {chequeReminderCheckMsg.text}
+                      </div>
+                    )}
+                  </div>
+
                   {/* 4. Purchase Invoice */}
                   <label className="p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50/80 flex items-start justify-between gap-3 cursor-pointer transition-all shadow-xs">
                     <div className="space-y-1">
@@ -3620,7 +3763,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )}
 
           {/* 5.1 AI & TELEGRAM VOICE INBOUND ASSISTANT (هوش مصنوعی و ویس تلگرام) */}
-          {activeSection === 'ai-voice' && (
+          {canAccessFullAdmin && activeSection === 'ai-voice' && (
             <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
               {/* Header Title */}
               <div className="flex items-center justify-between pb-4 border-b border-slate-100 flex-wrap gap-3">
@@ -4002,7 +4145,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )}
 
           {/* 5.1. PUBLIC WEB INVOICE (نسخه تحت وب فاکتور برای مشتری) */}
-          {activeSection === 'weblink' && (
+          {canAccessFullAdmin && activeSection === 'weblink' && (
             <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
               <div className="flex items-center justify-between pb-4 border-b border-slate-100 flex-wrap gap-3">
                 <div className="flex items-center gap-3">
@@ -4189,7 +4332,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )}
 
           {/* 6. DATA CENTER & BACKUP (مرکز داده و پشتیبان‌گیری) */}
-          {activeSection === 'data' && (
+          {canAccessFullAdmin && activeSection === 'data' && (
             <BackupManager
               currentUser={currentUser}
               onDataRestored={onReloadData}
@@ -4198,7 +4341,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )}
 
           {/* 6. USERS & ACCESS CONTROL (کاربران و سطوح دسترسی) */}
-          {activeSection === 'users' && (
+          {canManageUsers && activeSection === 'users' && (
             <UsersManager
               users={users}
               currentUser={currentUser}
