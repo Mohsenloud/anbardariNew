@@ -129,6 +129,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     return canAccessFullAdmin ? 'overview' : 'users';
   });
 
+  const [adminCategories, setAdminCategories] = useState<string[]>(() => StorageService.getCategories());
+  useEffect(() => {
+    const unsub = StorageService.subscribe(() => {
+      setAdminCategories(StorageService.getCategories());
+    });
+    return () => unsub();
+  }, []);
+
   useEffect(() => {
     if (!canAccessFullAdmin && activeSection !== 'users') {
       if (canManageUsers) {
@@ -1187,7 +1195,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {/* PRODUCT CATEGORIES MANAGEMENT SECTION (مدیریت پیشرفته و بهینه دسته‌بندی کالاها) */}
           {canAccessFullAdmin && activeSection === 'categories' && (
             <CategoryManagerModal
-              categories={StorageService.getCategories()}
+              categories={adminCategories}
               products={products}
               currency={formData.currency || 'تومان'}
               currentUser={currentUser}

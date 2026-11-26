@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Product, ProductVariant, StockMovement, StoreSettings, AppUser, Invoice, ExitSlipData, InboundReceipt, InboundReceiptItem, DirectTransfer, Customer } from '../types';
 import { toPersianDigits, toEnglishDigits, getCurrentJalaliDate, getCurrentJalaliTime, formatPrice, formatNumber, formatThousands } from '../utils/jalali';
-import { StorageService, canUserViewBuyPrices } from '../utils/storage';
+import { StorageService, canUserViewBuyPrices, normalizeCategoryName, categoryKey } from '../utils/storage';
 import { exportProductsToExcel, exportExitSlipsListToExcel } from '../utils/excelHelper';
 import { ExcelImportModal } from './ExcelImportModal';
 import { ExitSlipModal } from './ExitSlipModal';
@@ -281,16 +281,35 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     };
   }, [isActionsDropdownOpen]);
 
-  // Combined & Deduped Categories list
+  // Combined, Normalized & Deduped Categories list (preserves custom sort order)
   const categories = useMemo(() => {
-    const fromStorage = categoriesList;
-    const fromProducts = products.map((p) => p.category?.trim()).filter(Boolean);
-    const set = new Set([...fromStorage, ...fromProducts]);
-    if (!set.has('عمومی')) {
-      return ['عمومی', ...Array.from(set)];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    const addIfNew = (raw?: string) => {
+      const clean = normalizeCategoryName(raw);
+      if (!clean) return;
+      const k = clean.toLowerCase();
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push(k === 'عمومی' ? 'عمومی' : clean);
+    };
+    categoriesList.forEach(addIfNew);
+    products.forEach((p) => addIfNew(p.category));
+    if (!seen.has('عمومی')) {
+      out.unshift('عمومی');
     }
-    return Array.from(set);
+    return out;
   }, [categoriesList, products]);
+
+  // O(P) precomputed product counts per normalized category key
+  const categoryCountsMap = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const p of products) {
+      const k = categoryKey(p.category || 'عمومی') || 'عمومی';
+      counts[k] = (counts[k] || 0) + 1;
+    }
+    return counts;
+  }, [products]);
 
   // Category CRUD Handlers
   const handleAddCategory = (name: string) => {
@@ -304,9 +323,10 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   const handleRenameCategory = (oldName: string, newName: string) => {
     const success = StorageService.renameCategory(oldName, newName, true);
     if (success) {
+      const cleanNew = normalizeCategoryName(newName);
       setCategoriesList(StorageService.getCategories());
-      if (selectedCategory === oldName) {
-        setSelectedCategory(newName);
+      if (categoryKey(selectedCategory) === categoryKey(oldName)) {
+        setSelectedCategory(cleanNew);
       }
       if (onImportProducts) {
         onImportProducts(StorageService.getProducts(), 'replace');
@@ -319,7 +339,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     const success = StorageService.deleteCategory(name, reassignTo);
     if (success) {
       setCategoriesList(StorageService.getCategories());
-      if (selectedCategory === name) {
+      if (categoryKey(selectedCategory) === categoryKey(name)) {
         setSelectedCategory('all');
       }
       if (onImportProducts) {
@@ -331,13 +351,17 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
   // Filtered products
   const filteredProducts = products.filter((p) => {
-    const matchesSearch = 
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.variants && p.variants.some((v) => v.name.toLowerCase().includes(searchQuery.toLowerCase()) || (v.code && v.code.toLowerCase().includes(searchQuery.toLowerCase())))) ||
-      (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase()));
+    const q = searchQuery.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      p.name.toLowerCase().includes(q) ||
+      p.code.toLowerCase().includes(q) ||
+      (p.variants && p.variants.some((v) => v.name.toLowerCase().includes(q) || (v.code && v.code.toLowerCase().includes(q)))) ||
+      (p.description && p.description.toLowerCase().includes(q));
 
-    const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
+    const matchesCategory =
+      selectedCategory === 'all' ||
+      categoryKey(p.category || 'عمومی') === categoryKey(selectedCategory);
 
     let matchesStock = true;
     if (stockStatusFilter === 'out_of_stock') {
@@ -515,7 +539,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       ? cleanVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
       : Math.max(0, Number(editingProduct.stock) || 0);
 
-    const catName = editingProduct.category?.trim() || 'عمومی';
+    const catNameRaw = normalizeCategoryName(editingProduct.category) || 'عمومی';
+    const catName = categories.find((c) => categoryKey(c) === catNameRaw.toLowerCase()) || catNameRaw;
     if (catName) {
       handleAddCategory(catName);
     }
@@ -1483,8 +1508,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                       </button>
 
                       {categories.map((cat) => {
-                        const catCount = products.filter((p) => p.category === cat).length;
-                        const isSelected = selectedCategory === cat;
+                        const catCount = categoryCountsMap[categoryKey(cat)] || 0;
+                        const isSelected = categoryKey(selectedCategory) === categoryKey(cat);
                         return (
                           <button
                             key={cat}
@@ -1499,7 +1524,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                             }`}
                           >
                             <span>{cat}</span>
-                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono tabular-nums font-bold ${
                               isSelected ? 'bg-indigo-700 text-white' : 'bg-slate-100 text-slate-600'
                             }`}>
                               {toPersianDigits(catCount)}
@@ -1560,8 +1585,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             </button>
 
             {categories.map((cat) => {
-              const catCount = products.filter((p) => p.category === cat).length;
-              const isSelected = selectedCategory === cat;
+              const catCount = categoryCountsMap[categoryKey(cat)] || 0;
+              const isSelected = categoryKey(selectedCategory) === categoryKey(cat);
               return (
                 <button
                   key={cat}
@@ -1574,7 +1599,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                   }`}
                 >
                   <span>{cat}</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono tabular-nums font-bold ${
                     isSelected ? 'bg-indigo-700 text-white' : 'bg-slate-100 text-slate-600'
                   }`}>
                     {toPersianDigits(catCount)}

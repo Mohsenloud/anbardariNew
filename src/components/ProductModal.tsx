@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Product, ProductVariant } from '../types';
 import { toPersianDigits, formatNumber } from '../utils/jalali';
+import { normalizeCategoryName, categoryKey, COMMON_PRODUCT_UNITS } from '../utils/storage';
 import { NumericInput } from './NumericInput';
 import {
   X,
@@ -57,14 +58,22 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const categoryContainerRef = useRef<HTMLDivElement>(null);
   const categoryInputRef = useRef<HTMLInputElement>(null);
 
-  // Safe unique categories
+  // Safe unique normalized categories (preserving order)
   const safeCategories = useMemo(() => {
-    const list = categories.map((c) => c.trim()).filter(Boolean);
-    const unique = Array.from(new Set(list));
-    if (!unique.includes('عمومی')) {
-      unique.unshift('عمومی');
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of categories) {
+      const clean = normalizeCategoryName(raw);
+      if (!clean) continue;
+      const k = clean.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(k === 'عمومی' ? 'عمومی' : clean);
     }
-    return unique;
+    if (!seen.has('عمومی')) {
+      out.unshift('عمومی');
+    }
+    return out;
   }, [categories]);
 
   // Filtered categories: shows ALL categories on click/open, and only filters when user actively types
@@ -72,12 +81,21 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     if (!isSearchingCategory) {
       return safeCategories;
     }
-    const query = categorySearchQuery.trim().toLowerCase();
+    const query = categoryKey(categorySearchQuery);
     if (!query) {
       return safeCategories;
     }
-    return safeCategories.filter((c) => c.toLowerCase().includes(query));
+    return safeCategories.filter((c) => categoryKey(c).includes(query));
   }, [safeCategories, isSearchingCategory, categorySearchQuery]);
+
+  // Unified unit options including any custom unit currently set on product
+  const unitOptions = useMemo(() => {
+    const currentUnit = normalizeCategoryName(product.unit);
+    if (currentUnit && !COMMON_PRODUCT_UNITS.includes(currentUnit)) {
+      return [currentUnit, ...COMMON_PRODUCT_UNITS];
+    }
+    return COMMON_PRODUCT_UNITS;
+  }, [product.unit]);
 
   // Click outside listener for category dropdown
   useEffect(() => {
@@ -336,7 +354,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                     <div className="max-h-48 overflow-y-auto p-1.5 space-y-0.5">
                       {filteredCategories.length > 0 ? (
                         filteredCategories.map((c) => {
-                          const isSelected = (product.category || '').trim() === c;
+                          const isSelected = categoryKey(product.category) === categoryKey(c);
                           return (
                             <button
                               key={c}
@@ -373,15 +391,15 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                       )}
 
                       {isSearchingCategory &&
-                        categorySearchQuery.trim() &&
+                        normalizeCategoryName(categorySearchQuery) &&
                         !safeCategories.some(
-                          (c) => c.toLowerCase() === categorySearchQuery.trim().toLowerCase()
+                          (c) => categoryKey(c) === categoryKey(categorySearchQuery)
                         ) && (
                           <button
                             type="button"
                             onMouseDown={(e) => {
                               e.preventDefault();
-                              onUpdateProduct({ ...product, category: categorySearchQuery.trim() });
+                              onUpdateProduct({ ...product, category: normalizeCategoryName(categorySearchQuery) });
                               setIsCategoryDropdownOpen(false);
                               setIsSearchingCategory(false);
                               setCategorySearchQuery('');
@@ -389,7 +407,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                             className="w-full text-right px-3 py-2 mt-1 text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl flex items-center gap-2 font-bold border border-emerald-200 transition-colors cursor-pointer"
                           >
                             <Plus className="w-4 h-4 text-emerald-600 shrink-0" />
-                            <span>ثبت دسته جدید: «{categorySearchQuery.trim()}»</span>
+                            <span>ثبت دسته جدید: «{normalizeCategoryName(categorySearchQuery)}»</span>
                           </button>
                         )}
                     </div>
@@ -405,21 +423,15 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                 <div className="relative">
                   <select
                     id="product-modal-unit"
-                    value={product.unit || 'عدد'}
+                    value={normalizeCategoryName(product.unit) || 'عدد'}
                     onChange={(e) => onUpdateProduct({ ...product, unit: e.target.value })}
                     className="w-full h-10 appearance-none bg-white border border-slate-300 rounded-xl pr-3.5 pl-9 text-xs sm:text-sm text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all cursor-pointer font-medium"
                   >
-                    <option value="عدد">عدد</option>
-                    <option value="دستگاه">دستگاه</option>
-                    <option value="بسته">بسته</option>
-                    <option value="کیلوگرم">کیلوگرم</option>
-                    <option value="متر">متر</option>
-                    <option value="کارتن">کارتن</option>
-                    <option value="جفت">جفت</option>
-                    <option value="لیتر">لیتر</option>
-                    <option value="شاخه">شاخه</option>
-                    <option value="قوطی">قوطی</option>
-                    <option value="تن">تن</option>
+                    {unitOptions.map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
                   </select>
                   <ChevronDown className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>

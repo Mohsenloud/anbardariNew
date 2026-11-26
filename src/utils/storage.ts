@@ -289,6 +289,40 @@ export function canUserViewBuyPrices(user?: AppUser | null): boolean {
   return Boolean(user.permissions?.canViewBuyPrices);
 }
 
+/**
+ * Normalizes Persian/Arabic characters (ي/ى -> ی, ك -> ک) and collapses whitespace
+ * so category names never splinter into visual duplicates.
+ */
+export function normalizeCategoryName(raw?: string | null): string {
+  return String(raw || '')
+    .replace(/[\u200B\uFEFF]/g, '')
+    .replace(/[يیى]/g, 'ی')
+    .replace(/[كک]/g, 'ک')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function categoryKey(raw?: string | null): string {
+  return normalizeCategoryName(raw).toLowerCase();
+}
+
+export const COMMON_PRODUCT_UNITS: string[] = [
+  'عدد',
+  'بسته',
+  'کارتن',
+  'کیلوگرم',
+  'متر',
+  'شاخه',
+  'کیسه',
+  'دستگاه',
+  'ست',
+  'لیتر',
+  'حلقه',
+  'جفت',
+  'قوطی',
+  'تن',
+];
+
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'مدیر کل (دسترسی نامحدود)',
   supervisor: 'سرپرست (همه فعالیت‌ها بجز پنل و مدیریت کاربران)',
@@ -1804,37 +1838,61 @@ export const StorageService = {
       'ذخیره‌سازی',
       'کابل و رابط',
     ];
+    const defaultKey = categoryKey('عمومی');
+
+    const dedupeNormalized = (list: string[], delSet: Set<string>): string[] => {
+      const seen = new Set<string>();
+      const out: string[] = [];
+      for (const rawItem of list) {
+        const clean = normalizeCategoryName(rawItem);
+        if (!clean) continue;
+        const key = clean.toLowerCase();
+        if (key !== defaultKey && delSet.has(key)) continue;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(key === defaultKey ? 'عمومی' : clean);
+      }
+      if (!seen.has(defaultKey)) {
+        out.unshift('عمومی');
+      }
+      return out;
+    };
 
     try {
       const tombstones = this.getDeletedTombstones();
-      const catDelSet = new Set((tombstones.categories || []).map((c) => c.toLowerCase()));
+      const catDelSet = new Set<string>(
+        (tombstones.categories || [])
+          .map((c: string) => categoryKey(c))
+          .filter((k: string) => Boolean(k) && k !== defaultKey)
+      );
 
       const products = this.getProducts();
       const productCategories: string[] = products
-        .map((p) => p.category?.trim())
+        .map((p) => normalizeCategoryName(p.category))
         .filter((c): c is string => Boolean(c) && !catDelSet.has(c.toLowerCase()));
       const raw = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
 
       if (!raw) {
-        const merged: string[] = Array.from(new Set<string>([...defaultCategories, ...productCategories]))
-          .filter((c) => !catDelSet.has(c.toLowerCase()));
+        const merged = dedupeNormalized([...defaultCategories, ...productCategories], catDelSet);
         localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(merged));
         return merged;
       }
 
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        const parsedClean: string[] = parsed
-          .map((c) => String(c).trim())
-          .filter((c) => Boolean(c) && !catDelSet.has(c.toLowerCase()));
-        const merged: string[] = Array.from(new Set<string>([...parsedClean, ...productCategories]));
-        if (merged.length !== parsed.length) {
+        const merged = dedupeNormalized(
+          [...parsed.map((c) => String(c || '')), ...productCategories],
+          catDelSet
+        );
+        const changed =
+          merged.length !== parsed.length ||
+          merged.some((item, idx) => item !== parsed[idx]);
+        if (changed) {
           localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(merged));
         }
         return merged;
       }
-      return Array.from(new Set<string>([...defaultCategories, ...productCategories]))
-        .filter((c) => !catDelSet.has(c.toLowerCase()));
+      return dedupeNormalized([...defaultCategories, ...productCategories], catDelSet);
     } catch {
       return defaultCategories;
     }
@@ -1843,14 +1901,14 @@ export const StorageService = {
   unrecordCategoryTombstone(categoryNames: string | string[]) {
     try {
       const names = (Array.isArray(categoryNames) ? categoryNames : [categoryNames])
-        .map((c) => String(c || '').trim())
+        .map((c) => normalizeCategoryName(c))
         .filter(Boolean);
       if (names.length === 0) return;
 
-      const lowerSet = new Set(names.map((n) => n.toLowerCase()));
+      const keySet = new Set(names.map((n) => n.toLowerCase()));
       const current = this.getDeletedTombstones();
       const before = current.categories || [];
-      const after = before.filter((c) => !lowerSet.has(String(c || '').trim().toLowerCase()));
+      const after = before.filter((c) => !keySet.has(categoryKey(c)));
       if (after.length !== before.length) {
         current.categories = after;
         localStorage.setItem(STORAGE_KEYS.TOMBSTONES, JSON.stringify(current));
@@ -1862,28 +1920,35 @@ export const StorageService = {
   },
 
   saveCategories(categories: string[], revivedNames?: string[]) {
-    if (revivedNames && revivedNames.length > 0) {
-      this.unrecordCategoryTombstone(revivedNames);
+    const normalizedRevived = (revivedNames || []).map((n) => normalizeCategoryName(n)).filter(Boolean);
+    if (normalizedRevived.length > 0) {
+      this.unrecordCategoryTombstone(normalizedRevived);
     }
+    const defaultKey = categoryKey('عمومی');
     const tombstones = this.getDeletedTombstones();
-    const catDelSet = new Set((tombstones.categories || []).map((c) => c.toLowerCase()));
+    const catDelSet = new Set(
+      (tombstones.categories || [])
+        .map((c) => categoryKey(c))
+        .filter((k) => Boolean(k) && k !== defaultKey)
+    );
     const seenLower = new Set<string>();
     const clean: string[] = [];
     for (const rawCat of categories) {
-      const trimmed = String(rawCat || '').trim();
+      const trimmed = normalizeCategoryName(rawCat);
       if (!trimmed) continue;
       const lower = trimmed.toLowerCase();
-      if (catDelSet.has(lower) || seenLower.has(lower)) continue;
+      if (lower !== defaultKey && catDelSet.has(lower)) continue;
+      if (seenLower.has(lower)) continue;
       seenLower.add(lower);
-      clean.push(trimmed);
+      clean.push(lower === defaultKey ? 'عمومی' : trimmed);
     }
-    if (!seenLower.has('عمومی')) {
+    if (!seenLower.has(defaultKey)) {
       clean.unshift('عمومی');
     }
     localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(clean));
     this.queuePushToServer({
       categories: clean,
-      ...(revivedNames && revivedNames.length > 0 ? { reviveCategories: revivedNames } : {}),
+      ...(normalizedRevived.length > 0 ? { reviveCategories: normalizedRevived } : {}),
     });
     this.notifyChange();
   },
@@ -1893,11 +1958,14 @@ export const StorageService = {
   },
 
   batchAssignCategory(productIds: string[], targetCategory: string): number {
-    const cleanCategory = targetCategory.trim() || 'عمومی';
+    const cleanCategory = normalizeCategoryName(targetCategory) || 'عمومی';
+    const targetKey = cleanCategory.toLowerCase();
     this.unrecordCategoryTombstone(cleanCategory);
     const currentCats = this.getCategories();
-    if (!currentCats.some((c) => c.toLowerCase() === cleanCategory.toLowerCase())) {
-      this.saveCategories([...currentCats, cleanCategory], [cleanCategory]);
+    const canonicalCategory =
+      currentCats.find((c) => categoryKey(c) === targetKey) || cleanCategory;
+    if (!currentCats.some((c) => categoryKey(c) === targetKey)) {
+      this.saveCategories([...currentCats, canonicalCategory], [canonicalCategory]);
     }
 
     const products = this.getProducts();
@@ -1910,15 +1978,26 @@ export const StorageService = {
     }).format(new Date());
 
     const updatedProducts = products.map((p) => {
-      if (idSet.has(p.id)) {
+      if (idSet.has(p.id) && categoryKey(p.category || 'عمومی') !== targetKey) {
         updatedCount++;
-        return { ...p, category: cleanCategory, updatedAt: nowShamsi };
+        return { ...p, category: canonicalCategory, updatedAt: nowShamsi };
       }
       return p;
     });
 
     if (updatedCount > 0) {
       this.saveProducts(updatedProducts);
+      this.logActivity({
+        category: 'warehouse',
+        actionType: 'edit_product',
+        actionTitle: 'تغییر گروهی دسته‌بندی کالاها',
+        details: `انتقال ${updatedCount} قلم کالا به دسته‌بندی «${canonicalCategory}»`,
+        severity: 'info',
+        entityType: 'category',
+        entityId: canonicalCategory,
+        entityLabel: canonicalCategory,
+        metadata: { targetCategory: canonicalCategory, updatedCount },
+      });
       this.notifyChange();
     }
     return updatedCount;
@@ -1931,14 +2010,14 @@ export const StorageService = {
     const idSet = new Set(productIds);
     if (idSet.size === 0) return 0;
 
-    if (updates.category) {
-      const cleanCat = updates.category.trim();
-      if (cleanCat) {
-        this.unrecordCategoryTombstone(cleanCat);
-        const currentCats = this.getCategories();
-        if (!currentCats.some((c) => c.toLowerCase() === cleanCat.toLowerCase())) {
-          this.saveCategories([...currentCats, cleanCat], [cleanCat]);
-        }
+    let canonicalCat: string | undefined;
+    if (updates.category !== undefined) {
+      const cleanCat = normalizeCategoryName(updates.category) || 'عمومی';
+      this.unrecordCategoryTombstone(cleanCat);
+      const currentCats = this.getCategories();
+      canonicalCat = currentCats.find((c) => categoryKey(c) === cleanCat.toLowerCase()) || cleanCat;
+      if (!currentCats.some((c) => categoryKey(c) === cleanCat.toLowerCase())) {
+        this.saveCategories([...currentCats, canonicalCat], [canonicalCat]);
       }
     }
 
@@ -1950,33 +2029,54 @@ export const StorageService = {
       day: '2-digit',
     }).format(new Date());
 
+    const cleanUnit = updates.unit !== undefined ? normalizeCategoryName(updates.unit) : undefined;
+    const cleanMinStock =
+      updates.minStockAlert !== undefined && !isNaN(updates.minStockAlert)
+        ? Math.max(0, Number(updates.minStockAlert))
+        : undefined;
+
     const updatedProducts = products.map((p) => {
       if (!idSet.has(p.id)) return p;
       updatedCount++;
       return {
         ...p,
-        ...(updates.category !== undefined ? { category: updates.category.trim() || 'عمومی' } : {}),
-        ...(updates.unit !== undefined && updates.unit.trim() ? { unit: updates.unit.trim() } : {}),
-        ...(updates.minStockAlert !== undefined && !isNaN(updates.minStockAlert)
-          ? { minStockAlert: Math.max(0, Number(updates.minStockAlert)) }
-          : {}),
+        ...(canonicalCat !== undefined ? { category: canonicalCat } : {}),
+        ...(cleanUnit ? { unit: cleanUnit } : {}),
+        ...(cleanMinStock !== undefined ? { minStockAlert: cleanMinStock } : {}),
         updatedAt: nowShamsi,
       };
     });
 
     if (updatedCount > 0) {
       this.saveProducts(updatedProducts);
+      const changedParts: string[] = [];
+      if (canonicalCat !== undefined) changedParts.push(`دسته: ${canonicalCat}`);
+      if (cleanUnit) changedParts.push(`واحد: ${cleanUnit}`);
+      if (cleanMinStock !== undefined) changedParts.push(`حد هشدار: ${cleanMinStock}`);
+      this.logActivity({
+        category: 'warehouse',
+        actionType: 'edit_product',
+        actionTitle: 'ویرایش گروهی مشخصات کالاها',
+        details: `بروزرسانی ${updatedCount} قلم کالا (${changedParts.join(' • ')})`,
+        severity: 'info',
+        entityType: 'product',
+        entityId: 'batch_update',
+        entityLabel: `${updatedCount} کالا`,
+        metadata: { updatedCount, category: canonicalCat, unit: cleanUnit, minStockAlert: cleanMinStock },
+      });
       this.notifyChange();
     }
     return updatedCount;
   },
 
   quickSaveProduct(productData: Partial<Product> & { name: string }): Product {
-    const cleanName = productData.name.trim();
-    const cleanCat = (productData.category || 'عمومی').trim() || 'عمومی';
-    this.unrecordCategoryTombstone(cleanCat);
+    const cleanName = productData.name.replace(/\s+/g, ' ').trim();
+    const cleanCatRaw = normalizeCategoryName(productData.category) || 'عمومی';
+    this.unrecordCategoryTombstone(cleanCatRaw);
     const currentCats = this.getCategories();
-    if (!currentCats.some((c) => c.toLowerCase() === cleanCat.toLowerCase())) {
+    const cleanCat =
+      currentCats.find((c) => categoryKey(c) === cleanCatRaw.toLowerCase()) || cleanCatRaw;
+    if (!currentCats.some((c) => categoryKey(c) === cleanCatRaw.toLowerCase())) {
       this.saveCategories([...currentCats, cleanCat], [cleanCat]);
     }
 
@@ -1992,63 +2092,168 @@ export const StorageService = {
       const idx = products.findIndex((p) => p.id === productData.id);
       if (idx !== -1) {
         const existing = products[idx];
-        const newBuy = Number(productData.buyPrice ?? existing.buyPrice) || 0;
-        const newSell = Number(productData.sellPrice ?? existing.sellPrice) || 0;
+        const hasVars = Boolean(existing.hasVariants && existing.variants && existing.variants.length > 0);
+        const oldBuy = Number(existing.buyPrice ?? existing.purchasePrice) || 0;
+        const oldSell = Number(existing.sellPrice) || 0;
+        const oldWholesale = Number(existing.wholesalePrice) || 0;
+
+        const newBuy =
+          productData.buyPrice !== undefined ? Math.max(0, Number(productData.buyPrice) || 0) : oldBuy;
+        const newSell =
+          productData.sellPrice !== undefined ? Math.max(0, Number(productData.sellPrice) || 0) : oldSell;
         const newWholesale =
           productData.wholesalePrice !== undefined
-            ? Number(productData.wholesalePrice) || 0
+            ? Math.max(0, Number(productData.wholesalePrice) || 0) || undefined
             : existing.wholesalePrice;
+
+        // Protect variant stock integrity: variant-based products derive stock from their variants
+        const newStock = hasVars
+          ? (existing.variants || []).reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
+          : Math.max(0, Number(productData.stock ?? existing.stock) || 0);
+
+        const prevHistory = Array.isArray(existing.priceHistory) ? [...existing.priceHistory] : [];
+        const priceChanged =
+          newBuy !== oldBuy || newSell !== oldSell || (newWholesale || 0) !== oldWholesale;
+        if (priceChanged && (newBuy > 0 || newSell > 0)) {
+          prevHistory.unshift({
+            id: `ph_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            date: nowShamsi,
+            buyPrice: newBuy,
+            sellPrice: newSell,
+            wholesalePrice: newWholesale,
+            note: 'ویرایش سریع در مرکز مدیریت کالا و دسته‌بندی',
+          });
+        }
 
         savedProduct = {
           ...existing,
           ...productData,
+          code: (productData.code !== undefined ? productData.code : existing.code || '').trim(),
           name: cleanName,
           category: cleanCat,
-          unit: (productData.unit || existing.unit || 'عدد').trim(),
+          unit: normalizeCategoryName(productData.unit || existing.unit || 'عدد') || 'عدد',
           buyPrice: newBuy,
           purchasePrice: newBuy,
           sellPrice: newSell,
           wholesalePrice: newWholesale,
-          stock: Number(productData.stock ?? existing.stock) || 0,
-          minStockAlert: Number(productData.minStockAlert ?? existing.minStockAlert) || 0,
+          stock: newStock,
+          minStockAlert: Math.max(0, Number(productData.minStockAlert ?? existing.minStockAlert) || 0),
+          priceHistory: prevHistory.slice(0, 30),
           updatedAt: nowShamsi,
         };
+
         const updatedList = [...products];
         updatedList[idx] = savedProduct;
         this.saveProducts(updatedList);
+
+        // Log kardex stock movement if stock changed for non-variant product
+        if (!hasVars && Number(existing.stock) !== newStock) {
+          const diff = newStock - (Number(existing.stock) || 0);
+          const movements = this.getMovements();
+          const adjustMov: StockMovement = {
+            id: `mov_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            productId: savedProduct.id,
+            productName: savedProduct.name,
+            type: 'adjustment',
+            quantity: diff,
+            remainingStock: newStock,
+            date: nowShamsi,
+            note: `اصلاح سریع موجودی (قبلی: ${existing.stock}، جدید: ${newStock})`,
+          };
+          this.saveMovements([adjustMov, ...movements]);
+        }
+
+        this.logActivity({
+          category: 'warehouse',
+          actionType: 'edit_product',
+          actionTitle: 'ویرایش سریع مشخصات کالا',
+          details: `ویرایش کالای «${savedProduct.name}» (دسته: ${savedProduct.category} • موجودی: ${savedProduct.stock} ${savedProduct.unit} • فروش: ${savedProduct.sellPrice.toLocaleString('fa-IR')})`,
+          severity: 'warning',
+          entityType: 'product',
+          entityId: savedProduct.id,
+          entityLabel: `${savedProduct.name} (${savedProduct.code || ''})`,
+        });
+
         this.notifyChange();
-        return savedProduct;
+        return this.getProducts().find((p) => p.id === savedProduct.id) || savedProduct;
       }
     }
+
+    const initBuy = Math.max(0, Number(productData.buyPrice) || 0);
+    const initSell = Math.max(0, Number(productData.sellPrice) || 0);
+    const initWholesale = productData.wholesalePrice ? Math.max(0, Number(productData.wholesalePrice)) : undefined;
+    const initStock = Math.max(0, Number(productData.stock) || 0);
 
     savedProduct = {
       id: productData.id || `prod_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       code: (productData.code || '').trim(),
       name: cleanName,
       category: cleanCat,
-      unit: (productData.unit || 'عدد').trim(),
-      buyPrice: Number(productData.buyPrice) || 0,
-      purchasePrice: Number(productData.buyPrice) || 0,
-      sellPrice: Number(productData.sellPrice) || 0,
-      wholesalePrice: productData.wholesalePrice ? Number(productData.wholesalePrice) : undefined,
-      stock: Number(productData.stock) || 0,
-      minStockAlert: Number(productData.minStockAlert ?? 5) || 0,
+      unit: normalizeCategoryName(productData.unit || 'عدد') || 'عدد',
+      buyPrice: initBuy,
+      purchasePrice: initBuy,
+      sellPrice: initSell,
+      wholesalePrice: initWholesale,
+      stock: initStock,
+      minStockAlert: Math.max(0, Number(productData.minStockAlert ?? 5) || 0),
       description: productData.description || '',
+      priceHistory:
+        initBuy > 0 || initSell > 0
+          ? [
+              {
+                id: `ph_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                date: nowShamsi,
+                buyPrice: initBuy,
+                sellPrice: initSell,
+                wholesalePrice: initWholesale,
+                note: 'ثبت اولیه در تعریف سریع کالا',
+              },
+            ]
+          : [],
       updatedAt: nowShamsi,
     };
 
     const updatedList = [savedProduct, ...products];
     this.saveProducts(updatedList);
+
+    if (initStock > 0) {
+      const movements = this.getMovements();
+      const initialMov: StockMovement = {
+        id: `mov_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        productId: savedProduct.id,
+        productName: savedProduct.name,
+        type: 'purchase',
+        quantity: initStock,
+        remainingStock: initStock,
+        date: nowShamsi,
+        note: 'موجودی اولیه هنگام تعریف سریع کالا',
+      };
+      this.saveMovements([initialMov, ...movements]);
+    }
+
+    const finalSaved = this.getProducts().find((p) => p.id === savedProduct.id) || savedProduct;
+    this.logActivity({
+      category: 'warehouse',
+      actionType: 'create_product',
+      actionTitle: 'تعریف سریع کالای جدید',
+      details: `ثبت کالای جدید «${finalSaved.name}» (کد: ${finalSaved.code || '-'} • دسته: ${finalSaved.category} • موجودی: ${finalSaved.stock} ${finalSaved.unit})`,
+      severity: 'info',
+      entityType: 'product',
+      entityId: finalSaved.id,
+      entityLabel: `${finalSaved.name} (${finalSaved.code || ''})`,
+    });
+
     this.notifyChange();
-    return this.getProducts().find((p) => p.id === savedProduct.id) || savedProduct;
+    return finalSaved;
   },
 
   addCategory(name: string): boolean {
-    const clean = name.trim();
+    const clean = normalizeCategoryName(name);
     if (!clean) return false;
+    const key = clean.toLowerCase();
     this.unrecordCategoryTombstone(clean);
     const current = this.getCategories();
-    if (current.some((c) => c.toLowerCase() === clean.toLowerCase())) return false;
+    if (current.some((c) => categoryKey(c) === key)) return false;
     this.saveCategories([...current, clean], [clean]);
     this.logActivity({
       category: 'warehouse',
@@ -2064,18 +2269,19 @@ export const StorageService = {
   },
 
   renameCategory(oldName: string, newName: string, updateProducts = true): boolean {
-    const cleanOld = oldName.trim();
-    const cleanNew = newName.trim();
-    if (!cleanNew || cleanOld === cleanNew) return false;
+    const cleanOld = normalizeCategoryName(oldName);
+    const cleanNew = normalizeCategoryName(newName);
+    const oldKey = cleanOld.toLowerCase();
+    const newKey = cleanNew.toLowerCase();
+    const defaultKey = categoryKey('عمومی');
+    if (!cleanOld || !cleanNew || oldKey === defaultKey || cleanOld === cleanNew) return false;
 
     // Unrecord newName from tombstones in case it was deleted in the past
     this.unrecordCategoryTombstone(cleanNew);
 
     const current = this.getCategories();
-    const updatedCategories = current.map((c) =>
-      c.trim().toLowerCase() === cleanOld.toLowerCase() ? cleanNew : c
-    );
-    if (cleanOld.toLowerCase() !== cleanNew.toLowerCase()) {
+    const updatedCategories = current.map((c) => (categoryKey(c) === oldKey ? cleanNew : c));
+    if (oldKey !== newKey) {
       this.recordTombstone('categories', cleanOld);
     }
     this.saveCategories(updatedCategories, [cleanNew]);
@@ -2084,11 +2290,16 @@ export const StorageService = {
     if (updateProducts) {
       const products = this.getProducts();
       let changed = false;
+      const nowShamsi = new Intl.DateTimeFormat('fa-IR-u-nu-latn', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
       const updatedProducts = products.map((p) => {
-        if ((p.category || '').trim().toLowerCase() === cleanOld.toLowerCase()) {
+        if (categoryKey(p.category) === oldKey) {
           changed = true;
           updatedCount++;
-          return { ...p, category: cleanNew };
+          return { ...p, category: cleanNew, updatedAt: nowShamsi };
         }
         return p;
       });
@@ -2116,28 +2327,41 @@ export const StorageService = {
   },
 
   deleteCategory(categoryName: string, reassignTo = 'عمومی'): boolean {
-    const clean = categoryName.trim();
-    if (!clean || clean === 'عمومی') return false;
-    const cleanTarget = (reassignTo || 'عمومی').trim() || 'عمومی';
+    const clean = normalizeCategoryName(categoryName);
+    const cleanKey = clean.toLowerCase();
+    const defaultKey = categoryKey('عمومی');
+    if (!clean || cleanKey === defaultKey) return false;
 
-    this.unrecordCategoryTombstone(cleanTarget);
+    const cleanTargetRaw = normalizeCategoryName(reassignTo) || 'عمومی';
+    const targetKey = cleanTargetRaw.toLowerCase();
+    if (targetKey === cleanKey) return false;
+
+    this.unrecordCategoryTombstone(cleanTargetRaw);
     this.recordTombstone('categories', clean);
 
     const current = this.getCategories();
-    const filtered = current.filter((c) => c.trim().toLowerCase() !== clean.toLowerCase());
-    if (!filtered.some((c) => c.toLowerCase() === cleanTarget.toLowerCase())) {
-      filtered.push(cleanTarget);
+    const canonicalTarget =
+      current.find((c) => categoryKey(c) === targetKey) ||
+      (targetKey === defaultKey ? 'عمومی' : cleanTargetRaw);
+    const filtered = current.filter((c) => categoryKey(c) !== cleanKey);
+    if (!filtered.some((c) => categoryKey(c) === targetKey)) {
+      filtered.push(canonicalTarget);
     }
-    this.saveCategories(filtered, [cleanTarget]);
+    this.saveCategories(filtered, [canonicalTarget]);
 
     const products = this.getProducts();
     let changed = false;
     let movedProductsCount = 0;
+    const nowShamsi = new Intl.DateTimeFormat('fa-IR-u-nu-latn', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
     const updatedProducts = products.map((p) => {
-      if ((p.category || '').trim().toLowerCase() === clean.toLowerCase()) {
+      if (categoryKey(p.category) === cleanKey) {
         changed = true;
         movedProductsCount++;
-        return { ...p, category: cleanTarget };
+        return { ...p, category: canonicalTarget, updatedAt: nowShamsi };
       }
       return p;
     });
@@ -2148,14 +2372,14 @@ export const StorageService = {
       category: 'warehouse',
       actionType: 'delete_category',
       actionTitle: 'حذف دسته‌بندی کالا',
-      details: `حذف دسته‌بندی «${clean}» و انتقال ${movedProductsCount} کالا به دسته «${cleanTarget}»`,
+      details: `حذف دسته‌بندی «${clean}» و انتقال ${movedProductsCount} کالا به دسته «${canonicalTarget}»`,
       severity: 'critical',
       entityType: 'category',
       entityId: clean,
       entityLabel: clean,
       metadata: {
         deletedCategory: clean,
-        reassignedTo: cleanTarget,
+        reassignedTo: canonicalTarget,
         movedProductsCount,
       },
     });
@@ -2164,20 +2388,21 @@ export const StorageService = {
   },
 
   cleanupEmptyCategories(): { removedCount: number; removedCategories: string[] } {
+    const defaultKey = categoryKey('عمومی');
     const products = this.getProducts();
-    const usedCatLower = new Set(
-      products.map((p) => (p.category || 'عمومی').trim().toLowerCase()).filter(Boolean)
+    const usedCatKeys = new Set(
+      products.map((p) => categoryKey(p.category || 'عمومی')).filter(Boolean)
     );
-    usedCatLower.add('عمومی');
+    usedCatKeys.add(defaultKey);
 
     const current = this.getCategories();
     const removedCategories: string[] = [];
     const remaining: string[] = [];
 
     current.forEach((cat) => {
-      const trimmed = cat.trim();
+      const trimmed = normalizeCategoryName(cat);
       if (!trimmed) return;
-      if (usedCatLower.has(trimmed.toLowerCase())) {
+      if (usedCatKeys.has(trimmed.toLowerCase())) {
         remaining.push(trimmed);
       } else {
         removedCategories.push(trimmed);
@@ -2187,40 +2412,72 @@ export const StorageService = {
     if (removedCategories.length > 0) {
       this.recordTombstone('categories', removedCategories);
       this.saveCategories(remaining);
+      this.logActivity({
+        category: 'warehouse',
+        actionType: 'delete_category',
+        actionTitle: 'پاکسازی دسته‌بندی‌های خالی',
+        details: `حذف ${removedCategories.length} دسته‌بندی بدون کالا: ${removedCategories.join('، ')}`,
+        severity: 'warning',
+        entityType: 'category',
+        entityId: 'cleanup_empty',
+        entityLabel: `${removedCategories.length} دسته‌بندی خالی`,
+        metadata: { removedCategories },
+      });
       this.notifyChange();
     }
     return { removedCount: removedCategories.length, removedCategories };
   },
 
   normalizeAndDeduplicateCategories(): { fixedProductsCount: number; mergedCategoriesCount: number } {
+    const defaultKey = categoryKey('عمومی');
     const products = this.getProducts();
-    const currentCats = this.getCategories();
+    const rawStored = (() => {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(STORAGE_KEYS.CATEGORIES) || '[]');
+        return Array.isArray(parsed) ? parsed.map((x) => String(x || '')) : this.getCategories();
+      } catch {
+        return this.getCategories();
+      }
+    })();
+
     const canonicalMap = new Map<string, string>();
-    canonicalMap.set('عمومی', 'عمومی');
-
     let mergedCategoriesCount = 0;
-    const cleanCats: string[] = ['عمومی'];
+    const cleanCats: string[] = [];
+    const removedRawNames: string[] = [];
 
-    currentCats.forEach((c) => {
-      const norm = String(c || '').replace(/\s+/g, ' ').trim();
+    rawStored.forEach((raw) => {
+      const norm = normalizeCategoryName(raw);
       if (!norm) return;
-      const lower = norm.toLowerCase();
-      if (!canonicalMap.has(lower)) {
-        canonicalMap.set(lower, norm);
-        cleanCats.push(norm);
-      } else if (norm !== c) {
+      const key = norm.toLowerCase();
+      const canonicalVal = key === defaultKey ? 'عمومی' : norm;
+      if (!canonicalMap.has(key)) {
+        canonicalMap.set(key, canonicalVal);
+        cleanCats.push(canonicalVal);
+        if (raw !== canonicalVal) {
+          mergedCategoriesCount++;
+          removedRawNames.push(raw);
+        }
+      } else {
         mergedCategoriesCount++;
+        if (raw !== canonicalMap.get(key)) {
+          removedRawNames.push(raw);
+        }
       }
     });
 
+    if (!canonicalMap.has(defaultKey)) {
+      canonicalMap.set(defaultKey, 'عمومی');
+      cleanCats.unshift('عمومی');
+    }
+
     let fixedProductsCount = 0;
     const updatedProducts = products.map((p) => {
-      const rawCat = String(p.category || '').replace(/\s+/g, ' ').trim() || 'عمومی';
-      const lower = rawCat.toLowerCase();
-      let canonical = canonicalMap.get(lower);
+      const norm = normalizeCategoryName(p.category) || 'عمومی';
+      const key = norm.toLowerCase();
+      let canonical = canonicalMap.get(key);
       if (!canonical) {
-        canonical = rawCat;
-        canonicalMap.set(lower, canonical);
+        canonical = key === defaultKey ? 'عمومی' : norm;
+        canonicalMap.set(key, canonical);
         cleanCats.push(canonical);
       }
       if (p.category !== canonical) {
@@ -2233,7 +2490,30 @@ export const StorageService = {
     if (fixedProductsCount > 0) {
       this.saveProducts(updatedProducts);
     }
+    if (removedRawNames.length > 0) {
+      const staleToTombstone = removedRawNames.filter(
+        (r) => !canonicalMap.has(r.trim().toLowerCase()) && categoryKey(r) !== defaultKey
+      );
+      if (staleToTombstone.length > 0) {
+        this.recordTombstone('categories', staleToTombstone);
+      }
+    }
     this.saveCategories(cleanCats, cleanCats);
+
+    if (fixedProductsCount > 0 || mergedCategoriesCount > 0) {
+      this.logActivity({
+        category: 'warehouse',
+        actionType: 'edit_category',
+        actionTitle: 'یکپارچه‌سازی و استانداردسازی دسته‌بندی‌ها',
+        details: `استانداردسازی ${fixedProductsCount} کالا و ادغام ${mergedCategoriesCount} عنوان دسته‌بندی تکراری یا غیراستاندارد`,
+        severity: 'info',
+        entityType: 'category',
+        entityId: 'normalize_categories',
+        entityLabel: 'یکپارچه‌سازی دسته‌بندی‌ها',
+        metadata: { fixedProductsCount, mergedCategoriesCount },
+      });
+    }
+
     this.notifyChange();
     return { fixedProductsCount, mergedCategoriesCount };
   },
@@ -2247,10 +2527,12 @@ export const StorageService = {
     targetPrice: 'sellPrice' | 'buyPrice' | 'wholesalePrice' | 'both',
     valueChange: number,
     roundTo: number = 1000,
-    mode: 'percent' | 'fixed_amount' | 'margin_from_buy' = 'percent'
+    mode: 'percent' | 'fixed_amount' | 'margin_from_buy' = 'percent',
+    includeVariants: boolean = true
   ): { count: number; changedCount: number } {
     const products = this.getProducts();
     const isAll = categoryName === '__ALL__';
+    const targetCatKey = categoryKey(categoryName);
     const factor = 1 + valueChange / 100;
     let changedCount = 0;
     let categoryProductCount = 0;
@@ -2267,8 +2549,8 @@ export const StorageService = {
     }).format(new Date());
 
     const updated = products.map((p) => {
-      const pCat = (p.category || 'عمومی').trim();
-      if (isAll || pCat === categoryName) {
+      const pCatKey = categoryKey(p.category || 'عمومی');
+      if (isAll || pCatKey === targetCatKey) {
         categoryProductCount++;
         const oldSell = Number(p.sellPrice) || 0;
         const oldBuy = Number(p.buyPrice ?? p.purchasePrice) || 0;
@@ -2317,7 +2599,36 @@ export const StorageService = {
           }
         }
 
-        if (newSell !== oldSell || newBuy !== oldBuy || newWholesale !== oldWholesale) {
+        // Also update variant custom prices if enabled and present
+        let variantsChanged = false;
+        let nextVariants = p.variants;
+        if (includeVariants && p.hasVariants && Array.isArray(p.variants) && p.variants.length > 0 && mode !== 'margin_from_buy') {
+          nextVariants = p.variants.map((v) => {
+            let vSell = v.sellPrice;
+            let vWhole = v.wholesalePrice;
+            if ((targetPrice === 'sellPrice' || targetPrice === 'both') && typeof v.sellPrice === 'number' && v.sellPrice > 0) {
+              const computed = mode === 'fixed_amount'
+                ? Math.max(0, round(v.sellPrice + valueChange, roundTo))
+                : Math.max(0, round(v.sellPrice * factor, roundTo));
+              if (computed !== v.sellPrice) {
+                vSell = computed;
+                variantsChanged = true;
+              }
+            }
+            if (targetPrice === 'wholesalePrice' && typeof v.wholesalePrice === 'number' && v.wholesalePrice > 0) {
+              const computed = mode === 'fixed_amount'
+                ? Math.max(0, round(v.wholesalePrice + valueChange, roundTo))
+                : Math.max(0, round(v.wholesalePrice * factor, roundTo));
+              if (computed !== v.wholesalePrice) {
+                vWhole = computed;
+                variantsChanged = true;
+              }
+            }
+            return { ...v, sellPrice: vSell, wholesalePrice: vWhole };
+          });
+        }
+
+        if (newSell !== oldSell || newBuy !== oldBuy || newWholesale !== oldWholesale || variantsChanged) {
           changedCount++;
           const historyEntry = {
             id: `ph_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -2340,6 +2651,7 @@ export const StorageService = {
             buyPrice: newBuy,
             purchasePrice: newBuy,
             ...(newWholesale > 0 || p.wholesalePrice !== undefined ? { wholesalePrice: newWholesale } : {}),
+            ...(variantsChanged ? { variants: nextVariants } : {}),
             updatedAt: nowShamsi,
             priceHistory: [historyEntry, ...prevHistory].slice(0, 30),
           };
@@ -2350,6 +2662,28 @@ export const StorageService = {
 
     if (changedCount > 0) {
       this.saveProducts(updated);
+      const catLabel = isAll ? 'همه دسته‌بندی‌ها' : `دسته «${normalizeCategoryName(categoryName)}»`;
+      const targetLabel =
+        mode === 'margin_from_buy'
+          ? `فروش بر اساس ${valueChange}٪ سود روی خرید`
+          : targetPrice === 'sellPrice'
+          ? 'قیمت فروش'
+          : targetPrice === 'buyPrice'
+          ? 'قیمت خرید'
+          : targetPrice === 'wholesalePrice'
+          ? 'قیمت همکار'
+          : 'قیمت خرید و فروش';
+      this.logActivity({
+        category: 'warehouse',
+        actionType: 'edit_product',
+        actionTitle: 'تعدیل گروهی قیمت کالاها',
+        details: `تعدیل ${targetLabel} برای ${changedCount} از ${categoryProductCount} کالا در ${catLabel} (${mode === 'fixed_amount' ? `${valueChange > 0 ? '+' : ''}${valueChange}` : `${valueChange > 0 ? '+' : ''}${valueChange}%`})`,
+        severity: 'warning',
+        entityType: 'category',
+        entityId: isAll ? '__ALL__' : normalizeCategoryName(categoryName),
+        entityLabel: catLabel,
+        metadata: { categoryName, targetPrice, valueChange, roundTo, mode, changedCount, count: categoryProductCount },
+      });
       this.notifyChange();
     }
     return { count: categoryProductCount, changedCount };

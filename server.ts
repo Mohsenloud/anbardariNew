@@ -655,7 +655,15 @@ function prepareRestoredDatabaseState(currentDb: any, targetData: any, selectedM
   const activeVehicleIds = new Set<string>((base.savedVehicles || []).map((x: any) => String(x?.id || '')).filter(Boolean));
   const activeTxnIds = new Set<string>((base.customerTransactions || []).map((x: any) => String(x?.id || '')).filter(Boolean));
   const activeUserIds = new Set<string>((base.users || []).map((x: any) => String(x?.id || '')).filter(Boolean));
-  const activeCats = new Set<string>((base.categories || []).map((c: string) => String(c).trim().toLowerCase()));
+  const normCatKey = (c: any) =>
+    String(c || '')
+      .replace(/[\u200B\uFEFF]/g, '')
+      .replace(/[يیى]/g, 'ی')
+      .replace(/[كک]/g, 'ک')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  const activeCats = new Set<string>((base.categories || []).map((c: string) => normCatKey(c)).filter(Boolean));
 
   const rawTombstones = isSelective ? (currentDb?.tombstones || {}) : (targetData?.tombstones || {});
   const filterTomb = (arr: any, activeSet: Set<string>) =>
@@ -672,7 +680,10 @@ function prepareRestoredDatabaseState(currentDb: any, targetData: any, selectedM
     customerTransactions: filterTomb(rawTombstones.customerTransactions, activeTxnIds),
     users: filterTomb(rawTombstones.users, activeUserIds),
     categories: Array.isArray(rawTombstones.categories)
-      ? rawTombstones.categories.filter((c: string) => !activeCats.has(String(c).trim().toLowerCase()))
+      ? rawTombstones.categories.filter((c: string) => {
+          const k = normCatKey(c);
+          return Boolean(k) && k !== 'عمومی' && !activeCats.has(k);
+        })
       : [],
   };
 
@@ -2876,9 +2887,18 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         throw err;
       }
 
+      const normalizeServerCategory = (val: any) =>
+        String(val || '')
+          .replace(/[\u200B\uFEFF]/g, '')
+          .replace(/[يیى]/g, 'ی')
+          .replace(/[كک]/g, 'ک')
+          .replace(/\s+/g, ' ')
+          .trim();
+      const normalizeServerCategoryKey = (val: any) => normalizeServerCategory(val).toLowerCase();
+
       const revivedCatSet = new Set<string>(
         canManageInv && Array.isArray(incomingData.reviveCategories)
-          ? incomingData.reviveCategories.map((c: string) => String(c || '').trim().toLowerCase()).filter(Boolean)
+          ? incomingData.reviveCategories.map((c: string) => normalizeServerCategoryKey(c)).filter(Boolean)
           : []
       );
 
@@ -2893,7 +2913,10 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         customerTransactions: mergeTombstoneList('customerTransactions'),
         users: callerCanManageUsers ? mergeTombstoneList('users') : (Array.isArray(prevTombstones.users) ? prevTombstones.users.map(String) : []),
         categories: canManageInv
-          ? mergeTombstoneList('categories').filter((c: string) => !revivedCatSet.has(c.trim().toLowerCase()))
+          ? mergeTombstoneList('categories').filter((c: string) => {
+              const k = normalizeServerCategoryKey(c);
+              return Boolean(k) && k !== 'عمومی' && !revivedCatSet.has(k);
+            })
           : (Array.isArray(prevTombstones.categories) ? prevTombstones.categories.map(String) : []),
       };
 
@@ -2906,7 +2929,9 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
       const vehicleDelSet = new Set<string>(combinedTombstones.savedVehicles);
       const transactionDelSet = new Set<string>(combinedTombstones.customerTransactions || []);
       const userDelSet = new Set<string>(combinedTombstones.users);
-      const categoryDelSet = new Set<string>(combinedTombstones.categories.map((c: string) => c.trim().toLowerCase()));
+      const categoryDelSet = new Set<string>(
+        combinedTombstones.categories.map((c: string) => normalizeServerCategoryKey(c)).filter((k: string) => Boolean(k) && k !== 'عمومی')
+      );
 
       const resolveCollection = (currentArr: any[], incomingArr: any, delSet: Set<string>): any[] => {
         if (!Array.isArray(incomingArr)) {
@@ -3144,10 +3169,23 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         }
       }
 
-      let finalCategories = canManageInv && Array.isArray(incomingData.categories)
+      const rawCategories = canManageInv && Array.isArray(incomingData.categories)
         ? incomingData.categories
         : (currentDb.categories || []);
-      finalCategories = finalCategories.filter((c: string) => !categoryDelSet.has(String(c).trim().toLowerCase()));
+      const seenCatKeys = new Set<string>();
+      const finalCategories: string[] = [];
+      for (const rawCat of rawCategories) {
+        const clean = normalizeServerCategory(rawCat);
+        if (!clean) continue;
+        const key = clean.toLowerCase();
+        if (key !== 'عمومی' && categoryDelSet.has(key)) continue;
+        if (seenCatKeys.has(key)) continue;
+        seenCatKeys.add(key);
+        finalCategories.push(key === 'عمومی' ? 'عمومی' : clean);
+      }
+      if (!seenCatKeys.has('عمومی')) {
+        finalCategories.unshift('عمومی');
+      }
 
       // Also clean up exitSlipLogs so deleted invoices never leave ghost slips
       const currentExitLogs = canWriteWarehouseDocs
@@ -3533,10 +3571,31 @@ app.post('/api/db/delete-item', dbWriteLimiter, async (req, res) => {
           if (!tombstones.users.includes(cleanId)) tombstones.users.push(cleanId);
           updatedDb.users = (currentDb.users || []).filter((u: any) => u.id !== cleanId);
           break;
-        case 'category':
-          if (!tombstones.categories.includes(cleanId)) tombstones.categories.push(cleanId);
-          updatedDb.categories = (currentDb.categories || []).filter((c: string) => c.trim().toLowerCase() !== cleanId.toLowerCase());
+        case 'category': {
+          const cleanCat = cleanId
+            .replace(/[\u200B\uFEFF]/g, '')
+            .replace(/[يیى]/g, 'ی')
+            .replace(/[كک]/g, 'ک')
+            .replace(/\s+/g, ' ')
+            .trim();
+          const cleanCatKey = cleanCat.toLowerCase();
+          if (cleanCatKey && cleanCatKey !== 'عمومی') {
+            if (!tombstones.categories.some((c: string) => c.trim().toLowerCase() === cleanCatKey)) {
+              tombstones.categories.push(cleanCat);
+            }
+            updatedDb.categories = (currentDb.categories || []).filter(
+              (c: string) =>
+                String(c || '')
+                  .replace(/[\u200B\uFEFF]/g, '')
+                  .replace(/[يیى]/g, 'ی')
+                  .replace(/[كک]/g, 'ک')
+                  .replace(/\s+/g, ' ')
+                  .trim()
+                  .toLowerCase() !== cleanCatKey
+            );
+          }
           break;
+        }
       }
 
       updatedDb.tombstones = tombstones;
