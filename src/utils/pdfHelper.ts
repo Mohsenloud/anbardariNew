@@ -737,6 +737,14 @@ function setupClonedDocumentForPdfCapture(
       text-align: right !important;
       font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
     }
+
+    .pdf-hide-on-capture,
+    .no-pdf {
+      display: none !important;
+    }
+    .pdf-show-on-capture {
+      display: block !important;
+    }
   `;
   clonedDoc.head.appendChild(pdfFixStyle);
 

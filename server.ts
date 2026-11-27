@@ -79,7 +79,7 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Credentials', 'true');
   }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Invoice-Pin, X-Invoice-Refresh');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
   }
@@ -124,6 +124,35 @@ const authLoginLimiter = rateLimit({
   message: {
     success: false,
     message: 'تعداد تلاش‌های ورود بیش از حد مجاز است. لطفاً یک دقیقه صبر نمایید.',
+  },
+});
+
+// 4. Dedicated rate limiters for public customer web invoice links & PIN verification
+const publicInvoiceFetchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: false,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: 'تعداد درخواست‌های مشاهده لینک بیش از حد مجاز است. لطفاً یک دقیقه صبر نمایید.',
+  },
+});
+
+const publicInvoicePinLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 15, // max 15 PIN verification attempts per IP+token in 5 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: false,
+  keyGenerator: (req) => `${req.ip || 'unknown'}:${String(req.params?.token || '')}`,
+  message: {
+    success: false,
+    code: 'PIN_RATE_LIMITED',
+    pinRequired: true,
+    message: 'تعداد تلاش‌های اشتباه برای وارد کردن پین‌کد بیش از حد مجاز است. لطفاً ۵ دقیقه دیگر مجدداً تلاش نمایید.',
   },
 });
 
@@ -7257,19 +7286,60 @@ app.get('/api/telegram/webhook-info', requireAdmin, async (req, res) => {
 // -------------------------------------------------------------
 
 function generateShareToken(): string {
-  return `inv_${crypto.randomBytes(10).toString('hex')}`;
+  // 128-bit cryptographic URL-safe token
+  return `inv_${crypto.randomBytes(16).toString('base64url')}`;
 }
 
-// 13.1 Public endpoint to fetch customer invoice via secure token (Zero login required for customers)
-app.get('/api/public/invoice/:token', async (req, res) => {
+function timingSafeComparePin(providedPin: string, requiredPin: string): boolean {
+  const aHash = crypto.createHash('sha256').update(providedPin.trim()).digest();
+  const bHash = crypto.createHash('sha256').update(requiredPin.trim()).digest();
+  return crypto.timingSafeEqual(aHash, bHash);
+}
+
+// Short-window deduplication to prevent React StrictMode / accidental rapid refresh from skewing viewCount
+const recentPublicViewCache = new Map<string, number>();
+
+function shouldIncrementPublicView(clientKey: string, isOneTime: boolean, isSilentRefresh: boolean): boolean {
+  if (isSilentRefresh) return false;
+  const now = Date.now();
+  const windowMs = isOneTime ? 3000 : 10000;
+  const prev = recentPublicViewCache.get(clientKey);
+  if (prev && now - prev < windowMs) {
+    return false;
+  }
+  recentPublicViewCache.set(clientKey, now);
+  if (recentPublicViewCache.size > 2000) {
+    for (const [k, ts] of recentPublicViewCache.entries()) {
+      if (now - ts > 60000) recentPublicViewCache.delete(k);
+    }
+  }
+  return true;
+}
+
+const handlePublicInvoiceRequest: express.RequestHandler = async (req, res) => {
   try {
     setNoCacheHeaders(res);
-    const token = (req.params.token || '').trim();
-    if (!token) {
-      return res.status(400).json({ success: false, code: 'INVALID_TOKEN', message: 'شناسه لینک فاکتور مشخص نشده است.' });
+    const token = String(req.params.token || '').trim();
+    if (!token || token.length > 120 || !/^[a-zA-Z0-9_-]+$/.test(token)) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_TOKEN',
+        message: 'شناسه لینک فاکتور نامعتبر است.',
+      });
     }
 
     const { data: dbData } = await getLatestConvergedDatabase();
+    const storeSettings = dbData?.settings || {};
+
+    // Respect global store kill-switch for public web invoices
+    if (storeSettings.webInvoiceEnabled === false) {
+      return res.status(403).json({
+        success: false,
+        code: 'WEB_INVOICE_DISABLED',
+        message: 'سرویس مشاهده آنلاین فاکتورها در حال حاضر توسط مدیریت فروشگاه غیرفعال شده است.',
+      });
+    }
+
     const invoices = Array.isArray(dbData?.invoices) ? dbData.invoices : [];
     const customers = Array.isArray(dbData?.customers) ? dbData.customers : [];
     const invoiceIndex = invoices.findIndex((inv: any) => inv?.shareLink?.token === token);
@@ -7284,6 +7354,7 @@ app.get('/api/public/invoice/:token', async (req, res) => {
     }
 
     const matchedCustomer = customerIndex !== -1 ? customers[customerIndex] : null;
+    const isCustomerPortalOnly = invoiceIndex === -1 && !!matchedCustomer;
     const invoice = invoiceIndex !== -1
       ? invoices[invoiceIndex]
       : {
@@ -7334,6 +7405,10 @@ app.get('/api/public/invoice/:token', async (req, res) => {
 
     // Check one-time link usage (if one-time and already viewed at least once)
     const currentViewCount = Number(shareLink.viewCount) || 0;
+    const isSilentRefresh =
+      String(req.headers['x-invoice-refresh'] || '') === '1' ||
+      String(req.query.refresh || '') === '1';
+
     if (shareLink.isOneTime && currentViewCount >= 1) {
       return res.status(410).json({
         success: false,
@@ -7343,7 +7418,7 @@ app.get('/api/public/invoice/:token', async (req, res) => {
     }
 
     // Check max views
-    if (shareLink.maxViews && shareLink.maxViews > 0 && currentViewCount >= shareLink.maxViews) {
+    if (shareLink.maxViews && shareLink.maxViews > 0 && currentViewCount >= shareLink.maxViews && !isSilentRefresh) {
       return res.status(410).json({
         success: false,
         code: 'MAX_VIEWS_EXCEEDED',
@@ -7351,70 +7426,78 @@ app.get('/api/public/invoice/:token', async (req, res) => {
       });
     }
 
-    const storeSettings = dbData?.settings || {};
-
-    // Check PIN protection
+    // Check PIN protection (prefer POST body or X-Invoice-Pin header; keep query fallback for compatibility)
     if (shareLink.pinRequired && shareLink.pinCode && shareLink.pinCode.trim().length > 0) {
-      const clientPin = (req.query.pin || req.headers['x-invoice-pin'] || '').toString().trim();
+      const bodyPin = typeof req.body?.pin === 'string' ? req.body.pin : '';
+      const headerPin = typeof req.headers['x-invoice-pin'] === 'string' ? req.headers['x-invoice-pin'] : '';
+      const queryPin = typeof req.query.pin === 'string' ? req.query.pin : '';
+      const clientPin = (bodyPin || headerPin || queryPin).trim();
       const requiredPin = shareLink.pinCode.trim();
 
-      if (!clientPin || clientPin !== requiredPin) {
-        return res.json({
+      if (!clientPin || !timingSafeComparePin(clientPin, requiredPin)) {
+        // Do NOT leak customerName or financial PII prior to PIN verification
+        return res.status(clientPin ? 401 : 200).json({
           success: false,
-          code: 'PIN_REQUIRED',
+          code: clientPin ? 'INVALID_PIN' : 'PIN_REQUIRED',
           pinRequired: true,
-          message: 'مشاهده این فاکتور مستلزم ورود رمز عبور (پین‌کد) می‌باشد.',
+          message: clientPin
+            ? 'پین‌کد وارد شده صحیح نمی‌باشد. لطفاً مجدداً بررسی نمایید.'
+            : 'مشاهده این فاکتور مستلزم ورود رمز عبور (پین‌کد) می‌باشد.',
           storeName: storeSettings.storeName || 'سامانه حسابداری سپهر',
           storeLogo: storeSettings.logo || storeSettings.storeLogo || '',
-          invoiceNumber: invoice.invoiceNumber,
-          customerName: invoice.customerName,
+          invoiceNumber: isCustomerPortalOnly ? 'صورتحساب' : invoice.invoiceNumber,
+          isCustomerPortal: isCustomerPortalOnly,
         });
       }
     }
 
-    // Update view statistics in background
-    const newViewCount = currentViewCount + 1;
+    // Update view statistics (with short-window deduplication)
+    const clientIp = req.ip || 'unknown';
+    const shouldCount = shouldIncrementPublicView(`${clientIp}:${token}`, !!shareLink.isOneTime, isSilentRefresh);
+    const newViewCount = shouldCount ? currentViewCount + 1 : currentViewCount;
     const nowIso = new Date().toISOString();
-    invoice.shareLink = {
-      ...shareLink,
-      viewCount: newViewCount,
-      lastViewedAt: nowIso,
-      // If one-time, disable for subsequent loads
-      enabled: shareLink.isOneTime ? false : shareLink.enabled,
-    };
 
-    if (invoiceIndex !== -1) {
-      invoices[invoiceIndex] = invoice;
-    } else if (customerIndex !== -1) {
-      customers[customerIndex].shareLink = invoice.shareLink;
+    if (shouldCount) {
+      invoice.shareLink = {
+        ...shareLink,
+        viewCount: newViewCount,
+        lastViewedAt: nowIso,
+        // If one-time, disable for subsequent loads
+        enabled: shareLink.isOneTime ? false : shareLink.enabled,
+      };
+
+      if (invoiceIndex !== -1) {
+        invoices[invoiceIndex] = invoice;
+      } else if (customerIndex !== -1) {
+        customers[customerIndex].shareLink = invoice.shareLink;
+      }
+
+      // Asynchronous non-blocking write to avoid delaying response
+      enqueueDbWrite(async () => {
+        const current = readDatabase();
+        if (invoiceIndex !== -1 && Array.isArray(current.invoices)) {
+          const idx = current.invoices.findIndex((i: any) => i.id === invoice.id);
+          if (idx !== -1) {
+            current.invoices[idx].shareLink = invoice.shareLink;
+            writeDatabase(current, false);
+            if (getPostgresStatus().connected) {
+              saveStateToPostgres(current).catch(() => {});
+            }
+          }
+        } else if (customerIndex !== -1 && Array.isArray(current.customers)) {
+          const cIdx = current.customers.findIndex((c: any) => c.id === matchedCustomer.id);
+          if (cIdx !== -1) {
+            current.customers[cIdx].shareLink = invoice.shareLink;
+            writeDatabase(current, false);
+            if (getPostgresStatus().connected) {
+              saveStateToPostgres(current).catch(() => {});
+            }
+          }
+        }
+      }).catch(() => {});
     }
 
-    // Asynchronous non-blocking write to avoid delaying response
-    enqueueDbWrite(async () => {
-      const current = readDatabase();
-      if (invoiceIndex !== -1 && Array.isArray(current.invoices)) {
-        const idx = current.invoices.findIndex((i: any) => i.id === invoice.id);
-        if (idx !== -1) {
-          current.invoices[idx] = invoice;
-          writeDatabase(current, false);
-          if (getPostgresStatus().connected) {
-            saveStateToPostgres(current).catch(() => {});
-          }
-        }
-      } else if (customerIndex !== -1 && Array.isArray(current.customers)) {
-        const cIdx = current.customers.findIndex((c: any) => c.id === matchedCustomer.id);
-        if (cIdx !== -1) {
-          current.customers[cIdx].shareLink = invoice.shareLink;
-          writeDatabase(current, false);
-          if (getPostgresStatus().connected) {
-            saveStateToPostgres(current).catch(() => {});
-          }
-        }
-      }
-    }).catch(() => {});
-
-    // Sanitize invoice: remove buyPrice, profit margins or internal notes
-    const sanitizedItems = (invoice.items || []).map((item: any) => ({
+    const sanitizeItem = (item: any) => ({
       id: item.id,
       productId: item.productId,
       productName: item.productName || item.name || '',
@@ -7426,101 +7509,75 @@ app.get('/api/public/invoice/:token', async (req, res) => {
       discount: Number(item.discount) || 0,
       total: Number(item.total) || 0,
       variantName: item.variantName || '',
-    }));
+      description: item.description || item.notes || '',
+      isService: !!item.isService,
+      itemType: item.itemType || undefined,
+    });
 
-    const sanitizedInvoice = {
-      id: invoice.id,
-      invoiceNumber: invoice.invoiceNumber,
-      type: invoice.type || 'standard',
-      customerId: invoice.customerId,
-      customerName: invoice.customerName,
-      customerPhone: invoice.customerPhone || '',
-      customerAddress: invoice.customerAddress || '',
-      customerNationalId: invoice.customerNationalId || '',
-      date: invoice.date,
-      dueDate: invoice.dueDate || '',
-      items: sanitizedItems,
-      subtotal: Number(invoice.subtotal) || 0,
-      totalDiscount: Number(invoice.totalDiscount) || 0,
-      taxRate: Number(invoice.taxRate) || 0,
-      taxAmount: Number(invoice.taxAmount) || 0,
-      finalTotal: Number(invoice.finalTotal) || 0,
-      paymentStatus: invoice.paymentStatus || 'unpaid',
-      paymentMethod: invoice.paymentMethod || 'cash',
-      paidAmount: Number(invoice.paidAmount) || 0,
-      chequeNumber: invoice.chequeNumber || '',
-      chequeDueDate: invoice.chequeDueDate || '',
-      chequeName: invoice.chequeName || '',
-      transferDescription: invoice.transferDescription || '',
-      notes: invoice.notes || '',
-      isProforma: !!invoice.isProforma,
-      convertedAt: invoice.convertedAt || '',
-      convertedFromProforma: invoice.convertedFromProforma || '',
-      createdAt: invoice.createdAt,
-    };
+    const sanitizeInvoiceForPublic = (inv: any) => ({
+      id: inv.id,
+      invoiceNumber: inv.invoiceNumber,
+      type: inv.type || 'standard',
+      customerId: inv.customerId,
+      customerName: inv.customerName,
+      customerPhone: inv.customerPhone || '',
+      customerAddress: inv.customerAddress || '',
+      customerNationalId: inv.customerNationalId || '',
+      sellerName: inv.sellerName || '',
+      sellerEconomicCode: inv.sellerEconomicCode || '',
+      sellerRegistrationNumber: inv.sellerRegistrationNumber || '',
+      sellerNationalCode: inv.sellerNationalCode || '',
+      sellerPhone: inv.sellerPhone || '',
+      sellerAddress: inv.sellerAddress || '',
+      date: inv.date,
+      dueDate: inv.dueDate || '',
+      items: (inv.items || []).map(sanitizeItem),
+      subtotal: Number(inv.subtotal) || 0,
+      totalDiscount: Number(inv.totalDiscount) || 0,
+      taxRate: Number(inv.taxRate) || 0,
+      taxAmount: Number(inv.taxAmount) || 0,
+      finalTotal: Number(inv.finalTotal) || 0,
+      paymentStatus: inv.paymentStatus || 'unpaid',
+      paymentMethod: inv.paymentMethod || 'cash',
+      paidAmount: Number(inv.paidAmount) || 0,
+      chequeNumber: inv.chequeNumber || '',
+      chequeDueDate: inv.chequeDueDate || '',
+      chequeName: inv.chequeName || '',
+      transferDescription: inv.transferDescription || '',
+      notes: inv.notes || '',
+      isProforma: !!inv.isProforma,
+      convertedAt: inv.convertedAt || '',
+      convertedFromProforma: inv.convertedFromProforma || '',
+      createdAt: inv.createdAt,
+      exitSlip: inv.exitSlip || undefined,
+    });
 
-    // Gather complete customer portfolio: All Invoices, All Deposits, All Remittances & Ledger
-    const customerId = invoice.customerId;
+    const sanitizedInvoice = sanitizeInvoiceForPublic(invoice);
+
+    // Gather complete customer portfolio: prioritize customerId match when both IDs exist to prevent cross-customer leakage
+    const customerId = String(invoice.customerId || '').trim();
     const customerNameNorm = (invoice.customerName || '').trim().toLowerCase();
     const customerPhoneNorm = (invoice.customerPhone || '').replace(/[^0-9]/g, '');
 
     const isMatchCustomer = (cId?: string, cName?: string, cPhone?: string) => {
-      if (customerId && cId && cId === customerId) return true;
-      if (customerNameNorm && cName && cName.trim().toLowerCase() === customerNameNorm) return true;
+      const targetId = String(cId || '').trim();
+      if (customerId && targetId) {
+        return targetId === customerId;
+      }
       if (customerPhoneNorm && cPhone) {
         const pClean = cPhone.replace(/[^0-9]/g, '');
-        if (pClean && pClean === customerPhoneNorm) return true;
+        if (pClean && pClean.length >= 7 && pClean === customerPhoneNorm) return true;
+      }
+      if (customerNameNorm && cName && cName.trim().toLowerCase() === customerNameNorm) {
+        return true;
       }
       return false;
     };
 
-    // 1. All Invoices for this customer (fully sanitized for privacy and customer viewing)
+    // 1. All Invoices for this customer (sanitized, without leaking other share tokens)
     const customerInvoices = invoices
       .filter((inv: any) => isMatchCustomer(inv.customerId, inv.customerName, inv.customerPhone))
-      .map((inv: any) => ({
-        id: inv.id,
-        invoiceNumber: inv.invoiceNumber,
-        type: inv.type || 'standard',
-        customerId: inv.customerId,
-        customerName: inv.customerName,
-        customerPhone: inv.customerPhone || '',
-        customerAddress: inv.customerAddress || '',
-        customerNationalId: inv.customerNationalId || '',
-        date: inv.date,
-        dueDate: inv.dueDate || '',
-        items: (inv.items || []).map((item: any) => ({
-          id: item.id,
-          productId: item.productId,
-          productName: item.productName || item.name || '',
-          productCode: item.productCode || item.code || '',
-          barcode: item.barcode || '',
-          unit: item.unit || 'عدد',
-          quantity: Number(item.quantity) || 0,
-          unitPrice: Number(item.unitPrice || item.price) || 0,
-          discount: Number(item.discount) || 0,
-          total: Number(item.total) || 0,
-          variantName: item.variantName || '',
-        })),
-        subtotal: Number(inv.subtotal) || 0,
-        totalDiscount: Number(inv.totalDiscount) || 0,
-        taxRate: Number(inv.taxRate) || 0,
-        taxAmount: Number(inv.taxAmount) || 0,
-        finalTotal: Number(inv.finalTotal) || 0,
-        paidAmount: Number(inv.paidAmount) || 0,
-        paymentStatus: inv.paymentStatus || 'unpaid',
-        paymentMethod: inv.paymentMethod || 'cash',
-        chequeNumber: inv.chequeNumber || '',
-        chequeDueDate: inv.chequeDueDate || '',
-        chequeName: inv.chequeName || '',
-        transferDescription: inv.transferDescription || '',
-        notes: inv.notes || '',
-        isProforma: !!inv.isProforma,
-        convertedAt: inv.convertedAt || '',
-        convertedFromProforma: inv.convertedFromProforma || '',
-        createdAt: inv.createdAt,
-        exitSlip: inv.exitSlip || undefined,
-        token: inv.shareLink?.token || (inv.id === invoice.id ? shareLink.token : undefined),
-      }))
+      .map(sanitizeInvoiceForPublic)
       .sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
 
     // 2. All Customer Deposits & Payments
@@ -7541,9 +7598,14 @@ app.get('/api/public/invoice/:token', async (req, res) => {
         notes: tx.notes || '',
       }));
 
-    // Invoices with direct payment at issuance
+    // Invoices with direct payment at issuance (excluding proformas)
     const invoicePayments = invoices
-      .filter((inv: any) => isMatchCustomer(inv.customerId, inv.customerName, inv.customerPhone) && Number(inv.paidAmount) > 0)
+      .filter(
+        (inv: any) =>
+          !inv.isProforma &&
+          isMatchCustomer(inv.customerId, inv.customerName, inv.customerPhone) &&
+          Number(inv.paidAmount) > 0
+      )
       .map((inv: any) => ({
         id: `inv-pay-${inv.id}`,
         type: 'deposit' as const,
@@ -7552,19 +7614,22 @@ app.get('/api/public/invoice/:token', async (req, res) => {
         title: `پرداخت وجه فاکتور ${inv.invoiceNumber}`,
         paymentMethod: inv.paymentMethod || 'cash',
         trackingNumber: inv.chequeNumber || '',
-        bankName: inv.transferDescription ? 'حساب بانکی' : '',
+        bankName: inv.chequeName || (inv.transferDescription ? 'حساب بانکی' : ''),
         chequeDueDate: inv.chequeDueDate || '',
         invoiceNumber: inv.invoiceNumber,
         notes: inv.transferDescription || inv.notes || '',
       }));
 
-    // Combine and deduplicate / sort payments
     const allDeposits = [...directDeposits, ...invoicePayments].sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
 
     // 3. Remittances & Delivery Slips (حواله‌های خروج و بارگیری)
-    // a) From customer invoices' exit slips
     const exitSlipRemittances = invoices
-      .filter((inv: any) => isMatchCustomer(inv.customerId, inv.customerName, inv.customerPhone) && inv.exitSlip && (inv.exitSlip.slipNumber || inv.exitSlip.isDelivered || inv.exitSlip.deliveredAt || inv.exitSlip.receiverName))
+      .filter(
+        (inv: any) =>
+          isMatchCustomer(inv.customerId, inv.customerName, inv.customerPhone) &&
+          inv.exitSlip &&
+          (inv.exitSlip.slipNumber || inv.exitSlip.isDelivered || inv.exitSlip.deliveredAt || inv.exitSlip.receiverName)
+      )
       .map((inv: any) => {
         const es = inv.exitSlip;
         return {
@@ -7589,7 +7654,6 @@ app.get('/api/public/invoice/:token', async (req, res) => {
         };
       });
 
-    // b) From direct transfers if receiver matches customer
     const allDirectTransfers = Array.isArray(dbData?.directTransfers) ? dbData.directTransfers : [];
     const directTransferRemittances = allDirectTransfers
       .filter((trf: any) => isMatchCustomer(undefined, trf.receiverName, trf.receiverPhone))
@@ -7706,7 +7770,6 @@ app.get('/api/public/invoice/:token', async (req, res) => {
       }
     });
 
-    // Standalone customer transactions (deposits & debts)
     directDeposits.forEach((tx: any) => {
       const payMethodTxt = tx.paymentMethod ? paymentMethodLabels[tx.paymentMethod] || tx.paymentMethod : 'واریز به حساب';
       if (tx.type === 'deposit') {
@@ -7790,7 +7853,6 @@ app.get('/api/public/invoice/:token', async (req, res) => {
       }
     });
 
-    // Chronological sort (oldest to newest for running balance)
     rawLedgerEntries.sort((a, b) => {
       const cmp = String(a.date || '').localeCompare(String(b.date || ''));
       if (cmp !== 0) return cmp;
@@ -7845,14 +7907,18 @@ app.get('/api/public/invoice/:token', async (req, res) => {
       sellerName: storeSettings.sellerName || '',
       phone: storeSettings.phone || storeSettings.storePhone || '',
       mobile: storeSettings.mobile || '',
+      whatsappNumber: storeSettings.whatsappNumber || '',
       address: storeSettings.address || storeSettings.storeAddress || '',
       postalCode: storeSettings.postalCode || storeSettings.storePostalCode || '',
       economicCode: storeSettings.economicCode || '',
+      registrationNumber: storeSettings.registrationNumber || '',
       nationalCode: storeSettings.nationalCode || storeSettings.storeNationalId || '',
       currency: storeSettings.currency || 'تومان',
       invoiceFooterText: storeSettings.invoiceFooterText || storeSettings.invoiceFooterNote || '',
       taxEnabled: !!storeSettings.taxEnabled || !!storeSettings.enableTax,
       taxPercent: Number(storeSettings.taxPercent) || 0,
+      officialTaxPercent: Number(storeSettings.officialTaxPercent ?? storeSettings.taxPercent ?? 10),
+      printLayout: storeSettings.printLayout || undefined,
     };
 
     const publicShareMeta = {
@@ -7860,8 +7926,10 @@ app.get('/api/public/invoice/:token', async (req, res) => {
       allowPdfDownload: shareLink.allowPdfDownload !== false,
       includeCustomerStatement: shareLink.includeCustomerStatement !== false,
       isOneTime: !!shareLink.isOneTime,
+      maxViews: shareLink.maxViews || undefined,
       expiresAt: shareLink.expiresAt || null,
       viewCount: newViewCount,
+      lastViewedAt: shouldCount ? nowIso : shareLink.lastViewedAt,
     };
 
     return res.json({
@@ -7882,9 +7950,13 @@ app.get('/api/public/invoice/:token', async (req, res) => {
       message: 'خطای سیستمی در بارگذاری فاکتور آنلاین.',
     });
   }
-});
+};
 
-// 13.2 Generate or Update Share Link for an Invoice (Store manager / cashier action)
+// 13.1 Public endpoints to fetch customer invoice via secure token (GET for standard load, POST for secure PIN verification)
+app.get('/api/public/invoice/:token', publicInvoiceFetchLimiter, handlePublicInvoiceRequest);
+app.post('/api/public/invoice/:token', publicInvoicePinLimiter, handlePublicInvoiceRequest);
+
+// 13.2 Generate or Update Share Link for an Invoice or Customer Portal
 app.post('/api/invoices/:id/share-link', async (req, res) => {
   try {
     const authUser = (req as AuthenticatedRequest).authUser;
@@ -7899,20 +7971,19 @@ app.post('/api/invoices/:id/share-link', async (req, res) => {
         message: 'شما مجوز صدور یا مدیریت پیوند تحت وب را ندارید.',
       });
     }
+
     const invoiceId = req.params.id;
-    const {
-      enabled = true,
-      expiresAt = null,
-      isOneTime = false,
-      maxViews,
-      pinRequired = false,
-      pinCode = '',
-      allowPdfDownload = true,
-      includeCustomerStatement = true,
-      regenerateToken = false,
-    } = req.body || {};
+    const body = req.body || {};
 
     const { data: dbData } = await getLatestConvergedDatabase();
+    const storeSettings = dbData?.settings || {};
+    if (storeSettings.webInvoiceEnabled === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'قابلیت صدور لینک نسخه آنلاین در تنظیمات فروشگاه غیرفعال شده است.',
+      });
+    }
+
     const invoices = Array.isArray(dbData?.invoices) ? dbData.invoices : [];
     const customers = Array.isArray(dbData?.customers) ? dbData.customers : [];
     const isCustomerPortalId = invoiceId.startsWith('cust-portal-');
@@ -7929,24 +8000,73 @@ app.post('/api/invoices/:id/share-link', async (req, res) => {
       ? invoices[invoiceIndex].shareLink
       : customers[customerIndex].shareLink;
 
+    const regenerateToken = !!body.regenerateToken;
     let token = existingShareLink?.token;
     if (!token || regenerateToken) {
       token = generateShareToken();
     }
 
+    // Apply store defaults on first issuance if caller didn't explicitly supply options
+    const defaultExpiryHours = Number(storeSettings.webInvoiceDefaultExpiryHours) || 0;
+    const defaultExpiresAt =
+      !existingShareLink && defaultExpiryHours > 0
+        ? new Date(Date.now() + defaultExpiryHours * 3600 * 1000).toISOString()
+        : null;
+
+    const resolvedExpiresAt =
+      body.expiresAt !== undefined
+        ? body.expiresAt || null
+        : existingShareLink
+        ? existingShareLink.expiresAt || null
+        : defaultExpiresAt;
+
+    const resolvedIsOneTime = body.isOneTime !== undefined ? !!body.isOneTime : !!existingShareLink?.isOneTime;
+    const rawMaxViews = body.maxViews !== undefined ? Number(body.maxViews) : existingShareLink?.maxViews;
+    const resolvedMaxViews = resolvedIsOneTime
+      ? 1
+      : rawMaxViews && Number.isFinite(rawMaxViews) && rawMaxViews > 0
+      ? Math.floor(rawMaxViews)
+      : undefined;
+
+    const resolvedPinRequired =
+      body.pinRequired !== undefined
+        ? !!body.pinRequired
+        : existingShareLink
+        ? !!existingShareLink.pinRequired
+        : !!storeSettings.webInvoiceRequirePinDefault;
+
+    const resolvedPinCode =
+      body.pinCode !== undefined
+        ? String(body.pinCode || '').trim() || undefined
+        : existingShareLink?.pinCode;
+
+    const resolvedAllowPdf =
+      body.allowPdfDownload !== undefined
+        ? body.allowPdfDownload !== false
+        : existingShareLink
+        ? existingShareLink.allowPdfDownload !== false
+        : storeSettings.webInvoiceAllowPdfDownload !== false;
+
+    const resolvedIncludeStatement =
+      body.includeCustomerStatement !== undefined
+        ? body.includeCustomerStatement !== false
+        : existingShareLink
+        ? existingShareLink.includeCustomerStatement !== false
+        : true;
+
     const updatedShareLink = {
       token,
-      enabled: enabled !== false,
+      enabled: body.enabled !== undefined ? body.enabled !== false : true,
       createdAt: existingShareLink?.createdAt || new Date().toISOString(),
-      expiresAt: expiresAt || null,
-      isOneTime: !!isOneTime,
-      maxViews: isOneTime ? 1 : (maxViews ? Number(maxViews) : undefined),
+      expiresAt: resolvedExpiresAt,
+      isOneTime: resolvedIsOneTime,
+      maxViews: resolvedMaxViews,
       viewCount: regenerateToken ? 0 : (Number(existingShareLink?.viewCount) || 0),
       lastViewedAt: regenerateToken ? undefined : existingShareLink?.lastViewedAt,
-      pinRequired: !!pinRequired,
-      pinCode: pinCode ? String(pinCode).trim() : undefined,
-      allowPdfDownload: allowPdfDownload !== false,
-      includeCustomerStatement: includeCustomerStatement !== false,
+      pinRequired: resolvedPinRequired,
+      pinCode: resolvedPinCode,
+      allowPdfDownload: resolvedAllowPdf,
+      includeCustomerStatement: resolvedIncludeStatement,
     };
 
     if (invoiceIndex !== -1) {
@@ -7959,7 +8079,6 @@ app.post('/api/invoices/:id/share-link', async (req, res) => {
 
     await enqueueDbWrite(async () => {
       const current = readDatabase();
-      const authUser = (req as AuthenticatedRequest).authUser;
       const actor = (current?.users || []).find((u: any) => u.id === authUser?.userId);
       const targetLabel =
         invoiceIndex !== -1
@@ -8031,7 +8150,7 @@ app.post('/api/invoices/:id/share-link', async (req, res) => {
   }
 });
 
-// 13.3 Revoke or Disable Share Link for an Invoice
+// 13.3 Revoke or Disable Share Link for an Invoice OR Customer Portal
 app.delete('/api/invoices/:id/share-link', async (req, res) => {
   try {
     const authUser = (req as AuthenticatedRequest).authUser;
@@ -8047,37 +8166,75 @@ app.delete('/api/invoices/:id/share-link', async (req, res) => {
       });
     }
     const invoiceId = req.params.id;
+    const isCustomerPortalId = invoiceId.startsWith('cust-portal-');
+    const rawCustomerId = isCustomerPortalId ? invoiceId.replace('cust-portal-', '') : invoiceId;
+
     const { data: dbData } = await getLatestConvergedDatabase();
     const invoices = Array.isArray(dbData?.invoices) ? dbData.invoices : [];
+    const customers = Array.isArray(dbData?.customers) ? dbData.customers : [];
     const invoiceIndex = invoices.findIndex((inv: any) => inv?.id === invoiceId);
+    const customerIndex = invoiceIndex === -1 ? customers.findIndex((c: any) => c?.id === rawCustomerId) : -1;
 
-    if (invoiceIndex === -1) {
-      return res.status(404).json({ success: false, message: 'فاکتور مورد نظر یافت نشد.' });
+    if (invoiceIndex === -1 && customerIndex === -1) {
+      return res.status(404).json({ success: false, message: 'فاکتور یا مشتری مورد نظر یافت نشد.' });
     }
 
-    const currentInvoice = invoices[invoiceIndex];
-    if (currentInvoice.shareLink) {
-      currentInvoice.shareLink.enabled = false;
-      invoices[invoiceIndex] = currentInvoice;
+    await enqueueDbWrite(async () => {
+      const current = readDatabase();
+      const actor = (current?.users || []).find((u: any) => u.id === authUser?.userId);
 
-      await enqueueDbWrite(async () => {
-        const current = readDatabase();
-        if (Array.isArray(current.invoices)) {
-          const idx = current.invoices.findIndex((i: any) => i.id === invoiceId);
-          if (idx !== -1) {
-            current.invoices[idx] = currentInvoice;
-            writeDatabase(current, false);
-            if (getPostgresStatus().connected) {
-              saveStateToPostgres(current).catch(() => {});
-            }
+      if (invoiceIndex !== -1 && Array.isArray(current.invoices)) {
+        const idx = current.invoices.findIndex((i: any) => i.id === invoiceId);
+        if (idx !== -1 && current.invoices[idx].shareLink) {
+          current.invoices[idx].shareLink.enabled = false;
+          appendLogToDbObject(current, req, {
+            userId: authUser?.userId || 'sys',
+            userName: actor?.fullName || authUser?.username || 'کاربر',
+            userRole: actor?.role || authUser?.role || 'cashier',
+            userRoleTitle: actor?.roleTitle,
+            category: 'sales',
+            actionType: 'share_link_revoke',
+            actionTitle: 'لغو لینک اشتراک فاکتور',
+            details: `لغو دسترسی پیوند آنلاین فاکتور #${current.invoices[idx].invoiceNumber || invoiceId}`,
+            severity: 'warning',
+            entityType: 'invoice',
+            entityId: invoiceId,
+            entityLabel: `فاکتور #${current.invoices[idx].invoiceNumber || invoiceId}`,
+          });
+          writeDatabase(current, false);
+          if (getPostgresStatus().connected) {
+            saveStateToPostgres(current).catch(() => {});
           }
         }
-      });
-    }
+      } else if (customerIndex !== -1 && Array.isArray(current.customers)) {
+        const cIdx = current.customers.findIndex((c: any) => c.id === rawCustomerId);
+        if (cIdx !== -1 && current.customers[cIdx].shareLink) {
+          current.customers[cIdx].shareLink.enabled = false;
+          appendLogToDbObject(current, req, {
+            userId: authUser?.userId || 'sys',
+            userName: actor?.fullName || authUser?.username || 'کاربر',
+            userRole: actor?.role || authUser?.role || 'cashier',
+            userRoleTitle: actor?.roleTitle,
+            category: 'customer',
+            actionType: 'share_link_revoke',
+            actionTitle: 'لغو لینک پورتال مشتری',
+            details: `لغو دسترسی پیوند آنلاین پورتال مشتری «${current.customers[cIdx].name || rawCustomerId}»`,
+            severity: 'warning',
+            entityType: 'customer',
+            entityId: rawCustomerId,
+            entityLabel: `پورتال مشتری «${current.customers[cIdx].name || rawCustomerId}»`,
+          });
+          writeDatabase(current, false);
+          if (getPostgresStatus().connected) {
+            saveStateToPostgres(current).catch(() => {});
+          }
+        }
+      }
+    });
 
     return res.json({
       success: true,
-      message: 'دسترسی به لینک آنلاین این فاکتور با موفقیت لغو و مسدود شد.',
+      message: 'دسترسی به لینک آنلاین با موفقیت لغو و مسدود شد.',
     });
   } catch (err: any) {
     console.error('[Share Link API] delete error:', err);

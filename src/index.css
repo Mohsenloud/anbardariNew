@@ -70,6 +70,10 @@ body, button, input, select, textarea, table, th, td, span, div, p {
     body.printing-active-element #printable-direct-transfer-slip *,
     body.printing-active-element #printable-customer-statement-pdf,
     body.printing-active-element #printable-customer-statement-pdf *,
+    body.printing-active-element #printable-public-customer-statement-pdf,
+    body.printing-active-element #printable-public-customer-statement-pdf *,
+    body.printing-active-element #public-web-invoice-container,
+    body.printing-active-element #public-web-invoice-container *,
     body.printing-active-element #invoices-slips-pdf-report-canvas,
     body.printing-active-element #invoices-slips-pdf-report-canvas *,
     body.printing-active-element .printable-sheet,
@@ -82,6 +86,9 @@ body, button, input, select, textarea, table, th, td, span, div, p {
     body.printing-active-element #printable-invoice .no-print,
     body.printing-active-element #printable-invoice .no-pdf,
     body.printing-active-element #printable-invoice button,
+    body.printing-active-element #public-web-invoice-container .no-print,
+    body.printing-active-element #public-web-invoice-container .no-pdf,
+    body.printing-active-element #public-web-invoice-container button,
     body.printing-active-element #printable-purchase-invoice .no-print,
     body.printing-active-element #printable-purchase-invoice .no-pdf,
     body.printing-active-element #printable-purchase-invoice button,
@@ -96,10 +103,12 @@ body, button, input, select, textarea, table, th, td, span, div, p {
     }
     body.printing-active-element #printable-exit-slip,
     body.printing-active-element #printable-invoice,
+    body.printing-active-element #public-web-invoice-container,
     body.printing-active-element #printable-purchase-invoice,
     body.printing-active-element #printable-inbound-receipt,
     body.printing-active-element #printable-direct-transfer-slip,
     body.printing-active-element #printable-customer-statement-pdf,
+    body.printing-active-element #printable-public-customer-statement-pdf,
     body.printing-active-element #invoices-slips-pdf-report-canvas,
     body.printing-active-element .printable-sheet {
       position: absolute !important;

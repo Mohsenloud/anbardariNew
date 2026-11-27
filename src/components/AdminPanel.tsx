@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { StoreSettings, Product, Customer, Invoice, StockMovement, AppUser, PdfQualityPreset, DEFAULT_PRINT_LAYOUT } from '../types';
 import { StorageService } from '../utils/storage';
 import { apiFetch } from '../utils/authClient';
@@ -12,6 +12,7 @@ import { BackupManager } from './BackupManager';
 import { WarehouseSettingsManager } from './WarehouseSettingsManager';
 import { CategoryManagerModal } from './CategoryManagerModal';
 import { PrintLayoutCustomizer } from './PrintLayoutCustomizer';
+import { InvoiceShareLinkModal } from './InvoiceShareLinkModal';
 import {
   testTelegramBotConnection,
   testTelegramMessage,
@@ -80,6 +81,10 @@ import {
   RefreshCw,
   Square,
   FileAudio,
+  Copy,
+  Lock,
+  Power,
+  QrCode,
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -173,6 +178,181 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [adminInvoiceStatus, setAdminInvoiceStatus] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [importStatus, setImportStatus] = useState<string>('');
+
+  // Weblink / Customer Portal centralized manager states
+  const [weblinkSearch, setWeblinkSearch] = useState('');
+  const [weblinkFilter, setWeblinkFilter] = useState<'all' | 'active' | 'disabled' | 'expired' | 'pin'>('all');
+  const [editingShareLinkInvoice, setEditingShareLinkInvoice] = useState<Invoice | null>(null);
+  const [copiedLinkToken, setCopiedLinkToken] = useState<string | null>(null);
+  const [togglingLinkId, setTogglingLinkId] = useState<string | null>(null);
+
+  const allShareLinks = useMemo(() => {
+    const now = Date.now();
+    const list: Array<{
+      id: string;
+      kind: 'invoice' | 'customer';
+      targetId: string;
+      title: string;
+      customerName: string;
+      customerPhone: string;
+      token: string;
+      enabled: boolean;
+      isExpired: boolean;
+      isLimitReached: boolean;
+      isOneTime: boolean;
+      maxViews: number | null;
+      pinRequired: boolean;
+      allowPdfDownload: boolean;
+      viewCount: number;
+      createdAt: string;
+      lastViewedAt?: string;
+      expiresAt?: string | null;
+      invoiceObject: Invoice;
+    }> = [];
+
+    (customers || []).forEach((cust) => {
+      const link = cust.shareLink;
+      if (!link?.token) return;
+      const isExpired = Boolean(link.expiresAt && new Date(link.expiresAt).getTime() < now);
+      const viewCount = Number(link.viewCount) || 0;
+      const maxViews = link.maxViews && link.maxViews > 0 ? link.maxViews : null;
+      const isLimitReached = Boolean((link.isOneTime && viewCount >= 1) || (maxViews && viewCount >= maxViews));
+      const syntheticInvoice: Invoice = {
+        id: `cust-portal-${cust.id}`,
+        invoiceNumber: 'PORTAL',
+        date: '',
+        customerId: cust.id,
+        customerName: cust.name,
+        customerPhone: cust.phone || '',
+        customerAddress: cust.address || '',
+        customerNationalId: cust.nationalId || '',
+        items: [],
+        subtotal: 0,
+        totalDiscount: 0,
+        taxRate: 0,
+        taxAmount: 0,
+        finalTotal: 0,
+        paidAmount: 0,
+        paymentStatus: 'paid',
+        paymentMethod: 'cash',
+        type: 'standard',
+        notes: '',
+        createdAt: link.createdAt || new Date().toISOString(),
+        shareLink: link,
+      };
+      list.push({
+        id: `cust-${cust.id}`,
+        kind: 'customer',
+        targetId: `cust-portal-${cust.id}`,
+        title: 'پورتال و صورتحساب مشتری',
+        customerName: cust.name || 'مشتری',
+        customerPhone: cust.phone || '',
+        token: link.token,
+        enabled: link.enabled !== false,
+        isExpired,
+        isLimitReached,
+        isOneTime: Boolean(link.isOneTime),
+        maxViews,
+        pinRequired: Boolean(link.pinRequired),
+        allowPdfDownload: link.allowPdfDownload !== false,
+        viewCount,
+        createdAt: link.createdAt || '',
+        lastViewedAt: link.lastViewedAt,
+        expiresAt: link.expiresAt,
+        invoiceObject: syntheticInvoice,
+      });
+    });
+
+    (invoices || []).forEach((inv) => {
+      const link = inv.shareLink;
+      if (!link?.token) return;
+      const isExpired = Boolean(link.expiresAt && new Date(link.expiresAt).getTime() < now);
+      const viewCount = Number(link.viewCount) || 0;
+      const maxViews = link.maxViews && link.maxViews > 0 ? link.maxViews : null;
+      const isLimitReached = Boolean((link.isOneTime && viewCount >= 1) || (maxViews && viewCount >= maxViews));
+      list.push({
+        id: `inv-${inv.id}`,
+        kind: 'invoice',
+        targetId: inv.id,
+        title: inv.isProforma ? `پیش‌فاکتور #${toPersianDigits(inv.invoiceNumber)}` : `فاکتور #${toPersianDigits(inv.invoiceNumber)}`,
+        customerName: inv.customerName || 'مشتری آزاد',
+        customerPhone: inv.customerPhone || '',
+        token: link.token,
+        enabled: link.enabled !== false,
+        isExpired,
+        isLimitReached,
+        isOneTime: Boolean(link.isOneTime),
+        maxViews,
+        pinRequired: Boolean(link.pinRequired),
+        allowPdfDownload: link.allowPdfDownload !== false,
+        viewCount,
+        createdAt: link.createdAt || '',
+        lastViewedAt: link.lastViewedAt,
+        expiresAt: link.expiresAt,
+        invoiceObject: inv,
+      });
+    });
+
+    return list.sort((a, b) => {
+      const tA = new Date(a.lastViewedAt || a.createdAt || 0).getTime();
+      const tB = new Date(b.lastViewedAt || b.createdAt || 0).getTime();
+      return tB - tA;
+    });
+  }, [customers, invoices]);
+
+  const weblinkStats = useMemo(() => {
+    let active = 0;
+    let totalViews = 0;
+    let pinProtected = 0;
+    let blockedOrExpired = 0;
+    allShareLinks.forEach((item) => {
+      totalViews += item.viewCount;
+      if (item.pinRequired) pinProtected += 1;
+      if (!item.enabled || item.isExpired || item.isLimitReached) {
+        blockedOrExpired += 1;
+      } else {
+        active += 1;
+      }
+    });
+    return { total: allShareLinks.length, active, totalViews, pinProtected, blockedOrExpired };
+  }, [allShareLinks]);
+
+  const filteredShareLinks = useMemo(() => {
+    const q = weblinkSearch.trim().toLowerCase();
+    return allShareLinks.filter((item) => {
+      if (weblinkFilter === 'active' && (!item.enabled || item.isExpired || item.isLimitReached)) return false;
+      if (weblinkFilter === 'disabled' && item.enabled) return false;
+      if (weblinkFilter === 'expired' && !item.isExpired && !item.isLimitReached) return false;
+      if (weblinkFilter === 'pin' && !item.pinRequired) return false;
+      if (!q) return true;
+      const hay = `${item.title} ${item.customerName} ${item.customerPhone} ${item.token}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [allShareLinks, weblinkSearch, weblinkFilter]);
+
+  const handleCopyShareLinkRow = (token: string) => {
+    const url = StorageService.buildInvoicePublicUrl(token, formData.webInvoiceCustomDomain);
+    if (!url) return;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedLinkToken(token);
+      setTimeout(() => setCopiedLinkToken((prev) => (prev === token ? null : prev)), 2200);
+    });
+  };
+
+  const handleToggleShareLinkRow = async (item: (typeof allShareLinks)[number]) => {
+    if (togglingLinkId) return;
+    try {
+      setTogglingLinkId(item.id);
+      const res = await StorageService.generateOrUpdateShareLink(item.targetId, {
+        enabled: !item.enabled,
+      });
+      if (res.success) {
+        onReloadData();
+      }
+    } finally {
+      setTogglingLinkId(null);
+    }
+  };
 
   // Telegram Bot configuration testing states
   const [showBotToken, setShowBotToken] = useState(false);
@@ -4741,187 +4921,401 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
           {/* 5.1. PUBLIC WEB INVOICE (نسخه تحت وب فاکتور برای مشتری) */}
           {canAccessFullAdmin && activeSection === 'weblink' && (
-            <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100 flex-wrap gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-sky-500/10 text-sky-600 flex items-center justify-center">
-                    <Globe className="w-5 h-5" />
+            <div className="space-y-5">
+              {/* Settings Card */}
+              <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-6">
+                <div className="flex items-center justify-between pb-4 border-b border-slate-100 flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-sky-500/10 text-sky-600 flex items-center justify-center shrink-0">
+                      <Globe className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm sm:text-base font-bold text-slate-800">
+                        تنظیمات نسخه آنلاین و پیوند تحت وب مشتریان
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        کنترل دسترسی سراسری، تنظیمات پیش‌فرض لینک‌های جدید و مدیریت متمرکز تمام لینک‌های صادرشده
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-sm sm:text-base font-bold text-slate-800">
-                      تنظیمات نسخه آنلاین و پیوند تحت وب فاکتورها (Web Invoices)
-                    </h3>
-                    <p className="text-xs text-slate-500">
-                      امکان ارسال یک پیوند امن و هوشمند برای هر فاکتور جهت مشاهده آنلاین توسط مشتری بدون نیاز به دانلود PDF
-                    </p>
-                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors">
+                    <span className="text-xs font-bold text-slate-700">فعال بودن سیستم نسخه آنلاین</span>
+                    <input
+                      type="checkbox"
+                      name="webInvoiceEnabled"
+                      checked={formData.webInvoiceEnabled !== false}
+                      onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceEnabled: e.target.checked }))}
+                      className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 border-slate-300 cursor-pointer"
+                    />
+                  </label>
                 </div>
 
-                <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors">
-                  <span className="text-xs font-bold text-slate-700">فعال بودن پیوند تحت وب</span>
-                  <input
-                    type="checkbox"
-                    name="webInvoiceEnabled"
-                    checked={formData.webInvoiceEnabled !== false}
-                    onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceEnabled: e.target.checked }))}
-                    className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 border-slate-300 cursor-pointer"
-                  />
-                </label>
+                {formData.webInvoiceEnabled !== false ? (
+                  <div className="space-y-5">
+                    {/* Config Form Fields */}
+                    <div className="p-4 sm:p-5 rounded-2xl bg-slate-50/70 border border-slate-200 space-y-4">
+                      <h4 className="font-bold text-slate-800 text-xs">
+                        تنظیمات پیش‌فرض هنگام صدور لینک‌های جدید:
+                      </h4>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Default Expiry */}
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-slate-700 block">
+                            مدت زمان پیش‌فرض اعتبار پیوندها:
+                          </label>
+                          <select
+                            value={formData.webInvoiceDefaultExpiryHours ?? 0}
+                            onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceDefaultExpiryHours: Number(e.target.value) }))}
+                            className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/20 cursor-pointer"
+                          >
+                            <option value={0}>همیشه معتبر (بدون انقضای خودکار)</option>
+                            <option value={24}>۲۴ ساعت (۱ روز)</option>
+                            <option value={72}>۳ روز (۷۲ ساعت)</option>
+                            <option value={168}>۷ روز (۱ هفته)</option>
+                            <option value={720}>۳۰ روز (۱ ماه)</option>
+                          </select>
+                          <span className="text-[10px] text-slate-500 block">
+                            پس از اتمام این زمان، لینک منقضی شده و دسترسی مشتری به صورت خودکار بسته می‌شود.
+                          </span>
+                        </div>
+
+                        {/* Custom Domain with Live Preview */}
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-slate-700 block">
+                            دامنه یا آدرس اینترنتی سفارشی (اختیاری):
+                          </label>
+                          <input
+                            type="text"
+                            dir="ltr"
+                            placeholder="https://factor.mycompany.ir"
+                            value={formData.webInvoiceCustomDomain || ''}
+                            onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceCustomDomain: e.target.value }))}
+                            className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/20"
+                          />
+                          <div className="text-[10px] text-slate-500 flex items-center gap-1.5 flex-wrap">
+                            <span>پیش‌نمایش لینک خروجی:</span>
+                            <code dir="ltr" className="bg-white border border-slate-200 px-1.5 py-0.5 rounded font-mono text-slate-700 truncate max-w-full">
+                              {StorageService.buildInvoicePublicUrl('inv_sample', formData.webInvoiceCustomDomain)}
+                            </code>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+                        <label className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors">
+                          <div>
+                            <span className="text-xs font-bold text-slate-800 block">مجاز بودن دانلود PDF و چاپ توسط مشتری</span>
+                            <span className="text-[11px] text-slate-500">نمایش دکمه‌های دانلود PDF و چاپ در صفحه آنلاین مشتری</span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={formData.webInvoiceAllowPdfDownload !== false}
+                            onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceAllowPdfDownload: e.target.checked }))}
+                            className="w-4 h-4 text-sky-600 rounded cursor-pointer shrink-0 mr-2"
+                          />
+                        </label>
+
+                        <label className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors">
+                          <div>
+                            <span className="text-xs font-bold text-slate-800 block">الزام پیش‌فرض رمز عبور (پین‌کد)</span>
+                            <span className="text-[11px] text-slate-500">تنظیم خودکار ۴ رقم آخر شماره موبایل مشتری روی لینک‌های جدید</span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={!!formData.webInvoiceRequirePinDefault}
+                            onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceRequirePinDefault: e.target.checked }))}
+                            className="w-4 h-4 text-indigo-600 rounded cursor-pointer shrink-0 mr-2"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-6 text-center bg-rose-50/70 rounded-2xl border border-rose-200 text-rose-800 text-xs space-y-1">
+                    <p className="font-bold">دسترسی سراسری به تمام لینک‌های آنلاین مشتریان متوقف شده است</p>
+                    <p className="text-rose-700">با ذخیره این وضعیت، هیچ مشتری نمی‌تواند لینک‌های فاکتور یا پورتال آنلاین خود را باز کند.</p>
+                  </div>
+                )}
+
+                {/* Bottom Save Footer */}
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100">
+                  <span className="text-xs text-slate-500">
+                    پس از تغییر تنظیمات سراسری یا دامنه سفارشی، دکمه ذخیره را بزنید.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleSave()}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>ذخیره تنظیمات نسخه آنلاین</span>
+                  </button>
+                </div>
               </div>
 
-              {formData.webInvoiceEnabled !== false ? (
-                <div className="space-y-6">
-                  {/* Features Highlight */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-                      <span className="font-bold text-slate-800 text-xs block flex items-center gap-1.5 text-emerald-800">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span>مشاهده فوری در مرورگر</span>
-                      </span>
-                      <p className="text-[11px] text-slate-500 leading-relaxed">
-                        مشتری با یک لمس در واتساپ یا پیامک فاکتور را می‌بیند؛ بدون هیچ نیازی به دانلود فایل سنگین یا نصب PDF Reader.
-                      </p>
-                    </div>
-
-                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-                      <span className="font-bold text-slate-800 text-xs block flex items-center gap-1.5 text-indigo-800">
-                        <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                        <span>امنیت و کنترل دسترسی</span>
-                      </span>
-                      <p className="text-[11px] text-slate-500 leading-relaxed">
-                        امکان فعال‌سازی پین‌کد امنیتی ۴ رقمی، تعریف لینک یکبارمصرف یا انقضای ۲۴ ساعته تا ۳۰ روزه با امکان قطع فوری دسترسی در هر زمان.
-                      </p>
-                    </div>
-
-                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-                      <span className="font-bold text-slate-800 text-xs block flex items-center gap-1.5 text-sky-800">
-                        <BarChart3 className="w-4 h-4 text-sky-600" />
-                        <span>ردگیری و آمار بازدید</span>
-                      </span>
-                      <p className="text-[11px] text-slate-500 leading-relaxed">
-                        سامانه به طور دقیق ثبت می‌کند مشتری چند بار و در چه تاریخی فاکتور خود را آنلاین مشاهده نموده است.
-                      </p>
-                    </div>
+              {/* Centralized Active Share Links Manager */}
+              <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-sky-600" />
+                      <span>مدیریت متمرکز لینک‌های صادر شده ({toPersianDigits(weblinkStats.total)})</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      مشاهده آمار بازدید، کپی سریع، مسدودسازی آنی و تنظیم QR یا رمز عبور برای تمامی لینک‌های فاکتور و پورتال مشتری
+                    </p>
                   </div>
 
-                  {/* Config Form Fields */}
-                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-50/70 border border-slate-200 space-y-4">
-                    <h4 className="font-bold text-slate-800 text-xs">
-                      تنظیمات پیش‌فرض برای فاکتورهای جدید:
-                    </h4>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* Default Expiry */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-700 block">
-                          مدت زمان پیش‌فرض اعتبار پیوندها:
-                        </label>
-                        <select
-                          value={formData.webInvoiceDefaultExpiryHours ?? 0}
-                          onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceDefaultExpiryHours: Number(e.target.value) }))}
-                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/20 cursor-pointer"
-                        >
-                          <option value={0}>همیشه معتبر (بدون انقضای خودکار)</option>
-                          <option value={24}>۲۴ ساعت (۱ روز)</option>
-                          <option value={72}>۳ روز (۷۲ ساعت)</option>
-                          <option value={168}>۷ روز (۱ هفته)</option>
-                          <option value={720}>۳۰ روز (۱ ماه)</option>
-                        </select>
-                        <span className="text-[10px] text-slate-400 block">
-                          پس از اتمام این زمان، لینک منقضی شده و مشتری پیام تماس با فروشگاه دریافت می‌کند.
-                        </span>
-                      </div>
-
-                      {/* Custom Domain */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-700 block">
-                          دامنه یا آدرس اینترنتی سفارشی (اختیاری):
-                        </label>
-                        <input
-                          type="text"
-                          dir="ltr"
-                          placeholder="مثال: https://factor.mycompany.ir"
-                          value={formData.webInvoiceCustomDomain || ''}
-                          onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceCustomDomain: e.target.value }))}
-                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-left text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/20"
-                        />
-                        <span className="text-[10px] text-slate-400 block">
-                          در صورت خالی بودن، لینک‌ها با آدرس فعلی سرور تولید می‌شوند.
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
-                      <label className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors">
-                        <div>
-                          <span className="text-xs font-bold text-slate-800 block">مجاز بودن دانلود PDF و چاپ توسط مشتری</span>
-                          <span className="text-[11px] text-slate-400">نمایش کلیدهای دانلود مستقیم PDF و پرینت در صفحه مشتری</span>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={formData.webInvoiceAllowPdfDownload !== false}
-                          onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceAllowPdfDownload: e.target.checked }))}
-                          className="w-4 h-4 text-sky-600 rounded cursor-pointer"
-                        />
-                      </label>
-
-                      <label className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors">
-                        <div>
-                          <span className="text-xs font-bold text-slate-800 block">الزام پیش‌فرض رمز عبور (پین‌کد)</span>
-                          <span className="text-[11px] text-slate-400">نیاز به وارد کردن ۴ رقم آخر موبایل برای باز شدن فاکتور</span>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={!!formData.webInvoiceRequirePinDefault}
-                          onChange={(e) => setFormData(prev => ({ ...prev, webInvoiceRequirePinDefault: e.target.checked }))}
-                          className="w-4 h-4 text-indigo-600 rounded cursor-pointer"
-                        />
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Direct Action Link to Invoices List */}
-                  <div className="p-4 rounded-xl border border-sky-200 bg-sky-50/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div className="space-y-0.5">
-                      <span className="font-bold text-xs text-sky-950 block">
-                        مدیریت لینک‌های صادر شده فاکتورها:
-                      </span>
-                      <p className="text-[11px] text-sky-800">
-                        در صفحه لیست فاکتورها، روی آیکون کره زمین 🌐 کلیک کنید تا برای هر فاکتور دلخواه لینک اختصاصی، رمز عبور، آمار مشاهده و دکمه‌های پیامک/واتساپ را مدیریت نمایید.
-                      </p>
-                    </div>
+                  <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
-                      onClick={() => {
-                        if (onNavigateToTab) {
-                          onNavigateToTab('invoices');
-                        }
-                      }}
-                      className="px-4 py-2 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
+                      onClick={() => onNavigateToTab('invoices')}
+                      className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                     >
-                      رفتن به لیست فاکتورها
+                      لیست فاکتورها
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onNavigateToTab('customers')}
+                      className="px-3.5 py-2 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      لیست مشتریان
                     </button>
                   </div>
                 </div>
-              ) : (
-                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 text-slate-500 text-xs">
-                  قابلیت صدور لینک نسخه تحت وب برای مشتریان در حال حاضر غیرفعال است. با روشن کردن کلید بالا می‌توانید این قابلیت را فعال نمایید.
-                </div>
-              )}
 
-              {/* Bottom Action Footer */}
-              <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100">
-                <span className="text-xs text-slate-500">
-                  برای ذخیره‌سازی پیکربندی نسخه تحت وب، کلید ذخیره را بفشارید.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleSave()}
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 cursor-pointer"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>ذخیره تنظیمات نسخه تحت وب</span>
-                </button>
+                {/* 4-Metric KPI Strip */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 tabular-nums">
+                  <div className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200">
+                    <span className="text-[11px] font-bold text-emerald-800 block">لینک‌های فعال</span>
+                    <span className="text-xl font-black font-mono text-emerald-900 mt-1 block">
+                      {toPersianDigits(weblinkStats.active)}
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-sky-50/60 border border-sky-200">
+                    <span className="text-[11px] font-bold text-sky-800 block">مجموع بازدید مشتریان</span>
+                    <span className="text-xl font-black font-mono text-sky-900 mt-1 block">
+                      {toPersianDigits(weblinkStats.totalViews)}
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-indigo-50/60 border border-indigo-200">
+                    <span className="text-[11px] font-bold text-indigo-800 block">محافظت‌شده با رمز</span>
+                    <span className="text-xl font-black font-mono text-indigo-900 mt-1 block">
+                      {toPersianDigits(weblinkStats.pinProtected)}
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200">
+                    <span className="text-[11px] font-bold text-amber-800 block">مسدود یا منقضی</span>
+                    <span className="text-xl font-black font-mono text-amber-900 mt-1 block">
+                      {toPersianDigits(weblinkStats.blockedOrExpired)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Search & Filter Toolbar */}
+                <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={weblinkSearch}
+                      onChange={(e) => setWeblinkSearch(e.target.value)}
+                      placeholder="جستجو بر اساس نام مشتری، شماره فاکتور یا شماره تماس..."
+                      className="w-full pr-9 pl-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:border-sky-500 focus:bg-white transition-colors"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {([
+                      { id: 'all', label: 'همه' },
+                      { id: 'active', label: 'فعال' },
+                      { id: 'pin', label: 'رمزدار' },
+                      { id: 'disabled', label: 'مسدود' },
+                      { id: 'expired', label: 'منقضی / تکمیل' },
+                    ] as const).map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setWeblinkFilter(tab.id)}
+                        className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-colors cursor-pointer border ${
+                          weblinkFilter === tab.id
+                            ? 'bg-slate-900 text-white border-slate-900'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Links Table */}
+                {allShareLinks.length === 0 ? (
+                  <div className="p-10 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                    <Globe className="w-10 h-10 text-slate-300 mx-auto" />
+                    <h4 className="text-sm font-bold text-slate-700">هنوز هیچ لینک آنلاینی صادر نشده است</h4>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                      از بخش «لیست فاکتورها» یا «مشتریان» روی دکمه پیوند آنلاین کلیک کنید تا لینک اختصاصی، QR کد و رمز عبور ایجاد شود.
+                    </p>
+                  </div>
+                ) : filteredShareLinks.length === 0 ? (
+                  <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                    <p className="text-xs font-bold text-slate-600">هیچ لینکی مطابق با فیلتر یا جستجوی فعلی یافت نشد.</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWeblinkSearch('');
+                        setWeblinkFilter('all');
+                      }}
+                      className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-bold cursor-pointer"
+                    >
+                      نمایش همه لینک‌ها
+                    </button>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                    <table className="w-full text-right text-xs">
+                      <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
+                        <tr>
+                          <th className="py-2.5 px-3 font-bold">مشتری / سند</th>
+                          <th className="py-2.5 px-3 font-bold">وضعیت و امنیت</th>
+                          <th className="py-2.5 px-3 font-bold text-center">بازدید</th>
+                          <th className="py-2.5 px-3 font-bold">آخرین فعالیت / انقضا</th>
+                          <th className="py-2.5 px-3 font-bold text-left">عملیات</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredShareLinks.map((item) => {
+                          const publicUrl = StorageService.buildInvoicePublicUrl(item.token, formData.webInvoiceCustomDomain);
+                          const statusBadge = !item.enabled
+                            ? { text: 'مسدود', cls: 'bg-rose-50 text-rose-700 border-rose-200' }
+                            : item.isExpired
+                            ? { text: 'منقضی', cls: 'bg-amber-50 text-amber-700 border-amber-200' }
+                            : item.isLimitReached
+                            ? { text: 'تکمیل سقف', cls: 'bg-amber-50 text-amber-700 border-amber-200' }
+                            : { text: 'فعال', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+
+                          return (
+                            <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                              <td className="py-3 px-3">
+                                <div className="font-bold text-slate-900">{item.customerName}</div>
+                                <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                                  <span className={`px-1.5 py-0.5 rounded font-bold text-[10px] ${
+                                    item.kind === 'customer'
+                                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                      : 'bg-sky-50 text-sky-800 border border-sky-200'
+                                  }`}>
+                                    {item.title}
+                                  </span>
+                                  {item.customerPhone && (
+                                    <span className="font-mono tabular-nums">{toPersianDigits(item.customerPhone)}</span>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-3">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${statusBadge.cls}`}>
+                                    {statusBadge.text}
+                                  </span>
+                                  {item.pinRequired && (
+                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                      <Lock className="w-2.5 h-2.5" />
+                                      <span>پین</span>
+                                    </span>
+                                  )}
+                                  {item.isOneTime && (
+                                    <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                      یکبارمصرف
+                                    </span>
+                                  )}
+                                  {!item.allowPdfDownload && (
+                                    <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                      بدون PDF
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-3 text-center font-mono font-bold text-slate-800 tabular-nums">
+                                {toPersianDigits(item.viewCount)}
+                                {item.isOneTime ? ' / ۱' : item.maxViews ? ` / ${toPersianDigits(item.maxViews)}` : ''}
+                              </td>
+
+                              <td className="py-3 px-3 text-[11px] text-slate-500 tabular-nums space-y-0.5">
+                                {item.lastViewedAt ? (
+                                  <div>
+                                    بازدید: {toPersianDigits(new Date(item.lastViewedAt).toLocaleDateString('fa-IR'))}
+                                  </div>
+                                ) : (
+                                  <div className="text-slate-400">هنوز مشاهده نشده</div>
+                                )}
+                                {item.expiresAt && (
+                                  <div className={item.isExpired ? 'text-rose-600 font-bold' : 'text-slate-500'}>
+                                    انقضا: {toPersianDigits(new Date(item.expiresAt).toLocaleDateString('fa-IR'))}
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="py-3 px-3">
+                                <div className="flex items-center justify-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyShareLinkRow(item.token)}
+                                    className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                                    title="کپی پیوند"
+                                  >
+                                    {copiedLinkToken === item.token ? (
+                                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+
+                                  <a
+                                    href={publicUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                                    title="پیش‌نمایش صفحه مشتری"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleShareLinkRow(item)}
+                                    disabled={togglingLinkId === item.id}
+                                    className={`p-1.5 rounded-lg border transition-colors cursor-pointer disabled:opacity-50 ${
+                                      item.enabled
+                                        ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                                    }`}
+                                    title={item.enabled ? 'مسدودسازی فوری' : 'فعال‌سازی مجدد'}
+                                  >
+                                    <Power className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingShareLinkInvoice(item.invoiceObject)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                    title="تنظیمات، رمز عبور و QR کد"
+                                  >
+                                    <QrCode className="w-3.5 h-3.5 text-sky-400" />
+                                    <span className="hidden sm:inline">تنظیمات</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -4948,6 +5342,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           )}
         </div>
       </div>
+
+      {/* Share Link Settings & QR Modal */}
+      <InvoiceShareLinkModal
+        isOpen={Boolean(editingShareLinkInvoice)}
+        invoice={editingShareLinkInvoice}
+        settings={formData}
+        onClose={() => setEditingShareLinkInvoice(null)}
+        onUpdateInvoice={(updated) => {
+          setEditingShareLinkInvoice(updated);
+          onReloadData();
+        }}
+      />
     </div>
   );
 };

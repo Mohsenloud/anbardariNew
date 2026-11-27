@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Invoice, 
   StoreSettings, 
@@ -10,7 +10,7 @@ import {
 } from '../types';
 import { formatPrice, toPersianDigits, numberToPersianWords, getCurrentJalaliDate, cleanInvoiceNotes } from '../utils/jalali';
 import { StorageService } from '../utils/storage';
-import { printElementDirectly, generatePdfBlob, getInvoicePdfFilename, exportElementToPdf } from '../utils/pdfHelper';
+import { printElementDirectly, printElementInNewWindow, generatePdfBlob, getInvoicePdfFilename, exportElementToPdf } from '../utils/pdfHelper';
 import { 
   Receipt, 
   Printer, 
@@ -91,12 +91,19 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [storeMeta, setStoreMeta] = useState<{ storeName?: string; storeLogo?: string; invoiceNumber?: string }>({});
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const fetchedTokenRef = useRef<string | null>(null);
+  const verifiedPinRef = useRef<string | undefined>(undefined);
 
   // Filters for Invoices Tab
   const [searchInvoices, setSearchInvoices] = useState('');
   const [filterInvoiceStatus, setFilterInvoiceStatus] = useState<'all' | 'paid' | 'unpaid' | 'partial' | 'proforma'>('all');
-  const [selectedRemittanceModal, setSelectedRemittanceModal] = useState<PublicCustomerRemittance | null>(null);
+
+  // Filters for Deposits Tab
+  const [depositSearch, setDepositSearch] = useState('');
+  const [depositMethodFilter, setDepositMethodFilter] = useState<'all' | 'cash' | 'transfer' | 'pos' | 'cheque'>('all');
 
   // Filters & Search for Customer Statement (صورتحساب مشتری)
   const [statementSearch, setStatementSearch] = useState('');
@@ -113,9 +120,12 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  const loadInvoice = async (pin?: string) => {
+  const loadInvoice = async (pin?: string, options?: { silentRefresh?: boolean }) => {
+    const isSilent = Boolean(options?.silentRefresh);
     try {
-      if (pin) {
+      if (isSilent) {
+        setIsRefreshing(true);
+      } else if (pin) {
         setPinLoading(true);
         setPinError('');
       } else {
@@ -123,22 +133,48 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
         setErrorMessage(null);
       }
 
-      const res = await StorageService.fetchPublicInvoice(token, pin);
+      const res = await StorageService.fetchPublicInvoice(token, pin, { silentRefresh: isSilent });
 
       if (res.success && res.invoice) {
+        if (pin) {
+          verifiedPinRef.current = pin;
+        }
         setInvoice(res.invoice);
-        setSelectedInvoice(res.invoice);
         setSettings(res.settings || null);
         setShareLink(res.shareLink || null);
-        const isCustomerPortalOnly = String(res.invoice.id || '').startsWith('cust-portal-');
-        const loadedInvoices = res.customerInvoices || (isCustomerPortalOnly ? [] : [res.invoice]);
+        const isPortalOnly = String(res.invoice.id || '').startsWith('cust-portal-');
+        const loadedInvoices = res.customerInvoices || (isPortalOnly ? [] : [res.invoice]);
         setCustomerInvoices(loadedInvoices);
         setDeposits(res.deposits || []);
         setRemittances(res.remittances || []);
         setCustomerLedger(res.customerLedger || null);
         setPinRequired(false);
-        if (isCustomerPortalOnly && loadedInvoices.length === 0) {
-          setActiveTab('ledger');
+
+        if (isPortalOnly) {
+          setSelectedInvoice((prev) => {
+            if (prev && loadedInvoices.some((i) => i.id === prev.id)) return prev;
+            return loadedInvoices.length > 0 ? loadedInvoices[0] : null;
+          });
+          if (!isSilent) {
+            const hasUrlTab = typeof window !== 'undefined' && Boolean(new URLSearchParams(window.location.search).get('tab'));
+            if (!hasUrlTab) {
+              const statementAllowed = res.shareLink?.includeCustomerStatement !== false;
+              setActiveTab(statementAllowed ? 'ledger' : loadedInvoices.length > 0 ? 'invoices' : 'deposits');
+            } else if (loadedInvoices.length === 0) {
+              setActiveTab((prev) => (prev === 'current' ? 'ledger' : prev));
+            }
+          }
+        } else {
+          setSelectedInvoice((prev) => {
+            if (isSilent && prev && loadedInvoices.some((i) => i.id === prev.id)) {
+              return loadedInvoices.find((i) => i.id === prev.id) || res.invoice!;
+            }
+            return res.invoice!;
+          });
+        }
+
+        if (isSilent) {
+          showToast('اطلاعات با موفقیت به‌روزرسانی شد.');
         }
       } else if (res.pinRequired) {
         setPinRequired(true);
@@ -151,21 +187,36 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
           setPinError('پین‌کد وارد شده صحیح نمی‌باشد. لطفاً مجدداً بررسی نمایید.');
         }
       } else {
-        setErrorMessage(res.message || 'فاکتور مورد نظر یافت نشد یا مهلت مشاهده آن به پایان رسیده است.');
+        if (isSilent) {
+          showToast(res.message || 'خطا در به‌روزرسانی اطلاعات');
+        } else {
+          setErrorMessage(res.message || 'فاکتور مورد نظر یافت نشد یا مهلت مشاهده آن به پایان رسیده است.');
+        }
       }
     } catch {
-      setErrorMessage('خطا در برقراری ارتباط با سرور فاکتور. لطفاً اتصال اینترنت خود را بررسی نمایید.');
+      if (isSilent) {
+        showToast('خطا در برقراری ارتباط با سرور.');
+      } else {
+        setErrorMessage('خطا در برقراری ارتباط با سرور فاکتور. لطفاً اتصال اینترنت خود را بررسی نمایید.');
+      }
     } finally {
       setLoading(false);
       setPinLoading(false);
+      setIsRefreshing(false);
     }
   };
 
   useEffect(() => {
-    if (token) {
-      loadInvoice();
-    }
+    if (!token || fetchedTokenRef.current === token) return;
+    fetchedTokenRef.current = token;
+    verifiedPinRef.current = undefined;
+    void loadInvoice();
   }, [token]);
+
+  const handleRefreshData = () => {
+    if (isRefreshing || loading) return;
+    void loadInvoice(verifiedPinRef.current, { silentRefresh: true });
+  };
 
   const handlePinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,11 +224,27 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
       setPinError('لطفاً پین‌کد امنیتی را وارد نمایید.');
       return;
     }
-    loadInvoice(pinInput.trim());
+    void loadInvoice(pinInput.trim());
   };
 
-  const displayedInvoice = selectedInvoice || invoice;
+  const isCustomerPortalOnly = Boolean(invoice && String(invoice.id || '').startsWith('cust-portal-'));
+  const displayedInvoice = selectedInvoice || (isCustomerPortalOnly ? customerInvoices[0] || null : invoice);
+  const hasDisplayableInvoice = Boolean(displayedInvoice && !String(displayedInvoice.id || '').startsWith('cust-portal-'));
   const showCustomerStatement = shareLink?.includeCustomerStatement !== false;
+
+  // Dynamic browser tab title
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const storeTitle = settings?.storeName || storeMeta.storeName || 'پورتال آنلاین مشتریان';
+    if (hasDisplayableInvoice && displayedInvoice) {
+      const docType = displayedInvoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور';
+      document.title = `${docType} ${toPersianDigits(displayedInvoice.invoiceNumber)} | ${storeTitle}`;
+    } else if (invoice) {
+      document.title = `صورتحساب ${invoice.customerName} | ${storeTitle}`;
+    } else {
+      document.title = storeTitle;
+    }
+  }, [settings?.storeName, storeMeta.storeName, hasDisplayableInvoice, displayedInvoice, invoice]);
 
   // Build or use complete chronological Customer Statement entries
   const fullStatementEntries = useMemo<PublicCustomerLedgerEntry[]>(() => {
@@ -457,15 +524,29 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
   };
 
   const handlePrintStatement = () => {
-    printElementDirectly('printable-public-customer-statement-pdf', {
-      pageSize: 'a4',
-      orientation: 'portrait',
-      documentType: 'generic',
-    });
+    if (shareLink?.allowPdfDownload === false) return;
+    const ok = printElementInNewWindow(
+      'printable-public-customer-statement-pdf',
+      `صورتحساب ${invoice?.customerName || ''}`,
+      {
+        pageSize: 'a4',
+        orientation: 'portrait',
+        documentType: 'generic',
+        printLayout: settings?.printLayout,
+      }
+    );
+    if (!ok) {
+      printElementDirectly('printable-public-customer-statement-pdf', {
+        pageSize: 'a4',
+        orientation: 'portrait',
+        documentType: 'generic',
+        printLayout: settings?.printLayout,
+      });
+    }
   };
 
   const handleDownloadStatementPdf = async () => {
-    if (!invoice) return;
+    if (!invoice || shareLink?.allowPdfDownload === false) return;
     try {
       setIsExportingPdf(true);
       const safeName = (invoice.customerName || 'مشتری').replace(/\s+/g, '_');
@@ -482,6 +563,7 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
         orientation: 'portrait',
         quality: 'high',
         documentType: 'generic',
+        printLayout: settings?.printLayout,
       });
 
       if (res.success) {
@@ -497,24 +579,49 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
   };
 
   const handlePrint = () => {
+    if (shareLink?.allowPdfDownload === false) return;
     if (activeTab === 'ledger' && showCustomerStatement) {
       handlePrintStatement();
       return;
     }
-    if (!displayedInvoice) return;
-    printElementDirectly('public-web-invoice-container', {
-      pageSize: 'a4',
-      orientation: 'portrait',
-      documentType: 'invoice',
-    });
+    if (!hasDisplayableInvoice || !displayedInvoice) {
+      if (showCustomerStatement) {
+        handlePrintStatement();
+      }
+      return;
+    }
+    const ok = printElementInNewWindow(
+      'public-web-invoice-container',
+      `فاکتور ${displayedInvoice.invoiceNumber}`,
+      {
+        pageSize: 'a4',
+        orientation: 'portrait',
+        documentType: 'invoice',
+        printLayout: settings?.printLayout,
+      }
+    );
+    if (!ok) {
+      printElementDirectly('public-web-invoice-container', {
+        pageSize: 'a4',
+        orientation: 'portrait',
+        documentType: 'invoice',
+        printLayout: settings?.printLayout,
+      });
+    }
   };
 
   const handleDownloadPdf = async () => {
+    if (shareLink?.allowPdfDownload === false) return;
     if (activeTab === 'ledger' && showCustomerStatement) {
       await handleDownloadStatementPdf();
       return;
     }
-    if (!displayedInvoice) return;
+    if (!hasDisplayableInvoice || !displayedInvoice) {
+      if (showCustomerStatement) {
+        await handleDownloadStatementPdf();
+      }
+      return;
+    }
     try {
       setIsExportingPdf(true);
       const filename = getInvoicePdfFilename(displayedInvoice, { includeExtension: true });
@@ -524,6 +631,7 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
         orientation: 'portrait',
         documentType: 'invoice',
         quality: 'high',
+        printLayout: settings?.printLayout,
       });
 
       if (!pdfResult.success || !pdfResult.blob) {
@@ -599,26 +707,100 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
     });
   }, [customerInvoices, searchInvoices, filterInvoiceStatus]);
 
-  // Total deposits amount
-  const totalDepositsAmount = useMemo(() => {
-    return deposits
-      .filter((d) => d.type === 'deposit')
-      .reduce((sum, d) => sum + (d.amount || 0), 0);
-  }, [deposits]);
+  // Strictly separate confirmed deposits from manual debt records
+  const onlyDeposits = useMemo(() => deposits.filter((d) => d.type === 'deposit'), [deposits]);
+  const manualDebtsCount = useMemo(() => deposits.filter((d) => d.type === 'debt').length, [deposits]);
 
-  // 1. Loading State
+  const filteredDeposits = useMemo(() => {
+    const q = normalizeDigitsToEn(depositSearch.trim()).toLowerCase();
+    return onlyDeposits.filter((dep) => {
+      if (depositMethodFilter !== 'all') {
+        const key = String(dep.paymentMethod || '').toLowerCase();
+        if (depositMethodFilter === 'cash' && key !== 'cash') return false;
+        if (depositMethodFilter === 'transfer' && key !== 'transfer' && key !== 'card') return false;
+        if (depositMethodFilter === 'pos' && key !== 'pos') return false;
+        if (depositMethodFilter === 'cheque' && key !== 'cheque') return false;
+      }
+      if (!q) return true;
+      const haystack = normalizeDigitsToEn(
+        [dep.title, dep.invoiceNumber, dep.trackingNumber, dep.bankName, dep.notes, dep.date, String(dep.amount || '')]
+          .filter(Boolean)
+          .join(' ')
+      ).toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [onlyDeposits, depositSearch, depositMethodFilter]);
+
+  const totalDepositsAmount = useMemo(() => {
+    return onlyDeposits.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+  }, [onlyDeposits]);
+
+  const filteredDepositsTotal = useMemo(() => {
+    return filteredDeposits.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+  }, [filteredDeposits]);
+
+  const depositMethodLabels: Record<string, string> = {
+    cash: 'نقدی',
+    transfer: 'واریز بانکی / کارت به کارت',
+    card: 'کارت به کارت',
+    pos: 'کارتخوان (POS)',
+    cheque: 'چک بانکی',
+    credit: 'نسیه',
+    other: 'سایر',
+  };
+
+  // 1. Loading State (Clean Skeleton Loader)
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 text-center select-none font-['Vazirmatn']" dir="rtl">
-        <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mb-5 animate-pulse">
-          <Receipt className="w-8 h-8 animate-bounce" />
+      <div className="min-h-screen bg-slate-100 font-['Vazirmatn']" dir="rtl">
+        <div className="bg-slate-900 border-b border-slate-800 px-4 py-3.5">
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-slate-800 animate-pulse" />
+              <div className="space-y-2">
+                <div className="h-3.5 w-36 rounded-md bg-slate-800 animate-pulse" />
+                <div className="h-2.5 w-24 rounded-md bg-slate-800/80 animate-pulse" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="h-9 w-24 rounded-xl bg-slate-800 animate-pulse" />
+              <div className="h-9 w-16 rounded-xl bg-slate-800 animate-pulse" />
+            </div>
+          </div>
         </div>
-        <h2 className="text-white text-base sm:text-lg font-bold mb-2">
-          در حال بارگذاری نسخه تحت وب فاکتور...
-        </h2>
-        <p className="text-slate-400 text-xs sm:text-sm max-w-sm leading-relaxed">
-          لطفاً چند لحظه شکیبا باشید تا اطلاعات معتبر فاکتور از سامانه دریافت گردد.
-        </p>
+        <div className="max-w-5xl mx-auto px-3 sm:px-6 py-6 space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-slate-200 animate-pulse" />
+              <div className="space-y-2">
+                <div className="h-4 w-44 rounded bg-slate-200 animate-pulse" />
+                <div className="h-3 w-32 rounded bg-slate-100 animate-pulse" />
+              </div>
+            </div>
+            <div className="h-9 w-28 rounded-xl bg-slate-200 animate-pulse" />
+          </div>
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 space-y-6">
+            <div className="flex justify-between pb-6 border-b border-slate-100">
+              <div className="space-y-2.5">
+                <div className="h-5 w-48 rounded bg-slate-200 animate-pulse" />
+                <div className="h-3.5 w-32 rounded bg-slate-100 animate-pulse" />
+              </div>
+              <div className="space-y-2.5 flex flex-col items-end">
+                <div className="h-6 w-28 rounded-lg bg-slate-200 animate-pulse" />
+                <div className="h-3.5 w-24 rounded bg-slate-100 animate-pulse" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="h-28 rounded-2xl bg-slate-100 animate-pulse" />
+              <div className="h-28 rounded-2xl bg-slate-100 animate-pulse" />
+            </div>
+            <div className="space-y-2.5">
+              <div className="h-10 w-full rounded-xl bg-slate-200/80 animate-pulse" />
+              <div className="h-10 w-full rounded-xl bg-slate-100 animate-pulse" />
+              <div className="h-10 w-full rounded-xl bg-slate-100 animate-pulse" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -780,37 +962,49 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
 
           {/* Quick Header Actions */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {allowPdf && (
-              <button
-                type="button"
-                onClick={handleDownloadPdf}
-                disabled={isExportingPdf}
-                className="min-h-[38px] flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-98 disabled:opacity-50 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-                title="دانلود نسخه PDF"
-              >
-                {isExportingPdf ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span className="hidden sm:inline">در حال آماده‌سازی...</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-3.5 h-3.5" />
-                    <span className="hidden xs:inline">دانلود PDF</span>
-                  </>
-                )}
-              </button>
-            )}
-
             <button
               type="button"
-              onClick={handlePrint}
-              className="min-h-[38px] flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-700 transition-all cursor-pointer"
-              title="چاپ مستقیم فاکتور"
+              onClick={handleRefreshData}
+              disabled={isRefreshing}
+              className="min-h-[38px] flex items-center justify-center bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-xl text-xs font-bold border border-slate-700 transition-colors cursor-pointer"
+              title="به‌روزرسانی لحظه‌ای اطلاعات"
             >
-              <Printer className="w-3.5 h-3.5 text-blue-400" />
-              <span className="hidden sm:inline">چاپ</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-400' : ''}`} />
             </button>
+
+            {allowPdf && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleDownloadPdf}
+                  disabled={isExportingPdf}
+                  className="min-h-[38px] flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  title="دانلود نسخه PDF"
+                >
+                  {isExportingPdf ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span className="hidden sm:inline">در حال آماده‌سازی...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      <span className="hidden xs:inline">دانلود PDF</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="min-h-[38px] flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-700 transition-colors cursor-pointer"
+                  title="چاپ مستقیم"
+                >
+                  <Printer className="w-3.5 h-3.5 text-blue-400" />
+                  <span className="hidden sm:inline">چاپ</span>
+                </button>
+              </>
+            )}
 
             <button
               type="button"
@@ -827,18 +1021,20 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
         {/* Customer Navigation Tabs (Mobile-Optimized Horizontal Scroll) */}
         <div className="bg-slate-950/90 border-t border-slate-800/80 overflow-x-auto no-scrollbar">
           <div className="max-w-5xl mx-auto px-2 sm:px-6 flex items-center gap-1 py-1.5 min-w-max">
-            <button
-              type="button"
-              onClick={() => setActiveTab('current')}
-              className={`min-h-[38px] px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                activeTab === 'current'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Receipt className="w-4 h-4 shrink-0" />
-              <span>فاکتور فعلی ({toPersianDigits(currInv.invoiceNumber)})</span>
-            </button>
+            {hasDisplayableInvoice && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('current')}
+                className={`min-h-[38px] px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeTab === 'current'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Receipt className="w-4 h-4 shrink-0" />
+                <span className="tabular-nums">فاکتور فعلی ({toPersianDigits(currInv.invoiceNumber)})</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -851,7 +1047,7 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
             >
               <FileSpreadsheet className="w-4 h-4 shrink-0" />
               <span>تمام فاکتورهای من</span>
-              <span className="px-1.5 py-0.2 rounded-md bg-white/10 text-[10px] font-mono">
+              <span className="px-1.5 py-0.2 rounded-md bg-white/10 text-[10px] font-mono tabular-nums">
                 {toPersianDigits(customerInvoices.length)}
               </span>
             </button>
@@ -867,8 +1063,8 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
             >
               <Wallet className="w-4 h-4 shrink-0" />
               <span>واریزی‌ها و پرداخت‌ها</span>
-              <span className="px-1.5 py-0.2 rounded-md bg-white/10 text-[10px] font-mono">
-                {toPersianDigits(deposits.length)}
+              <span className="px-1.5 py-0.2 rounded-md bg-white/10 text-[10px] font-mono tabular-nums">
+                {toPersianDigits(onlyDeposits.length)}
               </span>
             </button>
 
@@ -883,7 +1079,7 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
             >
               <Truck className="w-4 h-4 shrink-0" />
               <span>حواله‌های انبار و باربری</span>
-              <span className="px-1.5 py-0.2 rounded-md bg-white/10 text-[10px] font-mono">
+              <span className="px-1.5 py-0.2 rounded-md bg-white/10 text-[10px] font-mono tabular-nums">
                 {toPersianDigits(remittances.length)}
               </span>
             </button>
@@ -900,7 +1096,7 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
               >
                 <ReceiptText className="w-4 h-4 shrink-0" />
                 <span>صورتحساب کامل و گردش حساب</span>
-                <span className="px-1.5 py-0.2 rounded-md bg-white/15 text-[10px] font-mono">
+                <span className="px-1.5 py-0.2 rounded-md bg-white/15 text-[10px] font-mono tabular-nums">
                   {toPersianDigits(fullStatementEntries.length)}
                 </span>
               </button>
@@ -913,7 +1109,7 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
       <main className="max-w-5xl mx-auto px-2 sm:px-6 py-4 sm:py-6">
         
         {/* TAB 1: CURRENT INVOICE VIEW */}
-        {activeTab === 'current' && (
+        {activeTab === 'current' && hasDisplayableInvoice && (
           <div className="space-y-4">
             {/* Quick Status Bar for Active Invoice */}
             <div className="no-print bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -927,7 +1123,7 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-sm text-slate-900">
+                    <span className="font-bold text-sm text-slate-900 tabular-nums">
                       {currInv.isProforma ? 'پیش‌فاکتور شماره' : 'فاکتور فروش شماره'} {toPersianDigits(currInv.invoiceNumber)}
                     </span>
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
@@ -940,33 +1136,35 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                        'پرداخت نشده / نسیه'}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
                     تاریخ صدور: {toPersianDigits(currInv.date)}
                     {currInv.dueDate && ` • سررسید: ${toPersianDigits(currInv.dueDate)}`}
                   </p>
                 </div>
               </div>
 
-              {/* Quick Mobile Action Buttons */}
-              <div className="flex items-center gap-2 self-end sm:self-auto">
-                <button
-                  type="button"
-                  onClick={handleDownloadPdf}
-                  disabled={isExportingPdf}
-                  className="min-h-[44px] px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-emerald-200"
-                >
-                  <Download className="w-4 h-4 text-emerald-600" />
-                  <span>دانلود PDF</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handlePrint}
-                  className="min-h-[44px] px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200"
-                >
-                  <Printer className="w-4 h-4 text-slate-600" />
-                  <span>چاپ</span>
-                </button>
-              </div>
+              {/* Quick Action Buttons (Strictly gated by allowPdf) */}
+              {allowPdf && (
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={handleDownloadPdf}
+                    disabled={isExportingPdf}
+                    className="min-h-[44px] px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-emerald-200"
+                  >
+                    <Download className="w-4 h-4 text-emerald-600" />
+                    <span>دانلود PDF</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePrint}
+                    className="min-h-[44px] px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200"
+                  >
+                    <Printer className="w-4 h-4 text-slate-600" />
+                    <span>چاپ</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Printable Digital Invoice Container */}
@@ -1117,8 +1315,8 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                   <span>اقلام و کالاهای فاکتور ({toPersianDigits((currInv.items || []).length)} ردیف):</span>
                 </h3>
 
-                {/* 3.A: Mobile Cards View (Visible on screens < md, hidden on desktop and print) */}
-                <div className="block md:hidden space-y-2.5 print:hidden">
+                {/* 3.A: Mobile Cards View (Visible on screens < md, hidden on desktop, print, and PDF capture) */}
+                <div className="block md:hidden space-y-2.5 print:hidden pdf-hide-on-capture">
                   {(currInv.items || []).map((item, idx) => (
                     <div
                       key={item.id || idx}
@@ -1184,7 +1382,7 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                 </div>
 
                 {/* 3.B: Classic Table View (Visible on md+ screens and strictly preserved for Print / PDF export) */}
-                <div className="hidden md:block print:block overflow-x-auto rounded-2xl border border-slate-200">
+                <div className="hidden md:block print:block pdf-show-on-capture overflow-x-auto rounded-2xl border border-slate-200">
                   <table className="w-full text-right text-xs">
                     <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                       <tr>
@@ -1630,12 +1828,21 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
             <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-3xl p-5 sm:p-6 shadow-md">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <span className="text-emerald-100 text-xs block mb-1">مجموع پرداختی‌ها و واریزهای تایید شده:</span>
-                  <h3 className="text-2xl sm:text-3xl font-black font-mono">
-                    {formatPrice(totalDepositsAmount, settings?.currency || 'تومان')}
+                  <span className="text-emerald-100 text-xs block mb-1">
+                    {depositSearch.trim() || depositMethodFilter !== 'all'
+                      ? 'مجموع پرداختی‌های فیلتر شده:'
+                      : 'مجموع پرداختی‌ها و واریزهای تایید شده:'}
+                  </span>
+                  <h3 className="text-2xl sm:text-3xl font-black font-mono tabular-nums">
+                    {formatPrice(
+                      depositSearch.trim() || depositMethodFilter !== 'all'
+                        ? filteredDepositsTotal
+                        : totalDepositsAmount,
+                      settings?.currency || 'تومان'
+                    )}
                   </h3>
-                  <p className="text-xs text-emerald-100/90 mt-1">
-                    تعداد کل اسناد پرداختی: {toPersianDigits(deposits.length)} سند مالی
+                  <p className="text-xs text-emerald-100/90 mt-1 tabular-nums">
+                    تعداد اسناد پرداختی: {toPersianDigits(filteredDeposits.length)} از {toPersianDigits(onlyDeposits.length)} سند مالی
                   </p>
                 </div>
                 <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center shrink-0 border border-white/20">
@@ -1644,67 +1851,157 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
               </div>
             </div>
 
+            {/* Search & Payment Method Filter Bar */}
+            {onlyDeposits.length > 0 && (
+              <div className="bg-white rounded-2xl p-3.5 border border-slate-200 space-y-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="جستجو در واریزی‌ها (شماره فاکتور، کد پیگیری، نام بانک، تاریخ یا مبلغ)..."
+                      value={depositSearch}
+                      onChange={(e) => setDepositSearch(e.target.value)}
+                      className="w-full pr-9 pl-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:border-emerald-500 focus:bg-white transition-colors"
+                    />
+                    {depositSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setDepositSearch('')}
+                        className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {([
+                      { id: 'all', label: 'همه' },
+                      { id: 'cash', label: 'نقدی' },
+                      { id: 'transfer', label: 'واریز / کارت' },
+                      { id: 'pos', label: 'کارتخوان' },
+                      { id: 'cheque', label: 'چک' },
+                    ] as const).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setDepositMethodFilter(item.id)}
+                        className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-colors cursor-pointer border ${
+                          depositMethodFilter === item.id
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Deposits List */}
-            {deposits.length === 0 ? (
+            {onlyDeposits.length === 0 ? (
               <div className="bg-white rounded-2xl p-12 text-center border border-slate-200">
                 <DollarSign className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                 <h3 className="text-sm font-bold text-slate-700 mb-1">هیچ واریزی یا پرداختی ثبت نشده است</h3>
                 <p className="text-xs text-slate-400">به محض ثبت واریز وجه یا چک، سوابق در این قسمت نمایش داده خواهد شد.</p>
               </div>
+            ) : filteredDeposits.length === 0 ? (
+              <div className="bg-white rounded-2xl p-10 text-center border border-slate-200 space-y-2">
+                <Inbox className="w-10 h-10 text-slate-300 mx-auto" />
+                <h3 className="text-sm font-bold text-slate-700">پرداختی با این فیلتر یافت نشد</h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDepositSearch('');
+                    setDepositMethodFilter('all');
+                  }}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  نمایش همه واریزی‌ها
+                </button>
+              </div>
             ) : (
               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
                 <div className="p-4 border-b border-slate-100 font-bold text-xs text-slate-700 flex items-center justify-between">
-                  <span>ریز واریزها و فیش‌های بانکی ثبت‌شده</span>
-                  <span className="text-slate-400 font-normal">{toPersianDigits(deposits.length)} ردیف</span>
+                  <span>ریز واریزها و فیش‌های بانکی تاییدشده</span>
+                  <span className="text-slate-400 font-normal tabular-nums">{toPersianDigits(filteredDeposits.length)} ردیف</span>
                 </div>
 
                 <div className="divide-y divide-slate-100">
-                  {deposits.map((dep, idx) => (
-                    <div key={dep.id || idx} className="p-4 hover:bg-slate-50/70 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                      <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5 border border-emerald-200">
-                          <CheckCheck className="w-4 h-4" />
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-slate-900 text-sm">
-                              {dep.title || 'واریز به حساب'}
-                            </span>
-                            {dep.invoiceNumber && (
-                              <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono">
-                                بابت فاکتور: {toPersianDigits(dep.invoiceNumber)}
+                  {filteredDeposits.map((dep, idx) => {
+                    const methodLabel = dep.paymentMethod
+                      ? depositMethodLabels[String(dep.paymentMethod).toLowerCase()] || dep.paymentMethod
+                      : null;
+                    return (
+                      <div key={dep.id || idx} className="p-4 hover:bg-slate-50/70 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                        <div className="flex items-start gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5 border border-emerald-200">
+                            <CheckCheck className="w-4 h-4" />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-slate-900 text-sm">
+                                {dep.title || 'واریز به حساب'}
                               </span>
+                              {methodLabel && (
+                                <span className="text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-md">
+                                  {methodLabel}
+                                </span>
+                              )}
+                              {dep.invoiceNumber && (
+                                <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-mono tabular-nums">
+                                  بابت فاکتور: {toPersianDigits(dep.invoiceNumber)}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-slate-500 text-[11px] flex items-center gap-3 flex-wrap tabular-nums">
+                              <span>تاریخ: {toPersianDigits(dep.date)}</span>
+                              {dep.trackingNumber && (
+                                <span>شماره پیگیری/چک: <strong className="font-mono text-slate-700">{toPersianDigits(dep.trackingNumber)}</strong></span>
+                              )}
+                              {dep.bankName && (
+                                <span>بانک: {dep.bankName}</span>
+                              )}
+                              {dep.chequeDueDate && (
+                                <span className="text-amber-800 font-medium">سررسید چک: {toPersianDigits(dep.chequeDueDate)}</span>
+                              )}
+                            </div>
+                            {dep.notes && (
+                              <p className="text-[11px] text-slate-600 bg-slate-50 p-1.5 rounded-lg border border-slate-100">
+                                توضیحات: {dep.notes}
+                              </p>
                             )}
                           </div>
-                          <div className="text-slate-500 text-[11px] flex items-center gap-3 flex-wrap">
-                            <span>تاریخ: {toPersianDigits(dep.date)}</span>
-                            {dep.trackingNumber && (
-                              <span>شماره پیگیری/ارجاع: <strong className="font-mono text-slate-700">{toPersianDigits(dep.trackingNumber)}</strong></span>
-                            )}
-                            {dep.bankName && (
-                              <span>بانک: {dep.bankName}</span>
-                            )}
-                            {dep.chequeDueDate && (
-                              <span className="text-amber-800">سررسید چک: {toPersianDigits(dep.chequeDueDate)}</span>
-                            )}
-                          </div>
-                          {dep.notes && (
-                            <p className="text-[11px] text-slate-600 bg-slate-50 p-1.5 rounded-lg border border-slate-100">
-                              توضیحات: {dep.notes}
-                            </p>
-                          )}
+                        </div>
+
+                        <div className="text-right sm:text-left self-end sm:self-auto shrink-0">
+                          <span className="text-[11px] text-slate-400 block">مبلغ واریزی:</span>
+                          <span className="font-black font-mono tabular-nums text-emerald-700 text-sm sm:text-base">
+                            +{formatPrice(dep.amount, settings?.currency || 'تومان')}
+                          </span>
                         </div>
                       </div>
-
-                      <div className="text-right sm:text-left self-end sm:self-auto shrink-0">
-                        <span className="text-[11px] text-slate-400 block">مبلغ واریزی:</span>
-                        <span className="font-black font-mono text-emerald-700 text-sm sm:text-base">
-                          +{formatPrice(dep.amount, settings?.currency || 'تومان')}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
+              </div>
+            )}
+
+            {manualDebtsCount > 0 && showCustomerStatement && (
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-600">
+                <span>
+                  تعداد <strong className="font-mono text-slate-900">{toPersianDigits(manualDebtsCount)}</strong> سند بدهی دستی در گردش حساب شما ثبت شده که در تب صورتحساب کامل قابل مشاهده است.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('ledger')}
+                  className="text-emerald-700 hover:text-emerald-800 font-bold underline cursor-pointer self-start sm:self-auto"
+                >
+                  مشاهده صورتحساب کامل
+                </button>
               </div>
             )}
           </div>
@@ -1836,16 +2133,16 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={handlePrintStatement}
-                    className="min-h-[38px] px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1.5 border border-slate-200 transition-colors cursor-pointer"
-                  >
-                    <Printer className="w-4 h-4 text-slate-600" />
-                    <span>چاپ صورتحساب</span>
-                  </button>
-                  {allowPdf && (
+                {allowPdf && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handlePrintStatement}
+                      className="min-h-[38px] px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1.5 border border-slate-200 transition-colors cursor-pointer"
+                    >
+                      <Printer className="w-4 h-4 text-slate-600" />
+                      <span>چاپ صورتحساب</span>
+                    </button>
                     <button
                       type="button"
                       onClick={handleDownloadStatementPdf}
@@ -1855,8 +2152,8 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                       <Download className="w-4 h-4" />
                       <span>{isStatementFiltered ? 'دانلود PDF نتایج فیلتر شده' : 'دانلود PDF صورتحساب'}</span>
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
               {/* 4 Dynamic KPI Cards (Recalculated on Search/Filter) */}
@@ -2512,30 +2809,33 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
         {storePhone && (
           <a
             href={`tel:${cleanPhone}`}
-            className="flex-1 min-h-[44px] bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm"
+            className="flex-1 min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5"
           >
             <Phone className="w-4 h-4" />
             <span>تماس تلفنی</span>
           </a>
         )}
 
-        <button
-          type="button"
-          onClick={handleDownloadPdf}
-          disabled={isExportingPdf}
-          className="flex-1 min-h-[44px] bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-        >
-          <Download className="w-4 h-4 text-emerald-400" />
-          <span>دانلود PDF</span>
-        </button>
+        {allowPdf && (
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={isExportingPdf}
+            className="flex-1 min-h-[44px] bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <Download className="w-4 h-4 text-emerald-400" />
+            <span>دانلود PDF</span>
+          </button>
+        )}
 
         <button
           type="button"
           onClick={handleShareNative}
-          className="w-12 min-h-[44px] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl flex items-center justify-center cursor-pointer"
+          className={`${allowPdf || storePhone ? 'w-12' : 'flex-1'} min-h-[44px] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer`}
           title="اشتراک‌گذاری"
         >
           <Share2 className="w-4 h-4" />
+          {!allowPdf && !storePhone && <span>اشتراک‌گذاری</span>}
         </button>
       </div>
 

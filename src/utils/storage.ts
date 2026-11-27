@@ -3174,11 +3174,18 @@ export const StorageService = {
     const cleanToken = encodeURIComponent(token.trim());
     if (customDomain && customDomain.trim()) {
       let base = customDomain.trim();
-      if (!base.startsWith('http://') && !base.startsWith('https://')) {
+      if (!/^https?:\/\//i.test(base)) {
         base = `https://${base}`;
       }
-      base = base.replace(/\/+$/, '');
-      return `${base}/v/${cleanToken}`;
+      try {
+        const parsed = new URL(base);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+          const cleanBase = `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`;
+          return `${cleanBase}/v/${cleanToken}`;
+        }
+      } catch {
+        // Fallback to current origin if customDomain is malformed
+      }
     }
 
     if (typeof window !== 'undefined') {
@@ -3194,7 +3201,7 @@ export const StorageService = {
       enabled?: boolean;
       expiresAt?: string | null;
       isOneTime?: boolean;
-      maxViews?: number;
+      maxViews?: number | null;
       pinRequired?: boolean;
       pinCode?: string;
       allowPdfDownload?: boolean;
@@ -3202,6 +3209,14 @@ export const StorageService = {
       regenerateToken?: boolean;
     }
   ): Promise<{ success: boolean; invoice?: Invoice; shareLink?: InvoiceShareLink; fullUrl?: string; message?: string }> {
+    const settings = this.getSettings();
+    if (settings.webInvoiceEnabled === false) {
+      return {
+        success: false,
+        message: 'قابلیت صدور لینک نسخه آنلاین در تنظیمات فروشگاه غیرفعال است.',
+      };
+    }
+
     const invoices = this.getInvoices();
     const customers = this.getCustomers();
     const isCustomerPortalId = invoiceId.startsWith('cust-portal-');
@@ -3218,22 +3233,68 @@ export const StorageService = {
     let token = prevLink?.token;
 
     if (!token || options?.regenerateToken) {
-      token = `inv_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}`;
+      try {
+        const bytes = new Uint8Array(12);
+        crypto.getRandomValues(bytes);
+        const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+        token = `inv_${hex}`;
+      } catch {
+        token = `inv_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 11)}`;
+      }
     }
+
+    const defaultExpiryHours = Number(settings.webInvoiceDefaultExpiryHours) || 0;
+    const defaultExpiresAt =
+      !prevLink && defaultExpiryHours > 0
+        ? new Date(Date.now() + defaultExpiryHours * 3600 * 1000).toISOString()
+        : null;
+
+    const resolvedIsOneTime =
+      options?.isOneTime !== undefined ? options.isOneTime : (prevLink?.isOneTime || false);
+    const resolvedMaxViews = resolvedIsOneTime
+      ? 1
+      : options?.maxViews === null || options?.maxViews === 0
+      ? undefined
+      : options?.maxViews !== undefined
+      ? Math.max(1, Math.floor(Number(options.maxViews)))
+      : prevLink?.maxViews;
 
     const shareLink: InvoiceShareLink = {
       token,
       enabled: options?.enabled !== undefined ? options.enabled : true,
       createdAt: prevLink?.createdAt || new Date().toISOString(),
-      expiresAt: options?.expiresAt !== undefined ? options.expiresAt : (prevLink?.expiresAt || null),
-      isOneTime: options?.isOneTime !== undefined ? options.isOneTime : (prevLink?.isOneTime || false),
-      maxViews: options?.isOneTime ? 1 : (options?.maxViews !== undefined ? options.maxViews : prevLink?.maxViews),
+      expiresAt:
+        options?.expiresAt !== undefined
+          ? options.expiresAt
+          : prevLink
+          ? prevLink.expiresAt || null
+          : defaultExpiresAt,
+      isOneTime: resolvedIsOneTime,
+      maxViews: resolvedMaxViews,
       viewCount: options?.regenerateToken ? 0 : (prevLink?.viewCount || 0),
       lastViewedAt: options?.regenerateToken ? undefined : prevLink?.lastViewedAt,
-      pinRequired: options?.pinRequired !== undefined ? options.pinRequired : (prevLink?.pinRequired || false),
-      pinCode: options?.pinCode !== undefined ? (options.pinCode ? options.pinCode.trim() : undefined) : prevLink?.pinCode,
-      allowPdfDownload: options?.allowPdfDownload !== undefined ? options.allowPdfDownload : (prevLink?.allowPdfDownload !== false),
-      includeCustomerStatement: options?.includeCustomerStatement !== undefined ? options.includeCustomerStatement : (prevLink?.includeCustomerStatement !== false),
+      pinRequired:
+        options?.pinRequired !== undefined
+          ? options.pinRequired
+          : prevLink
+          ? !!prevLink.pinRequired
+          : !!settings.webInvoiceRequirePinDefault,
+      pinCode:
+        options?.pinCode !== undefined
+          ? (options.pinCode ? options.pinCode.trim() : undefined)
+          : prevLink?.pinCode,
+      allowPdfDownload:
+        options?.allowPdfDownload !== undefined
+          ? options.allowPdfDownload
+          : prevLink
+          ? prevLink.allowPdfDownload !== false
+          : settings.webInvoiceAllowPdfDownload !== false,
+      includeCustomerStatement:
+        options?.includeCustomerStatement !== undefined
+          ? options.includeCustomerStatement
+          : prevLink
+          ? prevLink.includeCustomerStatement !== false
+          : true,
     };
 
     let updatedInvoice: Invoice;
@@ -3278,16 +3339,22 @@ export const StorageService = {
         shareLink,
       };
     }
-    this.notifyChange();
 
-    // Call server API for centralized backend sync
+    // Call server API for centralized backend sync (authoritative token & audit log)
     try {
       const res = await apiFetch(`/api/invoices/${encodeURIComponent(invoiceId)}/share-link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...options,
-          token: shareLink.token,
+          enabled: shareLink.enabled,
+          expiresAt: shareLink.expiresAt,
+          isOneTime: shareLink.isOneTime,
+          maxViews: shareLink.maxViews ?? null,
+          pinRequired: shareLink.pinRequired,
+          pinCode: shareLink.pinCode || '',
+          allowPdfDownload: shareLink.allowPdfDownload,
+          includeCustomerStatement: shareLink.includeCustomerStatement,
         }),
       });
       if (res.ok) {
@@ -3307,13 +3374,14 @@ export const StorageService = {
       // Offline fallback: already saved locally and queued for server sync
     }
 
-    const settings = this.getSettings();
-    const fullUrl = this.buildInvoicePublicUrl(shareLink.token, settings.webInvoiceCustomDomain);
+    this.notifyChange();
+    const finalShareLink = updatedInvoice.shareLink || shareLink;
+    const fullUrl = this.buildInvoicePublicUrl(finalShareLink.token, settings.webInvoiceCustomDomain);
 
     return {
       success: true,
       invoice: updatedInvoice,
-      shareLink: updatedInvoice.shareLink || shareLink,
+      shareLink: finalShareLink,
       fullUrl,
       message: 'پیوند مشاهده آنلاین فاکتور با موفقیت ایجاد و تنظیم گردید.',
     };
@@ -3321,16 +3389,24 @@ export const StorageService = {
 
   async revokeShareLink(invoiceId: string): Promise<{ success: boolean; message?: string }> {
     const invoices = this.getInvoices();
+    const customers = this.getCustomers();
+    const isCustomerPortalId = invoiceId.startsWith('cust-portal-');
+    const rawCustomerId = isCustomerPortalId ? invoiceId.replace('cust-portal-', '') : invoiceId;
+
     const targetIdx = invoices.findIndex((i) => i.id === invoiceId);
-    if (targetIdx === -1) {
-      return { success: false, message: 'فاکتور مورد نظر یافت نشد.' };
+    const custIdx = targetIdx === -1 ? customers.findIndex((c) => c.id === rawCustomerId) : -1;
+
+    if (targetIdx === -1 && custIdx === -1) {
+      return { success: false, message: 'فاکتور یا مشتری مورد نظر یافت نشد.' };
     }
 
-    const currentInvoice = invoices[targetIdx];
-    if (currentInvoice.shareLink) {
-      currentInvoice.shareLink.enabled = false;
-      invoices[targetIdx] = currentInvoice;
+    if (targetIdx !== -1 && invoices[targetIdx].shareLink) {
+      invoices[targetIdx].shareLink!.enabled = false;
       this.saveInvoices(invoices);
+      this.notifyChange();
+    } else if (custIdx !== -1 && customers[custIdx].shareLink) {
+      customers[custIdx].shareLink!.enabled = false;
+      this.saveCustomers(customers);
       this.notifyChange();
     }
 
@@ -3345,13 +3421,15 @@ export const StorageService = {
 
   async fetchPublicInvoice(
     token: string,
-    pin?: string
+    pin?: string,
+    options?: { silentRefresh?: boolean }
   ): Promise<{
     success: boolean;
     invoice?: Invoice;
     settings?: StoreSettings;
     shareLink?: InvoiceShareLink;
     pinRequired?: boolean;
+    isCustomerPortal?: boolean;
     code?: string;
     message?: string;
     storeName?: string;
@@ -3363,12 +3441,41 @@ export const StorageService = {
     customerLedger?: PublicCustomerLedger;
   }> {
     try {
-      const pinParam = pin ? `?pin=${encodeURIComponent(pin.trim())}` : '';
-      const res = await apiFetch(`/api/public/invoice/${encodeURIComponent(token.trim())}${pinParam}`);
+      const cleanToken = encodeURIComponent(token.trim());
+      const headers: Record<string, string> = {};
+      if (options?.silentRefresh) {
+        headers['X-Invoice-Refresh'] = '1';
+      }
+
+      // Send PIN via POST JSON body so it never leaks into URL query strings or browser history
+      let res: Response;
+      if (pin && pin.trim().length > 0) {
+        headers['Content-Type'] = 'application/json';
+        res = await apiFetch(`/api/public/invoice/${cleanToken}`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ pin: pin.trim() }),
+        });
+      } else {
+        res = await apiFetch(`/api/public/invoice/${cleanToken}`, {
+          method: 'GET',
+          headers,
+        });
+      }
+
       const data = await res.json();
       return data;
-    } catch (err: any) {
+    } catch {
       // Local fallback if running completely offline/client-only
+      const localSettings = this.getSettings();
+      if (localSettings.webInvoiceEnabled === false) {
+        return {
+          success: false,
+          code: 'WEB_INVOICE_DISABLED',
+          message: 'سرویس مشاهده آنلاین فاکتورها در حال حاضر غیرفعال است.',
+        };
+      }
+
       const localInvoices = this.getInvoices();
       const localCustomers = this.getCustomers();
       const foundInv = localInvoices.find((i) => i?.shareLink?.token === token);
@@ -3397,30 +3504,44 @@ export const StorageService = {
         shareLink: foundCust.shareLink,
       } : undefined);
       if (match && match.shareLink && match.shareLink.enabled) {
+        if (match.shareLink.expiresAt) {
+          const expTime = new Date(match.shareLink.expiresAt).getTime();
+          if (!isNaN(expTime) && expTime < Date.now()) {
+            return {
+              success: false,
+              code: 'LINK_EXPIRED',
+              message: 'مهلت زمانی مشاهده این فاکتور به پایان رسیده است.',
+            };
+          }
+        }
         if (match.shareLink.pinRequired && match.shareLink.pinCode) {
           if (!pin || pin.trim() !== match.shareLink.pinCode.trim()) {
             return {
               success: false,
-              code: 'PIN_REQUIRED',
+              code: pin ? 'INVALID_PIN' : 'PIN_REQUIRED',
               pinRequired: true,
-              message: 'مشاهده این فاکتور مستلزم ورود رمز عبور است.',
-              storeName: this.getSettings().storeName,
+              message: pin
+                ? 'پین‌کد وارد شده صحیح نمی‌باشد.'
+                : 'مشاهده این فاکتور مستلزم ورود رمز عبور است.',
+              storeName: localSettings.storeName,
+              storeLogo: localSettings.logo,
               invoiceNumber: match.invoiceNumber,
             };
           }
         }
 
-        const customerId = match.customerId;
+        const customerId = String(match.customerId || '').trim();
         const customerNameNorm = (match.customerName || '').trim().toLowerCase();
         const customerPhoneNorm = (match.customerPhone || '').replace(/[^0-9]/g, '');
 
         const isMatchCustomer = (cId?: string, cName?: string, cPhone?: string) => {
-          if (customerId && cId && cId === customerId) return true;
-          if (customerNameNorm && cName && cName.trim().toLowerCase() === customerNameNorm) return true;
+          const targetId = String(cId || '').trim();
+          if (customerId && targetId) return targetId === customerId;
           if (customerPhoneNorm && cPhone) {
             const pClean = cPhone.replace(/[^0-9]/g, '');
-            if (pClean && pClean === customerPhoneNorm) return true;
+            if (pClean && pClean.length >= 7 && pClean === customerPhoneNorm) return true;
           }
+          if (customerNameNorm && cName && cName.trim().toLowerCase() === customerNameNorm) return true;
           return false;
         };
 
@@ -3446,7 +3567,7 @@ export const StorageService = {
           }));
 
         const invoicePayments: PublicCustomerDeposit[] = localInvoices
-          .filter((inv) => isMatchCustomer(inv.customerId, inv.customerName, inv.customerPhone) && Number(inv.paidAmount) > 0)
+          .filter((inv) => !inv.isProforma && isMatchCustomer(inv.customerId, inv.customerName, inv.customerPhone) && Number(inv.paidAmount) > 0)
           .map((inv) => ({
             id: `inv-pay-${inv.id}`,
             type: 'deposit' as const,
@@ -3455,7 +3576,7 @@ export const StorageService = {
             title: `پرداخت وجه فاکتور ${inv.invoiceNumber}`,
             paymentMethod: inv.paymentMethod,
             trackingNumber: inv.chequeNumber,
-            bankName: inv.transferDescription ? 'حساب بانکی' : '',
+            bankName: inv.chequeName || (inv.transferDescription ? 'حساب بانکی' : ''),
             chequeDueDate: inv.chequeDueDate,
             invoiceNumber: inv.invoiceNumber,
             notes: inv.transferDescription || inv.notes,
@@ -3568,7 +3689,7 @@ export const StorageService = {
         return {
           success: true,
           invoice: match,
-          settings: this.getSettings(),
+          settings: localSettings,
           shareLink: match.shareLink,
           customerInvoices,
           deposits: allDeposits,
