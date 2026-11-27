@@ -155,6 +155,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canDeleteInvoice: true,
     canManageInventory: true,
     canManageCustomers: true,
+    canViewPayments: true,
     canViewReports: true,
     canViewBuyPrices: true,
     canAccessAdmin: true,
@@ -169,6 +170,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canDeleteInvoice: true,
     canManageInventory: true,
     canManageCustomers: true,
+    canViewPayments: true,
     canViewReports: true,
     canViewBuyPrices: false,
     canAccessAdmin: false,
@@ -183,6 +185,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canDeleteInvoice: false,
     canManageInventory: false,
     canManageCustomers: true,
+    canViewPayments: true,
     canViewReports: false,
     canViewBuyPrices: false,
     canAccessAdmin: false,
@@ -197,6 +200,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canDeleteInvoice: false,
     canManageInventory: true,
     canManageCustomers: false,
+    canViewPayments: false,
     canViewReports: false,
     canViewBuyPrices: false,
     canAccessAdmin: false,
@@ -211,6 +215,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canDeleteInvoice: false,
     canManageInventory: false,
     canManageCustomers: true,
+    canViewPayments: true,
     canViewReports: true,
     canViewBuyPrices: true,
     canAccessAdmin: false,
@@ -225,6 +230,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canDeleteInvoice: false,
     canManageInventory: false,
     canManageCustomers: false,
+    canViewPayments: false,
     canViewReports: false,
     canViewBuyPrices: false,
     canAccessAdmin: false,
@@ -271,6 +277,11 @@ export function normalizeUserPermissions(
     canDeleteInvoice: isStrictAccountant ? false : Boolean(perms.canDeleteInvoice ?? roleDefaults.canDeleteInvoice),
     canManageInventory: isStrictAccountant ? false : Boolean(perms.canManageInventory ?? roleDefaults.canManageInventory),
     canManageCustomers: Boolean(perms.canManageCustomers ?? roleDefaults.canManageCustomers),
+    canViewPayments: Boolean(
+      perms.canViewPayments ??
+        roleDefaults.canViewPayments ??
+        (perms.canManageCustomers || perms.canViewReports || perms.canSettleInvoices)
+    ),
     canViewReports: Boolean(perms.canViewReports ?? roleDefaults.canViewReports),
     canViewBuyPrices: isRestrictedFromBuyPrices
       ? false
@@ -3883,8 +3894,8 @@ export const StorageService = {
   getInvoicePrintPreferences(): InvoicePrintPreferences {
     const settings = this.getSettings();
     let template: 'standard' | 'official' | 'thermal' | 'simple' = settings.defaultTemplate || 'standard';
-    let pageSize: 'a4' | 'a5' = 'a4';
-    let orientation: 'portrait' | 'landscape' = 'portrait';
+    let pageSize: 'a4' | 'a5' = settings.printLayout?.defaultPageSize || 'a4';
+    let orientation: 'portrait' | 'landscape' = settings.printLayout?.defaultOrientation || 'portrait';
 
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.INVOICE_PRINT_PREFERENCES);
@@ -3926,9 +3937,12 @@ export const StorageService = {
   getExitSlipPrintPreferences(): ExitSlipPrintPreferences {
     const settings = this.getSettings();
     let template: 'standard' | 'simple' = settings.defaultExitSlipTemplate || 'standard';
-    let pageSize: 'a4' | 'a5' = 'a4';
-    let orientation: 'portrait' | 'landscape' = 'portrait';
-    let printLayout: PrintLayoutSettings = settings.printLayout || DEFAULT_PRINT_LAYOUT;
+    let pageSize: 'a4' | 'a5' = settings.printLayout?.defaultPageSize || 'a4';
+    let orientation: 'portrait' | 'landscape' = settings.printLayout?.defaultOrientation || 'portrait';
+    let printLayout: PrintLayoutSettings = {
+      ...DEFAULT_PRINT_LAYOUT,
+      ...(settings.printLayout || {}),
+    };
 
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.EXIT_SLIP_PRINT_PREFERENCES);
@@ -4055,6 +4069,7 @@ export const StorageService = {
           u.permissions.canCreatePurchaseInvoice === undefined ||
           u.permissions.canViewPurchaseInvoices === undefined ||
           u.permissions.canSettleInvoices === undefined ||
+          u.permissions.canViewPayments === undefined ||
           (u.role === 'accountant' && (u.permissions.canCreatePurchaseInvoice || u.permissions.canCreateInvoice))
         ) {
           needsLocalRepair = true;

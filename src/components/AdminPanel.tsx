@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StoreSettings, Product, Customer, Invoice, StockMovement, AppUser, PdfQualityPreset } from '../types';
+import { StoreSettings, Product, Customer, Invoice, StockMovement, AppUser, PdfQualityPreset, DEFAULT_PRINT_LAYOUT } from '../types';
 import { StorageService } from '../utils/storage';
 import { apiFetch } from '../utils/authClient';
 import { confirmAction } from '../utils/confirmDialog';
@@ -2487,6 +2487,137 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       })}
                     </div>
                   )}
+                </div>
+
+                {/* Sub-section 3: Default Paper, Orientation & Multi-page PDF Rules */}
+                <div className="pt-4 border-t border-slate-200 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Printer className="w-4 h-4 text-emerald-600" />
+                    <span className="text-xs font-black text-slate-800">
+                      تنظیمات پیش‌فرض کاغذ و صفحه‌بندی خروجی چاپ و PDF
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                    {/* Default Paper Size */}
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                      <span className="font-bold text-slate-700 block">ابعاد پیش‌فرض کاغذ</span>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {(['a4', 'a5'] as const).map((size) => {
+                          const active = (formData.printLayout?.defaultPageSize || 'a4') === size;
+                          return (
+                            <button
+                              key={size}
+                              type="button"
+                              onClick={() =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  printLayout: {
+                                    ...DEFAULT_PRINT_LAYOUT,
+                                    ...(prev.printLayout || {}),
+                                    defaultPageSize: size,
+                                  },
+                                }))
+                              }
+                              className={`py-1.5 rounded-lg font-bold text-xs border transition-colors cursor-pointer ${
+                                active
+                                  ? 'bg-emerald-600 text-white border-emerald-600'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              {size.toUpperCase()}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Default Orientation */}
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                      <span className="font-bold text-slate-700 block">جهت پیش‌فرض صفحه</span>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {([
+                          { key: 'portrait', label: 'عمودی' },
+                          { key: 'landscape', label: 'افقی' },
+                        ] as const).map((item) => {
+                          const active = (formData.printLayout?.defaultOrientation || 'portrait') === item.key;
+                          return (
+                            <button
+                              key={item.key}
+                              type="button"
+                              onClick={() =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  printLayout: {
+                                    ...DEFAULT_PRINT_LAYOUT,
+                                    ...(prev.printLayout || {}),
+                                    defaultOrientation: item.key,
+                                  },
+                                }))
+                              }
+                              className={`py-1.5 rounded-lg font-bold text-xs border transition-colors cursor-pointer ${
+                                active
+                                  ? 'bg-emerald-600 text-white border-emerald-600'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              {item.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Repeat Header on Multi-Page PDF */}
+                    <label className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-2 cursor-pointer hover:bg-slate-100/70 transition-colors">
+                      <div>
+                        <span className="font-bold text-slate-800 block">تکرار سربرگ در صفحات بعدی</span>
+                        <span className="text-[10px] text-slate-500 block mt-0.5">
+                          برای فاکتورهای چندصفحه‌ای
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={formData.printLayout?.pdfRepeatHeaderOnMultipage !== false}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            printLayout: {
+                              ...DEFAULT_PRINT_LAYOUT,
+                              ...(prev.printLayout || {}),
+                              pdfRepeatHeaderOnMultipage: e.target.checked,
+                            },
+                          }))
+                        }
+                        className="w-4 h-4 text-emerald-600 rounded shrink-0"
+                      />
+                    </label>
+
+                    {/* Show Page Numbers */}
+                    <label className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-2 cursor-pointer hover:bg-slate-100/70 transition-colors">
+                      <div>
+                        <span className="font-bold text-slate-800 block">درج شماره صفحه در PDF</span>
+                        <span className="text-[10px] text-slate-500 block mt-0.5">
+                          نمایش صفحه ۱ از N در پایین سند
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={formData.printLayout?.pdfShowPageNumbers !== false}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            printLayout: {
+                              ...DEFAULT_PRINT_LAYOUT,
+                              ...(prev.printLayout || {}),
+                              pdfShowPageNumbers: e.target.checked,
+                            },
+                          }))
+                        }
+                        className="w-4 h-4 text-emerald-600 rounded shrink-0"
+                      />
+                    </label>
+                  </div>
                 </div>
 
                 {/* Practical Advice Banner */}

@@ -509,6 +509,12 @@ export interface PrintLayoutSettings {
   customLogoUrl?: string; // تصویر یا لینک لوگوی سربرگ فاکتور
   logoHeight?: number; // ارتفاع نمایش لوگو در سربرگ برحسب پیکسل (۲۴ تا ۷۲)
   customFooterNotes?: string; // متن توضیحات، شروط فروش و پاورقی فاکتور
+
+  // ۵. تنظیمات پیش‌فرض صفحه و خروجی PDF چندصفحه‌ای
+  defaultPageSize?: 'a4' | 'a5'; // سایز پیش‌فرض کاغذ در چاپ و خروجی PDF
+  defaultOrientation?: 'portrait' | 'landscape'; // جهت پیش‌فرض کاغذ
+  pdfRepeatHeaderOnMultipage?: boolean; // تکرار خودکار سربرگ و سرستون در صفحات بعدی PDF
+  pdfShowPageNumbers?: boolean; // درج شماره صفحه فارسی در PDF چندصفحه‌ای
 }
 
 export const DEFAULT_PRINT_LAYOUT: PrintLayoutSettings = {
@@ -555,6 +561,10 @@ export const DEFAULT_PRINT_LAYOUT: PrintLayoutSettings = {
   showTermsBlock: true,
   compactMode: false,
   customFooterNotes: 'از حسن انتخاب و همکاری صمیمانه شما سپاسگزاریم.',
+  defaultPageSize: 'a4',
+  defaultOrientation: 'portrait',
+  pdfRepeatHeaderOnMultipage: true,
+  pdfShowPageNumbers: true,
 };
 
 // بهینه‌ترین و متوازن‌ترین چیدمان فاکتور با تناسب طلایی (Auto-Optimized Best Layout)
@@ -570,12 +580,16 @@ export const OPTIMAL_PRINT_LAYOUT: PrintLayoutSettings = {
 
   // ۲. پدینگ و خطوط جدول برای جلوگیری کامل از شکست و کشیدگی متون
   tableRowPaddingY: 6,
+  tableRowMinHeight: 34,
   tableCellPaddingX: 8,
   tableBorderStyle: 'bordered',
   tableBorderColor: '#cbd5e1',
   tableBorderWidth: 1,
   tableHeaderBg: '#f8fafc',
   tableHeaderTextColor: '#0f172a',
+  tableBodyBg: '#ffffff',
+  tableZebraBg: '#f8fafc',
+  pageBgColor: '#ffffff',
   tableZebraStriping: true,
 
   // عرض‌های متوازن ستون‌ها (A4 و A5) - تضمین عدم شکست مبالغ و کدها
@@ -603,6 +617,10 @@ export const OPTIMAL_PRINT_LAYOUT: PrintLayoutSettings = {
   showTermsBlock: true,
   compactMode: false,
   customFooterNotes: 'از حسن انتخاب و همکاری صمیمانه شما سپاسگزاریم.',
+  defaultPageSize: 'a4',
+  defaultOrientation: 'portrait',
+  pdfRepeatHeaderOnMultipage: true,
+  pdfShowPageNumbers: true,
 };
 
 export type PdfQualityPreset = 'economy' | 'standard' | 'high' | 'ultra';
@@ -618,6 +636,7 @@ export interface UserPermissions {
   canDeleteInvoice: boolean; // حذف و مرجوعی فاکتورها
   canManageInventory: boolean; // مدیریت کالاها و انبارداری
   canManageCustomers: boolean; // مدیریت مشتریان و طرف‌حساب‌ها
+  canViewPayments?: boolean; // مشاهده و دسترسی به تب دریافت‌ها و پرداخت‌های مشتریان
   canViewReports: boolean; // مشاهده گزارشات مالی و سود
   canViewBuyPrices?: boolean; // مشاهده قیمت خرید، بهای تمام‌شده و حاشیه سود
   canAccessAdmin: boolean; // دسترسی به پنل مدیریت و تنظیمات

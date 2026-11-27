@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StoreSettings } from '../types';
+import { StoreSettings, DEFAULT_PRINT_LAYOUT } from '../types';
 import { StorageService } from '../utils/storage';
 import { apiFetch } from '../utils/authClient';
 import { confirmAction } from '../utils/confirmDialog';
@@ -1109,6 +1109,114 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Default Paper Size, Orientation & Multi-page PDF Options */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100 text-xs">
+                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+                  <span className="font-bold text-slate-700 block">ابعاد پیش‌فرض کاغذ:</span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {(['a4', 'a5'] as const).map((size) => {
+                      const active = (formData.printLayout?.defaultPageSize || 'a4') === size;
+                      return (
+                        <button
+                          key={size}
+                          type="button"
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              printLayout: {
+                                ...DEFAULT_PRINT_LAYOUT,
+                                ...(prev.printLayout || {}),
+                                defaultPageSize: size,
+                              },
+                            }))
+                          }
+                          className={`py-1.5 rounded-lg font-bold border cursor-pointer transition-colors ${
+                            active
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {size.toUpperCase()}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+                  <span className="font-bold text-slate-700 block">جهت پیش‌فرض صفحه:</span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {([
+                      { key: 'portrait', label: 'عمودی' },
+                      { key: 'landscape', label: 'افقی' },
+                    ] as const).map((item) => {
+                      const active = (formData.printLayout?.defaultOrientation || 'portrait') === item.key;
+                      return (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              printLayout: {
+                                ...DEFAULT_PRINT_LAYOUT,
+                                ...(prev.printLayout || {}),
+                                defaultOrientation: item.key,
+                              },
+                            }))
+                          }
+                          className={`py-1.5 rounded-lg font-bold border cursor-pointer transition-colors ${
+                            active
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <label className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
+                  <span className="font-bold text-slate-700">تکرار سربرگ در صفحات بعدی PDF</span>
+                  <input
+                    type="checkbox"
+                    checked={formData.printLayout?.pdfRepeatHeaderOnMultipage !== false}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        printLayout: {
+                          ...DEFAULT_PRINT_LAYOUT,
+                          ...(prev.printLayout || {}),
+                          pdfRepeatHeaderOnMultipage: e.target.checked,
+                        },
+                      }))
+                    }
+                    className="w-4 h-4 text-emerald-600 rounded"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer">
+                  <span className="font-bold text-slate-700">نمایش شماره صفحه در PDF چندصفحه‌ای</span>
+                  <input
+                    type="checkbox"
+                    checked={formData.printLayout?.pdfShowPageNumbers !== false}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        printLayout: {
+                          ...DEFAULT_PRINT_LAYOUT,
+                          ...(prev.printLayout || {}),
+                          pdfShowPageNumbers: e.target.checked,
+                        },
+                      }))
+                    }
+                    className="w-4 h-4 text-emerald-600 rounded"
+                  />
+                </label>
+              </div>
             </div>
 
             {/* Section 2.9: Telegram Bot & Automation Settings (تنظیمات ارسال خودکار و اتوماسیون) */}

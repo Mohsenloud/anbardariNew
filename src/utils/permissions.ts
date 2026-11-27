@@ -49,14 +49,15 @@ export function isTabPermitted(
       );
 
     case 'payments':
-      return (
-        settings?.enableCustomers !== false &&
-        Boolean(
-          user.role === 'admin' ||
-            user.permissions.canManageCustomers ||
-            user.permissions.canViewReports ||
-            user.permissions.canSettleInvoices
-        )
+      if (settings?.enableCustomers === false) return false;
+      if (user.role === 'admin') return true;
+      if (user.permissions.canViewPayments !== undefined) {
+        return Boolean(user.permissions.canViewPayments);
+      }
+      return Boolean(
+        user.permissions.canManageCustomers ||
+          user.permissions.canViewReports ||
+          user.permissions.canSettleInvoices
       );
 
     case 'reports':

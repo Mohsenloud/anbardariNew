@@ -157,22 +157,78 @@ export const LiveInvoicePreviewSheet: React.FC<LivePreviewSheetProps> = ({
   const currentLogo = config.customLogoUrl || settings.logo;
   const currentNotes = config.customFooterNotes || settings.invoiceFooterText || 'از حسن انتخاب و همکاری صمیمانه شما سپاسگزاریم.';
 
+  const cssVars = getPrintLayoutCssVariables(config, previewPageSize, previewOrientation);
+  const borderStyle = config.tableBorderStyle || 'bordered';
+  const borderColor = config.tableBorderColor || '#cbd5e1';
+  const borderW = Math.max(0.5, Math.min(3, config.tableBorderWidth ?? 1));
+  const rowPy = config.compactMode ? Math.max(1, Math.round(config.tableRowPaddingY * 0.75)) : config.tableRowPaddingY;
+  const rowMinH = config.compactMode
+    ? Math.max(18, Math.round((config.tableRowMinHeight || 34) * 0.8))
+    : (config.tableRowMinHeight || 34);
+  const sectionGapPx = config.compactMode
+    ? 4
+    : config.sectionSpacing === 'compact'
+    ? 4
+    : config.sectionSpacing === 'relaxed'
+    ? 14
+    : 8;
+
+  const getCellBorderStyle = (isHeader = false): React.CSSProperties => {
+    if (borderStyle === 'minimal') {
+      return {
+        border: 'none',
+        borderBottom: isHeader ? `2px solid ${config.themeColor}` : `1px solid ${borderColor}`,
+      };
+    }
+    if (borderStyle === 'striped') {
+      return {
+        border: 'none',
+        borderTop: isHeader ? `${borderW}px solid ${borderColor}` : 'none',
+        borderBottom: `${isHeader ? borderW : 1}px solid ${borderColor}`,
+      };
+    }
+    if (borderStyle === 'modern') {
+      return {
+        borderLeft: 'none',
+        borderRight: 'none',
+        borderTop: isHeader ? `${borderW}px solid ${borderColor}` : 'none',
+        borderBottom: isHeader ? `2px solid ${config.themeColor}` : `${borderW}px solid ${borderColor}`,
+      };
+    }
+    return {
+      border: `${borderW}px solid ${borderColor}`,
+    };
+  };
+
   return (
     <div
       id={containerId}
-      className={`print-container bg-white text-slate-800 transition-all duration-200 relative select-none ${
+      className={`print-container text-slate-800 transition-all duration-200 relative select-none ${
         isLandscape
           ? (isA5 ? 'w-full max-w-[620px] aspect-[1.414/1]' : 'w-full max-w-[780px] aspect-[1.414/1]')
           : (isA5 ? 'w-full max-w-[460px] aspect-[1/1.414]' : 'w-full max-w-[560px] aspect-[1/1.414]')
       } shadow-2xl rounded-sm border border-slate-300 mx-auto flex flex-col justify-between overflow-hidden`}
       style={{
+        ...cssVars,
         boxShadow: '0 10px 35px -5px rgba(0, 0, 0, 0.15), 0 0 1px 1px rgba(0, 0, 0, 0.05)',
         padding: `${config.pageMarginMm || (isA5 ? 4 : 6)}mm`,
         fontSize: `${config.baseFontSize}px`,
         lineHeight: 1.35,
-        backgroundColor: '#ffffff'
+        backgroundColor: config.pageBgColor || '#ffffff',
+        gap: `${sectionGapPx}px`,
       }}
     >
+      {/* Margin Guide Overlay */}
+      {showMarginGuide && (
+        <div
+          className="absolute inset-0 pointer-events-none border border-dashed border-emerald-500/50 z-20 no-print"
+          style={{ margin: `${config.pageMarginMm || (isA5 ? 4 : 6)}mm` }}
+        >
+          <span className="absolute top-0.5 right-0.5 text-[8px] font-mono text-emerald-900 bg-emerald-100/90 px-1 py-0.5 rounded border border-emerald-300">
+            حاشیه: {toPersianDigits(config.pageMarginMm || (isA5 ? 4 : 6))}mm
+          </span>
+        </div>
+      )}
       {/* TOP ZONE: Header & Meta */}
       <div className="shrink-0 space-y-2">
         <div 
@@ -257,67 +313,76 @@ export const LiveInvoicePreviewSheet: React.FC<LivePreviewSheetProps> = ({
 
       {/* MIDDLE ZONE: Live Preview Table with WIDE Total Column */}
       <div className="invoice-table-box my-auto py-1 overflow-x-auto">
-        <table 
-          className="w-full text-right border-collapse border"
-          style={{ 
-            borderColor: config.tableBorderColor || '#cbd5e1',
-            borderWidth: `${config.tableBorderWidth || 1}px`,
-            borderStyle: config.tableBorderStyle || 'solid',
+        <table
+          className="w-full text-right border-collapse"
+          style={{
+            borderColor: borderColor,
+            borderWidth: borderStyle === 'minimal' ? '0px' : `${borderW}px`,
+            borderStyle: borderStyle === 'bordered' ? 'solid' : 'none',
+            borderTop: borderStyle === 'striped' || borderStyle === 'modern' ? `${borderW}px solid ${borderColor}` : undefined,
+            borderBottom: borderStyle === 'striped' || borderStyle === 'modern' ? `${borderW}px solid ${borderColor}` : undefined,
           }}
         >
           <thead>
-            <tr 
-              className="font-bold text-slate-800"
-              style={{ 
+            <tr
+              className="font-bold"
+              style={{
                 fontSize: `${config.tableHeaderSize}px`,
                 backgroundColor: config.tableHeaderBg || '#f8fafc',
-                color: config.tableHeaderTextColor || '#1e293b',
-                borderColor: config.tableBorderColor || '#cbd5e1',
+                color: config.tableHeaderTextColor || '#0f172a',
               }}
             >
-              <th className="text-center" style={{ width: `${config.colWidthIndex}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>#</th>
+              <th className="text-center" style={{ width: `${config.colWidthIndex}px`, padding: `${rowPy}px ${config.tableCellPaddingX}px`, ...getCellBorderStyle(true) }}>#</th>
               {config.showItemCodeCol !== false && (
-                <th style={{ width: `${config.colWidthCode}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>کد</th>
+                <th style={{ width: `${config.colWidthCode}px`, padding: `${rowPy}px ${config.tableCellPaddingX}px`, ...getCellBorderStyle(true) }}>کد</th>
               )}
-              <th style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>شرح کالا / خدمات</th>
-              <th className="text-center" style={{ width: `${config.colWidthQty}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>تعداد</th>
+              <th style={{ padding: `${rowPy}px ${config.tableCellPaddingX}px`, ...getCellBorderStyle(true) }}>شرح کالا / خدمات</th>
+              <th className="text-center" style={{ width: `${config.colWidthQty}px`, padding: `${rowPy}px ${config.tableCellPaddingX}px`, ...getCellBorderStyle(true) }}>تعداد</th>
               {config.showItemUnitCol !== false && (
-                <th className="text-center" style={{ width: `${config.colWidthUnit}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>واحد</th>
+                <th className="text-center" style={{ width: `${config.colWidthUnit}px`, padding: `${rowPy}px ${config.tableCellPaddingX}px`, ...getCellBorderStyle(true) }}>واحد</th>
               )}
-              <th className="text-left" style={{ width: `${config.colWidthPrice}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>قیمت واحد</th>
+              <th className="text-left" style={{ width: `${config.colWidthPrice}px`, padding: `${rowPy}px ${config.tableCellPaddingX}px`, ...getCellBorderStyle(true) }}>قیمت واحد</th>
               {config.showItemDiscountCol !== false && (
-                <th className="text-left" style={{ width: `${config.colWidthDiscount}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>تخفیف</th>
+                <th className="text-left" style={{ width: `${config.colWidthDiscount}px`, padding: `${rowPy}px ${config.tableCellPaddingX}px`, ...getCellBorderStyle(true) }}>تخفیف</th>
               )}
-              <th className="text-left" style={{ width: `${config.colWidthTotal}px`, minWidth: `${config.colWidthTotal}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>
+              <th className="text-left" style={{ width: `${config.colWidthTotal}px`, minWidth: `${config.colWidthTotal}px`, padding: `${rowPy}px ${config.tableCellPaddingX}px`, ...getCellBorderStyle(true) }}>
                 مبلغ کل ({settings.currency})
               </th>
             </tr>
           </thead>
           <tbody>
-            {sampleItems.map((item, idx) => (
-              <tr 
-                key={idx}
-                className={config.tableZebraStriping !== false && idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'}
-                style={{ fontSize: `${config.tableBodySize}px` }}
-              >
-                <td className="text-center text-slate-400 font-mono align-middle" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{toPersianDigits(idx + 1)}</td>
-                {config.showItemCodeCol !== false && (
-                  <td className="text-slate-600 font-mono align-middle" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{toPersianDigits(item.code)}</td>
-                )}
-                <td className="font-bold text-slate-900 align-middle" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{item.name}</td>
-                <td className="text-center font-bold align-middle" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{toPersianDigits(item.qty)}</td>
-                {config.showItemUnitCol !== false && (
-                  <td className="text-center text-slate-500 align-middle" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{item.unit}</td>
-                )}
-                <td className="text-left font-mono align-middle" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{formatPrice(item.price, '', false)}</td>
-                {config.showItemDiscountCol !== false && (
-                  <td className="text-left font-mono text-slate-500 align-middle" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{item.discount > 0 ? formatPrice(item.discount, '', false) : '۰'}</td>
-                )}
-                <td className="text-left font-mono font-bold text-slate-900 align-middle" style={{ width: `${config.colWidthTotal}px`, minWidth: `${config.colWidthTotal}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>
-                  {formatPrice(item.total, '', false)}
-                </td>
-              </tr>
-            ))}
+            {sampleItems.map((item, idx) => {
+              const isZebra = (config.tableZebraStriping !== false || borderStyle === 'striped') && idx % 2 === 1;
+              const rowBg = isZebra ? (config.tableZebraBg || '#f8fafc') : (config.tableBodyBg || '#ffffff');
+              const cellStyle: React.CSSProperties = {
+                padding: `${rowPy}px ${config.tableCellPaddingX}px`,
+                height: `${rowMinH}px`,
+                ...getCellBorderStyle(false),
+              };
+              return (
+                <tr
+                  key={idx}
+                  style={{ fontSize: `${config.tableBodySize}px`, backgroundColor: rowBg, height: `${rowMinH}px` }}
+                >
+                  <td className="text-center text-slate-400 font-mono align-middle" style={cellStyle}>{toPersianDigits(idx + 1)}</td>
+                  {config.showItemCodeCol !== false && (
+                    <td className="text-slate-600 font-mono align-middle" style={cellStyle}>{toPersianDigits(item.code)}</td>
+                  )}
+                  <td className="font-bold text-slate-900 align-middle" style={cellStyle}>{item.name}</td>
+                  <td className="text-center font-bold align-middle" style={cellStyle}>{toPersianDigits(item.qty)}</td>
+                  {config.showItemUnitCol !== false && (
+                    <td className="text-center text-slate-500 align-middle" style={cellStyle}>{item.unit}</td>
+                  )}
+                  <td className="text-left font-mono align-middle" style={cellStyle}>{formatPrice(item.price, '', false)}</td>
+                  {config.showItemDiscountCol !== false && (
+                    <td className="text-left font-mono text-slate-500 align-middle" style={cellStyle}>{item.discount > 0 ? formatPrice(item.discount, '', false) : '۰'}</td>
+                  )}
+                  <td className="text-left font-mono font-bold text-slate-900 align-middle" style={{ width: `${config.colWidthTotal}px`, minWidth: `${config.colWidthTotal}px`, ...cellStyle }}>
+                    {formatPrice(item.total, '', false)}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -426,12 +491,14 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
 }) => {
   const config: PrintLayoutSettings = { ...DEFAULT_PRINT_LAYOUT, ...(value || {}) };
   const [activeTab, setActiveTab] = useState<'fonts' | 'table' | 'footer' | 'logo' | 'notes'>('table');
-  const [previewPageSize, setPreviewPageSize] = useState<'a4' | 'a5'>('a4');
-  const [previewOrientation, setPreviewOrientation] = useState<'portrait' | 'landscape'>('portrait');
+  const [previewPageSize, setPreviewPageSize] = useState<'a4' | 'a5'>(config.defaultPageSize || 'a4');
+  const [previewOrientation, setPreviewOrientation] = useState<'portrait' | 'landscape'>(config.defaultOrientation || 'portrait');
   const [showSavedToast, setShowSavedToast] = useState(false);
+  const [toastVariant, setToastVariant] = useState<'success' | 'error'>('success');
   const [toastText, setToastText] = useState('تنظیمات ابعاد، فونت‌ها و ظاهر فاکتور با موفقیت ذخیره شد.');
-  const [zoomLevel, setZoomLevel] = useState<number>(1.0);
-  const [showMarginGuide, setShowMarginGuide] = useState<boolean>(false);
+  const [zoomLevel, setZoomLevel] = useState<number>(0.88);
+  const [showMarginGuide, setShowMarginGuide] = useState<boolean>(true);
+  const [showInlinePreview, setShowInlinePreview] = useState<boolean>(true);
   const [isFullscreenModal, setIsFullscreenModal] = useState<boolean>(false);
 
   // In-App Draggable & Resizable Floating Detached Window
@@ -518,13 +585,15 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
       mode: 'layout_config',
       updatedAt: Date.now(),
     });
-    setToastText('✨ تمامی ابعاد، ستون‌ها، فونت‌ها و حاشیه‌ها با موفقیت به بهینه‌ترین حالت خودکار تنظیم شدند.');
+    setToastVariant('success');
+    setToastText('تمامی ابعاد، ستون‌ها، فونت‌ها و حاشیه‌ها با موفقیت به بهینه‌ترین حالت خودکار تنظیم شدند.');
     setShowSavedToast(true);
     setTimeout(() => setShowSavedToast(false), 3500);
   };
 
   const handleSaveClick = () => {
     if (onSave) onSave();
+    setToastVariant('success');
     setToastText('تنظیمات ابعاد، فونت‌ها و ظاهر فاکتور با موفقیت ذخیره شد.');
     setShowSavedToast(true);
     setTimeout(() => setShowSavedToast(false), 2500);
@@ -541,47 +610,46 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
   const totalDiscount = sampleItems.reduce((s, it) => s + it.discount, 0);
   const finalTotal = subtotal - totalDiscount;
 
-  // Open standalone browser window or tab (e.g. for second screen)
-  const handleOpenBrowserWindow = () => {
-    const previewUrl = `${window.location.origin}${window.location.pathname}?live-preview=1`;
-    try {
-      const newWin = window.open(
-        previewUrl, 
-        'SepehrLiveInvoicePreview', 
-        'width=1000,height=960,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes'
-      );
-      if (!newWin || newWin.closed || typeof newWin.closed === 'undefined') {
-        // Pop-up was blocked by browser or iframe -> Open detached floating window
-        setDetachedWindow(prev => ({ ...prev, isOpen: true, isMinimized: false }));
-        setToastText('پنجره شناور مستقل در داخل برنامه فعال شد (مرورگر پاپ‌آپ خارجی را مسدود کرده است).');
-        setShowSavedToast(true);
-        setTimeout(() => setShowSavedToast(false), 3500);
-      } else {
-        setToastText('پیش‌نمایش زنده در برگه/پنجره جدید مرورگر باز شد و همگام‌سازی بلادرنگ فعال است.');
-        setShowSavedToast(true);
-        setTimeout(() => setShowSavedToast(false), 3500);
-      }
-    } catch {
-      setDetachedWindow(prev => ({ ...prev, isOpen: true, isMinimized: false }));
-    }
+  const getActivePreviewTargetId = (explicitId?: string) => {
+    if (explicitId && document.getElementById(explicitId)) return explicitId;
+    if (detachedWindow.isOpen && document.getElementById('detached-live-preview-box')) return 'detached-live-preview-box';
+    return 'admin-print-live-preview-box';
   };
 
-  // Test Print in new window
-  const handleTestPrint = (targetId = 'admin-print-live-preview-box') => {
+  // Test Print using modern hidden vector iframe
+  const handleTestPrint = (targetId?: string) => {
+    const resolvedId = getActivePreviewTargetId(targetId);
     printElementInNewWindow(
-      targetId,
+      resolvedId,
       `پیش‌نمایش تستی چاپ فاکتور (${previewPageSize.toUpperCase()} - ${previewOrientation === 'landscape' ? 'افقی' : 'عمودی'})`,
-      { pageSize: previewPageSize, orientation: previewOrientation, marginMm: config.pageMarginMm }
+      {
+        pageSize: previewPageSize,
+        orientation: previewOrientation,
+        marginMm: config.pageMarginMm,
+        printLayout: config,
+      }
     );
   };
 
-  // Test PDF Export
-  const handleTestPdf = async (targetId = 'admin-print-live-preview-box') => {
-    await exportElementToPdf(
-      targetId,
+  // Test PDF Export using current live configuration
+  const handleTestPdf = async (targetId?: string) => {
+    const resolvedId = getActivePreviewTargetId(targetId);
+    const res = await exportElementToPdf(
+      resolvedId,
       `تست_خروجی_چاپ_${previewPageSize}_${previewOrientation}`,
-      { pageSize: previewPageSize, orientation: previewOrientation, marginMm: config.pageMarginMm }
+      {
+        pageSize: previewPageSize,
+        orientation: previewOrientation,
+        marginMm: config.pageMarginMm,
+        printLayout: config,
+      }
     );
+    if (!res.success && res.error) {
+      setToastVariant('error');
+      setToastText(res.error);
+      setShowSavedToast(true);
+      setTimeout(() => setShowSavedToast(false), 3500);
+    }
   };
 
   // Handle Logo File Upload (PNG, JPG, SVG, WebP) -> Base64 Data URL
@@ -590,12 +658,18 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('لطفاً یک فایل تصویری معتبر (PNG, JPG, SVG, WebP) انتخاب فرمایید.');
+      setToastVariant('error');
+      setToastText('لطفاً یک فایل تصویری معتبر (PNG, JPG, SVG, WebP) انتخاب فرمایید.');
+      setShowSavedToast(true);
+      setTimeout(() => setShowSavedToast(false), 3500);
       return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      alert('حجم فایل انتخابی بیش از ۲ مگابایت است. لطفاً تصویر کم‌حجم‌تری انتخاب فرمایید.');
+      setToastVariant('error');
+      setToastText('حجم فایل انتخابی بیش از ۲ مگابایت است. لطفاً تصویر کم‌حجم‌تری انتخاب فرمایید.');
+      setShowSavedToast(true);
+      setTimeout(() => setShowSavedToast(false), 3500);
       return;
     }
 
@@ -871,22 +945,22 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
           <div className="grid grid-cols-3 sm:flex sm:items-center gap-1.5">
             <button
               type="button"
-              onClick={() => handleTestPrint('detached-live-preview-box')}
+              onClick={() => handleTestPrint()}
               className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-slate-700 shadow-2xs"
-              title="تست مستقیم ارسال به پرینتر"
+              title="تست مستقیم ارسال به پرینتر با متد برداری بدون پاپ‌آپ"
             >
               <Printer className="w-3.5 h-3.5 text-emerald-400" />
-              <span>چاپ</span>
+              <span>چاپ آزمایشی</span>
             </button>
 
             <button
               type="button"
-              onClick={() => handleTestPdf('detached-live-preview-box')}
+              onClick={() => handleTestPdf()}
               className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-slate-700 shadow-2xs"
               title="تولید و دانلود آزمایشی فایل PDF"
             >
               <FileDown className="w-3.5 h-3.5 text-indigo-400" />
-              <span>PDF</span>
+              <span>خروجی PDF</span>
             </button>
 
             <button
@@ -912,7 +986,6 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
             >
               <Sparkles className="w-4 h-4 text-slate-950 group-hover:rotate-12 transition-transform" />
               <span>بهترین چیدمان خودکار</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping"></span>
             </button>
 
             {onSave && (
@@ -930,10 +1003,16 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
         </div>
       </div>
 
-      {/* Toast Notification on Save */}
+      {/* Toast Notification on Save / Error */}
       {showSavedToast && (
-        <div className="bg-emerald-50 text-emerald-900 border border-emerald-300 p-3 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in duration-200">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+        <div
+          className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in duration-200 border ${
+            toastVariant === 'error'
+              ? 'bg-rose-50 text-rose-900 border-rose-300'
+              : 'bg-emerald-50 text-emerald-900 border-emerald-300'
+          }`}
+        >
+          <CheckCircle2 className={`w-4 h-4 shrink-0 ${toastVariant === 'error' ? 'text-rose-600' : 'text-emerald-600'}`} />
           <span>{toastText}</span>
         </div>
       )}
@@ -1068,20 +1147,30 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
             {/* TAB 1: TABLE & COLUMNS (Including prominent Wide Total Column) */}
             {activeTab === 'table' && (
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-5 animate-in fade-in">
-                <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+                <div className="border-b border-slate-100 pb-3 flex items-center justify-between flex-wrap gap-2">
                   <div>
                     <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
                       <Table className="w-4 h-4 text-emerald-600" />
                       <span>ابعاد جدول، ردیف‌ها و تنظیم ستون مبلغ کل</span>
                     </h4>
                     <p className="text-[11px] text-slate-500 mt-1">
-                      می‌توانید ستون مبلغ کل را عریض‌تر کنید تا مبالغ میلیونی و میلیاردی بدون فشردگی نمایش یابند.
+                      تنظیم سبک خطوط، ضخامت، ارتفاع ردیف‌ها، تراکم و عرض دقیق ستون‌های جدول فاکتور.
                     </p>
                   </div>
-                  <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full font-bold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                    همگام‌سازی زنده
-                  </span>
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <span className="text-[11px] text-slate-500">تراکم:</span>
+                    <button
+                      type="button"
+                      onClick={() => update('compactMode', !config.compactMode)}
+                      className={`px-2.5 py-1 rounded-lg font-bold border transition-colors cursor-pointer ${
+                        config.compactMode
+                          ? 'bg-emerald-600 text-white border-emerald-700'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {config.compactMode ? 'حالت فوق‌فشرده فعال' : 'حالت عادی'}
+                    </button>
+                  </div>
                 </div>
 
                 {/* PROMINENT: Total Column Width Slider & Presets */}
@@ -1286,7 +1375,73 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
                   </div>
                 </div>
 
-                {/* 4. Zebra Striping */}
+                {/* 4. Table Border Style, Width & Min Row Height */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-bold text-slate-700 block">سبک خطوط جدول:</span>
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                      {[
+                        { id: 'bordered', label: 'کادر کامل' },
+                        { id: 'modern', label: 'مدرن افقی' },
+                        { id: 'striped', label: 'راه‌راه شفاف' },
+                        { id: 'minimal', label: 'مینیمال' },
+                      ].map((st) => (
+                        <button
+                          key={st.id}
+                          type="button"
+                          onClick={() => update('tableBorderStyle', st.id as any)}
+                          className={`py-1.5 px-2 rounded-lg border font-bold cursor-pointer transition-colors ${
+                            (config.tableBorderStyle || 'bordered') === st.id
+                              ? 'bg-emerald-600 text-white border-emerald-700'
+                              : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {st.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-bold text-slate-700 block">ضخامت خطوط جدول:</span>
+                    <div className="grid grid-cols-4 gap-1.5 text-[11px]">
+                      {[0.5, 1, 1.5, 2].map((w) => (
+                        <button
+                          key={w}
+                          type="button"
+                          onClick={() => update('tableBorderWidth', w)}
+                          className={`py-1.5 rounded-lg border font-mono font-bold cursor-pointer transition-colors ${
+                            (config.tableBorderWidth ?? 1) === w
+                              ? 'bg-emerald-600 text-white border-emerald-700'
+                              : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {toPersianDigits(w)}px
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-slate-700">حداقل ارتفاع هر ردیف:</span>
+                      <span className="font-mono text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        {toPersianDigits(config.tableRowMinHeight || 34)} px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={20}
+                      max={64}
+                      step={2}
+                      value={config.tableRowMinHeight || 34}
+                      onChange={(e) => update('tableRowMinHeight', Number(e.target.value))}
+                      className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                    />
+                  </div>
+                </div>
+
+                {/* 5. Zebra Striping */}
                 <label className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 cursor-pointer transition-colors text-xs">
                   <div>
                     <span className="font-bold text-slate-800 block">سطرهای یک‌درمیان رنگی (Zebra Striping)</span>
@@ -1309,16 +1464,12 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
                   <div>
                     <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
                       <Maximize2 className="w-4 h-4 text-emerald-600" />
-                      <span>فضای پایین صفحه، کارت مبالغ کل و کادر امضاها</span>
+                      <span>فضای پایین صفحه، کاغذ پیش‌فرض و خروجی PDF</span>
                     </h4>
                     <p className="text-[11px] text-slate-500 mt-1">
-                      فضای پایین صفحه شامل روش پرداخت، توضیحات، کارت مبالغ کل و کادر مهر و امضا با تناسب دقیق بهینه‌سازی شده است.
+                      تنظیم سایز و جهت پیش‌فرض کاغذ، کادر مبالغ، امضاها و رفتار PDF در فاکتورهای چندصفحه‌ای.
                     </p>
                   </div>
-                  <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full font-bold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                    همگام‌سازی زنده
-                  </span>
                 </div>
 
                 {/* Structure Explanation Banner */}
@@ -1401,7 +1552,91 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
                   </div>
                 </div>
 
-                {/* 4. Toggles for Signatures and Terms */}
+                {/* 4. Default Paper Size, Orientation & Section Spacing */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-bold text-slate-700 block">سایز کاغذ پیش‌فرض:</span>
+                    <div className="grid grid-cols-2 gap-1.5 text-xs">
+                      {(['a4', 'a5'] as const).map((sz) => (
+                        <button
+                          key={sz}
+                          type="button"
+                          onClick={() => {
+                            update('defaultPageSize', sz);
+                            setPreviewPageSize(sz);
+                          }}
+                          className={`py-1.5 rounded-lg border font-bold cursor-pointer transition-colors ${
+                            (config.defaultPageSize || 'a4') === sz
+                              ? 'bg-emerald-600 text-white border-emerald-700'
+                              : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {sz.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-bold text-slate-700 block">جهت کاغذ پیش‌فرض:</span>
+                    <div className="grid grid-cols-2 gap-1.5 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          update('defaultOrientation', 'portrait');
+                          setPreviewOrientation('portrait');
+                        }}
+                        className={`py-1.5 rounded-lg border font-bold cursor-pointer transition-colors ${
+                          (config.defaultOrientation || 'portrait') === 'portrait'
+                            ? 'bg-emerald-600 text-white border-emerald-700'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        عمودی
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          update('defaultOrientation', 'landscape');
+                          setPreviewOrientation('landscape');
+                        }}
+                        className={`py-1.5 rounded-lg border font-bold cursor-pointer transition-colors ${
+                          config.defaultOrientation === 'landscape'
+                            ? 'bg-emerald-600 text-white border-emerald-700'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        افقی
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-bold text-slate-700 block">فاصله‌گذاری بین بخش‌ها:</span>
+                    <div className="grid grid-cols-3 gap-1 text-[11px]">
+                      {[
+                        { id: 'compact', label: 'فشرده' },
+                        { id: 'normal', label: 'متعادل' },
+                        { id: 'relaxed', label: 'باز' },
+                      ].map((sp) => (
+                        <button
+                          key={sp.id}
+                          type="button"
+                          onClick={() => update('sectionSpacing', sp.id as any)}
+                          className={`py-1.5 rounded-lg border font-bold cursor-pointer transition-colors ${
+                            (config.sectionSpacing || 'normal') === sp.id
+                              ? 'bg-emerald-600 text-white border-emerald-700'
+                              : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {sp.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. Toggles for Signatures, Terms & Multi-page PDF */}
                 <div className="space-y-2 pt-2 border-t border-slate-100">
                   <label className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 cursor-pointer transition-colors text-xs">
                     <div>
@@ -1428,6 +1663,34 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
                       className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
                     />
                   </label>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <label className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 cursor-pointer transition-colors text-xs">
+                      <div>
+                        <span className="font-bold text-slate-800 block">تکرار سربرگ در PDF چندصفحه‌ای</span>
+                        <span className="text-[10px] text-slate-500">تکرار نام فروشگاه و تیتر جدول در صفحات بعدی</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={config.pdfRepeatHeaderOnMultipage !== false}
+                        onChange={(e) => update('pdfRepeatHeaderOnMultipage', e.target.checked)}
+                        className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 cursor-pointer transition-colors text-xs">
+                      <div>
+                        <span className="font-bold text-slate-800 block">درج شماره صفحه در PDF</span>
+                        <span className="text-[10px] text-slate-500">نمایش «صفحه X از Y» در پایین صفحات متعدد</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={config.pdfShowPageNumbers !== false}
+                        onChange={(e) => update('pdfShowPageNumbers', e.target.checked)}
+                        className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
+                      />
+                    </label>
+                  </div>
                 </div>
               </div>
             )}
@@ -1445,10 +1708,6 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
                       می‌توانید تصویر آرم و لوگوی فروشگاه خود را بارگذاری کرده یا از بین نمادهای تجاری آماده انتخاب فرمایید.
                     </p>
                   </div>
-                  <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full font-bold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                    همگام‌سازی زنده
-                  </span>
                 </div>
 
                 {/* Logo Visibility Toggle */}
@@ -1611,10 +1870,6 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
                       متن پیش‌فرض شروط و توضیحات پاورقی که در پایین برگه فاکتور چاپ می‌شود را به دلخواه ویرایش فرمایید.
                     </p>
                   </div>
-                  <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full font-bold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                    همگام‌سازی زنده
-                  </span>
                 </div>
 
                 {/* Footer Terms Textarea */}
@@ -1697,16 +1952,12 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
                   <div>
                     <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
                       <Type className="w-4 h-4 text-emerald-600" />
-                      <span>تنظیم مقیاس قلم‌ها و رنگ‌بندی تم فاکتور</span>
+                      <span>تنظیم مقیاس قلم‌ها و رنگ‌بندی تم و جدول فاکتور</span>
                     </h4>
                     <p className="text-[11px] text-slate-500 mt-1">
-                      سایز متن‌های هر بخش را متناسب با سلیقه و نوع چاپگر خود (لیزری، جوهرافشان یا حرارتی) تنظیم فرمایید.
+                      سایز متن‌ها و رنگ پس‌زمینه/خطوط هر بخش را متناسب با نوع چاپگر (لیزری، جوهرافشان یا حرارتی) تنظیم فرمایید.
                     </p>
                   </div>
-                  <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full font-bold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                    همگام‌سازی زنده
-                  </span>
                 </div>
 
                 {/* Theme Color Selector */}
@@ -1788,6 +2039,25 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
                   />
                 </div>
 
+                {/* Table Header Size */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-slate-700">سایز عناوین سرستون‌های جدول:</span>
+                    <span className="font-mono text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      {toPersianDigits(config.tableHeaderSize)} px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={9}
+                    max={16}
+                    step={1}
+                    value={config.tableHeaderSize}
+                    onChange={(e) => update('tableHeaderSize', Number(e.target.value))}
+                    className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                  />
+                </div>
+
                 {/* Table Body Text Size */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center text-xs">
@@ -1806,8 +2076,164 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
                     className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
                   />
                 </div>
+
+                {/* Custom Color Palette Pickers for Table & Paper */}
+                <div className="pt-3 border-t border-slate-100 space-y-3">
+                  <span className="font-bold text-xs text-slate-800 block">رنگ‌بندی دقیق سرستون، خطوط و زمینه جدول:</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                    <label className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-2 cursor-pointer">
+                      <span className="font-bold text-slate-700 text-[11px]">زمینه سرستون</span>
+                      <input
+                        type="color"
+                        value={config.tableHeaderBg || '#f1f5f9'}
+                        onChange={(e) => update('tableHeaderBg', e.target.value)}
+                        className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0"
+                      />
+                    </label>
+                    <label className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-2 cursor-pointer">
+                      <span className="font-bold text-slate-700 text-[11px]">متن سرستون</span>
+                      <input
+                        type="color"
+                        value={config.tableHeaderTextColor || '#0f172a'}
+                        onChange={(e) => update('tableHeaderTextColor', e.target.value)}
+                        className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0"
+                      />
+                    </label>
+                    <label className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-2 cursor-pointer">
+                      <span className="font-bold text-slate-700 text-[11px]">رنگ خطوط جدول</span>
+                      <input
+                        type="color"
+                        value={config.tableBorderColor || '#cbd5e1'}
+                        onChange={(e) => update('tableBorderColor', e.target.value)}
+                        className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0"
+                      />
+                    </label>
+                    <label className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-2 cursor-pointer">
+                      <span className="font-bold text-slate-700 text-[11px]">سطر یک‌درمیان</span>
+                      <input
+                        type="color"
+                        value={config.tableZebraBg || '#f8fafc'}
+                        onChange={(e) => update('tableZebraBg', e.target.value)}
+                        className="w-7 h-7 rounded border border-slate-300 cursor-pointer p-0"
+                      />
+                    </label>
+                  </div>
+                </div>
               </div>
             )}
+
+        {/* Inline Live Preview Workspace (Always mounts printable sheet for direct test Print & PDF) */}
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Eye className="w-4 h-4 text-emerald-600" />
+              <span className="text-xs font-extrabold text-slate-800">
+                پیش‌نمایش زنده برگه چاپ ({previewPageSize.toUpperCase()} · {previewOrientation === 'landscape' ? 'افقی' : 'عمودی'})
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <div className="flex items-center bg-white rounded-lg p-0.5 border border-slate-200 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setPreviewPageSize('a4')}
+                  className={`px-2 py-1 rounded font-bold cursor-pointer ${previewPageSize === 'a4' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}
+                >
+                  A4
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewPageSize('a5')}
+                  className={`px-2 py-1 rounded font-bold cursor-pointer ${previewPageSize === 'a5' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}
+                >
+                  A5
+                </button>
+              </div>
+
+              <div className="flex items-center bg-white rounded-lg p-0.5 border border-slate-200 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setPreviewOrientation('portrait')}
+                  className={`px-2 py-1 rounded font-bold cursor-pointer ${previewOrientation === 'portrait' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}
+                >
+                  عمودی
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewOrientation('landscape')}
+                  className={`px-2 py-1 rounded font-bold cursor-pointer ${previewOrientation === 'landscape' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}
+                >
+                  افقی
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowMarginGuide((v) => !v)}
+                className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold cursor-pointer ${
+                  showMarginGuide ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-slate-600 border-slate-200'
+                }`}
+              >
+                راهنمای حاشیه
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setZoomLevel((z) => Math.max(0.6, Number((z - 0.1).toFixed(2))))}
+                className="p-1.5 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer"
+                title="کوچک‌نمایی"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-[11px] font-mono text-slate-600 min-w-[36px] text-center">
+                {toPersianDigits(Math.round(zoomLevel * 100))}٪
+              </span>
+              <button
+                type="button"
+                onClick={() => setZoomLevel((z) => Math.min(1.15, Number((z + 0.1).toFixed(2))))}
+                className="p-1.5 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer"
+                title="بزرگ‌نمایی"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowInlinePreview((v) => !v)}
+                className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 cursor-pointer"
+              >
+                {showInlinePreview ? 'جمع کردن پیش‌نمایش' : 'نمایش پیش‌نمایش'}
+              </button>
+            </div>
+          </div>
+
+          <div
+            className={
+              showInlinePreview
+                ? 'bg-slate-100 p-4 sm:p-6 overflow-auto max-h-[680px]'
+                : 'sr-only pointer-events-none'
+            }
+          >
+            <div
+              className="origin-top transition-transform duration-150"
+              style={{ transform: showInlinePreview ? `scale(${zoomLevel})` : 'none' }}
+            >
+              <LiveInvoicePreviewSheet
+                config={config}
+                settings={settings}
+                previewPageSize={previewPageSize}
+                previewOrientation={previewOrientation}
+                sampleItems={sampleItems}
+                subtotal={subtotal}
+                totalDiscount={totalDiscount}
+                finalTotal={finalTotal}
+                sampleNotes={sampleLiveNote}
+                showMarginGuide={showMarginGuide}
+                containerId="admin-print-live-preview-box"
+              />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* DRAGGABLE & RESIZABLE FLOATING DETACHED WINDOW (مشاهده در پنجره جداگانه شناور) */}
@@ -1836,7 +2262,6 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
               <span className="text-xs font-black tracking-tight">
                 پیش‌نمایش زنده در پنجره جداگانه
               </span>
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
             </div>
 
             <div className="flex items-center gap-1" onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
@@ -2001,7 +2426,6 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
             <Square className="w-4 h-4" />
           </span>
           <span className="hidden sm:inline">پنجره شناور پیش‌نمایش</span>
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
         </button>
       )}
 
@@ -2068,15 +2492,16 @@ export const PrintLayoutCustomizer: React.FC<PrintLayoutCustomizerProps> = ({
                 </button>
               </div>
 
-              <button
-                type="button"
-                onClick={handleOpenBrowserWindow}
+              <a
+                href={previewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                 title="باز کردن در برگه جداگانه مرورگر"
               >
                 <ExternalLink className="w-3.5 h-3.5 text-indigo-400" />
                 <span className="hidden sm:inline">برگه مستقل</span>
-              </button>
+              </a>
 
               <button
                 type="button"

@@ -24,7 +24,7 @@ import {
   AppUser,
 } from '../types';
 import { formatPrice, toPersianDigits, toEnglishDigits, getCurrentJalaliDate } from '../utils/jalali';
-import { canUserModifyCustomers, isReadOnlyUser } from '../utils/permissions';
+import { canUserModifyCustomers, canUserSettleInvoice, isReadOnlyUser } from '../utils/permissions';
 import { confirmAction } from '../utils/confirmDialog';
 import { SmartPagination, paginateArray } from './SmartPagination';
 import { JalaliDatePicker } from './JalaliDatePicker';
@@ -136,7 +136,9 @@ export const CustomerPaymentsLedger: React.FC<CustomerPaymentsLedgerProps> = ({
   onDeleteTransaction,
   onViewInvoice,
 }) => {
-  const canModify = canUserModifyCustomers(currentUser) && !isReadOnlyUser(currentUser);
+  const canModify =
+    !isReadOnlyUser(currentUser) &&
+    (canUserModifyCustomers(currentUser) || canUserSettleInvoice(currentUser));
 
   // Filters
   const [directionFilter, setDirectionFilter] = useState<'all' | FlowDirection>('all');
@@ -159,6 +161,9 @@ export const CustomerPaymentsLedger: React.FC<CustomerPaymentsLedgerProps> = ({
   const [activeModalCustomer, setActiveModalCustomer] = useState<Customer | null>(null);
   const [activeModalInitialType, setActiveModalInitialType] = useState<'deposit' | 'debt'>('deposit');
   const [editingTransaction, setEditingTransaction] = useState<CustomerTransaction | null>(null);
+
+  // Selected entry for dedicated Details Modal (derived live from allEntries so edits/deletes stay in sync)
+  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
 
   // Build customer lookup maps by ID and normalized name
   const customerMaps = useMemo(() => {
@@ -491,6 +496,22 @@ export const CustomerPaymentsLedger: React.FC<CustomerPaymentsLedgerProps> = ({
     });
   }, [customers, pickerSearch]);
 
+  const selectedEntry = useMemo(
+    () => (selectedEntryId ? allEntries.find((e) => e.id === selectedEntryId) || null : null),
+    [allEntries, selectedEntryId]
+  );
+
+  useEffect(() => {
+    if (!selectedEntryId) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedEntryId(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedEntryId]);
+
   // Edit standalone transaction
   const handleEditEntry = (entry: UnifiedPaymentEntry) => {
     if (!canModify || !entry.rawTransaction) return;
@@ -519,6 +540,9 @@ export const CustomerPaymentsLedger: React.FC<CustomerPaymentsLedgerProps> = ({
       }
     );
     if (confirmed) {
+      if (selectedEntryId === entry.id) {
+        setSelectedEntryId(null);
+      }
       onDeleteTransaction(entry.rawTransaction.id);
     }
   };
@@ -946,7 +970,16 @@ export const CustomerPaymentsLedger: React.FC<CustomerPaymentsLedgerProps> = ({
                     return (
                       <tr
                         key={entry.id}
-                        className="hover:bg-slate-50/80 transition-colors align-middle"
+                        onClick={() => setSelectedEntryId(entry.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedEntryId(entry.id);
+                          }
+                        }}
+                        tabIndex={0}
+                        title="برای مشاهده جزئیات کامل این رکورد کلیک کنید"
+                        className="hover:bg-slate-50/90 focus:bg-slate-50 focus:outline-none transition-colors align-middle cursor-pointer"
                       >
                         <td className="py-2.5 px-3 text-center text-slate-400 font-mono tabular-nums text-[11px]">
                           {toPersianDigits(rowNumber)}
@@ -998,7 +1031,10 @@ export const CustomerPaymentsLedger: React.FC<CustomerPaymentsLedgerProps> = ({
                             {entry.invoiceNumber && entry.rawInvoice && onViewInvoice ? (
                               <button
                                 type="button"
-                                onClick={() => onViewInvoice(entry.rawInvoice!)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onViewInvoice(entry.rawInvoice!);
+                                }}
                                 className="text-sky-700 hover:text-sky-900 hover:underline font-mono tabular-nums font-semibold cursor-pointer shrink-0"
                               >
                                 فاکتور #{toPersianDigits(entry.invoiceNumber)}
@@ -1028,18 +1064,19 @@ export const CustomerPaymentsLedger: React.FC<CustomerPaymentsLedgerProps> = ({
                           </span>
                         </td>
 
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                        <td
+                          className="py-2.5 px-3 text-center whitespace-nowrap"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <div className="inline-flex items-center justify-center gap-1">
-                            {entry.rawInvoice && onViewInvoice && (
-                              <button
-                                type="button"
-                                onClick={() => onViewInvoice(entry.rawInvoice!)}
-                                title="مشاهده فاکتور مرتبط"
-                                className="p-1.5 rounded-lg text-slate-500 hover:text-sky-700 hover:bg-sky-50 transition-colors cursor-pointer"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedEntryId(entry.id)}
+                              title="مشاهده جزئیات رکورد"
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
                             {entry.rawTransaction && canModify && (
                               <>
                                 <button
@@ -1059,9 +1096,6 @@ export const CustomerPaymentsLedger: React.FC<CustomerPaymentsLedgerProps> = ({
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </>
-                            )}
-                            {!entry.rawInvoice && (!entry.rawTransaction || !canModify) && (
-                              <span className="text-slate-300 text-[11px]">—</span>
                             )}
                           </div>
                         </td>
@@ -1087,7 +1121,16 @@ export const CustomerPaymentsLedger: React.FC<CustomerPaymentsLedgerProps> = ({
               return (
                 <div
                   key={entry.id}
-                  className="bg-white border border-slate-200 rounded-2xl p-3.5 space-y-2"
+                  onClick={() => setSelectedEntryId(entry.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedEntryId(entry.id);
+                    }
+                  }}
+                  className="bg-white border border-slate-200 hover:border-slate-300 rounded-2xl p-3.5 space-y-2 transition-colors cursor-pointer"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -1126,17 +1169,18 @@ export const CustomerPaymentsLedger: React.FC<CustomerPaymentsLedgerProps> = ({
                       {entry.title}
                       {entry.notes ? ` — ${entry.notes}` : ''}
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {entry.rawInvoice && onViewInvoice && (
-                        <button
-                          type="button"
-                          onClick={() => onViewInvoice(entry.rawInvoice!)}
-                          className="p-1.5 rounded-lg text-sky-700 bg-sky-50 hover:bg-sky-100 cursor-pointer"
-                          title="مشاهده فاکتور"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                    <div
+                      className="flex items-center gap-1 shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedEntryId(entry.id)}
+                        className="p-1.5 rounded-lg text-slate-600 bg-slate-100 hover:bg-slate-200 cursor-pointer"
+                        title="مشاهده جزئیات"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
                       {entry.rawTransaction && canModify && (
                         <>
                           <button
@@ -1178,6 +1222,284 @@ export const CustomerPaymentsLedger: React.FC<CustomerPaymentsLedgerProps> = ({
           />
         </>
       )}
+
+      {/* PAYMENT / RECEIPT ENTRY DETAILS MODAL */}
+      {selectedEntry && (() => {
+        const isReceipt = selectedEntry.direction === 'receipt';
+        const linkedInvoice = selectedEntry.rawInvoice;
+        const linkedPurchase = selectedEntry.rawPurchaseInvoice;
+        const invoiceTotal = linkedInvoice?.finalTotal ?? linkedPurchase?.finalTotal;
+        const invoicePaid = linkedInvoice?.paidAmount ?? linkedPurchase?.paidAmount;
+        const invoiceRemaining =
+          invoiceTotal !== undefined && invoicePaid !== undefined
+            ? Math.max(0, invoiceTotal - invoicePaid)
+            : undefined;
+
+        return (
+          <div
+            id="payment-entry-details-modal"
+            className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+            onClick={() => setSelectedEntryId(null)}
+          >
+            <div
+              className="bg-white w-full max-w-lg rounded-2xl border border-slate-200 shadow-2xl overflow-hidden text-right my-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span
+                    className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
+                      isReceipt
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                        : 'bg-rose-50 border-rose-200 text-rose-700'
+                    }`}
+                  >
+                    {isReceipt ? (
+                      <ArrowDownLeft className="w-5 h-5" />
+                    ) : (
+                      <ArrowUpRight className="w-5 h-5" />
+                    )}
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="font-extrabold text-sm sm:text-base text-slate-900 truncate">
+                      {isReceipt ? 'جزئیات سند دریافتی از مشتری' : 'جزئیات سند پرداختی به طرف‌حساب'}
+                    </h3>
+                    <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                      <span>{selectedEntry.sourceLabel}</span>
+                      <span className="mx-1.5 text-slate-300">·</span>
+                      <span className="font-mono tabular-nums">
+                        {toPersianDigits(selectedEntry.date || '—')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedEntryId(null)}
+                  className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                  title="بستن"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Amount Highlight Strip */}
+              <div className="px-5 py-4 bg-slate-50/80 border-b border-slate-100">
+                <div className="text-[11px] font-medium text-slate-500">
+                  {isReceipt ? 'مبلغ دریافت‌شده' : 'مبلغ پرداخت‌شده'}
+                </div>
+                <div
+                  className={`mt-1 font-mono tabular-nums text-2xl font-black tracking-tight ${
+                    isReceipt ? 'text-emerald-700' : 'text-rose-700'
+                  }`}
+                >
+                  {isReceipt ? '+' : '−'}
+                  {formatPrice(selectedEntry.amount, settings.currency)}
+                </div>
+
+                {invoiceTotal !== undefined && invoiceRemaining !== undefined && (
+                  <div className="mt-2 pt-2 border-t border-slate-200/70 text-[11px] text-slate-600 flex flex-wrap items-center gap-x-2 gap-y-1 tabular-nums">
+                    <span>
+                      مبلغ کل فاکتور:{' '}
+                      <strong className="font-mono text-slate-900">
+                        {formatPrice(invoiceTotal, settings.currency)}
+                      </strong>
+                    </span>
+                    <span className="text-slate-300">·</span>
+                    <span>
+                      مانده فاکتور:{' '}
+                      <strong
+                        className={`font-mono ${
+                          invoiceRemaining > 0 ? 'text-rose-700' : 'text-emerald-700'
+                        }`}
+                      >
+                        {invoiceRemaining === 0
+                          ? 'تسویه کامل'
+                          : formatPrice(invoiceRemaining, settings.currency)}
+                      </strong>
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Structured Details Body */}
+              <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <div className="text-[11px] text-slate-400 font-medium">مشتری / طرف‌حساب</div>
+                    <div className="mt-0.5 font-bold text-slate-900">{selectedEntry.customerName}</div>
+                    {selectedEntry.customerPhone && (
+                      <div className="text-[11px] text-slate-500 font-mono tabular-nums mt-0.5">
+                        {toPersianDigits(selectedEntry.customerPhone)}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="text-[11px] text-slate-400 font-medium">تاریخ سند</div>
+                    <div className="mt-0.5 font-mono tabular-nums font-bold text-slate-900">
+                      {toPersianDigits(selectedEntry.date || '—')}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[11px] text-slate-400 font-medium">نوع تراکنش</div>
+                    <div
+                      className={`mt-0.5 font-bold ${
+                        isReceipt ? 'text-emerald-700' : 'text-rose-700'
+                      }`}
+                    >
+                      {isReceipt ? 'دریافتی (ورودی به صندوق/حساب)' : 'پرداختی (خروجی به طرف‌حساب)'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[11px] text-slate-400 font-medium">روش پرداخت</div>
+                    <div className="mt-0.5 font-bold text-slate-900">{selectedEntry.methodLabel}</div>
+                  </div>
+
+                  {selectedEntry.trackingNumber && (
+                    <div>
+                      <div className="text-[11px] text-slate-400 font-medium">
+                        {selectedEntry.method === 'cheque' ? 'شماره چک صیادی' : 'شماره پیگیری / ارجاع'}
+                      </div>
+                      <div className="mt-0.5 font-mono tabular-nums font-bold text-slate-900">
+                        {toPersianDigits(selectedEntry.trackingNumber)}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedEntry.chequeDueDate && (
+                    <div>
+                      <div className="text-[11px] text-slate-400 font-medium">تاریخ سررسید چک</div>
+                      <div className="mt-0.5 font-mono tabular-nums font-bold text-amber-700">
+                        {toPersianDigits(selectedEntry.chequeDueDate)}
+                      </div>
+                    </div>
+                  )}
+
+                  {(selectedEntry.bankName || selectedEntry.chequeOwner) && (
+                    <div>
+                      <div className="text-[11px] text-slate-400 font-medium">
+                        {selectedEntry.method === 'cheque' ? 'بانک / صاحب حساب چک' : 'بانک / حساب'}
+                      </div>
+                      <div className="mt-0.5 font-bold text-slate-900">
+                        {[selectedEntry.bankName, selectedEntry.chequeOwner].filter(Boolean).join(' · ')}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedEntry.invoiceNumber && (
+                    <div>
+                      <div className="text-[11px] text-slate-400 font-medium">شماره فاکتور مرتبط</div>
+                      <div className="mt-0.5 font-mono tabular-nums font-bold text-slate-900">
+                        {linkedInvoice && onViewInvoice ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedEntryId(null);
+                              onViewInvoice(linkedInvoice);
+                            }}
+                            className="text-sky-700 hover:text-sky-900 hover:underline cursor-pointer"
+                          >
+                            فاکتور #{toPersianDigits(selectedEntry.invoiceNumber)}
+                          </button>
+                        ) : (
+                          `فاکتور #${toPersianDigits(selectedEntry.invoiceNumber)}`
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedEntry.recordedBy && (
+                    <div>
+                      <div className="text-[11px] text-slate-400 font-medium">ثبت‌کننده</div>
+                      <div className="mt-0.5 font-semibold text-slate-800">{selectedEntry.recordedBy}</div>
+                    </div>
+                  )}
+
+                  {selectedEntry.createdAt && (
+                    <div>
+                      <div className="text-[11px] text-slate-400 font-medium">تاریخ ثبت سیستمی</div>
+                      <div className="mt-0.5 font-mono tabular-nums text-slate-700">
+                        {toPersianDigits(selectedEntry.createdAt)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Title & Full Notes */}
+                <div className="pt-3.5 border-t border-slate-100 space-y-2.5">
+                  <div>
+                    <div className="text-[11px] text-slate-400 font-medium">عنوان / بابت</div>
+                    <div className="mt-0.5 font-semibold text-slate-900 leading-relaxed">
+                      {selectedEntry.title}
+                    </div>
+                  </div>
+
+                  {selectedEntry.notes && (
+                    <div>
+                      <div className="text-[11px] text-slate-400 font-medium">توضیحات تکمیلی</div>
+                      <div className="mt-1 p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-slate-700 leading-relaxed whitespace-pre-wrap">
+                        {selectedEntry.notes}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  {linkedInvoice && onViewInvoice && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedEntryId(null);
+                        onViewInvoice(linkedInvoice);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold transition-colors cursor-pointer whitespace-nowrap"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>مشاهده فاکتور مرتبط</span>
+                    </button>
+                  )}
+
+                  {selectedEntry.rawTransaction && canModify && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleEditEntry(selectedEntry)}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors cursor-pointer whitespace-nowrap"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>ویرایش سند</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteEntry(selectedEntry)}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>حذف</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedEntryId(null)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  بستن
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* CUSTOMER PICKER MODAL FOR QUICK RECORDING */}
       {showCustomerPicker && (

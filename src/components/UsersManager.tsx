@@ -78,6 +78,11 @@ const PERMISSION_CONFIG: {
     description: 'تعریف، ویرایش و ثبت اطلاعات هویتی، صورتحساب و اسناد مالی مشتریان',
   },
   {
+    key: 'canViewPayments',
+    title: 'دسترسی به تب دریافت‌ها و پرداخت‌ها',
+    description: 'مشاهده لیست یکپارچه تمام دریافتی‌ها و پرداختی‌های همه مشتریان، فیلتر، جستجو و خروجی اکسل',
+  },
+  {
     key: 'canViewReports',
     title: 'گزارش‌های مالی و سود',
     description: 'دسترسی به نمودارهای تحلیلی، سود خالص و ناخالص و گزارش‌های جامع مالی',
@@ -669,6 +674,7 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                         else if (p.key === 'canDeleteInvoice') colorClasses = 'bg-rose-50 text-rose-700 border-rose-200/60';
                         else if (p.key === 'canManageInventory') colorClasses = 'bg-amber-50 text-amber-800 border-amber-200/60';
                         else if (p.key === 'canManageCustomers') colorClasses = 'bg-blue-50 text-blue-700 border-blue-200/60';
+                        else if (p.key === 'canViewPayments') colorClasses = 'bg-cyan-50 text-cyan-800 border-cyan-200/70';
                         else if (p.key === 'canViewReports') colorClasses = 'bg-purple-50 text-purple-700 border-purple-200/60';
                         else if (p.key === 'canAccessAdmin') colorClasses = 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold';
                         else if (p.key === 'canManageUsers') colorClasses = 'bg-indigo-100 text-indigo-800 border-indigo-300 font-bold';
@@ -1104,6 +1110,7 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
                             canDeleteInvoice: false,
                             canManageInventory: false,
                             canManageCustomers: false,
+                            canViewPayments: false,
                             canViewReports: false,
                             canViewBuyPrices: false,
                             canAccessAdmin: false,
@@ -1120,7 +1127,7 @@ export const UsersManager: React.FC<UsersManagerProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {PERMISSION_CONFIG.map((perm) => {
-                    const isChecked = formData.permissions[perm.key];
+                    const isChecked = Boolean(formData.permissions[perm.key]);
                     const isLockedPerm =
                       (!callerIsFullAdmin && perm.key === 'canAccessAdmin') ||
                       Boolean(

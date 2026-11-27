@@ -3,6 +3,7 @@ import { PrintLayoutSettings, DEFAULT_PRINT_LAYOUT, StoreSettings } from '../typ
 import { StorageService } from '../utils/storage';
 import { subscribeLivePreview, LivePreviewSyncData, LiveInvoiceDraft } from '../utils/livePreviewSync';
 import { printElementInNewWindow, exportElementToPdf } from '../utils/pdfHelper';
+import { getPrintLayoutCssVariables } from '../utils/printLayoutHelper';
 import { toPersianDigits, formatPrice } from '../utils/jalali';
 import { 
   Eye, 
@@ -30,8 +31,12 @@ export const StandaloneLivePreviewView: React.FC<{ onBackToApp?: () => void }> =
   const initialSettings = StorageService.getSettings();
   const [config, setConfig] = useState<PrintLayoutSettings>(initialSettings.printLayout || DEFAULT_PRINT_LAYOUT);
   const [settings, setSettings] = useState<StoreSettings>(initialSettings);
-  const [previewPageSize, setPreviewPageSize] = useState<'a4' | 'a5'>('a4');
-  const [previewOrientation, setPreviewOrientation] = useState<'portrait' | 'landscape'>('portrait');
+  const [previewPageSize, setPreviewPageSize] = useState<'a4' | 'a5'>(
+    initialSettings.printLayout?.defaultPageSize || 'a4'
+  );
+  const [previewOrientation, setPreviewOrientation] = useState<'portrait' | 'landscape'>(
+    initialSettings.printLayout?.defaultOrientation || 'portrait'
+  );
   const [sampleNotes, setSampleNotes] = useState<string>('ارسال فوری با پیک اختصاصی - بسته تحویل جناب مهندس رضایی گردید.');
   const [draftInvoice, setDraftInvoice] = useState<LiveInvoiceDraft | null>(null);
   const [activeSource, setActiveSource] = useState<'config' | 'draft'>('config');
@@ -131,7 +136,13 @@ export const StandaloneLivePreviewView: React.FC<{ onBackToApp?: () => void }> =
     printElementInNewWindow(
       'standalone-live-preview-sheet',
       `پیش‌نمایش زنده فاکتور (${previewPageSize.toUpperCase()} - ${isLandscape ? 'افقی' : 'عمودی'})`,
-      { pageSize: previewPageSize, orientation: previewOrientation, marginMm: config.pageMarginMm }
+      {
+        pageSize: previewPageSize,
+        orientation: previewOrientation,
+        marginMm: config.pageMarginMm,
+        documentType: 'invoice',
+        printLayout: config,
+      }
     );
   };
 
@@ -139,7 +150,13 @@ export const StandaloneLivePreviewView: React.FC<{ onBackToApp?: () => void }> =
     await exportElementToPdf(
       'standalone-live-preview-sheet',
       `پیش‌نمایش_فاکتور_${previewPageSize}_${previewOrientation}`,
-      { pageSize: previewPageSize, orientation: previewOrientation, marginMm: config.pageMarginMm }
+      {
+        pageSize: previewPageSize,
+        orientation: previewOrientation,
+        marginMm: config.pageMarginMm,
+        documentType: 'invoice',
+        printLayout: config,
+      }
     );
   };
 
@@ -170,8 +187,7 @@ export const StandaloneLivePreviewView: React.FC<{ onBackToApp?: () => void }> =
                   پیش‌نمایش زنده در پنجره مستقل
                 </h1>
                 <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-700/50">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                  <span>متصل بلادرنگ (۰ میلی‌ثانیه)</span>
+                  <span>متصل بلادرنگ</span>
                 </span>
                 {draftInvoice && (
                   <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-indigo-300 bg-indigo-950/80 px-2 py-0.5 rounded-full border border-indigo-700/50">
@@ -334,16 +350,17 @@ export const StandaloneLivePreviewView: React.FC<{ onBackToApp?: () => void }> =
         >
           <div
             id="standalone-live-preview-sheet"
-            className={`print-container bg-white text-slate-800 transition-all relative select-none ${
+            className={`print-container text-slate-800 transition-all relative select-none ${
               isLandscape
                 ? (isA5 ? 'w-[620px] aspect-[1.414/1]' : 'w-[840px] aspect-[1.414/1]')
                 : (isA5 ? 'w-[480px] aspect-[1/1.414]' : 'w-[620px] aspect-[1/1.414]')
             } shadow-2xl rounded-sm border border-slate-300 mx-auto flex flex-col justify-between overflow-hidden`}
             style={{
+              ...getPrintLayoutCssVariables(config, previewPageSize, previewOrientation),
               padding: `${config.pageMarginMm || (isA5 ? 4 : 6)}mm`,
               fontSize: `${config.baseFontSize}px`,
               lineHeight: 1.35,
-              backgroundColor: '#ffffff'
+              backgroundColor: config.pageBgColor || '#ffffff',
             }}
           >
             {/* Margin Guidelines */}
@@ -442,69 +459,124 @@ export const StandaloneLivePreviewView: React.FC<{ onBackToApp?: () => void }> =
 
             {/* MIDDLE ZONE: Table with Wide Total Column */}
             <div className="invoice-table-box my-auto py-1 overflow-x-auto">
-              <table 
-                className="w-full text-right border-collapse border"
-                style={{ 
-                  borderColor: config.tableBorderColor || '#cbd5e1',
-                  borderWidth: `${config.tableBorderWidth || 1}px`,
-                  borderStyle: config.tableBorderStyle || 'solid',
-                }}
-              >
-                <thead>
-                  <tr 
-                    className="font-bold text-slate-800"
-                    style={{ 
-                      fontSize: `${config.tableHeaderSize}px`,
-                      backgroundColor: config.tableHeaderBg || '#f8fafc',
-                      color: config.tableHeaderTextColor || '#1e293b',
-                      borderColor: config.tableBorderColor || '#cbd5e1',
-                    }}
-                  >
-                    <th className="text-center" style={{ width: `${config.colWidthIndex}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>#</th>
-                    {config.showItemCodeCol !== false && (
-                      <th style={{ width: `${config.colWidthCode}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>کد</th>
-                    )}
-                    <th style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>شرح کالا / خدمات</th>
-                    <th className="text-center" style={{ width: `${config.colWidthQty}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>تعداد</th>
-                    {config.showItemUnitCol !== false && (
-                      <th className="text-center" style={{ width: `${config.colWidthUnit}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>واحد</th>
-                    )}
-                    <th className="text-left" style={{ width: `${config.colWidthPrice}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>قیمت واحد</th>
-                    {config.showItemDiscountCol !== false && (
-                      <th className="text-left" style={{ width: `${config.colWidthDiscount}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>تخفیف</th>
-                    )}
-                    <th className="text-left" style={{ width: `${config.colWidthTotal}px`, minWidth: `${config.colWidthTotal}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px` }}>
-                      مبلغ کل ({settings.currency})
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayItems.map((item, idx) => (
-                    <tr 
-                      key={idx}
-                      className={config.tableZebraStriping !== false && idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'}
-                      style={{ fontSize: `${config.tableBodySize}px` }}
-                    >
-                      <td className="text-center font-mono text-slate-400" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{toPersianDigits(idx + 1)}</td>
-                      {config.showItemCodeCol !== false && (
-                        <td className="text-slate-600 font-mono" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{toPersianDigits(item.code)}</td>
-                      )}
-                      <td className="font-bold text-slate-900" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{item.name}</td>
-                      <td className="text-center font-bold" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{toPersianDigits(item.qty)}</td>
-                      {config.showItemUnitCol !== false && (
-                        <td className="text-center text-slate-500" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{item.unit}</td>
-                      )}
-                      <td className="text-left font-mono" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{formatPrice(item.price, '', false)}</td>
-                      {config.showItemDiscountCol !== false && (
-                        <td className="text-left font-mono text-slate-500" style={{ padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>{item.discount > 0 ? formatPrice(item.discount, '', false) : '۰'}</td>
-                      )}
-                      <td className="text-left font-mono font-bold text-slate-900" style={{ width: `${config.colWidthTotal}px`, minWidth: `${config.colWidthTotal}px`, padding: `${config.tableRowPaddingY}px ${config.tableCellPaddingX}px`, border: `1px solid ${config.tableBorderColor || '#cbd5e1'}` }}>
-                        {formatPrice(item.total, '', false)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {(() => {
+                const borderStyle = config.tableBorderStyle || 'bordered';
+                const borderColor = config.tableBorderColor || '#cbd5e1';
+                const borderWidth = Math.max(0.5, Math.min(3, config.tableBorderWidth ?? 1));
+                const compactFactor = config.compactMode ? 0.82 : 1;
+                const rowPy = Math.max(1, Math.round(config.tableRowPaddingY * compactFactor));
+                const rowMinH = Math.max(20, Math.round((config.tableRowMinHeight || 34) * compactFactor));
+                const bodyBg = config.tableBodyBg || '#ffffff';
+                const zebraEnabled = config.tableZebraStriping !== false || borderStyle === 'striped';
+                const zebraBg = zebraEnabled ? (config.tableZebraBg || '#f8fafc') : bodyBg;
+
+                const frameStyle: React.CSSProperties =
+                  borderStyle === 'minimal'
+                    ? { border: 'none' }
+                    : borderStyle === 'striped'
+                    ? {
+                        borderTop: `${borderWidth}px solid ${borderColor}`,
+                        borderBottom: `${borderWidth}px solid ${borderColor}`,
+                        borderLeft: 'none',
+                        borderRight: 'none',
+                      }
+                    : { border: `${borderWidth}px solid ${borderColor}` };
+
+                const thCellBorder: React.CSSProperties =
+                  borderStyle === 'minimal' || borderStyle === 'modern'
+                    ? {
+                        borderLeft: 'none',
+                        borderRight: 'none',
+                        borderTop: borderStyle === 'modern' ? `${borderWidth}px solid ${borderColor}` : 'none',
+                        borderBottom: `2px solid ${config.themeColor}`,
+                      }
+                    : borderStyle === 'striped'
+                    ? {
+                        borderLeft: 'none',
+                        borderRight: 'none',
+                        borderTop: `${borderWidth}px solid ${borderColor}`,
+                        borderBottom: `${borderWidth}px solid ${borderColor}`,
+                      }
+                    : { border: `${borderWidth}px solid ${borderColor}` };
+
+                const tdCellBorder: React.CSSProperties =
+                  borderStyle === 'minimal' || borderStyle === 'striped'
+                    ? {
+                        borderLeft: 'none',
+                        borderRight: 'none',
+                        borderTop: 'none',
+                        borderBottom: `1px solid ${borderColor}`,
+                      }
+                    : borderStyle === 'modern'
+                    ? {
+                        borderLeft: 'none',
+                        borderRight: 'none',
+                        borderTop: 'none',
+                        borderBottom: `${borderWidth}px solid ${borderColor}`,
+                      }
+                    : { border: `${borderWidth}px solid ${borderColor}` };
+
+                return (
+                  <table className="w-full text-right border-collapse" style={frameStyle}>
+                    <thead>
+                      <tr
+                        className="font-bold"
+                        style={{
+                          fontSize: `${config.tableHeaderSize}px`,
+                          backgroundColor: config.tableHeaderBg || '#f1f5f9',
+                          color: config.tableHeaderTextColor || '#0f172a',
+                        }}
+                      >
+                        <th className="text-center" style={{ ...thCellBorder, width: `${config.colWidthIndex}px`, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>#</th>
+                        {config.showItemCodeCol !== false && (
+                          <th style={{ ...thCellBorder, width: `${config.colWidthCode}px`, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>کد</th>
+                        )}
+                        <th style={{ ...thCellBorder, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>شرح کالا / خدمات</th>
+                        <th className="text-center" style={{ ...thCellBorder, width: `${config.colWidthQty}px`, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>تعداد</th>
+                        {config.showItemUnitCol !== false && (
+                          <th className="text-center" style={{ ...thCellBorder, width: `${config.colWidthUnit}px`, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>واحد</th>
+                        )}
+                        <th className="text-left" style={{ ...thCellBorder, width: `${config.colWidthPrice}px`, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>قیمت واحد</th>
+                        {config.showItemDiscountCol !== false && (
+                          <th className="text-left" style={{ ...thCellBorder, width: `${config.colWidthDiscount}px`, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>تخفیف</th>
+                        )}
+                        <th className="text-left" style={{ ...thCellBorder, width: `${config.colWidthTotal}px`, minWidth: `${config.colWidthTotal}px`, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>
+                          مبلغ کل ({settings.currency})
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayItems.map((item, idx) => (
+                        <tr
+                          key={idx}
+                          style={{
+                            fontSize: `${config.tableBodySize}px`,
+                            height: `${rowMinH}px`,
+                            backgroundColor: idx % 2 === 1 ? zebraBg : bodyBg,
+                          }}
+                        >
+                          <td className="text-center font-mono text-slate-400" style={{ ...tdCellBorder, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>{toPersianDigits(idx + 1)}</td>
+                          {config.showItemCodeCol !== false && (
+                            <td className="text-slate-600 font-mono" style={{ ...tdCellBorder, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>{toPersianDigits(item.code)}</td>
+                          )}
+                          <td className="font-bold text-slate-900" style={{ ...tdCellBorder, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>{item.name}</td>
+                          <td className="text-center font-bold" style={{ ...tdCellBorder, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>{toPersianDigits(item.qty)}</td>
+                          {config.showItemUnitCol !== false && (
+                            <td className="text-center text-slate-500" style={{ ...tdCellBorder, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>{item.unit}</td>
+                          )}
+                          <td className="text-left font-mono" style={{ ...tdCellBorder, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>{formatPrice(item.price, '', false)}</td>
+                          {config.showItemDiscountCol !== false && (
+                            <td className="text-left font-mono text-slate-500" style={{ ...tdCellBorder, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>{item.discount > 0 ? formatPrice(item.discount, '', false) : '۰'}</td>
+                          )}
+                          <td className="text-left font-mono font-bold text-slate-900" style={{ ...tdCellBorder, width: `${config.colWidthTotal}px`, minWidth: `${config.colWidthTotal}px`, padding: `${rowPy}px ${config.tableCellPaddingX}px` }}>
+                            {formatPrice(item.total, '', false)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                );
+              })()}
             </div>
 
             {/* BOTTOM ZONE: OPTIMIZED 3-ZONE BALANCED FOOTER */}

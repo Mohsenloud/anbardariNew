@@ -341,7 +341,13 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
     // 1. Record print log in storage, explicitly preserving driver and vehicle info
     onRecordPrint(slipLog);
     
-    const printOptions = { pageSize, orientation };
+    const printOptions = {
+      pageSize,
+      orientation,
+      documentType: 'exit_slip' as const,
+      marginMm: currentPrintLayout.pageMarginMm,
+      printLayout: currentPrintLayout,
+    };
 
     if (mode === 'new-window') {
       const opened = printElementInNewWindow(
@@ -350,9 +356,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
         printOptions
       );
       if (opened) {
-        showNotification(`پنجره چاپ پرینتر در اندازه ${pageSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'} آماده‌سازی شد.`);
+        showNotification(`سند چاپی در اندازه ${pageSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'} آماده‌سازی شد.`);
       } else {
-        // Fallback to direct print if popup was blocked
         printElementDirectly('printable-exit-slip', printOptions);
         showNotification('دستور چاپ مستقیم ارسال شد.');
       }
@@ -379,7 +384,13 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
       
       const tplPrefix = template === 'simple' ? 'ساده_' : '';
       const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}_${tplPrefix}${pageSize}_${orientation}`;
-      const result = await exportElementToPdf('printable-exit-slip', filename, { pageSize, orientation, documentType: 'exit_slip' });
+      const result = await exportElementToPdf('printable-exit-slip', filename, {
+        pageSize,
+        orientation,
+        documentType: 'exit_slip',
+        marginMm: currentPrintLayout.pageMarginMm,
+        printLayout: currentPrintLayout,
+      });
       
       if (result.success) {
         showNotification(`فایل PDF برگه خروج (${template === 'simple' ? 'قالب ساده و خوانا' : 'قالب استاندارد'}) در اندازه ${pageSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'} با موفقیت تولید و دانلود شد.`);
@@ -450,7 +461,13 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
     await new Promise((resolve) => setTimeout(resolve, 25));
     try {
       const filename = `برگه_خروج_انبار_فاکتور_${invoice.invoiceNumber}_${pageSize}_${orientation}.pdf`;
-      const { success, blob, file, error } = await generatePdfBlob('printable-exit-slip', filename, { pageSize, orientation, documentType: 'exit_slip' });
+      const { success, blob, file, error } = await generatePdfBlob('printable-exit-slip', filename, {
+        pageSize,
+        orientation,
+        documentType: 'exit_slip',
+        marginMm: currentPrintLayout.pageMarginMm,
+        printLayout: currentPrintLayout,
+      });
       if (!success || (!file && !blob)) {
         showNotification(error || 'خطا در تولید فایل PDF');
         return;
@@ -2346,6 +2363,8 @@ export const ExitSlipModal: React.FC<ExitSlipModalProps> = ({
               orientation,
               documentType: 'exit_slip',
               quality: exitSlipQualityPreset,
+              marginMm: currentPrintLayout.pageMarginMm,
+              printLayout: currentPrintLayout,
             });
           }}
         />

@@ -66,6 +66,12 @@ body, button, input, select, textarea, table, th, td, span, div, p {
     body.printing-active-element #printable-purchase-invoice *,
     body.printing-active-element #printable-inbound-receipt,
     body.printing-active-element #printable-inbound-receipt *,
+    body.printing-active-element #printable-direct-transfer-slip,
+    body.printing-active-element #printable-direct-transfer-slip *,
+    body.printing-active-element #printable-customer-statement-pdf,
+    body.printing-active-element #printable-customer-statement-pdf *,
+    body.printing-active-element #invoices-slips-pdf-report-canvas,
+    body.printing-active-element #invoices-slips-pdf-report-canvas *,
     body.printing-active-element .printable-sheet,
     body.printing-active-element .printable-sheet * {
       visibility: visible !important;
@@ -81,7 +87,10 @@ body, button, input, select, textarea, table, th, td, span, div, p {
     body.printing-active-element #printable-purchase-invoice button,
     body.printing-active-element #printable-inbound-receipt .no-print,
     body.printing-active-element #printable-inbound-receipt .no-pdf,
-    body.printing-active-element #printable-inbound-receipt button {
+    body.printing-active-element #printable-inbound-receipt button,
+    body.printing-active-element #printable-direct-transfer-slip .no-print,
+    body.printing-active-element #printable-direct-transfer-slip .no-pdf,
+    body.printing-active-element #printable-direct-transfer-slip button {
       display: none !important;
       visibility: hidden !important;
     }
@@ -89,6 +98,9 @@ body, button, input, select, textarea, table, th, td, span, div, p {
     body.printing-active-element #printable-invoice,
     body.printing-active-element #printable-purchase-invoice,
     body.printing-active-element #printable-inbound-receipt,
+    body.printing-active-element #printable-direct-transfer-slip,
+    body.printing-active-element #printable-customer-statement-pdf,
+    body.printing-active-element #invoices-slips-pdf-report-canvas,
     body.printing-active-element .printable-sheet {
       position: absolute !important;
       left: 0 !important;
@@ -110,29 +122,31 @@ body, button, input, select, textarea, table, th, td, span, div, p {
 
 /* Universal print-white-bg helper class for PDF export & invoice containers */
 .print-white-bg {
-  background-color: #ffffff !important;
-  background: #ffffff !important;
+  background-color: var(--print-page-bg, #ffffff) !important;
+  background: var(--print-page-bg, #ffffff) !important;
   -webkit-print-color-adjust: exact !important;
   print-color-adjust: exact !important;
 }
 
 #printable-invoice,
 #printable-exit-slip {
-  background-color: #ffffff !important;
+  background-color: var(--print-page-bg, #ffffff) !important;
   border-width: 0px !important;
 }
 
 #printable-invoice > div:first-child,
 #printable-exit-slip > div:first-child {
-  background-color: #ffffff !important;
+  background-color: var(--print-page-bg, #ffffff) !important;
   border-width: 0px !important;
 }
 
 .standard-invoice-layout,
+.standard-exit-slip-layout {
+  background-color: var(--print-page-bg, #ffffff) !important;
+}
 .simple-invoice-layout table th,
-.standard-exit-slip-layout,
 .simple-exit-slip-layout table th {
-  background-color: #ffffff !important;
+  background-color: var(--print-header-bg, #f1f5f9) !important;
 }
 
 @media screen {

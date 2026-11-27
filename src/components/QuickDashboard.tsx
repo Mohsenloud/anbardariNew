@@ -135,6 +135,7 @@ export const QuickDashboard: React.FC<QuickDashboardProps> = ({
       canDeleteInvoice: true,
       canManageInventory: true,
       canManageCustomers: true,
+      canViewPayments: true,
       canViewReports: true,
       canAccessAdmin: true,
       canManageUsers: true,

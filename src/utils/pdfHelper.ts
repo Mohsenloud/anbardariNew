@@ -1,9 +1,9 @@
 import html2canvas from 'html2canvas-pro';
 import jsPDF from 'jspdf';
 import { StorageService } from './storage';
-import { PdfQualityPreset, Invoice } from '../types';
+import { PdfQualityPreset, Invoice, PrintLayoutSettings, DEFAULT_PRINT_LAYOUT } from '../types';
 import { toPersianDigits } from './jalali';
-import { getPrintLayoutCssRules } from './printLayoutHelper';
+import { getPrintLayoutCssRules, getPrintLayoutCssVariables } from './printLayoutHelper';
 import { shapeClonedElementText } from './persianShaper';
 
 const PERSIAN_FEMALE_FIRST_NAMES = new Set([
@@ -37,7 +37,7 @@ export function formatCustomerHonorificTitle(
   name?: string,
   extra?: { gender?: string; titlePrefix?: string; customerId?: string }
 ): string {
-  let raw = (name || '').trim();
+  const raw = (name || '').trim();
   if (!raw || raw === 'مشتری محترم' || raw === 'مشتری') return 'آقا یا خانم مشتری';
 
   let gender = extra?.gender;
@@ -122,12 +122,8 @@ export function formatCustomerHonorificTitle(
 }
 
 /**
- * نام فایل خروجی PDF طبق درخواست کاربر در تمام برنامه:
- * فاکتور یا پیش فاکتور ـ شماره؟ـ آقا یا خانم ؟
- * مثال:
- * فاکتور ـ 1001 ـ آقای علی رضایی.pdf
- * پیش فاکتور ـ 1002 ـ خانم سارا محمدی.pdf
- * فاکتور ـ 1003 ـ آقا یا خانم احمدی.pdf
+ * نام فایل خروجی PDF استاندارد در تمام برنامه:
+ * فاکتور ـ شماره ـ آقا یا خانم نام مشتری
  */
 export function getInvoicePdfFilename(
   invoice: Invoice,
@@ -166,30 +162,30 @@ export interface PdfQualityProfile {
 export const PDF_QUALITY_PRESETS: Record<PdfQualityPreset, PdfQualityProfile> = {
   economy: {
     preset: 'economy',
-    scale: 1.3,
-    compression: 0.72,
+    scale: 1.35,
+    compression: 0.74,
     label: 'اقتصادی و کم‌حجم (فوق‌العاده سریع)',
-    badge: 'کم‌حجم ترین',
+    badge: 'کم‌حجم‌ترین',
     approxSize: '~۶۰ تا ۹۵ کیلوبایت',
-    description: 'کمترین حجم فایل، ایده‌آل برای ارسال با پیام‌رسان‌ها (ایتا، بله، واتساپ) و اینترنت ضعیف همراه',
+    description: 'کمترین حجم فایل، ایده‌آل برای ارسال با پیام‌رسان‌ها و اینترنت همراه ضعیف',
   },
   standard: {
     preset: 'standard',
-    scale: 1.85,
-    compression: 0.86,
+    scale: 1.9,
+    compression: 0.87,
     label: 'استاندارد متعادل (پیشنهادی)',
     badge: 'تعادل هوشمند',
-    approxSize: '~۱۲۰ تا ۱۸۰ کیلوبایت',
-    description: 'تعادل هوشمند بین وضوح عالی نوشته‌ها و بارکدها با حجم بهینه و مناسب برای بایگانی و اشتراک‌گذاری',
+    approxSize: '~۱۲۰ تا ۱۸۵ کیلوبایت',
+    description: 'تعادل هوشمند بین وضوح عالی نوشته‌ها و بارکدها با حجم بهینه برای بایگانی و اشتراک‌گذاری',
   },
   high: {
     preset: 'high',
-    scale: 2.3,
+    scale: 2.35,
     compression: 0.94,
     label: 'کیفیت بالا (شفاف و شارپ)',
     badge: 'تفکیک بالا',
     approxSize: '~۲۵۰ تا ۴۰۰ کیلوبایت',
-    description: 'تفکیک تصویر بسیار بالا و فونت‌های بدون تارشدگی، مناسب نمایش در مانیتور و کامپیوتر مشتری',
+    description: 'تفکیک تصویر بسیار بالا و فونت‌های شفاف و دقیق، مناسب نمایش در مانیتور و کامپیوتر مشتری',
   },
   ultra: {
     preset: 'ultra',
@@ -210,6 +206,34 @@ export interface PdfExportOptions {
   scale?: number;
   compression?: number;
   marginMm?: number;
+  printLayout?: Partial<PrintLayoutSettings>;
+  repeatHeaderOnMultipage?: boolean;
+  showPageNumbers?: boolean;
+  title?: string;
+}
+
+function getEffectivePrintLayout(options?: PdfExportOptions): PrintLayoutSettings {
+  try {
+    const settings = StorageService.getSettings();
+    return {
+      ...DEFAULT_PRINT_LAYOUT,
+      ...(settings?.printLayout || {}),
+      ...(options?.printLayout || {}),
+    };
+  } catch {
+    return {
+      ...DEFAULT_PRINT_LAYOUT,
+      ...(options?.printLayout || {}),
+    };
+  }
+}
+
+function releaseCanvasMemory(canvas: HTMLCanvasElement | null | undefined): void {
+  if (!canvas) return;
+  try {
+    canvas.width = 0;
+    canvas.height = 0;
+  } catch {}
 }
 
 /**
@@ -246,21 +270,68 @@ export function resolvePdfQuality(options?: PdfExportOptions): {
 }
 
 /**
- * Assembles a multi-page jsPDF document from an html2canvas result, ensuring:
- * 1. Single page fits perfectly if content height is within standard bounds.
- * 2. Multi-page documents repeat the complete header (store name, title, customer banner, and table headers) at the top of every page.
- * 3. Page breaks occur cleanly at table row boundaries (avoiding cutting text mid-row).
- * 4. Persian page numbers (e.g., "صفحه ۲ از ۳") are added to every page.
+ * Resolves paper target dimensions (ISO A4/A5 at 96dpi logical base)
+ */
+function getPaperCanvasMetrics(options?: PdfExportOptions, layout?: PrintLayoutSettings) {
+  const effectiveLayout = layout || getEffectivePrintLayout(options);
+  const paperSize = options?.pageSize || effectiveLayout.defaultPageSize || 'a4';
+  const orientation = options?.orientation || effectiveLayout.defaultOrientation || 'portrait';
+  const isLandscape = orientation === 'landscape';
+  const isA5 = paperSize === 'a5';
+
+  const defaultMarginMm = isA5 ? 3.5 : 4.5;
+  const marginMm =
+    options?.marginMm !== undefined
+      ? options.marginMm
+      : effectiveLayout.pageMarginMm !== undefined
+      ? Math.max(2, Math.min(20, effectiveLayout.pageMarginMm))
+      : defaultMarginMm;
+
+  let targetWidthPx: number;
+  let targetMinHeightPx: number;
+  if (isA5) {
+    if (isLandscape) {
+      targetWidthPx = 900;
+      targetMinHeightPx = Math.round(900 * (141 / 203));
+    } else {
+      targetWidthPx = 620;
+      targetMinHeightPx = Math.round(620 * (203 / 141));
+    }
+  } else {
+    if (isLandscape) {
+      targetWidthPx = 1180;
+      targetMinHeightPx = Math.round(1180 * (201 / 288));
+    } else {
+      targetWidthPx = 820;
+      targetMinHeightPx = Math.round(820 * (288 / 201));
+    }
+  }
+
+  return { paperSize, orientation, isLandscape, isA5, marginMm, targetWidthPx, targetMinHeightPx, layoutCfg: effectiveLayout };
+}
+
+/**
+ * Assembles a single or multi-page jsPDF document from a captured canvas, ensuring:
+ * 1. Single page fits cleanly with preserved aspect ratio.
+ * 2. Multi-page documents optionally repeat the complete header on subsequent pages and split cleanly at row boundaries.
+ * 3. Optional Persian page numbers (e.g. "صفحه ۲ از ۳") are stamped neatly at bottom-left.
+ * 4. Temporary slice canvases are promptly released to avoid mobile/PWA memory pressure.
  */
 export function buildPdfDocumentFromCanvas(
   canvas: HTMLCanvasElement,
   layoutMeta: LayoutMeta,
   options?: PdfExportOptions
 ): jsPDF {
-  const paperSize = options?.pageSize || 'a4';
-  const orientation = options?.orientation || 'portrait';
+  const layoutCfg = getEffectivePrintLayout(options);
+  const paperSize = options?.pageSize || layoutCfg.defaultPageSize || 'a4';
+  const orientation = options?.orientation || layoutCfg.defaultOrientation || 'portrait';
   const isA5 = paperSize === 'a5';
   const marginMm = options?.marginMm !== undefined ? options.marginMm : (isA5 ? 3.5 : 4.5);
+
+  const repeatHeader =
+    options?.repeatHeaderOnMultipage ?? layoutCfg.pdfRepeatHeaderOnMultipage ?? true;
+  const showPageNumbers =
+    options?.showPageNumbers ?? layoutCfg.pdfShowPageNumbers ?? true;
 
   const pdf = new jsPDF({
     orientation,
@@ -271,6 +342,11 @@ export function buildPdfDocumentFromCanvas(
 
   try {
     (pdf as any).setR2L?.(true);
+    pdf.setProperties({
+      title: options?.title || 'سند حسابداری',
+      creator: 'سامانه حسابداری سپهر',
+      subject: paperSize.toUpperCase() + ' ' + orientation,
+    });
   } catch {}
 
   const pageWidth = pdf.internal.pageSize.getWidth();
@@ -278,13 +354,12 @@ export function buildPdfDocumentFromCanvas(
   const usableWidth = pageWidth - marginMm * 2;
   const usableHeight = pageHeight - marginMm * 2;
 
-  // Helper to guarantee every single PDF page has an edge-to-edge pure white (#ffffff) background
+  const bgColorHex = layoutCfg.pageBgColor && layoutCfg.pageBgColor !== '#ffffff' ? '#ffffff' : '#ffffff';
   const paintPageWhite = () => {
     pdf.setFillColor(255, 255, 255);
     pdf.rect(0, 0, pageWidth, pageHeight, 'F');
   };
 
-  // Always paint the initial page white immediately
   paintPageWhite();
 
   const { compression: jpegCompression } = resolvePdfQuality(options);
@@ -292,8 +367,8 @@ export function buildPdfDocumentFromCanvas(
   const pxPerMm = canvas.width / usableWidth;
   const fullPageHeightPx = Math.floor(usableHeight * pxPerMm);
 
-  // If content fits comfortably on a single page, render full single page coverage with 100% preserved aspect ratio
-  if (canvas.height <= fullPageHeightPx * 1.15) {
+  // Single-page fast path
+  if (canvas.height <= fullPageHeightPx * 1.12) {
     paintPageWhite();
     const naturalHeightMm = (canvas.height * usableWidth) / canvas.width;
     const imgData = canvas.toDataURL('image/jpeg', jpegCompression);
@@ -308,219 +383,173 @@ export function buildPdfDocumentFromCanvas(
     return pdf;
   }
 
-  // Multi-page document handling: Repeat header on all pages & avoid cutting rows
+  // Multi-page partitioning
   const scaleRatio = canvas.width / (layoutMeta.rootWidthPx || 1);
-  let headerCanvasPx = Math.round(layoutMeta.headerBottomPx * scaleRatio);
+  let headerCanvasPx = repeatHeader ? Math.round(layoutMeta.headerBottomPx * scaleRatio) : 0;
   const rowBottomsCanvasPx = layoutMeta.rowBottomsPx.map((y) => Math.round(y * scaleRatio));
 
-  // Cap header height to at most 55% of the page
   const maxHeaderPx = Math.floor(fullPageHeightPx * 0.55);
   if (headerCanvasPx > maxHeaderPx) {
     headerCanvasPx = maxHeaderPx;
   }
 
-  const hasValidHeader = headerCanvasPx >= 25;
-  const badgeHeightPx = 28;
+  const hasValidHeader = repeatHeader && headerCanvasPx >= 25;
+  const badgeHeightPx = showPageNumbers ? 28 : 0;
+
+  let headerImgData = '';
+  let headerHeightMm = 0;
 
   if (hasValidHeader) {
-    // 1. Extract header canvas
     const headerCanvas = document.createElement('canvas');
     headerCanvas.width = canvas.width;
     headerCanvas.height = headerCanvasPx;
     const hCtx = headerCanvas.getContext('2d');
     if (hCtx) {
-      hCtx.fillStyle = '#ffffff';
+      hCtx.fillStyle = bgColorHex;
       hCtx.fillRect(0, 0, headerCanvas.width, headerCanvas.height);
       hCtx.drawImage(
         canvas,
         0, 0, canvas.width, headerCanvasPx,
         0, 0, canvas.width, headerCanvasPx
       );
+      headerImgData = headerCanvas.toDataURL('image/jpeg', jpegCompression);
+      headerHeightMm = (headerCanvasPx * usableWidth) / canvas.width;
     }
-    const headerImgData = headerCanvas.toDataURL('image/jpeg', jpegCompression);
-    const headerHeightMm = (headerCanvasPx * usableWidth) / canvas.width;
+    releaseCanvasMemory(headerCanvas);
+  }
 
-    // Available height for content beneath the header on pages 2+
-    const contentAvailHeightPx = fullPageHeightPx - headerCanvasPx - badgeHeightPx;
+  const contentAvailHeightPx = Math.max(
+    120,
+    fullPageHeightPx - (hasValidHeader ? headerCanvasPx : 0) - badgeHeightPx
+  );
 
-    // 2. Partition canvas rows into pages
-    interface PageSlice {
-      startY: number;
-      endY: number;
-      isFirstPage: boolean;
+  interface PageSlice {
+    startY: number;
+    endY: number;
+    isFirstPage: boolean;
+  }
+  const pages: PageSlice[] = [];
+
+  const page1Target = Math.max(120, fullPageHeightPx - badgeHeightPx);
+  let page1Cut = page1Target;
+  if (rowBottomsCanvasPx.length > 0) {
+    const validRows = rowBottomsCanvasPx.filter((rb) => rb > headerCanvasPx && rb <= page1Target);
+    if (validRows.length > 0) {
+      page1Cut = validRows[validRows.length - 1];
     }
-    const pages: PageSlice[] = [];
+  }
+  pages.push({ startY: 0, endY: Math.min(page1Cut, canvas.height), isFirstPage: true });
 
-    // Page 1: Starts at 0 (naturally contains header). Content ends at best row cut <= fullPageHeightPx - badgeHeightPx
-    const page1Target = fullPageHeightPx - badgeHeightPx;
-    let page1Cut = page1Target;
+  let currentY = page1Cut;
+  while (currentY < canvas.height) {
+    const target = currentY + contentAvailHeightPx;
+    if (target >= canvas.height) {
+      pages.push({ startY: currentY, endY: canvas.height, isFirstPage: false });
+      break;
+    }
+
+    let bestCut = target;
     if (rowBottomsCanvasPx.length > 0) {
-      const validRows = rowBottomsCanvasPx.filter((rb) => rb > headerCanvasPx && rb <= page1Target);
+      const validRows = rowBottomsCanvasPx.filter((rb) => rb > currentY && rb <= target);
       if (validRows.length > 0) {
-        page1Cut = validRows[validRows.length - 1];
+        bestCut = validRows[validRows.length - 1];
       }
     }
-    pages.push({ startY: 0, endY: page1Cut, isFirstPage: true });
 
-    let currentY = page1Cut;
-    while (currentY < canvas.height) {
-      const target = currentY + contentAvailHeightPx;
-      if (target >= canvas.height) {
-        pages.push({ startY: currentY, endY: canvas.height, isFirstPage: false });
-        break;
-      }
-
-      let bestCut = target;
-      if (rowBottomsCanvasPx.length > 0) {
-        const validRows = rowBottomsCanvasPx.filter((rb) => rb > currentY && rb <= target);
-        if (validRows.length > 0) {
-          bestCut = validRows[validRows.length - 1];
-        }
-      }
-
-      // Safety guard against non-advancing slice
-      if (bestCut <= currentY) {
-        bestCut = Math.min(target, canvas.height);
-      }
-
-      pages.push({ startY: currentY, endY: bestCut, isFirstPage: false });
-      currentY = bestCut;
+    if (bestCut <= currentY) {
+      bestCut = Math.min(target, canvas.height);
     }
 
-    const totalPages = pages.length;
+    pages.push({ startY: currentY, endY: bestCut, isFirstPage: false });
+    currentY = bestCut;
+  }
 
-    // 3. Render each page
-    for (let i = 0; i < pages.length; i++) {
-      if (i > 0) {
-        pdf.addPage();
-      }
-      paintPageWhite();
-      const page = pages[i];
-      const pageNumText = `صفحه ${toPersianDigits(i + 1)} از ${toPersianDigits(totalPages)}`;
+  const totalPages = pages.length;
 
-      if (page.isFirstPage) {
-        // Page 1: Render slice from 0 to page.endY
-        const sliceHeightPx = page.endY;
-        const sliceCanvas = document.createElement('canvas');
-        sliceCanvas.width = canvas.width;
-        sliceCanvas.height = sliceHeightPx + badgeHeightPx;
-        const sCtx = sliceCanvas.getContext('2d');
-        if (sCtx) {
-          sCtx.fillStyle = '#ffffff';
-          sCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-          sCtx.drawImage(
-            canvas,
-            0, 0, canvas.width, sliceHeightPx,
-            0, 0, canvas.width, sliceHeightPx
-          );
-
-          // Page badge
-          sCtx.fillStyle = '#64748b';
-          sCtx.font = "bold 13px 'Vazirmatn', -apple-system, sans-serif";
-          sCtx.textAlign = 'left';
-          sCtx.fillText(pageNumText, 24, sliceHeightPx + 18);
-
-          const sliceImgData = sliceCanvas.toDataURL('image/jpeg', jpegCompression);
-          const sliceHeightMm = ((sliceHeightPx + badgeHeightPx) * usableWidth) / canvas.width;
-          pdf.addImage(sliceImgData, 'JPEG', marginMm, marginMm, usableWidth, sliceHeightMm, undefined, 'FAST');
-        }
-      } else {
-        // Page 2+:
-        // A. Repeat preserved header at top
-        pdf.addImage(headerImgData, 'JPEG', marginMm, marginMm, usableWidth, headerHeightMm, undefined, 'FAST');
-
-        // B. Render slice content below header
-        const sliceContentHeightPx = page.endY - page.startY;
-        const sliceCanvas = document.createElement('canvas');
-        sliceCanvas.width = canvas.width;
-        sliceCanvas.height = sliceContentHeightPx + badgeHeightPx;
-        const sCtx = sliceCanvas.getContext('2d');
-        if (sCtx) {
-          sCtx.fillStyle = '#ffffff';
-          sCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-          sCtx.drawImage(
-            canvas,
-            0, page.startY, canvas.width, sliceContentHeightPx,
-            0, 0, canvas.width, sliceContentHeightPx
-          );
-
-          // Page badge
-          sCtx.fillStyle = '#64748b';
-          sCtx.font = "bold 13px 'Vazirmatn', -apple-system, sans-serif";
-          sCtx.textAlign = 'left';
-          sCtx.fillText(pageNumText, 24, sliceContentHeightPx + 18);
-
-          const sliceImgData = sliceCanvas.toDataURL('image/jpeg', jpegCompression);
-          const sliceHeightMm = ((sliceContentHeightPx + badgeHeightPx) * usableWidth) / canvas.width;
-          pdf.addImage(sliceImgData, 'JPEG', marginMm, marginMm + headerHeightMm, usableWidth, sliceHeightMm, undefined, 'FAST');
-        }
-      }
+  for (let i = 0; i < pages.length; i++) {
+    if (i > 0) {
+      pdf.addPage();
     }
-  } else {
-    // Fallback: Uniform slicing if no header could be determined
-    const sliceHeightPx = fullPageHeightPx;
-    let yOffsetPx = 0;
-    let isFirstPage = true;
+    paintPageWhite();
+    const page = pages[i];
+    const pageNumText = `صفحه ${toPersianDigits(i + 1)} از ${toPersianDigits(totalPages)}`;
 
-    while (yOffsetPx < canvas.height) {
-      if (!isFirstPage) {
-        pdf.addPage();
+    const sliceContentHeightPx = Math.max(1, page.endY - page.startY);
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = canvas.width;
+    sliceCanvas.height = sliceContentHeightPx + badgeHeightPx;
+    const sCtx = sliceCanvas.getContext('2d');
+
+    if (sCtx) {
+      sCtx.fillStyle = bgColorHex;
+      sCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+      sCtx.drawImage(
+        canvas,
+        0, page.startY, canvas.width, sliceContentHeightPx,
+        0, 0, canvas.width, sliceContentHeightPx
+      );
+
+      if (showPageNumbers) {
+        sCtx.fillStyle = '#64748b';
+        sCtx.font = "bold 13px 'Vazirmatn', -apple-system, sans-serif";
+        sCtx.textAlign = 'left';
+        sCtx.fillText(pageNumText, 24, sliceContentHeightPx + 18);
       }
-      paintPageWhite();
-      const currentSliceHeightPx = Math.min(sliceHeightPx, canvas.height - yOffsetPx);
-      const sliceCanvas = document.createElement('canvas');
-      sliceCanvas.width = canvas.width;
-      sliceCanvas.height = currentSliceHeightPx;
-      const sliceCtx = sliceCanvas.getContext('2d');
-      if (sliceCtx) {
-        sliceCtx.fillStyle = '#ffffff';
-        sliceCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-        sliceCtx.drawImage(
-          canvas,
-          0, yOffsetPx, canvas.width, currentSliceHeightPx,
-          0, 0, canvas.width, currentSliceHeightPx
-        );
-        const sliceImgData = sliceCanvas.toDataURL('image/jpeg', jpegCompression);
-        const sliceHeightMm = (currentSliceHeightPx * usableWidth) / canvas.width;
+
+      const sliceImgData = sliceCanvas.toDataURL('image/jpeg', jpegCompression);
+      const sliceHeightMm = ((sliceContentHeightPx + badgeHeightPx) * usableWidth) / canvas.width;
+
+      if (page.isFirstPage || !hasValidHeader || !headerImgData) {
         pdf.addImage(sliceImgData, 'JPEG', marginMm, marginMm, usableWidth, sliceHeightMm, undefined, 'FAST');
+      } else {
+        pdf.addImage(headerImgData, 'JPEG', marginMm, marginMm, usableWidth, headerHeightMm, undefined, 'FAST');
+        pdf.addImage(sliceImgData, 'JPEG', marginMm, marginMm + headerHeightMm, usableWidth, sliceHeightMm, undefined, 'FAST');
       }
-      yOffsetPx += sliceHeightPx;
-      isFirstPage = false;
     }
+
+    releaseCanvasMemory(sliceCanvas);
   }
 
   return pdf;
 }
 
 let cachedExtractedRules: string | null = null;
-let lastStyleSheetsCount = 0;
+let lastStyleCacheSignature = '';
 
 /**
- * Safely extracts all active CSS rules currently loaded in document.styleSheets.
- * Caches the extracted rules so subsequent PDF exports are instantaneous (0ms overhead).
- * Avoids slow CSSOM iteration when <style> textContent is already available.
+ * Extracts all active local CSS rules in document.styleSheets with accurate cache invalidation
+ * based on both stylesheet count and cumulative text length.
+ * Remote cross-origin stylesheets (such as fonts.googleapis.com) are skipped to guarantee zero network stalls.
  */
 function extractActiveStyleSheetRules(): string {
-  if (cachedExtractedRules && document.styleSheets.length === lastStyleSheetsCount) {
-    return cachedExtractedRules;
-  }
-
-  let combinedCss = '';
   try {
-    // 1. Instant path: Extract textContent directly from all local <style> tags (0ms vs thousands of getter calls)
-    const styleTags = document.head.querySelectorAll('style');
-    styleTags.forEach((tag) => {
-      if (tag.textContent && !tag.id.startsWith('pdf-')) {
+    const styleTags = Array.from(document.head.querySelectorAll('style'));
+    let styleSignatureLen = 0;
+    for (const tag of styleTags) {
+      if (!tag.id.startsWith('pdf-') && !tag.id.startsWith('dynamic-direct-print')) {
+        styleSignatureLen += tag.textContent ? tag.textContent.length : 0;
+      }
+    }
+    const signature = `${document.styleSheets.length}:${styleTags.length}:${styleSignatureLen}`;
+    if (cachedExtractedRules !== null && signature === lastStyleCacheSignature) {
+      return cachedExtractedRules;
+    }
+
+    let combinedCss = '';
+    for (const tag of styleTags) {
+      if (tag.textContent && !tag.id.startsWith('pdf-') && !tag.id.startsWith('dynamic-direct-print')) {
         combinedCss += tag.textContent + '\n';
       }
-    });
+    }
 
-    // 2. Only inspect external stylesheets if needed
     const sheets = Array.from(document.styleSheets);
     for (const sheet of sheets) {
       try {
         if (sheet.ownerNode && (sheet.ownerNode as HTMLElement).tagName === 'STYLE') {
-          continue; // Already processed above via textContent
+          continue;
+        }
+        if (sheet.href && !sheet.href.startsWith(window.location.origin)) {
+          continue;
         }
         if (sheet.cssRules && sheet.cssRules.length > 0) {
           const rulesCount = sheet.cssRules.length;
@@ -529,21 +558,46 @@ function extractActiveStyleSheetRules(): string {
           }
         }
       } catch {
-        // Cross-origin stylesheets without CORS headers will throw security error, safely ignore
+        // Cross-origin stylesheet access throws SecurityError; safely ignore
       }
     }
+
+    cachedExtractedRules = combinedCss;
+    lastStyleCacheSignature = signature;
+    return combinedCss;
   } catch {
-    // Fallback if document.styleSheets is inaccessible
+    return '';
+  }
+}
+
+/**
+ * Synchronously copies only same-origin stylesheets into cloned document or print iframe,
+ * avoiding duplicate injection of inline <style> tags that are already extracted.
+ */
+function injectDocumentStylesCleanly(targetHead: HTMLHeadElement): void {
+  const extractedRules = extractActiveStyleSheetRules();
+  if (extractedRules) {
+    const inlineExtractedStyle = targetHead.ownerDocument.createElement('style');
+    inlineExtractedStyle.id = 'pdf-inlined-main-rules';
+    inlineExtractedStyle.textContent = extractedRules;
+    targetHead.appendChild(inlineExtractedStyle);
   }
 
-  cachedExtractedRules = combinedCss;
-  lastStyleSheetsCount = document.styleSheets.length;
-  return combinedCss;
+  const mainLinks = document.head.querySelectorAll('link[rel="stylesheet"]');
+  mainLinks.forEach((node) => {
+    try {
+      const href = (node as HTMLLinkElement).href;
+      if (href && href.startsWith(window.location.origin)) {
+        targetHead.appendChild(node.cloneNode(true));
+      }
+    } catch {}
+  });
 }
 
 /**
  * Robustly configures cloned document and DOM elements for html2canvas PDF rendering.
- * Inlines all styles, guarantees table borders, forces Persian fonts, and removes scroll clipping.
+ * Respects user PrintLayoutSettings (borders, header/zebra colors, padding, fonts)
+ * while safeguarding special report layouts (.no-pdf-border, customer statement).
  */
 function setupClonedDocumentForPdfCapture(
   clonedDoc: Document,
@@ -553,14 +607,30 @@ function setupClonedDocumentForPdfCapture(
   targetMinHeightPx: number,
   isA5: boolean,
   isLandscape: boolean,
-  layoutMeta: LayoutMeta
+  layoutMeta: LayoutMeta,
+  layoutCfg: PrintLayoutSettings
 ): void {
-  // 1. Reset scroll in cloned window
   if (clonedDoc.defaultView) {
     clonedDoc.defaultView.scrollTo(0, 0);
   }
 
-  // Force pure white background on cloned document root and body
+  const pageBg = layoutCfg.pageBgColor || '#ffffff';
+  const paperSize = isA5 ? 'a5' : 'a4';
+  const orientation = isLandscape ? 'landscape' : 'portrait';
+  const isBorderless =
+    clonedElement.id === 'invoices-slips-pdf-report-canvas' ||
+    clonedElement.classList.contains('no-pdf-border') ||
+    element.id === 'invoices-slips-pdf-report-canvas' ||
+    element.classList.contains('no-pdf-border');
+
+  const isCustomerStatementPdf =
+    clonedElement.id === 'printable-customer-statement-pdf' ||
+    clonedElement.id === 'printable-public-customer-statement-pdf' ||
+    element.id === 'printable-customer-statement-pdf' ||
+    element.id === 'printable-public-customer-statement-pdf';
+
+  const effectiveBg = isBorderless || isCustomerStatementPdf ? '#ffffff' : pageBg;
+
   if (clonedDoc.documentElement) {
     clonedDoc.documentElement.style.setProperty('background-color', '#ffffff', 'important');
     clonedDoc.documentElement.style.setProperty('background', '#ffffff', 'important');
@@ -569,72 +639,39 @@ function setupClonedDocumentForPdfCapture(
     clonedDoc.body.style.setProperty('background-color', '#ffffff', 'important');
     clonedDoc.body.style.setProperty('background', '#ffffff', 'important');
   }
-  clonedElement.style.setProperty('background-color', '#ffffff', 'important');
-  clonedElement.style.setProperty('background', '#ffffff', 'important');
 
-  // 2. Synchronously inject live CSS rules into clonedDoc
-  const extractedRules = extractActiveStyleSheetRules();
-  if (extractedRules) {
-    const inlineExtractedStyle = clonedDoc.createElement('style');
-    inlineExtractedStyle.id = 'pdf-inlined-main-rules';
-    inlineExtractedStyle.textContent = extractedRules;
-    clonedDoc.head.appendChild(inlineExtractedStyle);
+  // Apply computed --print-* CSS custom properties on clonedElement (preserving any inline overrides on element)
+  if (!isBorderless && !isCustomerStatementPdf) {
+    const cssVars = getPrintLayoutCssVariables(layoutCfg, paperSize, orientation) as Record<string, string>;
+    Object.entries(cssVars).forEach(([prop, val]) => {
+      if (prop.startsWith('--print-') && !element.style.getPropertyValue(prop)) {
+        clonedElement.style.setProperty(prop, val);
+      }
+    });
   }
 
-  // Also copy local style and link tags from main document, but filter out external remote links (e.g. fonts.googleapis.com)
-  // which trigger multi-second network latency in the cloned iframe before html2canvas can start.
-  const mainDocStyles = document.head.querySelectorAll('style, link[rel="stylesheet"]');
-  mainDocStyles.forEach((node) => {
-    try {
-      if (node.tagName.toLowerCase() === 'link') {
-        const href = (node as HTMLLinkElement).href;
-        if (href && (href.startsWith('http://') || href.startsWith('https://')) && !href.startsWith(window.location.origin)) {
-          // Skip external remote stylesheet links to avoid iframe network hangs
-          return;
-        }
-      }
-      clonedDoc.head.appendChild(node.cloneNode(true));
-    } catch {}
-  });
+  clonedElement.style.setProperty('background-color', effectiveBg, 'important');
+  clonedElement.style.setProperty('background', effectiveBg, 'important');
 
-  // 3. Inject high-priority infallible PDF print fixes (without blocking @import)
+  // 1. Clean single-pass stylesheet injection (no redundant duplicates, no remote font waits)
+  injectDocumentStylesCleanly(clonedDoc.head);
+
+  // 2. Scoped PDF print rules honoring user layout customization
   const pdfFixStyle = clonedDoc.createElement('style');
   pdfFixStyle.id = 'pdf-cloned-fix-styles-bulletproof';
-  pdfFixStyle.innerHTML = `
-    ${getPrintLayoutCssRules()}
-    
+  pdfFixStyle.textContent = `
+    ${getPrintLayoutCssRules(undefined, layoutCfg)}
+
     html, body {
       background-color: #ffffff !important;
       background: #ffffff !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
-    #printable-invoice,
-    #printable-purchase-invoice,
-    #printable-exit-slip,
-    #printable-inbound-receipt,
-    #printable-direct-transfer-slip,
-    #printable-customer-statement-pdf,
-    #invoices-slips-pdf-report-canvas,
-    #public-web-invoice-container,
-    .print-container,
-    .print-white-bg,
-    .standard-invoice-layout,
-    .simple-invoice-layout,
-    .standard-exit-slip-layout,
-    .simple-exit-slip-layout {
-      background-color: #ffffff !important;
-      background: #ffffff !important;
-      box-shadow: none !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-
     *, *::before, *::after {
       box-sizing: border-box !important;
     }
-    
-    /* Strict border override for elements configured without borders (e.g. export PDF canvas) */
+
     #invoices-slips-pdf-report-canvas,
     #invoices-slips-pdf-report-canvas *,
     .no-pdf-border,
@@ -647,102 +684,42 @@ function setupClonedDocumentForPdfCapture(
       outline: none !important;
     }
 
-    /* Customer Statement PDF: Pure white background everywhere, distinct table header row, no outer page frame, preserve internal boxes & table cells */
-    #printable-customer-statement-pdf {
+    #printable-customer-statement-pdf,
+    #printable-public-customer-statement-pdf {
       border: none !important;
       box-shadow: none !important;
       outline: none !important;
       background-color: #ffffff !important;
       background: #ffffff !important;
     }
-    #printable-customer-statement-pdf *:not(.pdf-table-col-header-row):not(.pdf-table-col-header-cell) {
+    #printable-customer-statement-pdf *:not(.pdf-table-col-header-row):not(.pdf-table-col-header-cell),
+    #printable-public-customer-statement-pdf *:not(.pdf-table-col-header-row):not(.pdf-table-col-header-cell) {
       background-color: #ffffff !important;
       background: #ffffff !important;
     }
-    #printable-customer-statement-pdf table {
+    #printable-customer-statement-pdf table,
+    #printable-public-customer-statement-pdf table {
       border: none !important;
     }
     #printable-customer-statement-pdf tr.pdf-doc-header-row,
-    #printable-customer-statement-pdf tr.pdf-doc-header-row > th {
+    #printable-customer-statement-pdf tr.pdf-doc-header-row > th,
+    #printable-public-customer-statement-pdf tr.pdf-doc-header-row,
+    #printable-public-customer-statement-pdf tr.pdf-doc-header-row > th {
       border: none !important;
       border-width: 0 !important;
       background-color: #ffffff !important;
     }
-
-    /* Bulletproof Table & Border Styles (only for standard tables with borders) */
-    table:not(.no-pdf-border):not(#printable-customer-statement-pdf table):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]) {
-      border-collapse: collapse !important;
-      border-spacing: 0 !important;
-      width: 100% !important;
-      border: 1px solid #94a3b8 !important;
-      background-color: #ffffff !important;
-    }
-    th:not(.no-pdf-border):not(.pdf-doc-header-cell):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]), 
-    thead tr:not(.pdf-doc-header-row) th:not(.no-pdf-border):not(.pdf-doc-header-cell):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]) {
-      border: 1px solid #94a3b8 !important;
-      border-color: #94a3b8 !important;
-      border-style: solid !important;
-      border-width: 1px !important;
-      background-color: #f1f5f9 !important;
-      color: #0f172a !important;
-      font-weight: 700 !important;
-      vertical-align: middle !important;
-      opacity: 1 !important;
-      visibility: visible !important;
-    }
     #printable-customer-statement-pdf thead tr:not(.pdf-doc-header-row),
-    #printable-customer-statement-pdf thead tr:not(.pdf-doc-header-row) th {
+    #printable-customer-statement-pdf thead tr:not(.pdf-doc-header-row) th,
+    #printable-public-customer-statement-pdf thead tr:not(.pdf-doc-header-row),
+    #printable-public-customer-statement-pdf thead tr:not(.pdf-doc-header-row) th {
       background-color: #e2e8f0 !important;
       background: #e2e8f0 !important;
       border: 1px solid #64748b !important;
       height: 40px !important;
       min-height: 40px !important;
     }
-    td:not(.no-pdf-border):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]), 
-    tbody td:not(.no-pdf-border):not([style*="border: none"]):not([style*="border:none"]):not([style*="border: 0"]) {
-      border: 1px solid #cbd5e1 !important;
-      border-color: #cbd5e1 !important;
-      border-style: solid !important;
-      border-width: 1px !important;
-      color: #1e293b !important;
-      vertical-align: middle !important;
-      opacity: 1 !important;
-      visibility: visible !important;
-    }
-    .border-b {
-      border-bottom-width: 1px !important;
-      border-bottom-style: solid !important;
-    }
-    .border-t {
-      border-top-width: 1px !important;
-      border-top-style: solid !important;
-    }
-    .border-l {
-      border-left-width: 1px !important;
-      border-left-style: solid !important;
-    }
-    .border-r {
-      border-right-width: 1px !important;
-      border-right-style: solid !important;
-    }
-    .border {
-      border-width: 1px !important;
-      border-style: solid !important;
-    }
-    .border-slate-300, .border-gray-300 {
-      border-color: #cbd5e1 !important;
-    }
-    .border-slate-200, .border-gray-200 {
-      border-color: #e2e8f0 !important;
-    }
-    .bg-slate-100, .bg-gray-100 {
-      background-color: #f1f5f9 !important;
-    }
-    .bg-slate-50, .bg-gray-50 {
-      background-color: #f8fafc !important;
-    }
 
-    /* Text & Legibility */
     p, span, div, td, th, h1, h2, h3, h4, h5, h6, strong, b, em {
       opacity: 1 !important;
       visibility: visible !important;
@@ -763,8 +740,7 @@ function setupClonedDocumentForPdfCapture(
   `;
   clonedDoc.head.appendChild(pdfFixStyle);
 
-  // 4. DOM Isolation: Hide all background UI and non-essential elements in clonedDoc.body
-  // This drastically speeds up html2canvas by skipping thousands of irrelevant DOM nodes in the rest of the application
+  // 3. DOM Isolation: Hide non-target sibling subtrees in clonedDoc.body for maximum capture speed
   if (element.id && element.id.startsWith('telegram-offscreen-')) {
     clonedElement.style.setProperty('opacity', '1', 'important');
     clonedElement.style.setProperty('visibility', 'visible', 'important');
@@ -780,7 +756,7 @@ function setupClonedDocumentForPdfCapture(
     }
   });
 
-  // 5. Hide all buttons, action controls, and .no-print elements
+  // 4. Strip interactive UI buttons and .no-print / .no-pdf controls
   const elementsToHide = clonedElement.querySelectorAll(
     '.no-print, .no-pdf, button, [data-html2canvas-ignore="true"]'
   );
@@ -789,9 +765,9 @@ function setupClonedDocumentForPdfCapture(
     (el as HTMLElement).style.setProperty('visibility', 'hidden', 'important');
   });
 
-  // 6. Dimensions and single-page vs multi-page balancing
+  // 5. Dimensions & single-page vs multi-page balancing
   const naturalHeight = element.scrollHeight;
-  const isSinglePageMode = naturalHeight <= targetMinHeightPx * 1.15;
+  const isSinglePageMode = naturalHeight <= targetMinHeightPx * 1.12;
 
   if (isSinglePageMode) {
     clonedElement.style.setProperty('min-height', `${targetMinHeightPx}px`, 'important');
@@ -821,11 +797,10 @@ function setupClonedDocumentForPdfCapture(
   clonedElement.style.setProperty('min-width', `${targetWidthPx}px`, 'important');
   clonedElement.style.setProperty('box-sizing', 'border-box', 'important');
   clonedElement.style.setProperty('box-shadow', 'none', 'important');
-  clonedElement.style.setProperty('background-color', '#ffffff', 'important');
-  clonedElement.style.setProperty('background', '#ffffff', 'important');
+  clonedElement.style.setProperty('background-color', effectiveBg, 'important');
+  clonedElement.style.setProperty('background', effectiveBg, 'important');
   clonedElement.style.setProperty('direction', 'rtl', 'important');
 
-  // Prevent Persian font glyph disconnects and broken cursive joins
   clonedElement.style.setProperty('font-family', "'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", 'important');
   clonedElement.style.setProperty('letter-spacing', 'normal', 'important');
   clonedElement.style.setProperty('word-spacing', 'normal', 'important');
@@ -842,7 +817,7 @@ function setupClonedDocumentForPdfCapture(
     }
   });
 
-  // Arabic / Persian Shaping for all text elements to prevent broken disjointed letters in html2canvas Canvas.fillText
+  // Arabic / Persian glyph shaping for crisp html2canvas text rendering
   shapeClonedElementText(clonedElement);
 
   const rootLayouts = clonedElement.querySelectorAll(
@@ -896,7 +871,7 @@ function setupClonedDocumentForPdfCapture(
     (metaGrid as HTMLElement).style.setProperty('gap', '4px 10px', 'important');
   }
 
-  // Unconstrain ancestors
+  // Unconstrain overflow containers
   let cur: HTMLElement | null = clonedElement.parentElement;
   while (cur && cur !== clonedDoc.body) {
     cur.style.setProperty('overflow', 'visible', 'important');
@@ -928,17 +903,7 @@ function setupClonedDocumentForPdfCapture(
     (el as HTMLElement).style.setProperty('height', 'auto', 'important');
   });
 
-  // 7. Explicitly force table borders and styles directly on every table, th, and td
-  const isBorderless =
-    clonedElement.id === 'invoices-slips-pdf-report-canvas' ||
-    clonedElement.classList.contains('no-pdf-border') ||
-    element.id === 'invoices-slips-pdf-report-canvas' ||
-    element.classList.contains('no-pdf-border');
-
-  const isCustomerStatementPdf =
-    clonedElement.id === 'printable-customer-statement-pdf' ||
-    element.id === 'printable-customer-statement-pdf';
-
+  // 6. Apply table styling respecting PrintLayoutSettings OR special report flags
   if (isBorderless || isCustomerStatementPdf) {
     clonedElement.style.setProperty('border', 'none', 'important');
     clonedElement.style.setProperty('border-width', '0', 'important');
@@ -947,24 +912,57 @@ function setupClonedDocumentForPdfCapture(
     clonedElement.style.setProperty('outline', 'none', 'important');
   }
 
+  const scaleRatio = isA5 ? (isLandscape ? 0.88 : 0.85) : (isLandscape ? 0.96 : 1.0);
+  const compactFactor = layoutCfg.compactMode ? 0.82 : 1.0;
+  const baseMinRow = layoutCfg.tableRowMinHeight
+    ? Math.max(18, Math.round(layoutCfg.tableRowMinHeight * scaleRatio * compactFactor))
+    : isA5
+    ? isLandscape
+      ? 24
+      : 28
+    : isLandscape
+    ? 32
+    : 36;
+
+  const borderColor = layoutCfg.tableBorderColor || '#cbd5e1';
+  const borderWidth = `${Math.max(0.5, Math.min(3, layoutCfg.tableBorderWidth ?? 1))}px`;
+  const borderStyle = layoutCfg.tableBorderStyle || 'bordered';
+  const headerBg = layoutCfg.tableHeaderBg || '#f1f5f9';
+  const headerTextColor = layoutCfg.tableHeaderTextColor || '#0f172a';
+  const bodyBg = layoutCfg.tableBodyBg || '#ffffff';
+  const zebraEnabled = layoutCfg.tableZebraStriping !== false || borderStyle === 'striped';
+  const zebraBg = zebraEnabled ? (layoutCfg.tableZebraBg || '#f8fafc') : bodyBg;
+
   const tables = clonedElement.querySelectorAll('table');
-  const defaultMinRowH = isA5 ? (isLandscape ? 24 : 28) : (isLandscape ? 32 : 36);
   tables.forEach((tbl) => {
     const tblEl = tbl as HTMLElement;
     const hasDocHeaderRow = Boolean(tblEl.querySelector('.pdf-doc-header-row'));
+    const tblNoBorder =
+      isBorderless ||
+      isCustomerStatementPdf ||
+      hasDocHeaderRow ||
+      tblEl.classList.contains('no-pdf-border');
+
     tblEl.style.setProperty('width', '100%', 'important');
     tblEl.style.setProperty('min-width', '100%', 'important');
     tblEl.style.setProperty('table-layout', 'auto', 'important');
     tblEl.style.setProperty('border-collapse', 'collapse', 'important');
 
-    if (isBorderless || isCustomerStatementPdf || hasDocHeaderRow) {
+    if (tblNoBorder) {
       tblEl.style.setProperty('border', 'none', 'important');
       tblEl.style.setProperty('border-width', '0', 'important');
       tblEl.style.setProperty('border-color', 'transparent', 'important');
       tblEl.style.setProperty('box-shadow', 'none', 'important');
       tblEl.style.setProperty('outline', 'none', 'important');
+    } else if (borderStyle === 'minimal') {
+      tblEl.style.setProperty('border', 'none', 'important');
+    } else if (borderStyle === 'striped') {
+      tblEl.style.setProperty('border-top', `${borderWidth} solid ${borderColor}`, 'important');
+      tblEl.style.setProperty('border-bottom', `${borderWidth} solid ${borderColor}`, 'important');
+      tblEl.style.setProperty('border-left', 'none', 'important');
+      tblEl.style.setProperty('border-right', 'none', 'important');
     } else {
-      tblEl.style.setProperty('border', '1px solid #94a3b8', 'important');
+      tblEl.style.setProperty('border', `${borderWidth} solid ${borderColor}`, 'important');
     }
 
     tblEl.querySelectorAll('thead th, th').forEach((th) => {
@@ -974,7 +972,7 @@ function setupClonedDocumentForPdfCapture(
         Boolean(thEl.closest('.pdf-doc-header-row'));
       thEl.style.setProperty('vertical-align', 'middle', 'important');
       thEl.style.setProperty('box-sizing', 'border-box', 'important');
-      if (isBorderless || isDocHeaderCell) {
+      if (isBorderless || isDocHeaderCell || thEl.classList.contains('no-pdf-border')) {
         thEl.style.setProperty('border', 'none', 'important');
         thEl.style.setProperty('border-width', '0', 'important');
         thEl.style.setProperty('border-color', 'transparent', 'important');
@@ -984,32 +982,48 @@ function setupClonedDocumentForPdfCapture(
           thEl.style.setProperty('background-color', '#ffffff', 'important');
           thEl.style.setProperty('background', '#ffffff', 'important');
         }
+      } else if (isCustomerStatementPdf) {
+        thEl.style.setProperty('border', '1px solid #64748b', 'important');
+        thEl.style.setProperty('background-color', '#e2e8f0', 'important');
+        thEl.style.setProperty('background', '#e2e8f0', 'important');
+        thEl.style.setProperty('color', '#0f172a', 'important');
+        thEl.style.setProperty('height', '40px', 'important');
+        thEl.style.setProperty('min-height', '40px', 'important');
       } else {
-        thEl.style.setProperty('border', isCustomerStatementPdf ? '1px solid #64748b' : '1px solid #94a3b8', 'important');
-        thEl.style.setProperty('border-color', isCustomerStatementPdf ? '#64748b' : '#94a3b8', 'important');
-        thEl.style.setProperty('border-style', 'solid', 'important');
-        thEl.style.setProperty('border-width', '1px', 'important');
-        thEl.style.setProperty(
-          'background-color',
-          isCustomerStatementPdf ? '#e2e8f0' : '#f1f5f9',
-          'important'
-        );
-        if (isCustomerStatementPdf) {
-          thEl.style.setProperty('background', '#e2e8f0', 'important');
-          thEl.style.setProperty('height', '40px', 'important');
-          thEl.style.setProperty('min-height', '40px', 'important');
+        thEl.style.setProperty('background-color', headerBg, 'important');
+        thEl.style.setProperty('background', headerBg, 'important');
+        thEl.style.setProperty('color', headerTextColor, 'important');
+        if (borderStyle === 'minimal' || borderStyle === 'modern') {
+          thEl.style.setProperty('border-left', 'none', 'important');
+          thEl.style.setProperty('border-right', 'none', 'important');
+          thEl.style.setProperty('border-top', borderStyle === 'modern' ? `${borderWidth} solid ${borderColor}` : 'none', 'important');
+          thEl.style.setProperty('border-bottom', `2px solid ${layoutCfg.themeColor || borderColor}`, 'important');
+        } else if (borderStyle === 'striped') {
+          thEl.style.setProperty('border-left', 'none', 'important');
+          thEl.style.setProperty('border-right', 'none', 'important');
+          thEl.style.setProperty('border-top', `${borderWidth} solid ${borderColor}`, 'important');
+          thEl.style.setProperty('border-bottom', `${borderWidth} solid ${borderColor}`, 'important');
+        } else {
+          thEl.style.setProperty('border', `${borderWidth} solid ${borderColor}`, 'important');
         }
       }
       thEl.style.setProperty('opacity', '1', 'important');
       thEl.style.setProperty('visibility', 'visible', 'important');
     });
 
-    tblEl.querySelectorAll('tbody tr').forEach((tr) => {
+    tblEl.querySelectorAll('tbody tr').forEach((tr, rowIdx) => {
       const trEl = tr as HTMLElement;
       trEl.style.setProperty('height', 'auto', 'important');
-      trEl.style.setProperty('min-height', `${defaultMinRowH}px`, 'important');
+      trEl.style.setProperty('min-height', `${baseMinRow}px`, 'important');
       trEl.style.setProperty('page-break-inside', 'avoid', 'important');
       trEl.style.setProperty('break-inside', 'avoid', 'important');
+
+      if (!isBorderless && !isCustomerStatementPdf) {
+        const rowBg = rowIdx % 2 === 1 ? zebraBg : bodyBg;
+        trEl.style.setProperty('background-color', rowBg, 'important');
+        trEl.style.setProperty('background', rowBg, 'important');
+      }
+
       if (isBorderless) {
         trEl.style.setProperty('border', 'none', 'important');
         trEl.style.setProperty('border-width', '0', 'important');
@@ -1018,21 +1032,25 @@ function setupClonedDocumentForPdfCapture(
 
       trEl.querySelectorAll('td').forEach((td) => {
         const tdEl = td as HTMLElement;
-        tdEl.style.setProperty('height', `${defaultMinRowH}px`, 'important');
-        tdEl.style.setProperty('min-height', `${defaultMinRowH}px`, 'important');
+        tdEl.style.setProperty('height', `${baseMinRow}px`, 'important');
+        tdEl.style.setProperty('min-height', `${baseMinRow}px`, 'important');
         tdEl.style.setProperty('vertical-align', 'middle', 'important');
         tdEl.style.setProperty('box-sizing', 'border-box', 'important');
-        if (isBorderless) {
+        if (isBorderless || tdEl.classList.contains('no-pdf-border')) {
           tdEl.style.setProperty('border', 'none', 'important');
           tdEl.style.setProperty('border-width', '0', 'important');
           tdEl.style.setProperty('border-color', 'transparent', 'important');
           tdEl.style.setProperty('box-shadow', 'none', 'important');
           tdEl.style.setProperty('outline', 'none', 'important');
-        } else {
+        } else if (isCustomerStatementPdf) {
           tdEl.style.setProperty('border', '1px solid #cbd5e1', 'important');
-          tdEl.style.setProperty('border-color', '#cbd5e1', 'important');
-          tdEl.style.setProperty('border-style', 'solid', 'important');
-          tdEl.style.setProperty('border-width', '1px', 'important');
+        } else if (borderStyle === 'striped' || borderStyle === 'minimal' || borderStyle === 'modern') {
+          tdEl.style.setProperty('border-left', 'none', 'important');
+          tdEl.style.setProperty('border-right', 'none', 'important');
+          tdEl.style.setProperty('border-top', 'none', 'important');
+          tdEl.style.setProperty('border-bottom', `${borderWidth} solid ${borderColor}`, 'important');
+        } else {
+          tdEl.style.setProperty('border', `${borderWidth} solid ${borderColor}`, 'important');
         }
         tdEl.style.setProperty('line-height', '1.4', 'important');
         tdEl.style.setProperty('word-break', 'break-word', 'important');
@@ -1090,7 +1108,7 @@ function setupClonedDocumentForPdfCapture(
     (termsGrid as HTMLElement).style.setProperty('grid-template-columns', 'repeat(2, minmax(0, 1fr))', 'important');
   }
 
-  // 8. Measure layout metadata for multi-page header preservation
+  // 7. Measure layout metadata for accurate multi-page header repetition and row slicing
   const rootRect = clonedElement.getBoundingClientRect();
   layoutMeta.rootWidthPx = rootRect.width || clonedElement.offsetWidth || targetWidthPx;
 
@@ -1123,8 +1141,82 @@ function setupClonedDocumentForPdfCapture(
 }
 
 /**
- * Exports a DOM element to a PDF configured with user quality settings.
- * Supports configurable page format (A4 or A5) and orientation (portrait or landscape).
+ * Shared capture pipeline used by both exportElementToPdf and generatePdfBlob.
+ */
+async function captureElementToPdfInstance(
+  element: HTMLElement,
+  filename: string,
+  options?: PdfExportOptions
+): Promise<jsPDF> {
+  const {
+    paperSize,
+    orientation,
+    isLandscape,
+    isA5,
+    marginMm,
+    targetWidthPx,
+    targetMinHeightPx,
+    layoutCfg,
+  } = getPaperCanvasMetrics(options);
+
+  const { scale: renderScale } = resolvePdfQuality(options);
+
+  const layoutMeta: LayoutMeta = {
+    headerBottomPx: 0,
+    rowBottomsPx: [],
+    footerTopPx: 0,
+    rootWidthPx: targetWidthPx,
+  };
+
+  if (document.fonts) {
+    try {
+      await Promise.race([
+        document.fonts.ready,
+        new Promise((resolve) => setTimeout(resolve, 100)),
+      ]);
+    } catch {}
+  }
+
+  const canvas = await html2canvas(element, {
+    scale: renderScale,
+    useCORS: true,
+    allowTaint: false,
+    logging: false,
+    imageTimeout: 2000,
+    backgroundColor: '#ffffff',
+    windowWidth: Math.max(1280, targetWidthPx + 200),
+    windowHeight: Math.max(1200, Math.ceil(element.scrollHeight + 400)),
+    onclone: (clonedDoc, clonedElement) => {
+      setupClonedDocumentForPdfCapture(
+        clonedDoc,
+        clonedElement,
+        element,
+        targetWidthPx,
+        targetMinHeightPx,
+        isA5,
+        isLandscape,
+        layoutMeta,
+        layoutCfg
+      );
+    },
+  });
+
+  try {
+    return buildPdfDocumentFromCanvas(canvas, layoutMeta, {
+      ...options,
+      pageSize: paperSize,
+      orientation,
+      marginMm,
+      printLayout: layoutCfg,
+      title: options?.title || filename.replace(/\.pdf$/i, ''),
+    });
+  } finally {
+    releaseCanvasMemory(canvas);
+  }
+}
+
+/**
+ * Exports a DOM element to a downloadable PDF file with user quality & layout settings.
  */
 export const exportElementToPdf = async (
   elementId: string,
@@ -1136,82 +1228,8 @@ export const exportElementToPdf = async (
     return { success: false, error: 'عنصر مورد نظر جهت تولید PDF یافت نشد.' };
   }
 
-  const paperSize = options?.pageSize || 'a4';
-  const orientation = options?.orientation || 'portrait';
-  const isLandscape = orientation === 'landscape';
-  const isA5 = paperSize === 'a5';
-
-  // Standard margins: 4.5mm for A4, 3.5mm for A5 to maximize usable page coverage
-  const marginMm = isA5 ? 3.5 : 4.5;
-
-  // Exact standard ISO aspect-ratio canvas dimensions to ensure full-sheet coverage
-  let targetWidthPx: number;
-  let targetMinHeightPx: number;
-  if (isA5) {
-    if (isLandscape) {
-      targetWidthPx = 900;
-      targetMinHeightPx = Math.round(900 * (141 / 203)); // 625px
-    } else {
-      targetWidthPx = 620;
-      targetMinHeightPx = Math.round(620 * (203 / 141)); // 892px
-    }
-  } else {
-    if (isLandscape) {
-      targetWidthPx = 1180;
-      targetMinHeightPx = Math.round(1180 * (201 / 288)); // 824px
-    } else {
-      targetWidthPx = 820;
-      targetMinHeightPx = Math.round(820 * (288 / 201)); // 1175px
-    }
-  }
-
-  const { scale: renderScale } = resolvePdfQuality(options);
-
-  const layoutMeta: LayoutMeta = {
-    headerBottomPx: 0,
-    rowBottomsPx: [],
-    footerTopPx: 0,
-    rootWidthPx: targetWidthPx,
-  };
-
   try {
-    // 0. Ensure all web fonts are loaded, but never stall more than 80ms if remote CDN is slow/offline
-    if (document.fonts) {
-      try {
-        await Promise.race([
-          document.fonts.ready,
-          new Promise((resolve) => setTimeout(resolve, 80))
-        ]);
-      } catch {
-        // Ignore font loading errors if browser API fails
-      }
-    }
-
-    // 1. Capture element with unclipped height and properly aligned coordinates
-    const canvas = await html2canvas(element, {
-      scale: renderScale,
-      useCORS: true,
-      logging: false,
-      imageTimeout: 1500,
-      backgroundColor: '#ffffff',
-      windowWidth: Math.max(1280, targetWidthPx + 200),
-      windowHeight: Math.max(1200, Math.ceil(element.scrollHeight + 400)),
-      onclone: (clonedDoc, clonedElement) => {
-        setupClonedDocumentForPdfCapture(
-          clonedDoc,
-          clonedElement,
-          element,
-          targetWidthPx,
-          targetMinHeightPx,
-          isA5,
-          isLandscape,
-          layoutMeta
-        );
-      },
-    });
-
-    // 2. Assemble PDF (repeating header on every page in multi-page mode)
-    const pdf = buildPdfDocumentFromCanvas(canvas, layoutMeta, options);
+    const pdf = await captureElementToPdfInstance(element, filename, options);
     const safeFilename = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
     pdf.save(safeFilename);
     return { success: true };
@@ -1222,8 +1240,7 @@ export const exportElementToPdf = async (
 };
 
 /**
- * Generates an ultra-compact PDF Blob and File without forcing immediate save,
- * making it possible to share the file directly via Web Share API or attach to messengers.
+ * Generates an optimized PDF Blob and File for Web Share API, Telegram bot upload, or previewing.
  */
 export const generatePdfBlob = async (
   elementId: string,
@@ -1235,89 +1252,14 @@ export const generatePdfBlob = async (
     return { success: false, error: 'عنصر مورد نظر جهت تولید PDF یافت نشد.' };
   }
 
-  const paperSize = options?.pageSize || 'a4';
-  const orientation = options?.orientation || 'portrait';
-  const isLandscape = orientation === 'landscape';
-  const isA5 = paperSize === 'a5';
-
-  // Standard margins: 4.5mm for A4, 3.5mm for A5 to maximize usable page coverage
-  const marginMm = isA5 ? 3.5 : 4.5;
-
-  // Exact standard ISO aspect-ratio canvas dimensions to ensure full-sheet coverage
-  let targetWidthPx: number;
-  let targetMinHeightPx: number;
-  if (isA5) {
-    if (isLandscape) {
-      targetWidthPx = 900;
-      targetMinHeightPx = Math.round(900 * (141 / 203)); // 625px
-    } else {
-      targetWidthPx = 620;
-      targetMinHeightPx = Math.round(620 * (203 / 141)); // 892px
-    }
-  } else {
-    if (isLandscape) {
-      targetWidthPx = 1180;
-      targetMinHeightPx = Math.round(1180 * (201 / 288)); // 824px
-    } else {
-      targetWidthPx = 820;
-      targetMinHeightPx = Math.round(820 * (288 / 201)); // 1175px
-    }
-  }
-
-  const { scale: renderScale } = resolvePdfQuality(options);
-
-  const layoutMeta: LayoutMeta = {
-    headerBottomPx: 0,
-    rowBottomsPx: [],
-    footerTopPx: 0,
-    rootWidthPx: targetWidthPx,
-  };
-
   try {
-    // Ensure all web fonts are loaded, but never stall more than 80ms if remote CDN is slow/offline
-    if (document.fonts) {
-      try {
-        await Promise.race([
-          document.fonts.ready,
-          new Promise((resolve) => setTimeout(resolve, 80))
-        ]);
-      } catch {
-        // Ignore font loading errors if browser API fails
-      }
-    }
-
-    const canvas = await html2canvas(element, {
-      scale: renderScale,
-      useCORS: true,
-      logging: false,
-      imageTimeout: 1500,
-      backgroundColor: '#ffffff',
-      windowWidth: Math.max(1280, targetWidthPx + 200),
-      windowHeight: Math.max(1200, Math.ceil(element.scrollHeight + 400)),
-      onclone: (clonedDoc, clonedElement) => {
-        setupClonedDocumentForPdfCapture(
-          clonedDoc,
-          clonedElement,
-          element,
-          targetWidthPx,
-          targetMinHeightPx,
-          isA5,
-          isLandscape,
-          layoutMeta
-        );
-      },
-    });
-
-    // 2. Assemble PDF (repeating header on every page in multi-page mode)
-    const pdf = buildPdfDocumentFromCanvas(canvas, layoutMeta, options);
+    const pdf = await captureElementToPdfInstance(element, filename, options);
     const safeFilename = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
     const blob = pdf.output('blob');
     let file: File | undefined;
     try {
       file = new File([blob], safeFilename, { type: 'application/pdf' });
-    } catch {
-      // In environments where File constructor is restricted
-    }
+    } catch {}
     return { success: true, blob, file };
   } catch (err: any) {
     console.error('PDF generation error:', err);
@@ -1326,24 +1268,19 @@ export const generatePdfBlob = async (
 };
 
 /**
- * Triggers direct browser printing synchronously within user gesture.
- * Applies temporary clean CSS scoping so only the target sheet prints.
+ * Triggers direct vector browser printing with clean @page scoping and afterprint cleanup.
  */
 export const printElementDirectly = (
   elementId: string,
   options?: PdfExportOptions
 ): boolean => {
-  const paperSize = options?.pageSize || 'a4';
-  const orientation = options?.orientation || 'portrait';
-  
-  let resolvedMargin = options?.marginMm;
-  if (!resolvedMargin) {
-    try {
-      const s = StorageService.getSettings();
-      if (s?.printLayout?.pageMarginMm) resolvedMargin = s.printLayout.pageMarginMm;
-    } catch {}
-  }
-  const marginMm = resolvedMargin || (paperSize === 'a5' ? 4 : 6);
+  const layoutCfg = getEffectivePrintLayout(options);
+  const paperSize = options?.pageSize || layoutCfg.defaultPageSize || 'a4';
+  const orientation = options?.orientation || layoutCfg.defaultOrientation || 'portrait';
+  const marginMm =
+    options?.marginMm !== undefined
+      ? options.marginMm
+      : layoutCfg.pageMarginMm || (paperSize === 'a5' ? 4 : 6);
 
   const element = document.getElementById(elementId);
   if (!element) {
@@ -1361,8 +1298,8 @@ export const printElementDirectly = (
 
     const styleEl = document.createElement('style');
     styleEl.id = 'dynamic-direct-print-page-style';
-    styleEl.innerHTML = `
-      ${getPrintLayoutCssRules('#' + elementId)}
+    styleEl.textContent = `
+      ${getPrintLayoutCssRules('#' + elementId, layoutCfg)}
       @media print {
         body.printing-active-element #${elementId},
         body.printing-active-element #${elementId} * {
@@ -1399,19 +1336,21 @@ export const printElementDirectly = (
       }
     `;
     document.head.appendChild(styleEl);
-
-    // Apply printing-active-element class to isolate the element on paper
     document.body.classList.add('printing-active-element');
 
-    // Call window.print() synchronously inside user gesture
-    window.print();
-
-    // Clean up
-    setTimeout(() => {
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
       styleEl.remove();
       document.body.classList.remove('printing-active-element');
-    }, 1500);
+      window.removeEventListener('afterprint', cleanup);
+    };
 
+    window.addEventListener('afterprint', cleanup, { once: true });
+    setTimeout(cleanup, 60000);
+
+    window.print();
     return true;
   } catch (err) {
     console.warn('Direct print error:', err);
@@ -1421,10 +1360,11 @@ export const printElementDirectly = (
 };
 
 /**
- * Opens a dedicated top-level print window and immediately displays the browser's printer dialog.
- * This completely bypasses any iframe sandbox restrictions (e.g., missing allow-modals in preview containers).
+ * Modern Zero-Popup Vector Print Engine using a hidden same-origin print <iframe>.
+ * Works reliably inside sandboxed iframes, PWAs, and strict popup-blocker browsers,
+ * preserves local Vazirmatn fonts & user PrintLayoutSettings, and cleans up automatically.
  */
-export const printElementInNewWindow = (
+export const printElementViaIframe = (
   elementId: string,
   title: string,
   options?: PdfExportOptions
@@ -1432,160 +1372,193 @@ export const printElementInNewWindow = (
   const element = document.getElementById(elementId);
   if (!element) return false;
 
-  const paperSize = options?.pageSize || 'a4';
-  const orientation = options?.orientation || 'portrait';
-  
-  let resolvedMargin = options?.marginMm;
-  if (!resolvedMargin) {
-    try {
-      const s = StorageService.getSettings();
-      if (s?.printLayout?.pageMarginMm) resolvedMargin = s.printLayout.pageMarginMm;
-    } catch {}
-  }
-  const marginMm = resolvedMargin || (paperSize === 'a5' ? 4 : 6);
-  const targetWidthPx = 
-    paperSize === 'a5'
-      ? (orientation === 'landscape' ? 850 : 600)
-      : (orientation === 'landscape' ? 1140 : 840);
+  const layoutCfg = getEffectivePrintLayout(options);
+  const paperSize = options?.pageSize || layoutCfg.defaultPageSize || 'a4';
+  const orientation = options?.orientation || layoutCfg.defaultOrientation || 'portrait';
+  const marginMm =
+    options?.marginMm !== undefined
+      ? options.marginMm
+      : layoutCfg.pageMarginMm || (paperSize === 'a5' ? 4 : 6);
 
   try {
-    // Open a new standalone window
-    const windowWidth = orientation === 'landscape' ? 1160 : 920;
-    const printWindow = window.open('', '_blank', `width=${windowWidth},height=800`);
-    if (!printWindow) {
-      // If popup blocked, fallback to direct print
+    const existingFrame = document.getElementById('sepehr-hidden-print-iframe');
+    if (existingFrame) existingFrame.remove();
+
+    const iframe = document.createElement('iframe');
+    iframe.id = 'sepehr-hidden-print-iframe';
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '1px';
+    iframe.style.height = '1px';
+    iframe.style.opacity = '0';
+    iframe.style.pointerEvents = 'none';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    const iframeWin = iframe.contentWindow;
+    if (!iframeDoc || !iframeWin) {
+      iframe.remove();
       return printElementDirectly(elementId, options);
     }
 
-    // Collect all stylesheets from main document
-    const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-      .map((s) => s.outerHTML)
+    const extractedCss = extractActiveStyleSheetRules();
+    const localLinksHtml = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]'))
+      .filter((lnk) => {
+        const href = (lnk as HTMLLinkElement).href;
+        return href && href.startsWith(window.location.origin);
+      })
+      .map((lnk) => lnk.outerHTML)
       .join('\n');
 
-    printWindow.document.open();
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html dir="rtl" lang="fa">
-      <head>
-        <meta charset="utf-8" />
-        <title>${title}</title>
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-        ${styles}
-        <style>
-          ${getPrintLayoutCssRules()}
-          * {
-            box-sizing: border-box;
-            font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, sans-serif !important;
-          }
-          body {
-            margin: 0;
-            padding: ${paperSize === 'a5' ? '12px' : '24px'};
-            background: #ffffff;
-            direction: rtl;
-            color: #0f172a;
-          }
-          .print-wrapper {
-            max-width: ${targetWidthPx}px;
-            margin: 0 auto;
-            background: #ffffff;
-            border: 1px solid #cbd5e1;
-            border-radius: 12px;
-            padding: ${paperSize === 'a5' ? '14px' : '24px'};
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-          }
-          .top-print-toolbar {
-            max-width: ${targetWidthPx}px;
-            margin: 0 auto 16px auto;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px 16px;
-            background: #0f172a;
-            color: #ffffff;
-            border-radius: 8px;
-          }
-          .top-print-btn {
-            background: #10b981;
-            color: #ffffff;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: bold;
-            cursor: pointer;
-          }
-          @page {
-            size: ${paperSize.toUpperCase()} ${orientation};
-            margin: ${marginMm}mm;
-          }
-          @media print {
-            body {
-              background: #ffffff !important;
-              padding: 0 !important;
-              margin: 0 !important;
-            }
-            .no-print, .no-pdf, .top-print-toolbar, button, [data-html2canvas-ignore="true"] {
-              display: none !important;
-            }
-            .print-wrapper {
-              border: none !important;
-              border-radius: 0 !important;
-              padding: 0 !important;
-              max-width: 100% !important;
-              min-height: calc(100vh - ${marginMm * 2}mm) !important;
-              height: calc(100vh - ${marginMm * 2}mm) !important;
-              display: flex !important;
-              flex-direction: column !important;
-              justify-content: space-between !important;
-              box-shadow: none !important;
-            }
-            @page {
-              size: ${paperSize.toUpperCase()} ${orientation};
-              margin: ${marginMm}mm;
-            }
-            thead {
-              display: table-header-group !important;
-            }
-            tfoot {
-              display: table-footer-group !important;
-            }
-            tr {
-              page-break-inside: avoid !important;
-              break-inside: avoid !important;
-            }
-            table {
-              page-break-inside: auto !important;
-              break-inside: auto !important;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="top-print-toolbar no-print">
-          <span style="font-size: 13px; font-weight: 500;">آماده‌سازی چاپ ${title} (${paperSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'})</span>
-          <button class="top-print-btn" onclick="window.print()">باز کردن پرینتر (Print)</button>
-        </div>
-        <div class="print-wrapper" style="${element.getAttribute('style') || ''}">
-          ${element.innerHTML}
-        </div>
-        <script>
-          // Automatically trigger the printer dialog once loaded
-          window.addEventListener('load', function() {
-            setTimeout(function() {
-              window.focus();
-              window.print();
-            }, 300);
-          });
-        </script>
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
+    const cssVars = getPrintLayoutCssVariables(layoutCfg, paperSize, orientation) as Record<string, string>;
+    const varsStyleString = Object.entries(cssVars)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join('; ');
+
+    const clone = element.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('.no-print, .no-pdf, button, [data-html2canvas-ignore="true"]').forEach((el) => el.remove());
+
+    const safeTitle = String(title || 'چاپ سند').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const targetBg = layoutCfg.pageBgColor || '#ffffff';
+
+    iframeDoc.open();
+    iframeDoc.write(`<!DOCTYPE html>
+<html dir="rtl" lang="fa">
+<head>
+  <meta charset="utf-8" />
+  <title>${safeTitle}</title>
+  ${localLinksHtml}
+  <style>${extractedCss}</style>
+  <style>
+    ${getPrintLayoutCssRules('.iframe-print-wrapper, #' + elementId, layoutCfg)}
+    * {
+      box-sizing: border-box;
+      font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, sans-serif !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      background: ${targetBg} !important;
+      background-color: ${targetBg} !important;
+      direction: rtl !important;
+      color: #0f172a;
+    }
+    .iframe-print-wrapper {
+      width: 100% !important;
+      max-width: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      background: ${targetBg} !important;
+      border: none !important;
+      box-shadow: none !important;
+    }
+    .no-print, .no-pdf, button, [data-html2canvas-ignore="true"] {
+      display: none !important;
+    }
+    @page {
+      size: ${paperSize.toUpperCase()} ${orientation};
+      margin: ${marginMm}mm;
+    }
+    @media print {
+      html, body {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      thead {
+        display: table-header-group !important;
+      }
+      tfoot {
+        display: table-footer-group !important;
+      }
+      tr {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+      table {
+        page-break-inside: auto !important;
+        break-inside: auto !important;
+      }
+    }
+  </style>
+</head>
+<body dir="rtl">
+  <div class="iframe-print-wrapper" style="${varsStyleString}"></div>
+</body>
+</html>`);
+    iframeDoc.close();
+
+    const wrapper = iframeDoc.querySelector('.iframe-print-wrapper');
+    if (wrapper) {
+      wrapper.appendChild(iframeDoc.importNode(clone, true));
+    }
+
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      try {
+        iframeWin.removeEventListener('afterprint', cleanup);
+        iframe.remove();
+      } catch {}
+    };
+
+    iframeWin.addEventListener('afterprint', cleanup, { once: true });
+    setTimeout(cleanup, 60000);
+
+    const runPrint = async () => {
+      try {
+        if (iframeDoc.fonts?.ready) {
+          await Promise.race([iframeDoc.fonts.ready, new Promise((r) => setTimeout(r, 150))]);
+        }
+        const imgs = Array.from(iframeDoc.querySelectorAll('img'));
+        if (imgs.length > 0) {
+          await Promise.race([
+            Promise.all(
+              imgs.map((img) =>
+                img.complete
+                  ? Promise.resolve()
+                  : new Promise<void>((res) => {
+                      img.onload = () => res();
+                      img.onerror = () => res();
+                    })
+              )
+            ),
+            new Promise((r) => setTimeout(r, 350)),
+          ]);
+        }
+        iframeWin.focus();
+        iframeWin.print();
+      } catch {
+        cleanup();
+        printElementDirectly(elementId, options);
+      }
+    };
+
+    // Wait a single frame for layout calculation inside iframe
+    requestAnimationFrame(() => {
+      void runPrint();
+    });
+
     return true;
   } catch (err) {
-    console.warn('Print in new window error, falling back to direct print:', err);
+    console.warn('Iframe print error, falling back to direct print:', err);
     return printElementDirectly(elementId, options);
   }
+};
+
+/**
+ * Backward-compatible alias that now delegates to the modern zero-popup hidden iframe print engine.
+ */
+export const printElementInNewWindow = (
+  elementId: string,
+  title: string,
+  options?: PdfExportOptions
+): boolean => {
+  return printElementViaIframe(elementId, title, options);
 };

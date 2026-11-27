@@ -117,7 +117,8 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
-        alert('حجم فایل تصویر باید کمتر از ۲ مگابایت باشد.');
+        setNotification('حجم فایل تصویر باید کمتر از ۲ مگابایت باشد.');
+        setTimeout(() => setNotification(null), 3500);
         return;
       }
       const reader = new FileReader();
@@ -232,7 +233,13 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
     const docTitle = invoice.isProforma
       ? `پیش‌فاکتور فروش شماره ${invoice.invoiceNumber} (${pageSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'})`
       : `فاکتور فروش شماره ${invoice.invoiceNumber} (${pageSize.toUpperCase()} ${orientation === 'portrait' ? 'عمودی' : 'افقی'})`;
-    const printOptions = { pageSize, orientation, documentType: 'invoice' as const };
+    const printOptions = {
+      pageSize,
+      orientation,
+      documentType: 'invoice' as const,
+      marginMm: currentPrintLayout.pageMarginMm,
+      printLayout: currentPrintLayout,
+    };
     const opened = printElementInNewWindow('printable-invoice', docTitle, printOptions);
     if (!opened) {
       printElementDirectly('printable-invoice', printOptions);
@@ -245,7 +252,13 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
       // Yield to browser paint cycle so loading spinner and feedback appear instantly (0ms delay)
       await new Promise((resolve) => setTimeout(resolve, 25));
       const filename = getInvoicePdfFilename(invoice);
-      await exportElementToPdf('printable-invoice', filename, { pageSize, orientation, documentType: 'invoice' });
+      await exportElementToPdf('printable-invoice', filename, {
+        pageSize,
+        orientation,
+        documentType: 'invoice',
+        marginMm: currentPrintLayout.pageMarginMm,
+        printLayout: currentPrintLayout,
+      });
     } finally {
       setIsExportingPdf(false);
     }
@@ -296,7 +309,13 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
     setIsExportingPdf(true);
     try {
       const filename = getInvoicePdfFilename(invoice, { includeExtension: true });
-      const { success, blob, file, error } = await generatePdfBlob('printable-invoice', filename, { pageSize, orientation, documentType: 'invoice' });
+      const { success, blob, file, error } = await generatePdfBlob('printable-invoice', filename, {
+        pageSize,
+        orientation,
+        documentType: 'invoice',
+        marginMm: currentPrintLayout.pageMarginMm,
+        printLayout: currentPrintLayout,
+      });
       if (!success || (!file && !blob)) {
         showToast(error || 'خطا در تولید فایل PDF');
         return;
@@ -2094,6 +2113,8 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
               orientation,
               documentType: 'invoice',
               quality: invoiceQualityPreset,
+              marginMm: currentPrintLayout.pageMarginMm,
+              printLayout: currentPrintLayout,
             });
           }}
         />
