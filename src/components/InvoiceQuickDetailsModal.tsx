@@ -346,7 +346,7 @@ export const InvoiceQuickDetailsModal: React.FC<InvoiceQuickDetailsModalProps> =
           </div>
 
           {/* Cheque Details Box (if applicable) */}
-          {invoice.paymentMethod === 'cheque' && (invoice.chequeNumber || invoice.chequeDueDate) && (
+          {invoice.paymentMethod === 'cheque' && (invoice.chequeNumber || invoice.chequeDueDate || invoice.chequeName) && (
             <div className="bg-sky-50 p-3.5 rounded-2xl border border-sky-200/90 text-xs space-y-1.5 text-sky-900">
               <div className="font-bold flex items-center gap-1.5 pb-1 border-b border-sky-200">
                 <CreditCard className="w-4 h-4 text-sky-600" />

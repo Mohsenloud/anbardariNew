@@ -20,7 +20,8 @@ import {
   X,
   RefreshCw,
   ArrowLeftRight,
-  Menu
+  Menu,
+  Wallet
 } from 'lucide-react';
 
 interface MobileBottomNavProps {
@@ -59,6 +60,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   const canInventory = isTabPermitted('inventory', currentUser, safeSettings);
   const canPurchases = isTabPermitted('purchases', currentUser, safeSettings);
   const canCustomers = isTabPermitted('customers', currentUser, safeSettings);
+  const canPayments = isTabPermitted('payments', currentUser, safeSettings);
   const canReports = isTabPermitted('reports', currentUser, safeSettings);
   const canAdmin = isTabPermitted('admin', currentUser, safeSettings);
   const canFullAdminSettings = Boolean(currentUser && (currentUser.role === 'admin' || currentUser.permissions?.canAccessAdmin));
@@ -287,6 +289,24 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                     <Users className="w-5 h-5" />
                   </div>
                   <span className="text-xs font-bold">مشتریان</span>
+                </button>
+              )}
+
+              {/* دریافت و پرداخت‌ها */}
+              {canPayments && (
+                <button
+                  type="button"
+                  id="drawer-btn-payments"
+                  onClick={() => {
+                    setShowMoreMenu(false);
+                    setActiveTab('payments');
+                  }}
+                  className="flex flex-col items-center justify-center p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 hover:bg-emerald-100 transition-colors cursor-pointer"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm mb-1.5">
+                    <Wallet className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-bold">دریافت و پرداخت</span>
                 </button>
               )}
 

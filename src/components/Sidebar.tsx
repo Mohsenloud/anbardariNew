@@ -26,6 +26,7 @@ import {
   Truck,
   History,
   ArrowDownRight,
+  Wallet,
 } from 'lucide-react';
 
 export type InventorySubTabKey =
@@ -221,6 +222,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
           badgeCount: undefined as number | undefined,
           onClick: () => {
             setActiveTab('customers');
+            onCloseMobile();
+          },
+        },
+        {
+          id: 'payments',
+          label: 'دریافت و پرداخت‌ها',
+          icon: Wallet,
+          enabled: isTabPermitted('payments', currentUser, safeSettings),
+          badgeCount: undefined as number | undefined,
+          onClick: () => {
+            setActiveTab('payments');
             onCloseMobile();
           },
         },

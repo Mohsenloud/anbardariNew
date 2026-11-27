@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Product, Customer, Invoice, StockMovement, StoreSettings, AppUser, PurchaseInvoice, InboundReceipt, InboundReceiptItem, InboundReceiptStatus, CustomerTransaction } from './types';
+import { Product, Customer, Invoice, StockMovement, StoreSettings, AppUser, PurchaseInvoice, InboundReceipt, InboundReceiptItem, InboundReceiptStatus, CustomerTransaction, PaymentMethod } from './types';
 import { StorageService } from './utils/storage';
 import {
   AUTH_EXPIRED_EVENT,
@@ -33,6 +33,7 @@ import { InventoryManager } from './components/InventoryManager';
 import { QuickDashboard } from './components/QuickDashboard';
 import { PurchaseInvoiceManager } from './components/PurchaseInvoiceManager';
 import { CustomersManager } from './components/CustomersManager';
+import { CustomerPaymentsLedger } from './components/CustomerPaymentsLedger';
 import { ReportsDashboard } from './components/ReportsDashboard';
 import { InvoiceViewModal } from './components/InvoiceViewModal';
 import { SettingsModal } from './components/SettingsModal';
@@ -959,7 +960,13 @@ export default function App() {
   const handleUpdatePaymentStatus = (
     invoiceId: string,
     status: 'paid' | 'unpaid' | 'partial',
-    paidAmount?: number
+    paidAmount?: number,
+    paymentDetails?: {
+      paymentMethod?: PaymentMethod;
+      chequeNumber?: string;
+      chequeDueDate?: string;
+      chequeName?: string;
+    }
   ) => {
     if (currentUser && (isReadOnlyUser(currentUser) || !canUserSettleInvoice(currentUser))) {
       showToast('دسترسی غیرمجاز: سمت کاربری شما مجوز ثبت دریافت و تسویه فاکتور را ندارد.');
@@ -968,10 +975,34 @@ export default function App() {
     const prevInv = invoices.find((i) => i.id === invoiceId);
     const updated = invoices.map((inv) => {
       if (inv.id === invoiceId) {
+        const nextMethod: PaymentMethod =
+          paymentDetails?.paymentMethod ??
+          (status === 'unpaid' ? 'credit' : inv.paymentMethod);
+
+        const isChequeMethod = nextMethod === 'cheque';
+        const nextChequeNumber = isChequeMethod
+          ? (paymentDetails?.chequeNumber !== undefined ? paymentDetails.chequeNumber.trim() || undefined : inv.chequeNumber)
+          : (paymentDetails?.paymentMethod ? undefined : inv.chequeNumber);
+        const nextChequeDueDate = isChequeMethod
+          ? (paymentDetails?.chequeDueDate !== undefined ? paymentDetails.chequeDueDate.trim() || undefined : inv.chequeDueDate)
+          : (paymentDetails?.paymentMethod ? undefined : inv.chequeDueDate);
+        const nextChequeName = isChequeMethod
+          ? (paymentDetails?.chequeName !== undefined ? paymentDetails.chequeName.trim() || undefined : inv.chequeName)
+          : (paymentDetails?.paymentMethod ? undefined : inv.chequeName);
+
+        const dueDateChanged = isChequeMethod && nextChequeDueDate !== inv.chequeDueDate;
+
         return {
           ...inv,
           paymentStatus: status,
+          paymentMethod: nextMethod,
           paidAmount: status === 'paid' ? inv.finalTotal : paidAmount !== undefined ? paidAmount : inv.paidAmount,
+          chequeNumber: nextChequeNumber,
+          chequeDueDate: nextChequeDueDate,
+          chequeName: nextChequeName,
+          ...(dueDateChanged
+            ? { chequeReminderSentAt: undefined, chequeReminderSentForDate: undefined }
+            : {}),
         };
       }
       return inv;
@@ -979,14 +1010,20 @@ export default function App() {
     setInvoices(updated);
     StorageService.saveInvoices(updated);
 
-    const inv = invoices.find((i) => i.id === invoiceId);
+    const updatedInv = updated.find((i) => i.id === invoiceId);
+    const inv = updatedInv || prevInv;
     const nextPaid = status === 'paid' ? (inv?.finalTotal || 0) : (paidAmount !== undefined ? paidAmount : (inv?.paidAmount || 0));
     const statusLabels: Record<string, string> = { paid: 'تسویه کامل', partial: 'پرداخت قسطی/بیعانه', unpaid: 'نسیه/پرداخت‌نشده' };
+    const isChequeUpdate = inv?.paymentMethod === 'cheque';
+    const chequeInfoText = isChequeUpdate
+      ? ` [دریافت چک${inv?.chequeNumber ? ` ش: ${inv.chequeNumber}` : ''}${inv?.chequeDueDate ? ` - سررسید: ${inv.chequeDueDate}` : ''}${inv?.chequeName ? ` - ${inv.chequeName}` : ''}]`
+      : '';
+
     StorageService.logActivity({
       category: 'sales',
-      actionType: 'update_payment',
-      actionTitle: 'تغییر وضعیت تسویه فاکتور',
-      details: `تغییر وضعیت پرداخت فاکتور ${inv?.invoiceNumber || invoiceId} («${inv?.customerName || '-'}») به «${statusLabels[status] || status}» — مبلغ پرداختی: ${nextPaid.toLocaleString('fa-IR')} ${settings.currency}`,
+      actionType: isChequeUpdate ? 'update_payment_cheque' : 'update_payment',
+      actionTitle: isChequeUpdate ? 'ثبت دریافت چک و تسویه فاکتور' : 'تغییر وضعیت تسویه فاکتور',
+      details: `تغییر وضعیت پرداخت فاکتور ${inv?.invoiceNumber || invoiceId} («${inv?.customerName || '-'}») به «${statusLabels[status] || status}»${chequeInfoText} — مبلغ پرداختی: ${nextPaid.toLocaleString('fa-IR')} ${settings.currency}`,
       severity: 'warning',
       entityType: 'invoice',
       entityId: invoiceId,
@@ -995,13 +1032,21 @@ export default function App() {
         invoiceNumber: inv?.invoiceNumber || null,
         previousStatus: prevInv?.paymentStatus || null,
         newStatus: status,
+        paymentMethod: inv?.paymentMethod || null,
+        chequeNumber: inv?.chequeNumber || null,
+        chequeDueDate: inv?.chequeDueDate || null,
+        chequeName: inv?.chequeName || null,
         previousPaidAmount: prevInv?.paidAmount ?? null,
         newPaidAmount: nextPaid,
         finalTotal: inv?.finalTotal ?? null,
       },
     });
 
-    showToast('وضعیت تسویه فاکتور بروزرسانی شد.');
+    showToast(
+      isChequeUpdate
+        ? 'دریافت چک و وضعیت تسویه فاکتور با موفقیت ثبت شد.'
+        : 'وضعیت تسویه فاکتور بروزرسانی شد.'
+    );
 
     // ارسال خودکار رسید دریافت مبلغ از مشتری به تلگرام
     const liveSettings = StorageService.getSettings() || settings;
@@ -1014,6 +1059,15 @@ export default function App() {
           const ledger = StorageService.buildCustomerLedger(cust, updated, customerTransactions);
           balanceAfter = ledger.netBalance;
         }
+        const extraChequeNotes = isChequeUpdate
+          ? [
+              inv.chequeNumber ? `شماره چک: ${inv.chequeNumber}` : '',
+              inv.chequeDueDate ? `سررسید چک: ${inv.chequeDueDate}` : '',
+              inv.chequeName ? `صاحب حساب/بانک: ${inv.chequeName}` : '',
+            ]
+              .filter(Boolean)
+              .join(' | ')
+          : '';
         autoSendCustomerPaymentReportToTelegram(
           {
             id: `ctxn-${Date.now()}`,
@@ -1022,10 +1076,14 @@ export default function App() {
             type: 'deposit',
             amount: paymentVal,
             date: getCurrentJalaliDate(),
-            title: `تسویه/دریافت وجه فاکتور فروش شماره ${inv.invoiceNumber}`,
+            title: isChequeUpdate
+              ? `دریافت چک بابت فاکتور فروش شماره ${inv.invoiceNumber}`
+              : `تسویه/دریافت وجه فاکتور فروش شماره ${inv.invoiceNumber}`,
             paymentMethod: (inv.paymentMethod as any) || 'transfer',
+            trackingNumber: inv.chequeNumber || undefined,
+            chequeDueDate: inv.chequeDueDate || undefined,
             invoiceNumber: inv.invoiceNumber,
-            notes: inv.notes,
+            notes: [extraChequeNotes, inv.notes].filter(Boolean).join('\n') || undefined,
             recordedBy: currentUser?.fullName || currentUser?.username || 'مدیر سیستم',
             createdAt: getCurrentJalaliDate(),
           },
@@ -2453,6 +2511,22 @@ export default function App() {
               showToast(`وضعیت پرداخت فاکتور خرید «${updatedPi.invoiceNumber}» بروزرسانی شد.`);
             }}
           />
+        )}
+
+        {activeTab === 'payments' && isTabPermitted('payments', currentUser, settings) && (
+          <ErrorBoundary fallbackTitle="خطا در بخش دریافت و پرداخت مشتریان">
+            <CustomerPaymentsLedger
+              customers={customers}
+              invoices={invoices}
+              purchaseInvoices={purchaseInvoices}
+              transactions={customerTransactions}
+              settings={settings}
+              currentUser={currentUser || undefined}
+              onSaveTransaction={handleSaveCustomerTransaction}
+              onDeleteTransaction={handleDeleteCustomerTransaction}
+              onViewInvoice={(inv) => setViewingInvoice(inv)}
+            />
+          </ErrorBoundary>
         )}
 
         {activeTab === 'reports' && isTabPermitted('reports', currentUser, settings) && (

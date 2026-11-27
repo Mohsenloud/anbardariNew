@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Invoice, StoreSettings, AppUser, Product, Customer } from '../types';
+import { Invoice, StoreSettings, AppUser, Product, Customer, PaymentMethod } from '../types';
 import { formatPrice, toPersianDigits, formatNumber, getInvoiceDaysAge } from '../utils/jalali';
 import { exportInvoicesToCsv } from '../utils/csvExport';
 import { exportInvoicesListToExcel } from '../utils/excelHelper';
@@ -11,6 +11,7 @@ import { InvoiceQuickDetailsModal } from './InvoiceQuickDetailsModal';
 import { CustomerBulkPaymentModal } from './CustomerBulkPaymentModal';
 import { InvoiceShareLinkModal } from './InvoiceShareLinkModal';
 import { NumericInput } from './NumericInput';
+import { JalaliDatePicker } from './JalaliDatePicker';
 import { SmartPagination, paginateArray } from './SmartPagination';
 import { 
   Search, 
@@ -61,7 +62,17 @@ interface InvoicesListProps {
   onEditInvoice?: (invoice: Invoice) => void;
   onDeleteInvoice: (invoiceId: string) => void;
   onReturnInvoiceToStock: (invoice: Invoice) => void;
-  onUpdatePaymentStatus: (invoiceId: string, status: 'paid' | 'unpaid' | 'partial', paidAmount?: number) => void;
+  onUpdatePaymentStatus: (
+    invoiceId: string,
+    status: 'paid' | 'unpaid' | 'partial',
+    paidAmount?: number,
+    paymentDetails?: {
+      paymentMethod?: PaymentMethod;
+      chequeNumber?: string;
+      chequeDueDate?: string;
+      chequeName?: string;
+    }
+  ) => void;
   onNewInvoice: () => void;
   onNewProforma?: () => void;
   onConvertProforma?: (invoice: Invoice, newInvoiceNumber?: string) => boolean | void;
@@ -212,7 +223,12 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   // Quick payment update modal state
   const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
   const [paymentNewStatus, setPaymentNewStatus] = useState<'paid' | 'unpaid' | 'partial'>('paid');
+  const [paymentReceiveMode, setPaymentReceiveMode] = useState<'paid' | 'partial' | 'cheque' | 'unpaid'>('paid');
   const [paymentNewAmount, setPaymentNewAmount] = useState<number>(0);
+  const [paymentChequeNumber, setPaymentChequeNumber] = useState<string>('');
+  const [paymentChequeDueDate, setPaymentChequeDueDate] = useState<string>('');
+  const [paymentChequeName, setPaymentChequeName] = useState<string>('');
+  const [paymentModalError, setPaymentModalError] = useState<string>('');
 
   // Bulk Payment state
   const [bulkPaymentCustomer, setBulkPaymentCustomer] = useState<Customer | null>(null);
@@ -439,13 +455,49 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
   const handleOpenPaymentModal = (inv: Invoice) => {
     if (isReadOnly || !canSettle) return;
     setPaymentModalInvoice(inv);
-    setPaymentNewStatus(inv.paymentStatus);
-    setPaymentNewAmount(inv.paidAmount || 0);
+    setPaymentModalError('');
+    setPaymentChequeNumber(inv.chequeNumber || '');
+    setPaymentChequeDueDate(inv.chequeDueDate || '');
+    setPaymentChequeName(inv.chequeName || '');
+
+    if (inv.paymentMethod === 'cheque' && inv.paymentStatus !== 'unpaid') {
+      setPaymentReceiveMode('cheque');
+      setPaymentNewStatus(inv.paymentStatus);
+      setPaymentNewAmount(inv.paidAmount > 0 ? inv.paidAmount : inv.finalTotal);
+    } else {
+      setPaymentReceiveMode(inv.paymentStatus);
+      setPaymentNewStatus(inv.paymentStatus);
+      setPaymentNewAmount(inv.paidAmount || 0);
+    }
   };
 
   const handleSavePaymentStatus = () => {
     if (isReadOnly || !canSettle) return;
     if (!paymentModalInvoice) return;
+
+    if (paymentReceiveMode === 'cheque') {
+      const clampedAmount = Math.min(Math.max(0, paymentNewAmount), paymentModalInvoice.finalTotal);
+      if (clampedAmount <= 0) {
+        setPaymentModalError('لطفاً مبلغ چک دریافتی را بیشتر از صفر وارد کنید.');
+        return;
+      }
+      if (!paymentChequeNumber.trim() && !paymentChequeDueDate.trim()) {
+        setPaymentModalError('لطفاً حداقل شماره چک (صیادی) یا تاریخ سررسید چک را وارد کنید.');
+        return;
+      }
+      const resolvedStatus: 'paid' | 'partial' =
+        clampedAmount >= paymentModalInvoice.finalTotal ? 'paid' : 'partial';
+
+      onUpdatePaymentStatus(paymentModalInvoice.id, resolvedStatus, clampedAmount, {
+        paymentMethod: 'cheque',
+        chequeNumber: paymentChequeNumber.trim(),
+        chequeDueDate: paymentChequeDueDate.trim(),
+        chequeName: paymentChequeName.trim(),
+      });
+      setPaymentModalInvoice(null);
+      return;
+    }
+
     let finalPaid = paymentNewAmount;
     if (paymentNewStatus === 'paid') {
       finalPaid = paymentModalInvoice.finalTotal;
@@ -455,7 +507,17 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
       finalPaid = Math.min(Math.max(0, paymentNewAmount), paymentModalInvoice.finalTotal);
     }
 
-    onUpdatePaymentStatus(paymentModalInvoice.id, paymentNewStatus, finalPaid);
+    const fallbackMethod: PaymentMethod | undefined =
+      paymentModalInvoice.paymentMethod === 'cheque' && paymentNewStatus !== 'unpaid'
+        ? 'transfer'
+        : undefined;
+
+    onUpdatePaymentStatus(
+      paymentModalInvoice.id,
+      paymentNewStatus,
+      finalPaid,
+      fallbackMethod ? { paymentMethod: fallbackMethod } : undefined
+    );
     setPaymentModalInvoice(null);
   };
 
@@ -1462,7 +1524,7 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
           role="dialog"
           aria-modal="true"
         >
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 text-right space-y-4">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[92vh] overflow-y-auto p-5 sm:p-6 shadow-2xl border border-slate-200 text-right space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2 text-emerald-700">
                 <div className="p-2 rounded-xl bg-emerald-50">
@@ -1494,66 +1556,97 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
               </span>
             </div>
 
-            {/* Status Selection */}
+            {/* Status & Receive Method Selection */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 block">
-                وضعیت تسویه فاکتور:
+                وضعیت تسویه / نوع دریافت:
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => {
+                    setPaymentReceiveMode('paid');
                     setPaymentNewStatus('paid');
                     setPaymentNewAmount(paymentModalInvoice.finalTotal);
+                    setPaymentModalError('');
                   }}
-                  className={`min-h-[44px] py-2 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
-                    paymentNewStatus === 'paid'
+                  className={`min-h-[44px] py-2 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    paymentReceiveMode === 'paid'
                       ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                       : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
-                  <CheckCircle className="w-4 h-4" />
+                  <CheckCircle className="w-4 h-4 shrink-0" />
                   <span>تسویه کامل</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
+                    setPaymentReceiveMode('partial');
                     setPaymentNewStatus('partial');
                     if (paymentNewAmount === 0 || paymentNewAmount === paymentModalInvoice.finalTotal) {
                       setPaymentNewAmount(Math.round(paymentModalInvoice.finalTotal / 2));
                     }
+                    setPaymentModalError('');
                   }}
-                  className={`min-h-[44px] py-2 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
-                    paymentNewStatus === 'partial'
+                  className={`min-h-[44px] py-2 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    paymentReceiveMode === 'partial'
                       ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
                       : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
-                  <Clock className="w-4 h-4" />
+                  <Clock className="w-4 h-4 shrink-0" />
                   <span>بیعانه / قسط</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
+                    setPaymentReceiveMode('cheque');
+                    const nextAmt =
+                      paymentNewAmount > 0 && paymentNewAmount <= paymentModalInvoice.finalTotal
+                        ? paymentNewAmount
+                        : paymentModalInvoice.finalTotal;
+                    setPaymentNewAmount(nextAmt);
+                    setPaymentNewStatus(nextAmt >= paymentModalInvoice.finalTotal ? 'paid' : 'partial');
+                    if (!paymentChequeName && paymentModalInvoice.customerName) {
+                      setPaymentChequeName(paymentModalInvoice.customerName);
+                    }
+                    setPaymentModalError('');
+                  }}
+                  className={`min-h-[44px] py-2 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    paymentReceiveMode === 'cheque'
+                      ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <CreditCard className="w-4 h-4 shrink-0" />
+                  <span>دریافت چک</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentReceiveMode('unpaid');
                     setPaymentNewStatus('unpaid');
                     setPaymentNewAmount(0);
+                    setPaymentModalError('');
                   }}
-                  className={`min-h-[44px] py-2 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
-                    paymentNewStatus === 'unpaid'
+                  className={`min-h-[44px] py-2 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    paymentReceiveMode === 'unpaid'
                       ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
                       : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
-                  <AlertCircle className="w-4 h-4" />
+                  <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>نسیه</span>
                 </button>
               </div>
             </div>
 
-            {/* If partial, show amount input */}
-            {paymentNewStatus === 'partial' && (
+            {/* If partial (non-cheque), show amount input */}
+            {paymentReceiveMode === 'partial' && (
               <div className="space-y-2 p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl">
                 <label htmlFor="partial-paid-amount-input" className="text-xs font-bold text-amber-900 block">
                   مبلغ پرداخت‌شده تا کنون ({settings.currency}):
@@ -1578,6 +1671,126 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
               </div>
             )}
 
+            {/* If Receive Cheque mode, show cheque details + amount */}
+            {paymentReceiveMode === 'cheque' && (
+              <div className="space-y-3 p-3.5 bg-sky-50/70 border border-sky-200/90 rounded-xl">
+                <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-sky-200/80">
+                  <span className="text-xs font-bold text-sky-950 flex items-center gap-1.5">
+                    <CreditCard className="w-4 h-4 text-sky-600" />
+                    <span>مشخصات چک دریافتی (صیادی)</span>
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                    paymentNewAmount >= paymentModalInvoice.finalTotal
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {paymentNewAmount >= paymentModalInvoice.finalTotal ? 'تسویه کامل با چک' : 'بخشی از فاکتور'}
+                  </span>
+                </div>
+
+                {/* Cheque Amount */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label htmlFor="cheque-paid-amount-input" className="text-[11px] font-bold text-sky-900">
+                      مبلغ دریافتی / چک ({settings.currency}):
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentNewAmount(paymentModalInvoice.finalTotal);
+                        setPaymentModalError('');
+                      }}
+                      className="text-[10px] font-bold text-sky-700 hover:text-sky-900 underline cursor-pointer"
+                    >
+                      کل مبلغ فاکتور
+                    </button>
+                  </div>
+                  <NumericInput
+                    id="cheque-paid-amount-input"
+                    value={paymentNewAmount}
+                    onChange={(num) => {
+                      setPaymentNewAmount(num);
+                      setPaymentModalError('');
+                    }}
+                    min={0}
+                    max={paymentModalInvoice.finalTotal}
+                    currency={settings.currency}
+                    showWords={true}
+                    className="w-full min-h-[40px] bg-white border border-sky-300 rounded-xl px-3 py-1.5 text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 outline-none"
+                  />
+                  {paymentNewAmount < paymentModalInvoice.finalTotal && (
+                    <div className="flex items-center justify-between text-[11px] text-sky-900">
+                      <span>مانده طلب پس از ثبت چک:</span>
+                      <strong className="text-rose-700 font-mono">
+                        {formatPrice(Math.max(0, paymentModalInvoice.finalTotal - paymentNewAmount), settings.currency)}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+
+                {/* Cheque Number */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-sky-900 block">
+                    شماره چک / شناسه ۱۶ رقمی صیادی:
+                  </label>
+                  <input
+                    type="text"
+                    dir="ltr"
+                    value={paymentChequeNumber}
+                    onChange={(e) => {
+                      setPaymentChequeNumber(e.target.value);
+                      setPaymentModalError('');
+                    }}
+                    placeholder="مثلاً 1234567890123456"
+                    className="w-full min-h-[38px] bg-white border border-sky-300 rounded-xl px-3 py-1.5 text-xs font-mono text-left text-slate-900 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 outline-none"
+                  />
+                </div>
+
+                {/* Due Date & Owner/Bank */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-sky-900 block">
+                      تاریخ سررسید چک:
+                    </label>
+                    <JalaliDatePicker
+                      value={paymentChequeDueDate}
+                      onChange={(val) => {
+                        setPaymentChequeDueDate(val);
+                        setPaymentModalError('');
+                      }}
+                      placeholder="انتخاب تاریخ سررسید"
+                      buttonClassName="w-full min-h-[38px] bg-white border border-sky-300 rounded-xl px-2.5 py-1.5 text-xs font-mono text-slate-900"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-sky-900 block">
+                      صاحب حساب / نام بانک:
+                    </label>
+                    <input
+                      type="text"
+                      value={paymentChequeName}
+                      onChange={(e) => setPaymentChequeName(e.target.value)}
+                      placeholder="نام صاحب چک یا بانک..."
+                      className="w-full min-h-[38px] bg-white border border-sky-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <p className="text-[10.5px] text-sky-800/80 leading-relaxed">
+                  در صورت ثبت تاریخ سررسید، یادآوری خودکار تلگرام یک هفته قبل از سررسید چک برای شما ارسال می‌شود.
+                </p>
+              </div>
+            )}
+
+            {/* Inline Validation Message */}
+            {paymentModalError && (
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{paymentModalError}</span>
+              </div>
+            )}
+
             {/* Modal Actions */}
             <div className="flex items-center gap-3 pt-3 border-t border-slate-100">
               <button
@@ -1590,10 +1803,14 @@ export const InvoicesList: React.FC<InvoicesListProps> = ({
               <button
                 type="button"
                 onClick={handleSavePaymentStatus}
-                className="flex-1 min-h-[44px] py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm shadow-emerald-200 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                className={`flex-1 min-h-[44px] py-2.5 px-4 rounded-xl text-xs font-bold text-white shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  paymentReceiveMode === 'cheque'
+                    ? 'bg-sky-600 hover:bg-sky-700 shadow-sky-200'
+                    : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+                }`}
               >
                 <Check className="w-4 h-4" />
-                <span>ذخیره تغییرات</span>
+                <span>{paymentReceiveMode === 'cheque' ? 'ثبت دریافت چک' : 'ذخیره تغییرات'}</span>
               </button>
             </div>
           </div>

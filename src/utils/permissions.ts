@@ -48,6 +48,17 @@ export function isTabPermitted(
         Boolean(user.permissions.canManageCustomers)
       );
 
+    case 'payments':
+      return (
+        settings?.enableCustomers !== false &&
+        Boolean(
+          user.role === 'admin' ||
+            user.permissions.canManageCustomers ||
+            user.permissions.canViewReports ||
+            user.permissions.canSettleInvoices
+        )
+      );
+
     case 'reports':
       return (
         settings?.enableReports !== false &&
@@ -176,6 +187,7 @@ export function getDefaultTabForUser(
   if (isTabPermitted('purchases', user, settings)) return 'purchases';
   if (isTabPermitted('reports', user, settings)) return 'reports';
   if (isTabPermitted('customers', user, settings)) return 'customers';
+  if (isTabPermitted('payments', user, settings)) return 'payments';
   if (isTabPermitted('admin', user, settings)) return 'admin';
 
   return 'dashboard';
@@ -189,7 +201,7 @@ export function getAllowedTabsForUser(
   settings?: StoreSettings
 ): string[] {
   if (!user) return [];
-  const allTabs = ['dashboard', 'new-invoice', 'invoices', 'purchases', 'inventory', 'customers', 'reports', 'admin'];
+  const allTabs = ['dashboard', 'new-invoice', 'invoices', 'purchases', 'inventory', 'customers', 'payments', 'reports', 'admin'];
   return allTabs.filter((tab) => isTabPermitted(tab, user, settings));
 }
 
