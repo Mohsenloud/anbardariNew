@@ -632,6 +632,8 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
         documentType: 'invoice',
         quality: 'high',
         printLayout: settings?.printLayout,
+        author: displayedInvoice.createdByName || settings?.storeName,
+        creator: displayedInvoice.createdByName || settings?.storeName,
       });
 
       if (!pdfResult.success || !pdfResult.blob) {
@@ -824,7 +826,7 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
 
           {storeMeta.storeName && (
             <p className="text-xs text-slate-500 mb-1">
-              صادرکننده: <strong className="text-slate-800 font-bold">{storeMeta.storeName}</strong>
+              فروشنده: <strong className="text-slate-800 font-bold">{storeMeta.storeName}</strong>
             </p>
           )}
 
@@ -1195,10 +1197,19 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                     {settings?.tagline && (
                       <p className="text-xs text-slate-500 mt-1">{settings.tagline}</p>
                     )}
-                    {settings?.sellerName && (
+                    {currInv.createdByName ? (
                       <p className="text-xs text-slate-600 mt-0.5">
-                        مدیریت: <span className="font-bold">{settings.sellerName}</span>
+                        فروشنده: <span className="font-bold text-slate-800">{currInv.createdByName}</span>
+                        {currInv.createdByPhone && (
+                          <span className="font-mono text-slate-700 mr-1.5" dir="ltr">• {toPersianDigits(currInv.createdByPhone)}</span>
+                        )}
                       </p>
+                    ) : (
+                      settings?.sellerName && (
+                        <p className="text-xs text-slate-600 mt-0.5">
+                          مدیریت: <span className="font-bold">{settings.sellerName}</span>
+                        </p>
+                      )
                     )}
                   </div>
                 </div>
@@ -1240,7 +1251,7 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                 <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 space-y-2">
                   <div className="flex items-center gap-1.5 font-bold text-slate-800 border-b border-slate-200/80 pb-2">
                     <Building2 className="w-4 h-4 text-emerald-600" />
-                    <span>مشخصات صادرکننده (فروشنده):</span>
+                    <span>مشخصات فروشنده:</span>
                   </div>
 
                   <div className="space-y-1 text-slate-600 leading-relaxed">
@@ -1248,6 +1259,18 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                       <strong className="text-slate-800">نام شخص یا شرکت:</strong>{' '}
                       {currInv.type === 'official' ? (currInv.sellerName || settings?.sellerName || settings?.storeName || '—') : (settings?.storeName || '—')}
                     </p>
+                    {currInv.type !== 'official' && currInv.createdByName && (
+                      <p>
+                        <strong className="text-slate-800">فروشنده:</strong>{' '}
+                        <span className="font-bold text-slate-900">{currInv.createdByName}</span>
+                      </p>
+                    )}
+                    {currInv.type !== 'official' && currInv.createdByPhone && (
+                      <p>
+                        <strong className="text-slate-800">تلفن:</strong>{' '}
+                        <span className="font-mono" dir="ltr">{toPersianDigits(currInv.createdByPhone)}</span>
+                      </p>
+                    )}
                     {currInv.type === 'official' && (currInv.sellerEconomicCode || settings?.economicCode) && (
                       <p>
                         <strong className="text-slate-800">شماره اقتصادی:</strong>{' '}
@@ -1530,6 +1553,9 @@ export const PublicWebInvoiceView: React.FC<PublicWebInvoiceViewProps> = ({ toke
                     <p className="font-medium text-slate-700">{cleanInvoiceNotes(settings?.invoiceFooterText)}</p>
                   )}
                   <p className="text-[11px] text-slate-400">
+                    {currInv.createdByName ? (
+                      <>تنظیم و صدور توسط <strong className="text-slate-600">{currInv.createdByName}</strong> • </>
+                    ) : null}
                     صادر شده توسط سامانه هوشمند فاکتور و انبارداری سپهر • تاریخ مشاهده: {toPersianDigits(new Date().toLocaleDateString('fa-IR'))}
                   </p>
                 </div>

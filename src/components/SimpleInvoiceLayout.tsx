@@ -3,6 +3,7 @@ import { Invoice, StoreSettings } from '../types';
 import { formatPrice, toPersianDigits, cleanInvoiceNotes } from '../utils/jalali';
 import { getPrintLayoutCssVariables } from '../utils/printLayoutHelper';
 import { StorageService } from '../utils/storage';
+import { resolveInvoiceCreatorInfo } from '../utils/invoiceCreator';
 
 interface SimpleInvoiceLayoutProps {
   invoice: Invoice;
@@ -41,6 +42,8 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
     } catch {}
     return '';
   }, [invoice.customerPhone, invoice.customerId, invoice.customerName]);
+
+  const creatorInfo = useMemo(() => resolveInvoiceCreatorInfo(invoice), [invoice]);
 
   const totalQuantity = invoice.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
   const hasDiscounts = invoice.items.some((item) => (item.discount || 0) > 0) || (invoice.totalDiscount || 0) > 0;
@@ -158,6 +161,14 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
                   <span className="font-bold text-slate-800">{toPersianDigits(invoice.dueDate)}</span>
                 </div>
               )}
+              {creatorInfo.hasCreator && (
+                <div className="flex justify-between items-center gap-2 pt-0.5 border-t border-slate-200/80">
+                  <span className="text-slate-600 font-medium">فروشنده:</span>
+                  <span className="font-bold text-slate-900">
+                    {creatorInfo.name}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -178,15 +189,27 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
             }`}>
               <div className="grid grid-cols-[68px_1fr] items-start gap-1">
                 <span className="text-slate-600 font-medium">نام / برند:</span>
-                <span className="font-bold truncate">{invoice.sellerName || settings.storeName} {settings.sellerName && !invoice.sellerName ? `(${settings.sellerName})` : ''}</span>
+                <span className="font-bold truncate">
+                  {invoice.type === 'official'
+                    ? (invoice.sellerName || settings.sellerName || settings.storeName)
+                    : (settings.storeName || invoice.sellerName || 'فروشگاه')}
+                </span>
               </div>
-              {(invoice.sellerEconomicCode || settings.economicCode) && (
+              {invoice.type !== 'official' && creatorInfo.hasCreator && (
+                <div className="grid grid-cols-[68px_1fr] items-start gap-1">
+                  <span className="text-slate-600 font-medium">فروشنده:</span>
+                  <span className="font-bold text-slate-900 truncate">
+                    {creatorInfo.name}
+                  </span>
+                </div>
+              )}
+              {(invoice.sellerEconomicCode || (invoice.type === 'official' && settings.economicCode)) && (
                 <div className="grid grid-cols-[68px_1fr] items-start gap-1">
                   <span className="text-slate-600 font-medium">کد اقتصادی:</span>
                   <span className="font-bold font-['Vazirmatn'] font-mono">{toPersianDigits(invoice.sellerEconomicCode || settings.economicCode || '')}</span>
                 </div>
               )}
-              {(invoice.sellerRegistrationNumber || settings.registrationNumber || invoice.sellerNationalCode || settings.nationalCode) && (
+              {(invoice.sellerRegistrationNumber || (invoice.type === 'official' && (settings.registrationNumber || settings.nationalCode))) && (
                 <div className="grid grid-cols-[68px_1fr] items-start gap-1">
                   <span className="text-slate-600 font-medium">شماره ثبت/ملی:</span>
                   <span className="font-bold font-['Vazirmatn'] font-mono">{toPersianDigits(invoice.sellerRegistrationNumber || settings.registrationNumber || invoice.sellerNationalCode || settings.nationalCode || '')}</span>
@@ -194,7 +217,13 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
               )}
               <div className="grid grid-cols-[68px_1fr] items-start gap-1">
                 <span className="text-slate-600 font-medium">شماره تماس:</span>
-                <span className="font-bold font-['Vazirmatn'] font-mono">{toPersianDigits(invoice.sellerPhone || settings.phone || settings.mobile || '---')}</span>
+                <span className="font-bold font-['Vazirmatn'] font-mono">
+                  {toPersianDigits(
+                    invoice.type === 'official'
+                      ? (invoice.sellerPhone || settings.phone || settings.mobile || '---')
+                      : (creatorInfo.phone || invoice.sellerPhone || settings.phone || settings.mobile || '---')
+                  )}
+                </span>
               </div>
               <div className="grid grid-cols-[68px_1fr] items-start gap-1">
                 <span className="text-slate-600 font-medium">نشانی:</span>
@@ -496,9 +525,14 @@ export const SimpleInvoiceLayout: React.FC<SimpleInvoiceLayoutProps> = ({
             <div className={`border border-slate-300 rounded-lg p-2 bg-slate-50/70 flex flex-col justify-between ${signatureHeight}`}>
               <div>
                 <div className="font-black text-slate-900">مهر و امضای فروشنده</div>
-                <div className="text-slate-600 mt-0.5 text-[9px] sm:text-[10px]">
-                  {settings.storeName}
+                <div className="text-slate-700 font-bold mt-0.5 text-[9px] sm:text-[10px]">
+                  {creatorInfo.hasCreator ? creatorInfo.name : settings.storeName}
                 </div>
+                {creatorInfo.hasCreator && creatorInfo.phone && (
+                  <div className="text-slate-500 font-mono text-[8.5px]" dir="ltr">
+                    {toPersianDigits(creatorInfo.phone)}
+                  </div>
+                )}
               </div>
               <div className="border-t border-dashed border-slate-300 pt-1 text-[8.5px] text-slate-400">
                 تایید صحت صدور فاکتور و ترخیص اجناس

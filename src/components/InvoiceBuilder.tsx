@@ -56,6 +56,7 @@ import {
   Settings
 } from 'lucide-react';
 import { StorageService, ROLE_LABELS } from '../utils/storage';
+import { getCreatorFieldsFromUser, resolveInvoiceCreatorInfo } from '../utils/invoiceCreator';
 import { broadcastLivePreview } from '../utils/livePreviewSync';
 import { InvoiceDateModal } from './InvoiceDateModal';
 import {
@@ -554,6 +555,12 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
 
   // Synchronize draft invoice to live preview window in 0ms!
   useEffect(() => {
+    const activeCreator = currentUser || StorageService.getLoggedInUser() || StorageService.getCurrentUser();
+    const previewCreator =
+      editingInvoice && (editingInvoice.createdById || editingInvoice.createdByName)
+        ? resolveInvoiceCreatorInfo(editingInvoice)
+        : resolveInvoiceCreatorInfo(getCreatorFieldsFromUser(activeCreator));
+
     broadcastLivePreview({
       mode: 'invoice_draft',
       config: settings.printLayout || DEFAULT_PRINT_LAYOUT,
@@ -587,11 +594,14 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
         totalTax: taxAmount,
         finalTotal,
         notes,
-        paymentMethod: paymentMethod === 'cash' ? 'نقدی' : paymentMethod === 'pos' ? 'کارت‌خوان (POS)' : paymentMethod === 'cheque' ? 'چک' : paymentMethod === 'credit' ? 'نسیه / اعتباری' : 'انتقال بانکی'
+        paymentMethod: paymentMethod === 'cash' ? 'نقدی' : paymentMethod === 'pos' ? 'کارت‌خوان (POS)' : paymentMethod === 'cheque' ? 'چک' : paymentMethod === 'credit' ? 'نسیه / اعتباری' : 'انتقال بانکی',
+        createdByName: previewCreator.name || undefined,
+        createdByRole: previewCreator.role || undefined,
+        createdByPhone: previewCreator.phone || undefined,
       },
       updatedAt: Date.now()
     });
-  }, [items, customerName, customerPhone, customerAddress, customerNationalId, invoiceNumber, invoiceDate, isProforma, invoiceType, subtotal, totalDiscount, taxAmount, finalTotal, notes, paymentMethod, settings]);
+  }, [items, customerName, customerPhone, customerAddress, customerNationalId, invoiceNumber, invoiceDate, isProforma, invoiceType, subtotal, totalDiscount, taxAmount, finalTotal, notes, paymentMethod, settings, currentUser, editingInvoice]);
 
   // Product Catalog Categories
   const categories = useMemo(() => {
@@ -997,6 +1007,27 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       finalInvNumber = StorageService.getNextInvoiceNumber(asProforma);
     }
 
+    const activeCreatorUser = currentUser || StorageService.getLoggedInUser() || StorageService.getCurrentUser();
+    const activeCreatorFields = getCreatorFieldsFromUser(activeCreatorUser);
+    const hasOriginalCreator = Boolean(
+      editingInvoice &&
+      (editingInvoice.createdById ||
+        (editingInvoice.createdByName && editingInvoice.createdByName.trim() !== ''))
+    );
+    const resolvedOriginalCreator = hasOriginalCreator
+      ? resolveInvoiceCreatorInfo(editingInvoice)
+      : null;
+
+    const isOfficialType = invoiceType === 'official';
+    const defaultSellerNameSetting = (settings.sellerName || settings.storeName || '').trim();
+    const trimmedOfficialSeller = officialSellerName.trim();
+    const hasCustomOfficialSeller =
+      Boolean(trimmedOfficialSeller) && trimmedOfficialSeller !== defaultSellerNameSetting;
+    const defaultSellerPhoneSetting = (settings.phone || settings.mobile || '').trim();
+    const trimmedOfficialPhone = officialPhone.trim();
+    const hasCustomOfficialPhone =
+      Boolean(trimmedOfficialPhone) && trimmedOfficialPhone !== defaultSellerPhoneSetting;
+
     const newInvoice: Invoice = {
       id: editingInvoice ? editingInvoice.id : `inv-${Date.now()}`,
       invoiceNumber: finalInvNumber,
@@ -1024,24 +1055,40 @@ export const InvoiceBuilder: React.FC<InvoiceBuilderProps> = ({
       chequeName: paymentMethod === 'cheque' ? chequeName.trim() : undefined,
       transferDescription: paymentMethod === 'transfer' ? transferDescription.trim() : undefined,
       notes: notes.trim(),
-      // ثبت اطلاعات فروشنده رسمی در فاکتور رسمی
-      sellerName: officialSellerName.trim() || settings.sellerName || settings.storeName,
-      sellerEconomicCode: officialEconomicCode.trim() || settings.economicCode,
-      sellerRegistrationNumber: officialRegistrationNumber.trim() || settings.registrationNumber || settings.nationalCode,
-      sellerNationalCode: settings.nationalCode,
-      sellerPhone: officialPhone.trim() || settings.phone || settings.mobile,
-      sellerAddress: officialAddress.trim() || settings.address,
-      sellerPostalCode: settings.postalCode,
+      // ثبت اطلاعات فروشنده رسمی فقط در فاکتور رسمی (یا در صورت ویرایش اختصاصی) تا نام متصدی پیش‌فرض جایگزین کاربر ثبت‌کننده نشود
+      sellerName: isOfficialType
+        ? (trimmedOfficialSeller || settings.sellerName || settings.storeName)
+        : (hasCustomOfficialSeller ? trimmedOfficialSeller : undefined),
+      sellerEconomicCode: isOfficialType ? (officialEconomicCode.trim() || settings.economicCode) : editingInvoice?.sellerEconomicCode,
+      sellerRegistrationNumber: isOfficialType ? (officialRegistrationNumber.trim() || settings.registrationNumber || settings.nationalCode) : editingInvoice?.sellerRegistrationNumber,
+      sellerNationalCode: isOfficialType ? settings.nationalCode : editingInvoice?.sellerNationalCode,
+      sellerPhone: isOfficialType
+        ? (trimmedOfficialPhone || settings.phone || settings.mobile)
+        : (hasCustomOfficialPhone ? trimmedOfficialPhone : undefined),
+      sellerAddress: isOfficialType ? (officialAddress.trim() || settings.address) : editingInvoice?.sellerAddress,
+      sellerPostalCode: isOfficialType ? settings.postalCode : editingInvoice?.sellerPostalCode,
       createdAt: editingInvoice ? editingInvoice.createdAt : new Date().toISOString(),
       updatedAt: isEditing ? new Date().toISOString() : undefined,
       convertedFromProforma: editingInvoice?.convertedFromProforma,
       convertedAt: editingInvoice?.convertedAt,
       // ثبت اطلاعات دقیق کاربر ایجادکننده یا صادرکننده فاکتور و پیش‌فاکتور
-      createdById: editingInvoice?.createdById || currentUser?.id || StorageService.getLoggedInUser()?.id,
-      createdByName: editingInvoice?.createdByName || currentUser?.fullName || currentUser?.username || StorageService.getLoggedInUser()?.fullName || StorageService.getLoggedInUser()?.username || 'مدیر سیستم',
-      createdByRole: editingInvoice?.createdByRole || currentUser?.roleTitle || (currentUser?.role ? ROLE_LABELS[currentUser.role] : undefined) || 'مدیر کل',
-      updatedById: isEditing ? (currentUser?.id || StorageService.getLoggedInUser()?.id) : undefined,
-      updatedByName: isEditing ? (currentUser?.fullName || currentUser?.username || StorageService.getLoggedInUser()?.fullName) : undefined,
+      createdById: hasOriginalCreator
+        ? (resolvedOriginalCreator?.id || editingInvoice?.createdById)
+        : activeCreatorFields.createdById,
+      createdByName: hasOriginalCreator
+        ? (resolvedOriginalCreator?.name || editingInvoice?.createdByName)
+        : activeCreatorFields.createdByName,
+      createdByRole: hasOriginalCreator
+        ? (resolvedOriginalCreator?.role || editingInvoice?.createdByRole)
+        : activeCreatorFields.createdByRole,
+      createdByPhone: hasOriginalCreator
+        ? (resolvedOriginalCreator?.phone || editingInvoice?.createdByPhone)
+        : activeCreatorFields.createdByPhone,
+      createdByUsername: hasOriginalCreator
+        ? (resolvedOriginalCreator?.username || editingInvoice?.createdByUsername)
+        : activeCreatorFields.createdByUsername,
+      updatedById: isEditing ? activeCreatorFields.createdById : undefined,
+      updatedByName: isEditing ? activeCreatorFields.createdByName : undefined,
     };
 
     setIsCheckoutModalOpen(false);

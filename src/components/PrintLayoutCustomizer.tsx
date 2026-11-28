@@ -5,6 +5,7 @@ import { confirmAction } from '../utils/confirmDialog';
 import { getPrintLayoutCssVariables } from '../utils/printLayoutHelper';
 import { printElementInNewWindow, exportElementToPdf } from '../utils/pdfHelper';
 import { broadcastLivePreview } from '../utils/livePreviewSync';
+import { StorageService } from '../utils/storage';
 import { 
   Type, 
   Table, 
@@ -156,6 +157,8 @@ export const LiveInvoicePreviewSheet: React.FC<LivePreviewSheetProps> = ({
   const isLandscape = previewOrientation === 'landscape';
   const currentLogo = config.customLogoUrl || settings.logo;
   const currentNotes = config.customFooterNotes || settings.invoiceFooterText || 'از حسن انتخاب و همکاری صمیمانه شما سپاسگزاریم.';
+  const activeLoggedUser = StorageService.getLoggedInUser();
+  const previewCreatorName = activeLoggedUser?.fullName || activeLoggedUser?.name || activeLoggedUser?.username || '';
 
   const cssVars = getPrintLayoutCssVariables(config, previewPageSize, previewOrientation);
   const borderStyle = config.tableBorderStyle || 'bordered';
@@ -408,7 +411,10 @@ export const LiveInvoicePreviewSheet: React.FC<LivePreviewSheetProps> = ({
               {config.showSignaturesBlock !== false && (
                 <div className="grid grid-cols-2 gap-1.5 items-end border border-slate-200 rounded-xl p-1.5 bg-slate-50/50" style={{ minHeight: `${Math.max(30, Math.round(config.signatureBoxHeight * 0.8))}px` }}>
                   <div className="border-t border-dashed border-slate-300 pt-1 text-[9px]"><span className="font-bold text-slate-800 block">امضای خریدار</span></div>
-                  <div className="border-t border-dashed border-slate-300 pt-1 text-[9px]"><span className="font-bold text-slate-800 block">امضای فروشنده</span></div>
+                  <div className="border-t border-dashed border-slate-300 pt-1 text-[9px]">
+                    <span className="font-bold text-slate-800 block">امضای فروشنده</span>
+                    {previewCreatorName && <span className="text-[8px] text-slate-500 block">{previewCreatorName}</span>}
+                  </div>
                 </div>
               )}
             </div>
@@ -473,7 +479,12 @@ export const LiveInvoicePreviewSheet: React.FC<LivePreviewSheetProps> = ({
             {config.showSignaturesBlock !== false && (
               <div className="invoice-signatures grid grid-cols-2 text-center text-slate-600 border-t border-slate-200 items-end pt-1" style={{ minHeight: `${config.signatureBoxHeight}px` }}>
                 <div className="border-t border-dashed border-slate-300 pt-1 mx-3"><span className="font-bold text-slate-800 text-[11px] block">مهر و امضای خریدار</span><span className="text-[9px] text-slate-400">کالا صحیح و سالم تحویل گردید</span></div>
-                <div className="border-t border-dashed border-slate-300 pt-1 mx-3"><span className="font-bold text-slate-800 text-[11px] block">مهر و امضای فروشنده</span><span className="text-[9px] text-slate-400">{settings.storeName || 'فروشگاه'}</span></div>
+                <div className="border-t border-dashed border-slate-300 pt-1 mx-3">
+                  <span className="font-bold text-slate-800 text-[11px] block">مهر و امضای فروشنده</span>
+                  <span className="text-[9px] text-slate-500 block">
+                    {previewCreatorName || (settings.storeName || 'فروشگاه')}
+                  </span>
+                </div>
               </div>
             )}
           </div>

@@ -29,6 +29,9 @@ export interface LiveInvoiceDraft {
   finalTotal: number;
   notes?: string;
   paymentMethod?: string;
+  createdByName?: string;
+  createdByRole?: string;
+  createdByPhone?: string;
 }
 
 export interface LivePreviewSyncData {

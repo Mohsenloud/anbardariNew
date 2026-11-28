@@ -7661,43 +7661,81 @@ const handlePublicInvoiceRequest: express.RequestHandler = async (req, res) => {
       itemType: item.itemType || undefined,
     });
 
-    const sanitizeInvoiceForPublic = (inv: any) => ({
-      id: inv.id,
-      invoiceNumber: inv.invoiceNumber,
-      type: inv.type || 'standard',
-      customerId: inv.customerId,
-      customerName: inv.customerName,
-      customerPhone: inv.customerPhone || '',
-      customerAddress: inv.customerAddress || '',
-      customerNationalId: inv.customerNationalId || '',
-      sellerName: inv.sellerName || '',
-      sellerEconomicCode: inv.sellerEconomicCode || '',
-      sellerRegistrationNumber: inv.sellerRegistrationNumber || '',
-      sellerNationalCode: inv.sellerNationalCode || '',
-      sellerPhone: inv.sellerPhone || '',
-      sellerAddress: inv.sellerAddress || '',
-      date: inv.date,
-      dueDate: inv.dueDate || '',
-      items: (inv.items || []).map(sanitizeItem),
-      subtotal: Number(inv.subtotal) || 0,
-      totalDiscount: Number(inv.totalDiscount) || 0,
-      taxRate: Number(inv.taxRate) || 0,
-      taxAmount: Number(inv.taxAmount) || 0,
-      finalTotal: Number(inv.finalTotal) || 0,
-      paymentStatus: inv.paymentStatus || 'unpaid',
-      paymentMethod: inv.paymentMethod || 'cash',
-      paidAmount: Number(inv.paidAmount) || 0,
-      chequeNumber: inv.chequeNumber || '',
-      chequeDueDate: inv.chequeDueDate || '',
-      chequeName: inv.chequeName || '',
-      transferDescription: inv.transferDescription || '',
-      notes: inv.notes || '',
-      isProforma: !!inv.isProforma,
-      convertedAt: inv.convertedAt || '',
-      convertedFromProforma: inv.convertedFromProforma || '',
-      createdAt: inv.createdAt,
-      exitSlip: inv.exitSlip || undefined,
-    });
+    const dbUsersList = Array.isArray(dbData?.users) ? dbData.users : [];
+    const SERVER_ROLE_LABELS: Record<string, string> = {
+      admin: 'مدیر کل سیستم',
+      accountant: 'حسابدار و امور مالی',
+      cashier: 'صندوق‌دار و فروشنده',
+      warehouse: 'انباردار و لجستیک',
+      viewer: 'ناظر و گزارش‌گیر',
+    };
+    const resolvePublicCreator = (inv: any) => {
+      const matchedUser = inv.createdById
+        ? dbUsersList.find((u: any) => u.id === inv.createdById)
+        : inv.createdByName && inv.createdByName !== 'مدیر سیستم'
+        ? dbUsersList.find(
+            (u: any) =>
+              String(u.fullName || u.name || '').trim().toLowerCase() ===
+              String(inv.createdByName || '').trim().toLowerCase()
+          )
+        : undefined;
+      return {
+        createdByName: String(inv.createdByName || matchedUser?.fullName || matchedUser?.name || '').trim(),
+        createdByRole: String(
+          inv.createdByRole ||
+          matchedUser?.roleTitle ||
+          (matchedUser?.role ? SERVER_ROLE_LABELS[matchedUser.role] : '') ||
+          ''
+        ).trim(),
+        createdByPhone: String(inv.createdByPhone || matchedUser?.phone || '').trim(),
+        convertedByName: String(inv.convertedByName || '').trim(),
+      };
+    };
+
+    const sanitizeInvoiceForPublic = (inv: any) => {
+      const creatorMeta = resolvePublicCreator(inv);
+      return {
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        type: inv.type || 'standard',
+        customerId: inv.customerId,
+        customerName: inv.customerName,
+        customerPhone: inv.customerPhone || '',
+        customerAddress: inv.customerAddress || '',
+        customerNationalId: inv.customerNationalId || '',
+        sellerName: inv.sellerName || '',
+        sellerEconomicCode: inv.sellerEconomicCode || '',
+        sellerRegistrationNumber: inv.sellerRegistrationNumber || '',
+        sellerNationalCode: inv.sellerNationalCode || '',
+        sellerPhone: inv.sellerPhone || '',
+        sellerAddress: inv.sellerAddress || '',
+        createdByName: creatorMeta.createdByName || undefined,
+        createdByRole: creatorMeta.createdByRole || undefined,
+        createdByPhone: creatorMeta.createdByPhone || undefined,
+        convertedByName: creatorMeta.convertedByName || undefined,
+        date: inv.date,
+        dueDate: inv.dueDate || '',
+        items: (inv.items || []).map(sanitizeItem),
+        subtotal: Number(inv.subtotal) || 0,
+        totalDiscount: Number(inv.totalDiscount) || 0,
+        taxRate: Number(inv.taxRate) || 0,
+        taxAmount: Number(inv.taxAmount) || 0,
+        finalTotal: Number(inv.finalTotal) || 0,
+        paymentStatus: inv.paymentStatus || 'unpaid',
+        paymentMethod: inv.paymentMethod || 'cash',
+        paidAmount: Number(inv.paidAmount) || 0,
+        chequeNumber: inv.chequeNumber || '',
+        chequeDueDate: inv.chequeDueDate || '',
+        chequeName: inv.chequeName || '',
+        transferDescription: inv.transferDescription || '',
+        notes: inv.notes || '',
+        isProforma: !!inv.isProforma,
+        convertedAt: inv.convertedAt || '',
+        convertedFromProforma: inv.convertedFromProforma || '',
+        createdAt: inv.createdAt,
+        exitSlip: inv.exitSlip || undefined,
+      };
+    };
 
     const sanitizedInvoice = sanitizeInvoiceForPublic(invoice);
 

@@ -107,6 +107,17 @@ export const StandaloneLivePreviewView: React.FC<{ onBackToApp?: () => void }> =
   const displayCustomerName = isUsingDraft ? draftInvoice.customerName : 'شرکت فناوری سپهر';
   const displayInvoiceNum = isUsingDraft ? draftInvoice.invoiceNumber : '۱۰۲۵';
   const displayDate = isUsingDraft ? draftInvoice.date : '۱۴۰۳/۰۷/۱۰';
+  const activeLoggedUser = StorageService.getLoggedInUser();
+  const displayCreatorName =
+    (isUsingDraft && draftInvoice?.createdByName) ||
+    activeLoggedUser?.fullName ||
+    activeLoggedUser?.name ||
+    activeLoggedUser?.username ||
+    '';
+  const displayCreatorPhone =
+    (isUsingDraft && draftInvoice?.createdByPhone) ||
+    activeLoggedUser?.phone ||
+    '';
 
   const autoFitToWindow = () => {
     const containerWidth = window.innerWidth - 60;
@@ -442,7 +453,7 @@ export const StandaloneLivePreviewView: React.FC<{ onBackToApp?: () => void }> =
                 >
                   <div><strong>خریدار:</strong> {displayCustomerName}</div>
                   <div><strong>شناسه / تلفن:</strong> {draftInvoice?.customerPhone ? toPersianDigits(draftInvoice.customerPhone) : '۰۲۱-۸۸۸۸۴۳۲۱'}</div>
-                  <div><strong>نوع فاکتور:</strong> {draftInvoice?.isProforma ? 'پیش‌فاکتور' : 'فروش قطعی'}</div>
+                  <div><strong>فروشنده:</strong> {displayCreatorName || settings.storeName}</div>
                   <div><strong>وضعیت تسویه:</strong> <span className="font-bold text-emerald-700">{draftInvoice?.paymentMethod || 'کامل نقدی'}</span></div>
                 </div>
               ) : (
@@ -452,6 +463,7 @@ export const StandaloneLivePreviewView: React.FC<{ onBackToApp?: () => void }> =
                 >
                   <div><strong>خریدار:</strong> {displayCustomerName}</div>
                   <div><strong>تلفن:</strong> {draftInvoice?.customerPhone ? toPersianDigits(draftInvoice.customerPhone) : '۰۹۱۲۳۴۵۶۷۸۹'}</div>
+                  {displayCreatorName && <div><strong>فروشنده:</strong> {displayCreatorName}</div>}
                   <div><strong>تسویه:</strong> <span className="font-bold text-emerald-700">{draftInvoice?.paymentMethod || 'کامل نقدی'}</span></div>
                 </div>
               )}
@@ -600,7 +612,10 @@ export const StandaloneLivePreviewView: React.FC<{ onBackToApp?: () => void }> =
                     {config.showSignaturesBlock !== false && (
                       <div className="grid grid-cols-2 gap-1.5 items-end border border-slate-200 rounded-xl p-1.5 bg-slate-50/50" style={{ minHeight: `${Math.max(30, Math.round(config.signatureBoxHeight * 0.8))}px` }}>
                         <div className="border-t border-dashed border-slate-300 pt-1 text-[9px]"><span className="font-bold text-slate-800 block">امضای خریدار</span></div>
-                        <div className="border-t border-dashed border-slate-300 pt-1 text-[9px]"><span className="font-bold text-slate-800 block">امضای فروشنده</span></div>
+                        <div className="border-t border-dashed border-slate-300 pt-1 text-[9px]">
+                          <span className="font-bold text-slate-800 block">امضای فروشنده</span>
+                          {displayCreatorName && <span className="text-[8px] text-slate-500 block">{displayCreatorName}</span>}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -665,7 +680,13 @@ export const StandaloneLivePreviewView: React.FC<{ onBackToApp?: () => void }> =
                   {config.showSignaturesBlock !== false && (
                     <div className="invoice-signatures grid grid-cols-2 text-center text-slate-600 border-t border-slate-200 items-end pt-1" style={{ minHeight: `${config.signatureBoxHeight}px` }}>
                       <div className="border-t border-dashed border-slate-300 pt-1 mx-3"><span className="font-bold text-slate-800 text-[11px] block">مهر و امضای خریدار</span><span className="text-[9px] text-slate-400">کالا صحیح و سالم تحویل گردید</span></div>
-                      <div className="border-t border-dashed border-slate-300 pt-1 mx-3"><span className="font-bold text-slate-800 text-[11px] block">مهر و امضای فروشنده</span><span className="text-[9px] text-slate-400">{settings.storeName || 'فروشگاه'}</span></div>
+                      <div className="border-t border-dashed border-slate-300 pt-1 mx-3">
+                        <span className="font-bold text-slate-800 text-[11px] block">مهر و امضای فروشنده</span>
+                        <span className="text-[9px] text-slate-500 block">
+                          {displayCreatorName || (settings.storeName || 'فروشگاه')}
+                        </span>
+                        {displayCreatorPhone && <span className="text-[8.5px] text-slate-400 font-mono block" dir="ltr">{toPersianDigits(displayCreatorPhone)}</span>}
+                      </div>
                     </div>
                   )}
                 </div>

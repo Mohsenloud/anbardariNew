@@ -210,6 +210,8 @@ export interface PdfExportOptions {
   repeatHeaderOnMultipage?: boolean;
   showPageNumbers?: boolean;
   title?: string;
+  author?: string;
+  creator?: string;
 }
 
 function getEffectivePrintLayout(options?: PdfExportOptions): PrintLayoutSettings {
@@ -344,7 +346,8 @@ export function buildPdfDocumentFromCanvas(
     (pdf as any).setR2L?.(true);
     pdf.setProperties({
       title: options?.title || 'سند حسابداری',
-      creator: 'سامانه حسابداری سپهر',
+      author: options?.author || options?.creator || 'سامانه حسابداری سپهر',
+      creator: options?.creator || options?.author || 'سامانه حسابداری سپهر',
       subject: paperSize.toUpperCase() + ' ' + orientation,
     });
   } catch {}

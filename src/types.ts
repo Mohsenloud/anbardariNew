@@ -290,6 +290,8 @@ export interface Invoice {
   createdById?: string; // شناسه کاربر ایجادکننده فاکتور یا پیش‌فاکتور
   createdByName?: string; // نام و نام‌خانوادگی کاربر ایجادکننده فاکتور یا پیش‌فاکتور
   createdByRole?: string; // نقش یا عنوان سمت کاربر ایجادکننده
+  createdByPhone?: string; // شماره تماس کاربر ایجادکننده
+  createdByUsername?: string; // نام کاربری ایجادکننده
   updatedById?: string; // شناسه آخرین کاربری که فاکتور را ویرایش کرده است
   updatedByName?: string; // نام آخرین کاربری که فاکتور را ویرایش کرده است
   convertedById?: string; // شناسه کاربری که پیش‌فاکتور را به فاکتور تبدیل کرده است

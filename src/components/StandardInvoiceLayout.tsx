@@ -4,6 +4,7 @@ import { formatPrice, toPersianDigits, cleanInvoiceNotes } from '../utils/jalali
 import { Building2 } from 'lucide-react';
 import { getPrintLayoutCssVariables } from '../utils/printLayoutHelper';
 import { StorageService } from '../utils/storage';
+import { resolveInvoiceCreatorInfo } from '../utils/invoiceCreator';
 
 export interface StandardInvoiceLayoutProps {
   invoice: Invoice;
@@ -59,6 +60,8 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
     const raw = settings.printLayout?.customFooterNotes || settings.invoiceFooterText || 'از حسن انتخاب و همکاری صمیمانه شما سپاسگزاریم.';
     return cleanInvoiceNotes(raw) || 'از حسن انتخاب و همکاری صمیمانه شما سپاسگزاریم.';
   }, [settings.printLayout?.customFooterNotes, settings.invoiceFooterText]);
+
+  const creatorInfo = useMemo(() => resolveInvoiceCreatorInfo(invoice), [invoice]);
 
   return (
     <div
@@ -172,6 +175,20 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
                       {toPersianDigits(invoice.invoiceNumber)}
                     </strong>
                   </div>
+                  {creatorInfo.hasCreator && (
+                    <div className="flex items-center gap-1.5 pt-0.5 text-slate-700">
+                      <span>فروشنده:</span>
+                      <strong className="text-slate-900 font-bold">
+                        {creatorInfo.name}
+                      </strong>
+                    </div>
+                  )}
+                  {creatorInfo.hasCreator && creatorInfo.phone && (
+                    <div className="flex items-center gap-1.5 text-slate-600">
+                      <span>تلفن:</span>
+                      <strong className="font-mono text-slate-800" dir="ltr">{toPersianDigits(creatorInfo.phone)}</strong>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -431,6 +448,9 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
                   </div>
                   <div className="border-t border-dashed border-slate-300 pt-1 text-[10px]">
                     <span className="font-bold text-slate-800 block">امضای فروشنده</span>
+                    <span className="text-[9px] text-slate-600 font-medium block">
+                      {creatorInfo.hasCreator ? creatorInfo.name : settings.storeName}
+                    </span>
                   </div>
                 </div>
               )}
@@ -577,7 +597,14 @@ export const StandardInvoiceLayout: React.FC<StandardInvoiceLayoutProps> = ({
                 </div>
                 <div className="border-t border-dashed border-slate-300 pt-1 mx-4">
                   <span className="font-bold text-slate-800 text-[11px] block">مهر و امضای فروشنده</span>
-                  <span className="text-[9.5px] text-slate-400">{settings.storeName}</span>
+                  <span className="text-[9.5px] text-slate-600 font-semibold block">
+                    {creatorInfo.hasCreator ? creatorInfo.name : settings.storeName}
+                  </span>
+                  {creatorInfo.hasCreator && creatorInfo.phone && (
+                    <span className="text-[9px] text-slate-500 font-mono block" dir="ltr">
+                      {toPersianDigits(creatorInfo.phone)}
+                    </span>
+                  )}
                 </div>
               </div>
             )}

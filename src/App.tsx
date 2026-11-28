@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Product, Customer, Invoice, StockMovement, StoreSettings, AppUser, PurchaseInvoice, InboundReceipt, InboundReceiptItem, InboundReceiptStatus, CustomerTransaction, PaymentMethod } from './types';
 import { StorageService } from './utils/storage';
+import { getCreatorFieldsFromUser, resolveInvoiceCreatorInfo } from './utils/invoiceCreator';
 import {
   AUTH_EXPIRED_EVENT,
   fetchAuthBootstrap,
@@ -736,9 +737,12 @@ export default function App() {
       }
 
       // Update invoice record: change isProforma to false, new number, convertedAt, convertedFromProforma
-      const loggedUser = StorageService.getLoggedInUser();
-      const currentUserName = currentUser?.fullName || currentUser?.username || loggedUser?.fullName || loggedUser?.username || 'مدیر سیستم';
-      const currentUserId = currentUser?.id || loggedUser?.id;
+      const activeConverter = currentUser || StorageService.getLoggedInUser() || StorageService.getCurrentUser();
+      const converterFields = getCreatorFieldsFromUser(activeConverter);
+      const hasOriginalCreator = Boolean(proformaInvoice.createdById || proformaInvoice.createdByName);
+      const originalCreator = hasOriginalCreator
+        ? resolveInvoiceCreatorInfo(proformaInvoice, users)
+        : null;
 
       convertedInvoice = {
         ...proformaInvoice,
@@ -747,11 +751,13 @@ export default function App() {
         date: today,
         convertedAt: today,
         convertedFromProforma: proformaInvoice.invoiceNumber,
-        createdById: proformaInvoice.createdById || currentUserId,
-        createdByName: proformaInvoice.createdByName || currentUserName,
-        createdByRole: proformaInvoice.createdByRole || currentUser?.roleTitle,
-        convertedById: currentUserId,
-        convertedByName: currentUserName,
+        createdById: hasOriginalCreator ? (originalCreator?.id || proformaInvoice.createdById) : converterFields.createdById,
+        createdByName: hasOriginalCreator ? (originalCreator?.name || proformaInvoice.createdByName) : converterFields.createdByName,
+        createdByRole: hasOriginalCreator ? (originalCreator?.role || proformaInvoice.createdByRole) : converterFields.createdByRole,
+        createdByPhone: hasOriginalCreator ? (originalCreator?.phone || proformaInvoice.createdByPhone) : converterFields.createdByPhone,
+        createdByUsername: hasOriginalCreator ? (originalCreator?.username || proformaInvoice.createdByUsername) : converterFields.createdByUsername,
+        convertedById: converterFields.createdById,
+        convertedByName: converterFields.createdByName,
         notes: proformaInvoice.notes ? proformaInvoice.notes.trim() : undefined,
       };
 
@@ -769,9 +775,12 @@ export default function App() {
         setViewingInvoice(convertedInvoice);
       }
     } else {
-      const loggedUser = StorageService.getLoggedInUser();
-      const currentUserName = currentUser?.fullName || currentUser?.username || loggedUser?.fullName || loggedUser?.username || 'مدیر سیستم';
-      const currentUserId = currentUser?.id || loggedUser?.id;
+      const activeConverter = currentUser || StorageService.getLoggedInUser() || StorageService.getCurrentUser();
+      const converterFields = getCreatorFieldsFromUser(activeConverter);
+      const hasOriginalCreator = Boolean(proformaInvoice.createdById || proformaInvoice.createdByName);
+      const originalCreator = hasOriginalCreator
+        ? resolveInvoiceCreatorInfo(proformaInvoice, users)
+        : null;
 
       convertedInvoice = {
         ...proformaInvoice,
@@ -780,11 +789,13 @@ export default function App() {
         date: today,
         convertedAt: today,
         convertedFromProforma: proformaInvoice.invoiceNumber,
-        createdById: proformaInvoice.createdById || currentUserId,
-        createdByName: proformaInvoice.createdByName || currentUserName,
-        createdByRole: proformaInvoice.createdByRole || currentUser?.roleTitle,
-        convertedById: currentUserId,
-        convertedByName: currentUserName,
+        createdById: hasOriginalCreator ? (originalCreator?.id || proformaInvoice.createdById) : converterFields.createdById,
+        createdByName: hasOriginalCreator ? (originalCreator?.name || proformaInvoice.createdByName) : converterFields.createdByName,
+        createdByRole: hasOriginalCreator ? (originalCreator?.role || proformaInvoice.createdByRole) : converterFields.createdByRole,
+        createdByPhone: hasOriginalCreator ? (originalCreator?.phone || proformaInvoice.createdByPhone) : converterFields.createdByPhone,
+        createdByUsername: hasOriginalCreator ? (originalCreator?.username || proformaInvoice.createdByUsername) : converterFields.createdByUsername,
+        convertedById: converterFields.createdById,
+        convertedByName: converterFields.createdByName,
         notes: proformaInvoice.notes ? proformaInvoice.notes.trim() : undefined,
       };
 

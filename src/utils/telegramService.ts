@@ -11,6 +11,7 @@ import { StandardInvoiceLayout } from '../components/StandardInvoiceLayout';
 import { SimpleExitSlipLayout } from '../components/SimpleExitSlipLayout';
 import { StandardExitSlipLayout } from '../components/StandardExitSlipLayout';
 import { isPureServiceInvoice } from './serviceHelper';
+import { resolveInvoiceCreatorInfo } from './invoiceCreator';
 
 export async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -439,11 +440,15 @@ export function isTelegramConfigured(settings?: StoreSettings): boolean {
 export function formatInvoiceTelegramCaption(invoice: Invoice, settings?: StoreSettings): string {
   const store = settings?.storeName || 'سامانه حسابداری و فروشگاه';
   const currency = settings?.currency || 'تومان';
+  const creatorInfo = resolveInvoiceCreatorInfo(invoice);
   const lines: string[] = [
     `🧾 <b>${invoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور فروش'} شماره ${toPersianDigits(invoice.invoiceNumber)}</b>`,
     `🏢 <b>فروشگاه:</b> ${store}`,
+    creatorInfo.hasCreator
+      ? `👨‍💼 <b>فروشنده:</b> ${creatorInfo.name}${creatorInfo.phone ? ` — ${toPersianDigits(creatorInfo.phone)}` : ''}`
+      : '',
     `👤 <b>خریدار:</b> ${invoice.customerName}`,
-  ];
+  ].filter(Boolean);
 
   if (invoice.customerPhone) {
     lines.push(`📞 <b>شماره تماس:</b> ${toPersianDigits(invoice.customerPhone)}`);
@@ -564,12 +569,16 @@ export function formatInvoiceTextReport(invoice: Invoice, settings?: StoreSettin
     });
   }
 
+  const creatorInfo = resolveInvoiceCreatorInfo(invoice);
   const lines = [
     `🧾 <b>گزارش ثبت فاکتور فروش</b>`,
     `▫️ شماره فاکتور: <code>${toPersianDigits(invoice.invoiceNumber)}</code>`,
     `▫️ خریدار: <b>${invoice.customerName}</b>`,
     invoice.customerPhone ? `▫️ تلفن: <code>${toPersianDigits(invoice.customerPhone)}</code>` : '',
     `▫️ تاریخ صدور: ${toPersianDigits(invoice.date)}`,
+    creatorInfo.hasCreator
+      ? `▫️ فروشنده: <b>${creatorInfo.name}</b>${creatorInfo.phone ? ` — تلفن: <code>${toPersianDigits(creatorInfo.phone)}</code>` : ''}`
+      : '',
     ...(itemsLines.length > 0 ? itemsLines : [`▫️ تعداد اقلام: ${toPersianDigits(invoice.items?.length || 0)} قلم کالا`]),
     `▫️ مبلغ کل فاکتور: <b>${toPersianDigits(formatPrice(invoice.finalTotal))} ${currency}</b>`,
     `▫️ وضعیت پرداخت: ${invoice.paymentStatus === 'paid' ? '✅ تسویه کامل شده' : invoice.paymentStatus === 'partial' ? '⚠️ بیعانه / بخشی' : '⏳ نسیه / حساب دفتری'}`,
@@ -644,12 +653,16 @@ export function formatProformaTextReport(invoice: Invoice, settings?: StoreSetti
     });
   }
 
+  const creatorInfo = resolveInvoiceCreatorInfo(invoice);
   const lines = [
     `📑 <b>گزارش صدور پیش‌فاکتور</b>`,
     `▫️ شماره: <code>${toPersianDigits(invoice.invoiceNumber)}</code>`,
     `▫️ مشتری: <b>${invoice.customerName}</b>`,
     invoice.customerPhone ? `▫️ تلفن: <code>${toPersianDigits(invoice.customerPhone)}</code>` : '',
     `▫️ تاریخ صدور: ${toPersianDigits(invoice.date)}`,
+    creatorInfo.hasCreator
+      ? `▫️ فروشنده: <b>${creatorInfo.name}</b>${creatorInfo.phone ? ` — تلفن: <code>${toPersianDigits(creatorInfo.phone)}</code>` : ''}`
+      : '',
     ...(itemsLines.length > 0 ? itemsLines : [`▫️ تعداد اقلام: ${toPersianDigits(invoice.items.length)} قلم کالا`]),
     `▫️ مبلغ برآورد: <b>${toPersianDigits(formatPrice(invoice.finalTotal))} ${currency}</b>`,
     `▫️ وضعیت: ⏳ در انتظار تایید مشتری`,
@@ -946,6 +959,14 @@ export async function generateInvoicePdfBlob(
   try {
     const invoiceTemplate = settings?.telegramInvoiceTemplate || 'standard';
     const InvoiceComponent = invoiceTemplate === 'simple' ? SimpleInvoiceLayout : StandardInvoiceLayout;
+    const creatorInfo = resolveInvoiceCreatorInfo(invoice);
+    const enrichedInvoice: Invoice = {
+      ...invoice,
+      createdByName: creatorInfo.name || invoice.createdByName,
+      createdByRole: creatorInfo.role || invoice.createdByRole,
+      createdByPhone: creatorInfo.phone || invoice.createdByPhone,
+      createdByUsername: creatorInfo.username || invoice.createdByUsername,
+    };
 
     root.render(
       React.createElement(
@@ -963,7 +984,7 @@ export async function generateInvoicePdfBlob(
           },
         },
         React.createElement(InvoiceComponent, {
-          invoice,
+          invoice: enrichedInvoice,
           settings: settings as StoreSettings,
           pageSize,
           orientation,
@@ -987,6 +1008,8 @@ export async function generateInvoicePdfBlob(
       orientation,
       documentType: 'invoice',
       quality,
+      author: creatorInfo.hasCreator ? creatorInfo.name : settings?.storeName,
+      creator: creatorInfo.hasCreator ? creatorInfo.name : settings?.storeName,
     });
 
     return result;

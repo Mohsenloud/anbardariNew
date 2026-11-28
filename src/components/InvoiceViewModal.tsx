@@ -34,6 +34,7 @@ import { InvoiceDateModal } from './InvoiceDateModal';
 import { InvoiceTableDimensionsPanel } from './InvoiceTableDimensionsPanel';
 import { getPrintLayoutCssVariables, getPrintLayoutCssRules } from '../utils/printLayoutHelper';
 import { StorageService } from '../utils/storage';
+import { resolveInvoiceCreatorInfo } from '../utils/invoiceCreator';
 import { DEFAULT_PRINT_LAYOUT, PrintLayoutSettings } from '../types';
 
 interface InvoiceViewModalProps {
@@ -177,6 +178,10 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
     return '';
   }, [invoice?.customerPhone, invoice?.customerId, invoice?.customerName]);
 
+  const creatorInfo = useMemo(() => {
+    return resolveInvoiceCreatorInfo(activeInvoice || invoice);
+  }, [activeInvoice, invoice]);
+
   if (!invoice) return null;
 
   const currentTemplate = template;
@@ -258,6 +263,8 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
         documentType: 'invoice',
         marginMm: currentPrintLayout.pageMarginMm,
         printLayout: currentPrintLayout,
+        author: creatorInfo.hasCreator ? creatorInfo.name : settings.storeName,
+        creator: creatorInfo.hasCreator ? creatorInfo.name : settings.storeName,
       });
     } finally {
       setIsExportingPdf(false);
@@ -274,6 +281,8 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
       `${numLabel}: ${toPersianDigits(invoice.invoiceNumber)}`,
       `تاریخ صدور: ${invoice.date}`,
       `خریدار: ${invoice.customerName}`,
+      creatorInfo.hasCreator ? `فروشنده: ${creatorInfo.name}` : '',
+      creatorInfo.hasCreator && creatorInfo.phone ? `تلفن: ${toPersianDigits(creatorInfo.phone)}` : '',
       `---------------------------------`,
       ...invoice.items.map(
         (it, idx) =>
@@ -315,6 +324,8 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
         documentType: 'invoice',
         marginMm: currentPrintLayout.pageMarginMm,
         printLayout: currentPrintLayout,
+        author: creatorInfo.hasCreator ? creatorInfo.name : settings.storeName,
+        creator: creatorInfo.hasCreator ? creatorInfo.name : settings.storeName,
       });
       if (!success || (!file && !blob)) {
         showToast(error || 'خطا در تولید فایل PDF');
@@ -1178,6 +1189,22 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                                 {toPersianDigits(invoice.invoiceNumber)}
                               </strong>
                             </div>
+                            {creatorInfo.hasCreator && (
+                              <div className="flex items-center gap-1.5 pt-0.5 text-slate-700">
+                                <span>فروشنده:</span>
+                                <strong className="text-slate-900 font-bold">
+                                  {creatorInfo.name}
+                                </strong>
+                              </div>
+                            )}
+                            {creatorInfo.hasCreator && creatorInfo.phone && (
+                              <div className="flex items-center gap-1.5 text-slate-600">
+                                <span>تلفن:</span>
+                                <strong className="font-mono text-slate-800" dir="ltr">
+                                  {toPersianDigits(creatorInfo.phone)}
+                                </strong>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1683,7 +1710,14 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                       </div>
                       <div className="border-t border-dashed border-slate-300 pt-1 mx-4">
                         <span className="font-bold text-slate-800 block">مهر و امضای فروشنده</span>
-                        <span className="text-[9.5px] text-slate-400">{settings.storeName}</span>
+                        <span className="text-[9.5px] text-slate-600 font-semibold block">
+                          {creatorInfo.hasCreator ? creatorInfo.name : settings.storeName}
+                        </span>
+                        {creatorInfo.hasCreator && creatorInfo.phone && (
+                          <span className="text-[9px] text-slate-500 font-mono block" dir="ltr">
+                            {toPersianDigits(creatorInfo.phone)}
+                          </span>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1707,6 +1741,14 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                   </div>
                   <div>تاریخ: {invoice.date}</div>
                   <div>مشتری: {invoice.customerName}</div>
+                  {creatorInfo.hasCreator && (
+                    <div>
+                      فروشنده: <strong>{creatorInfo.name}</strong>
+                    </div>
+                  )}
+                  {creatorInfo.hasCreator && creatorInfo.phone && (
+                    <div>تلفن: <span dir="ltr">{toPersianDigits(creatorInfo.phone)}</span></div>
+                  )}
                 </div>
 
                 {/* Items */}
