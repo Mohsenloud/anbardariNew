@@ -76,7 +76,7 @@ function safeLocalStorageSet(key: string, value: string): boolean {
     return false;
   }
 }
-import { isPureServiceInvoice } from './serviceHelper';
+import { hasPhysicalGoods, isPureServiceInvoice } from './serviceHelper';
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cheque: 'چک (شماره، تاریخ و نام چک)',
@@ -922,6 +922,9 @@ export const StorageService = {
   _lastServerRevision: 0,
   _lastServerChecksum: '',
   _lastLocalSettingsSaveTime: 0,
+  _lastLocalExitSlipSaveTime: 0,
+  _inFlightPushCount: 0,
+  _pushChain: Promise.resolve(true) as Promise<boolean>,
   _pendingPushPayload: {} as Record<string, any>,
   _pushTimer: null as any,
 
@@ -1095,30 +1098,104 @@ export const StorageService = {
     }, 60);
   },
 
-  // Atomic multi-entity save for invoice workflows (Invoice + Stock deduction + Kardex movements + Logs)
+  // Atomic multi-entity save for invoice workflows (Invoice + Stock deduction + Kardex movements + Exit Slips + Logs)
   saveInvoiceTransaction(params: {
     invoices: Invoice[];
     products?: Product[];
     movements?: StockMovement[];
     customers?: Customer[];
     activityLogs?: ActivityLog[];
+    exitSlipLogs?: Record<string, ExitSlipData>;
   }) {
-    if (params.invoices) {
-      localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(params.invoices));
-    }
+    const effectiveProducts = params.products || this.getProducts();
+    let finalInvoices = params.invoices;
+
     if (params.products) {
       const { products: ensuredProducts } = ensureProductCodesAndBarcodes(params.products);
-      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(ensuredProducts));
+      safeLocalStorageSet(STORAGE_KEYS.PRODUCTS, JSON.stringify(ensuredProducts));
       params.products = ensuredProducts;
     }
+
+    // Reconcile exitSlipLogs & invoice.exitSlip atomically alongside invoices
+    let resolvedExitSlipLogs = params.exitSlipLogs
+      ? { ...params.exitSlipLogs }
+      : { ...this.getExitSlipLogs() };
+
+    if (finalInvoices) {
+      const delSet = this.getDeletedInvoiceIds();
+      let exitLogsChanged = Boolean(params.exitSlipLogs);
+
+      // Remove slips for deleted or proforma or pure-service invoices
+      const activeIds = new Set(finalInvoices.map((i) => i.id));
+      for (const existingId of Object.keys(resolvedExitSlipLogs)) {
+        if (delSet.has(existingId) || !activeIds.has(existingId)) {
+          delete resolvedExitSlipLogs[existingId];
+          exitLogsChanged = true;
+        }
+      }
+
+      const physicalRegularInvoices = finalInvoices.filter(
+        (inv) => !inv.isProforma && !delSet.has(inv.id) && hasPhysicalGoods(inv, effectiveProducts)
+      );
+
+      finalInvoices = finalInvoices.map((inv) => {
+        if (inv.isProforma || delSet.has(inv.id) || !hasPhysicalGoods(inv, effectiveProducts)) {
+          if (resolvedExitSlipLogs[inv.id]) {
+            delete resolvedExitSlipLogs[inv.id];
+            exitLogsChanged = true;
+          }
+          if (inv.exitSlip) {
+            const { exitSlip: _removed, ...restInv } = inv;
+            return restInv;
+          }
+          return inv;
+        }
+
+        const existingLog = resolvedExitSlipLogs[inv.id];
+        const slipNum =
+          existingLog?.slipNumber ||
+          inv.exitSlip?.slipNumber ||
+          generateNextExitSlipNumber(resolvedExitSlipLogs, physicalRegularInvoices);
+        const mergedLog: ExitSlipData = {
+          ...(inv.exitSlip || {}),
+          ...(existingLog || {}),
+          invoiceId: inv.id,
+          slipNumber: slipNum,
+          printCount: existingLog?.printCount ?? inv.exitSlip?.printCount ?? 0,
+          history: existingLog?.history ?? inv.exitSlip?.history ?? [],
+        };
+        if (
+          !existingLog ||
+          existingLog.slipNumber !== mergedLog.slipNumber ||
+          inv.exitSlip?.slipNumber !== mergedLog.slipNumber
+        ) {
+          resolvedExitSlipLogs[inv.id] = mergedLog;
+          exitLogsChanged = true;
+        }
+        return {
+          ...inv,
+          exitSlip: mergedLog,
+        };
+      });
+
+      safeLocalStorageSet(STORAGE_KEYS.INVOICES, JSON.stringify(finalInvoices));
+      if (exitLogsChanged || params.exitSlipLogs) {
+        safeLocalStorageSet(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(resolvedExitSlipLogs));
+        this._lastLocalExitSlipSaveTime = Date.now();
+      }
+    } else if (params.exitSlipLogs) {
+      safeLocalStorageSet(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(resolvedExitSlipLogs));
+      this._lastLocalExitSlipSaveTime = Date.now();
+    }
+
     if (params.movements) {
-      localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(params.movements));
+      safeLocalStorageSet(STORAGE_KEYS.MOVEMENTS, JSON.stringify(params.movements));
     }
     if (params.customers) {
-      localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(params.customers));
+      safeLocalStorageSet(STORAGE_KEYS.CUSTOMERS, JSON.stringify(params.customers));
     }
     if (params.activityLogs) {
-      localStorage.setItem(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(params.activityLogs));
+      safeLocalStorageSet(STORAGE_KEYS.ACTIVITY_LOGS, JSON.stringify(params.activityLogs));
     }
 
     // Cancel any debounced partial pushes and perform one consolidated atomic push
@@ -1128,7 +1205,8 @@ export const StorageService = {
     }
     const deletedArr = Array.from(this.getDeletedInvoiceIds());
     const payload: Record<string, any> = {
-      invoices: params.invoices,
+      invoices: finalInvoices,
+      exitSlipLogs: resolvedExitSlipLogs,
       deletedInvoiceIds: deletedArr,
       ...this._pendingPushPayload,
     };
@@ -1142,62 +1220,76 @@ export const StorageService = {
     this.notifyChange();
   },
 
-  // Asynchronously sync local changes to centralized server database
-  async pushToServer(customPayload?: any): Promise<boolean> {
+  // Asynchronously sync local changes to centralized server database (strictly serialized queue to prevent revision races)
+  pushToServer(customPayload?: any): Promise<boolean> {
     if (!hasAuthToken()) {
-      return false;
+      return Promise.resolve(false);
     }
     // Read-only accountant role must never push mutations to the server
     if (this.getCurrentUser()?.role === 'accountant') {
-      return false;
+      return Promise.resolve(false);
     }
-    try {
-      const tombstones = this.getDeletedTombstones();
-      const baseRevision = this._lastServerRevision > 0 ? this._lastServerRevision : undefined;
-      const payload = customPayload
-        ? { deletedInvoiceIds: tombstones.invoices, tombstones, ...(baseRevision ? { baseRevision } : {}), ...customPayload }
-        : {
-            products: this.getProducts(),
-            customers: this.getCustomers(),
-            invoices: this.getInvoices(),
-            purchaseInvoices: this.getPurchaseInvoices(),
-            inboundReceipts: this.getInboundReceipts(),
-            movements: this.getMovements(),
-            settings: this.getSettings(),
-            users: this.getUsers(),
-            exitSlipLogs: this.getExitSlipLogs(),
-            activityLogs: this.getActivityLogs(),
-            directTransfers: this.getDirectTransfers(),
-            savedVehicles: this.getSavedVehicles(),
-            customerTransactions: this.getCustomerTransactions(),
-            categories: this.getCategories(),
-            deletedInvoiceIds: tombstones.invoices,
-            tombstones,
-            ...(baseRevision ? { baseRevision } : {}),
-          };
-      const res = await apiFetch('/api/db', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json && json.success) {
-          if (typeof json.revision === 'number') this._lastServerRevision = json.revision;
-          if (json.checksum) this._lastServerChecksum = json.checksum;
-          return true;
+
+    const executePush = async (): Promise<boolean> => {
+      this._inFlightPushCount++;
+      try {
+        const tombstones = this.getDeletedTombstones();
+        const baseRevision = this._lastServerRevision > 0 ? this._lastServerRevision : undefined;
+        const payload = customPayload
+          ? { deletedInvoiceIds: tombstones.invoices, tombstones, ...(baseRevision ? { baseRevision } : {}), ...customPayload }
+          : {
+              products: this.getProducts(),
+              customers: this.getCustomers(),
+              invoices: this.getInvoices(),
+              purchaseInvoices: this.getPurchaseInvoices(),
+              inboundReceipts: this.getInboundReceipts(),
+              movements: this.getMovements(),
+              settings: this.getSettings(),
+              users: this.getUsers(),
+              exitSlipLogs: this.getExitSlipLogs(),
+              activityLogs: this.getActivityLogs(),
+              directTransfers: this.getDirectTransfers(),
+              savedVehicles: this.getSavedVehicles(),
+              customerTransactions: this.getCustomerTransactions(),
+              categories: this.getCategories(),
+              deletedInvoiceIds: tombstones.invoices,
+              tombstones,
+              ...(baseRevision ? { baseRevision } : {}),
+            };
+        const res = await apiFetch('/api/db', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json && json.success) {
+            if (typeof json.revision === 'number') this._lastServerRevision = json.revision;
+            if (json.checksum) this._lastServerChecksum = json.checksum;
+            return true;
+          }
         }
+        return false;
+      } catch {
+        // Local copy is safe in localStorage when offline or server unreachable
+        return false;
+      } finally {
+        this._inFlightPushCount = Math.max(0, this._inFlightPushCount - 1);
       }
-      return false;
-    } catch {
-      // Local copy is safe in localStorage when offline or server unreachable
-      return false;
-    }
+    };
+
+    const queued = this._pushChain.then(executePush, executePush);
+    this._pushChain = queued.catch(() => false);
+    return queued;
   },
 
   // Fetch updated records from server and sync into local storage with Zero-Loss Protection & Cache Busting
   async syncFromServer(force: boolean = false, isRestore: boolean = false): Promise<boolean> {
     if (!hasAuthToken()) {
+      return false;
+    }
+    // Skip background sync while a local write is actively in flight (unless forced or restoring)
+    if (!force && !isRestore && this._inFlightPushCount > 0) {
       return false;
     }
     try {
@@ -1229,6 +1321,7 @@ export const StorageService = {
 
         // Protect local settings if recently saved (e.g. within last 10 seconds), unless forced or restoring
         const isRecentSave = !force && !isRestore && Date.now() - this._lastLocalSettingsSaveTime < 10000;
+        const isRecentExitSlipSave = !force && !isRestore && (this._inFlightPushCount > 0 || Date.now() - this._lastLocalExitSlipSaveTime < 10000);
 
         let hasAnyUpdate = false;
 
@@ -1426,11 +1519,20 @@ export const StorageService = {
 
         if (d.exitSlipLogs && typeof d.exitSlipLogs === 'object' && !Array.isArray(d.exitSlipLogs)) {
           const remoteLogs = (d.exitSlipLogs || {}) as Record<string, ExitSlipData>;
+          const currentLocalLogs: Record<string, ExitSlipData> = isRecentExitSlipSave ? this.getExitSlipLogs() : {};
           const cleaned: Record<string, ExitSlipData> = {};
           // Only keep exit slips that belong to non-deleted invoices
           for (const [invId, slip] of Object.entries(remoteLogs)) {
             if (!invDelSet.has(invId)) {
               cleaned[invId] = slip;
+            }
+          }
+          // Preserve any recently-issued local exit slip logs during concurrent sync
+          if (isRecentExitSlipSave) {
+            for (const [invId, localSlip] of Object.entries(currentLocalLogs)) {
+              if (!invDelSet.has(invId) && !cleaned[invId]) {
+                cleaned[invId] = localSlip;
+              }
             }
           }
           safeLocalStorageSet(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(cleaned));
@@ -3140,7 +3242,7 @@ export const StorageService = {
   saveInvoices(invoices: Invoice[]) {
     const deletedSet = this.getDeletedInvoiceIds();
     const clean = invoices.filter((inv) => !deletedSet.has(inv.id));
-    localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(clean));
+    safeLocalStorageSet(STORAGE_KEYS.INVOICES, JSON.stringify(clean));
     this.queuePushToServer({ invoices: clean, deletedInvoiceIds: Array.from(deletedSet) });
   },
 
@@ -4366,7 +4468,7 @@ export const StorageService = {
           }
         }
         if (hasProforma) {
-          localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(cleaned));
+          safeLocalStorageSet(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(cleaned));
         }
         return cleaned;
       }
@@ -4376,10 +4478,13 @@ export const StorageService = {
     }
   },
 
-  saveExitSlipLogs(logs: Record<string, ExitSlipData>) {
+  saveExitSlipLogs(logs: Record<string, ExitSlipData>, skipServerPush = false) {
     const safeLogs = (logs && typeof logs === 'object' && !Array.isArray(logs)) ? logs : {};
-    localStorage.setItem(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(safeLogs));
-    this.pushToServer({ exitSlipLogs: safeLogs });
+    safeLocalStorageSet(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(safeLogs));
+    this._lastLocalExitSlipSaveTime = Date.now();
+    if (!skipServerPush) {
+      this.pushToServer({ exitSlipLogs: safeLogs });
+    }
     this.notifyChange();
   },
 
@@ -4399,7 +4504,7 @@ export const StorageService = {
     return generateNextExitSlipNumber(logs, invoices);
   },
 
-  getOrAssignExitSlipNumber(invoiceId: string, invoiceNumber?: string): string {
+  getOrAssignExitSlipNumber(invoiceId: string, _invoiceNumber?: string): string {
     const invoices = this.getInvoices();
     const targetInv = invoices.find((i) => i.id === invoiceId);
     const products = this.getProducts();
@@ -4415,22 +4520,32 @@ export const StorageService = {
 
     const logs = this.getExitSlipLogs();
     const current = logs[invoiceId];
-    if (current?.slipNumber) {
+    const resolvedNum = current?.slipNumber || targetInv.exitSlip?.slipNumber || this.getNextExitSlipNumber();
+    if (current?.slipNumber && targetInv.exitSlip?.slipNumber === current.slipNumber) {
       return current.slipNumber;
     }
-    const nextSlipNum = this.getNextExitSlipNumber();
     const updated: ExitSlipData = {
+      ...(targetInv.exitSlip || {}),
       ...(current || {
         invoiceId,
         printCount: 0,
         history: [],
       }),
       invoiceId,
-      slipNumber: nextSlipNum,
+      slipNumber: resolvedNum,
     };
     logs[invoiceId] = updated;
-    this.saveExitSlipLogs(logs);
-    return nextSlipNum;
+    safeLocalStorageSet(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(logs));
+    this._lastLocalExitSlipSaveTime = Date.now();
+
+    const updatedInvoices = invoices.map((inv) =>
+      inv.id === invoiceId ? { ...inv, exitSlip: updated } : inv
+    );
+    safeLocalStorageSet(STORAGE_KEYS.INVOICES, JSON.stringify(updatedInvoices));
+
+    this.pushToServer({ exitSlipLogs: logs, invoices: updatedInvoices });
+    this.notifyChange();
+    return resolvedNum;
   },
 
   deleteExitSlipLog(invoiceId: string) {
@@ -4487,7 +4602,7 @@ export const StorageService = {
     }
 
     const logs = this.getExitSlipLogs();
-    const current = logs[invoiceId] || fallbackData || {
+    const current = logs[invoiceId] || targetInv?.exitSlip || fallbackData || {
       invoiceId,
       printCount: 0,
       history: [],
@@ -4518,7 +4633,16 @@ export const StorageService = {
     if (fallbackData?.deliveredBy && !updated.deliveredBy) updated.deliveredBy = fallbackData.deliveredBy;
 
     logs[invoiceId] = updated;
-    this.saveExitSlipLogs(logs);
+    safeLocalStorageSet(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(logs));
+    this._lastLocalExitSlipSaveTime = Date.now();
+    if (targetInv) {
+      targetInv.exitSlip = updated;
+      safeLocalStorageSet(STORAGE_KEYS.INVOICES, JSON.stringify(invoices));
+      this.pushToServer({ exitSlipLogs: logs, invoices });
+    } else {
+      this.pushToServer({ exitSlipLogs: logs });
+    }
+    this.notifyChange();
     return updated;
   },
 
@@ -4542,7 +4666,7 @@ export const StorageService = {
     }
 
     const logs = this.getExitSlipLogs();
-    const current = logs[invoiceId] || {
+    const current = logs[invoiceId] || targetInv?.exitSlip || {
       invoiceId,
       printCount: 0,
       history: [],
@@ -4553,12 +4677,17 @@ export const StorageService = {
       slipNumber: deliveryData.slipNumber || current.slipNumber || this.getNextExitSlipNumber(),
     };
     logs[invoiceId] = updated;
-    this.saveExitSlipLogs(logs);
+    safeLocalStorageSet(STORAGE_KEYS.EXIT_SLIP_LOGS, JSON.stringify(logs));
+    this._lastLocalExitSlipSaveTime = Date.now();
 
     if (targetInv) {
       targetInv.exitSlip = updated;
-      this.saveInvoices(invoices);
+      safeLocalStorageSet(STORAGE_KEYS.INVOICES, JSON.stringify(invoices));
+      this.pushToServer({ exitSlipLogs: logs, invoices });
+    } else {
+      this.pushToServer({ exitSlipLogs: logs });
     }
+    this.notifyChange();
 
     this.logActivity({
       category: 'warehouse',

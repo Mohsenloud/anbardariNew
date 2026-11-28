@@ -385,27 +385,27 @@ export default function App() {
       setMovements(updatedMovements);
     }
 
-    // Atomic transaction save (invoices + products + movements in ONE unified payload)
+    // Atomic transaction save (invoices + products + movements + exitSlipLogs in ONE unified payload)
     StorageService.saveInvoiceTransaction({
       invoices: updatedInvoices,
       products: settings.autoDeductStock && !newInvoice.isProforma ? currentProducts : undefined,
       movements: settings.autoDeductStock && !newInvoice.isProforma && newMovements.length > 0 ? updatedMovements : undefined,
     });
 
-    // ایجاد حواله خروج انبار صرفاً و منحصراً برای فاکتورهای رسمی/قطعی دارای کالای فیزیکی (پیش‌فاکتور و ثبت خدمات به هیچ عنوان حواله ایجاد نمی‌کند)
     const hasGoods = hasPhysicalGoods(newInvoice, currentProducts);
-    if (!newInvoice.isProforma && hasGoods) {
-      StorageService.getOrAssignExitSlipNumber(newInvoice.id, newInvoice.invoiceNumber);
-    } else {
-      StorageService.deleteExitSlipLog(newInvoice.id);
-    }
+    const savedInvoice = StorageService.getInvoices().find((inv) => inv.id === newInvoice.id) || newInvoice;
+    const assignedSlipLog = !newInvoice.isProforma && hasGoods ? (StorageService.getExitSlipLogs()[newInvoice.id] || savedInvoice.exitSlip || null) : null;
 
     if (newInvoice.isProforma) {
       showToast(`پیش‌فاکتور شماره ${newInvoice.invoiceNumber} با موفقیت ثبت شد (بدون کسر از موجودی انبار).`);
     } else if (!hasGoods) {
       showToast(`فاکتور خدمات شماره ${newInvoice.invoiceNumber} با موفقیت ثبت شد (بدون نیاز به حواله خروج انبار).`);
     } else {
-      showToast(`فاکتور شماره ${newInvoice.invoiceNumber} با موفقیت ثبت و از انبار کسر شد.`);
+      showToast(
+        assignedSlipLog?.slipNumber
+          ? `فاکتور شماره ${newInvoice.invoiceNumber} ثبت و حواله خروج (${assignedSlipLog.slipNumber}) صادر شد.`
+          : `فاکتور شماره ${newInvoice.invoiceNumber} با موفقیت ثبت و از انبار کسر شد.`
+      );
     }
 
     // ارسال خودکار گزارش متنی یا فایل فاکتور / حواله خروج به تلگرام
@@ -415,9 +415,9 @@ export default function App() {
       const isFileMode = liveSettings.telegramSendMode === 'pdf_with_caption' || (liveSettings.telegramSendMode as string) === 'file';
       const modeLabel = isBothMode ? 'فایل PDF و متن' : isFileMode ? 'فایل PDF' : 'گزارش متنی';
 
-      if (newInvoice.isProforma) {
+      if (savedInvoice.isProforma) {
         if (liveSettings.telegramAutoSendProforma || liveSettings.telegramAutoSendOnlyConfirmed === false) {
-          autoSendInvoiceReportToTelegram(newInvoice, liveSettings, {
+          autoSendInvoiceReportToTelegram(savedInvoice, liveSettings, {
             onStart: () => showToast(`در حال ارسال ${modeLabel} پیش‌فاکتور به تلگرام...`),
             onSuccess: (msg) => showToast(msg || `✈️ ${modeLabel} پیش‌فاکتور به تلگرام ارسال گردید.`),
             onError: (err) => showToast('⚠️ خطا در ارسال پیش‌فاکتور به تلگرام: ' + err),
@@ -425,14 +425,14 @@ export default function App() {
         }
       } else {
         if (liveSettings.telegramAutoSendInvoice) {
-          autoSendInvoiceReportToTelegram(newInvoice, liveSettings, {
+          autoSendInvoiceReportToTelegram(savedInvoice, liveSettings, {
             onStart: () => showToast(`در حال ارسال ${modeLabel} فاکتور فروش به تلگرام...`),
             onSuccess: (msg) => showToast(msg || `✈️ ${modeLabel} فاکتور فروش به تلگرام ارسال گردید.`),
             onError: (err) => showToast('⚠️ خطا در ارسال فاکتور به تلگرام: ' + err),
           });
         }
         if (hasGoods && (liveSettings.telegramAutoSendExitSlip || liveSettings.telegramAutoSendExitSlipIssue)) {
-          autoSendExitSlipReportToTelegram(newInvoice, null, false, liveSettings, currentUser || undefined, {
+          autoSendExitSlipReportToTelegram(savedInvoice, assignedSlipLog, false, liveSettings, currentUser || undefined, {
             onStart: () => showToast('در حال ارسال گزارش صدور حواله خروج به تلگرام...'),
             onSuccess: (msg) => showToast(msg || '✈️ گزارش صدور حواله خروج به تلگرام ارسال شد.'),
             onError: (err) => showToast('⚠️ خطا در ارسال حواله خروج به تلگرام: ' + err),
@@ -444,30 +444,31 @@ export default function App() {
     // Log user activity
     StorageService.logActivity({
       category: 'sales',
-      actionType: newInvoice.isProforma ? 'create_proforma' : 'create_invoice',
-      actionTitle: newInvoice.isProforma ? 'صدور پیش‌فاکتور' : 'صدور فاکتور فروش',
-      details: `${newInvoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${newInvoice.invoiceNumber} (${newInvoice.items.length} قلم) به مبلغ ${newInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency} برای مشتری «${newInvoice.customerName}»`,
+      actionType: savedInvoice.isProforma ? 'create_proforma' : 'create_invoice',
+      actionTitle: savedInvoice.isProforma ? 'صدور پیش‌فاکتور' : 'صدور فاکتور فروش',
+      details: `${savedInvoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${savedInvoice.invoiceNumber} (${savedInvoice.items.length} قلم) به مبلغ ${savedInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency} برای مشتری «${savedInvoice.customerName}»${assignedSlipLog?.slipNumber ? ` — حواله خروج: ${assignedSlipLog.slipNumber}` : ''}`,
       severity: 'info',
       entityType: 'invoice',
-      entityId: newInvoice.id,
-      entityLabel: `#${newInvoice.invoiceNumber} (${newInvoice.customerName})`,
+      entityId: savedInvoice.id,
+      entityLabel: `#${savedInvoice.invoiceNumber} (${savedInvoice.customerName})`,
       metadata: {
-        invoiceNumber: newInvoice.invoiceNumber,
-        customerName: newInvoice.customerName,
-        itemsCount: newInvoice.items.length,
-        subtotal: newInvoice.subtotal,
-        discount: newInvoice.totalDiscount,
-        taxAmount: newInvoice.taxAmount,
-        finalTotal: newInvoice.finalTotal,
-        paidAmount: newInvoice.paidAmount,
-        paymentStatus: newInvoice.paymentStatus,
-        paymentMethod: newInvoice.paymentMethod,
-        isProforma: Boolean(newInvoice.isProforma),
+        invoiceNumber: savedInvoice.invoiceNumber,
+        exitSlipNumber: assignedSlipLog?.slipNumber || null,
+        customerName: savedInvoice.customerName,
+        itemsCount: savedInvoice.items.length,
+        subtotal: savedInvoice.subtotal,
+        discount: savedInvoice.totalDiscount,
+        taxAmount: savedInvoice.taxAmount,
+        finalTotal: savedInvoice.finalTotal,
+        paidAmount: savedInvoice.paidAmount,
+        paymentStatus: savedInvoice.paymentStatus,
+        paymentMethod: savedInvoice.paymentMethod,
+        isProforma: Boolean(savedInvoice.isProforma),
       },
     });
 
     if (shouldPrint) {
-      setViewingInvoice(newInvoice);
+      setViewingInvoice(savedInvoice);
     }
 
     setActiveTab('invoices');
@@ -621,20 +622,15 @@ export default function App() {
       });
     }
 
-    // بررسی و اعمال وضعیت حواله خروج بر اساس قطعی بودن سند و داشتن کالای فیزیکی (خدمات نیازی به حواله خروج ندارد)
-    const hasGoods = hasPhysicalGoods(updatedInvoice, products);
-    if (updatedInvoice.isProforma || !hasGoods) {
-      StorageService.deleteExitSlipLog(updatedInvoice.id);
-    } else if (originalInvoice.isProforma && !updatedInvoice.isProforma && hasGoods) {
-      StorageService.getOrAssignExitSlipNumber(updatedInvoice.id, updatedInvoice.invoiceNumber);
-    }
+    // حواله خروج به صورت اتمیک داخل saveInvoiceTransaction بروزرسانی و همگام‌سازی شده است
+    const savedUpdatedInvoice = StorageService.getInvoices().find((inv) => inv.id === updatedInvoice.id) || updatedInvoice;
 
     setEditingInvoice(null);
 
     // ارسال خودکار فایل PDF فاکتور ویرایش‌شده به تلگرام در صورت فعال بودن
     const liveSettings = StorageService.getSettings() || settings;
     if (liveSettings.telegramBotEnabled && liveSettings.telegramAutoSendInvoice) {
-      autoSendInvoicePdfToTelegram(updatedInvoice, liveSettings, {
+      autoSendInvoicePdfToTelegram(savedUpdatedInvoice, liveSettings, {
         onStart: () => showToast('در حال ایجاد و ارسال فایل PDF فاکتور به تلگرام...'),
         onSuccess: (msg) => showToast(msg || '✈️ فایل PDF فاکتور ویرایش‌شده با موفقیت به تلگرام ارسال شد.'),
         onError: (err) => showToast('⚠️ خطا در ارسال خودکار فاکتور به تلگرام: ' + err),
@@ -644,26 +640,26 @@ export default function App() {
     // Log user activity
     StorageService.logActivity({
       category: 'sales',
-      actionType: updatedInvoice.isProforma ? 'edit_proforma' : 'edit_invoice',
-      actionTitle: updatedInvoice.isProforma ? 'ویرایش پیش‌فاکتور' : 'ویرایش فاکتور فروش',
-      details: `ویرایش ${updatedInvoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${updatedInvoice.invoiceNumber} — مشتری: «${updatedInvoice.customerName}» | مبلغ قبلی: ${originalInvoice.finalTotal.toLocaleString('fa-IR')} ← جدید: ${updatedInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency}`,
+      actionType: savedUpdatedInvoice.isProforma ? 'edit_proforma' : 'edit_invoice',
+      actionTitle: savedUpdatedInvoice.isProforma ? 'ویرایش پیش‌فاکتور' : 'ویرایش فاکتور فروش',
+      details: `ویرایش ${savedUpdatedInvoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${savedUpdatedInvoice.invoiceNumber} — مشتری: «${savedUpdatedInvoice.customerName}» | مبلغ قبلی: ${originalInvoice.finalTotal.toLocaleString('fa-IR')} ← جدید: ${savedUpdatedInvoice.finalTotal.toLocaleString('fa-IR')} ${settings.currency}`,
       severity: 'warning',
       entityType: 'invoice',
-      entityId: updatedInvoice.id,
-      entityLabel: `#${updatedInvoice.invoiceNumber} (${updatedInvoice.customerName})`,
+      entityId: savedUpdatedInvoice.id,
+      entityLabel: `#${savedUpdatedInvoice.invoiceNumber} (${savedUpdatedInvoice.customerName})`,
       metadata: {
-        invoiceNumber: updatedInvoice.invoiceNumber,
-        customerName: updatedInvoice.customerName,
+        invoiceNumber: savedUpdatedInvoice.invoiceNumber,
+        customerName: savedUpdatedInvoice.customerName,
         previousTotal: originalInvoice.finalTotal,
-        newTotal: updatedInvoice.finalTotal,
+        newTotal: savedUpdatedInvoice.finalTotal,
         previousItemsCount: originalInvoice.items.length,
-        newItemsCount: updatedInvoice.items.length,
-        paymentStatus: updatedInvoice.paymentStatus,
+        newItemsCount: savedUpdatedInvoice.items.length,
+        paymentStatus: savedUpdatedInvoice.paymentStatus,
       },
     });
 
     if (shouldPrint) {
-      setViewingInvoice(updatedInvoice);
+      setViewingInvoice(savedUpdatedInvoice);
     }
 
     showToast(`تغییرات ${updatedInvoice.isProforma ? 'پیش‌فاکتور' : 'فاکتور'} شماره ${updatedInvoice.invoiceNumber} با موفقیت ثبت شد.`);
@@ -823,29 +819,39 @@ export default function App() {
       },
     });
 
-    // هنگام تبدیل پیش‌فاکتور به فاکتور رسمی، فقط در صورت داشتن کالای فیزیکی حواله خروج کالا صادر می‌گردد (ثبت خدمات حواله خروج ندارد)
-    const hasGoods = hasPhysicalGoods(convertedInvoice, products);
-    if (hasGoods) {
-      StorageService.getOrAssignExitSlipNumber(proformaInvoice.id, finalNumber);
-    } else {
-      StorageService.deleteExitSlipLog(proformaInvoice.id);
-    }
+    // حواله خروج به صورت اتمیک داخل saveInvoiceTransaction صادر و همگام‌سازی شده است
+    const savedConvertedInvoice = StorageService.getInvoices().find((inv) => inv.id === proformaInvoice.id) || convertedInvoice;
+    const hasGoods = hasPhysicalGoods(savedConvertedInvoice, products);
+    const assignedSlipLog = hasGoods ? (StorageService.getExitSlipLogs()[proformaInvoice.id] || savedConvertedInvoice.exitSlip || null) : null;
 
-    // ارسال خودکار گزارش یا فایل PDF فاکتور رسمی تایید شده به تلگرام پس از تبدیل
+    // ارسال خودکار گزارش یا فایل PDF فاکتور رسمی تایید شده و حواله خروج به تلگرام پس از تبدیل
     const liveSettings = StorageService.getSettings() || settings;
-    if (liveSettings.telegramBotEnabled && (liveSettings.telegramAutoSendInvoice || liveSettings.telegramAutoSendOnProformaConvert)) {
-      const isBothMode = liveSettings.telegramSendMode === 'both';
-      const isFileMode = liveSettings.telegramSendMode === 'pdf_with_caption' || (liveSettings.telegramSendMode as string) === 'file';
-      const modeLabel = isBothMode ? 'فایل PDF و متن' : isFileMode ? 'فایل PDF' : 'گزارش متنی';
+    if (liveSettings.telegramBotEnabled) {
+      if (liveSettings.telegramAutoSendInvoice || liveSettings.telegramAutoSendOnProformaConvert) {
+        const isBothMode = liveSettings.telegramSendMode === 'both';
+        const isFileMode = liveSettings.telegramSendMode === 'pdf_with_caption' || (liveSettings.telegramSendMode as string) === 'file';
+        const modeLabel = isBothMode ? 'فایل PDF و متن' : isFileMode ? 'فایل PDF' : 'گزارش متنی';
 
-      autoSendInvoiceReportToTelegram(convertedInvoice, liveSettings, {
-        onStart: () => showToast(`در حال ارسال خودکار ${modeLabel} فاکتور تایید شده به تلگرام...`),
-        onSuccess: (msg) => showToast(msg || `✈️ ${modeLabel} فاکتور تایید شده با موفقیت به تلگرام ارسال شد.`),
-        onError: (err) => showToast('⚠️ خطا در ارسال خودکار فاکتور به تلگرام: ' + err),
-      });
+        autoSendInvoiceReportToTelegram(savedConvertedInvoice, liveSettings, {
+          onStart: () => showToast(`در حال ارسال خودکار ${modeLabel} فاکتور تایید شده به تلگرام...`),
+          onSuccess: (msg) => showToast(msg || `✈️ ${modeLabel} فاکتور تایید شده با موفقیت به تلگرام ارسال شد.`),
+          onError: (err) => showToast('⚠️ خطا در ارسال خودکار فاکتور به تلگرام: ' + err),
+        });
+      }
+      if (hasGoods && (liveSettings.telegramAutoSendExitSlip || liveSettings.telegramAutoSendExitSlipIssue)) {
+        autoSendExitSlipReportToTelegram(savedConvertedInvoice, assignedSlipLog, false, liveSettings, currentUser || undefined, {
+          onStart: () => showToast('در حال ارسال گزارش صدور حواله خروج به تلگرام...'),
+          onSuccess: (msg) => showToast(msg || '✈️ گزارش صدور حواله خروج به تلگرام ارسال شد.'),
+          onError: (err) => showToast('⚠️ خطا در ارسال حواله خروج به تلگرام: ' + err),
+        });
+      }
     }
 
-    showToast(`پیش‌فاکتور ${proformaInvoice.invoiceNumber} با موفقیت به فاکتور رسمی ${finalNumber} تبدیل و اقلام از انبار کسر شد.`);
+    showToast(
+      assignedSlipLog?.slipNumber
+        ? `پیش‌فاکتور ${proformaInvoice.invoiceNumber} به فاکتور رسمی ${finalNumber} تبدیل و حواله خروج (${assignedSlipLog.slipNumber}) صادر شد.`
+        : `پیش‌فاکتور ${proformaInvoice.invoiceNumber} با موفقیت به فاکتور رسمی ${finalNumber} تبدیل و اقلام از انبار کسر شد.`
+    );
     return true;
   };
 

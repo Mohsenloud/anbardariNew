@@ -1262,6 +1262,137 @@ function isReadOnlyAccountant(user?: { role?: string } | null): boolean {
   return Boolean(user && user.role === 'accountant');
 }
 
+function isServiceItemServer(item: any, products?: any[]): boolean {
+  if (!item) return false;
+  if (item.isService === true || item.itemType === 'service') return true;
+  if (typeof item.id === 'string' && (item.id.startsWith('service-') || item.id.startsWith('pur-srv-'))) {
+    return true;
+  }
+  const rawCode = String(item.productCode || item.code || '').trim().toUpperCase();
+  if (rawCode.startsWith('SRV')) return true;
+  if (
+    item.productId === '' ||
+    item.productId === undefined ||
+    item.productId === null ||
+    (typeof item.productId === 'string' && (item.productId.startsWith('service-') || item.productId.startsWith('srv-')))
+  ) {
+    return true;
+  }
+  if (Array.isArray(products) && products.length > 0 && item.productId) {
+    const prod = products.find(
+      (p: any) =>
+        p?.id === item.productId ||
+        (p?.code && item.productCode && String(p.code).trim() === String(item.productCode).trim())
+    );
+    if (prod) {
+      if (prod.isService === true || prod.type === 'service') return true;
+      const cat = String(prod.category || '').trim().toLowerCase();
+      if (cat === 'خدمات' || cat.includes('خدمات') || cat === 'service' || cat === 'services') {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function hasPhysicalGoodsServer(invoice: any, products?: any[]): boolean {
+  if (!invoice || !Array.isArray(invoice.items) || invoice.items.length === 0) return false;
+  return invoice.items.some((it: any) => !isServiceItemServer(it, products));
+}
+
+function extractExitSeqServer(raw?: string): number {
+  if (!raw) return 0;
+  const normalized = normalizePersianDigitsServer(String(raw)).trim();
+  const matches = normalized.match(/\d+/g);
+  if (!matches || matches.length === 0) return 0;
+  const lastNum = parseInt(matches[matches.length - 1], 10);
+  return Number.isFinite(lastNum) && lastNum < 9999999 ? lastNum : 0;
+}
+
+function reconcileServerExitSlips(
+  rawInvoices: any[],
+  rawProducts: any[],
+  rawExitLogs: any,
+  deletedIds?: Set<string>
+): { invoices: any[]; exitSlipLogs: Record<string, any> } {
+  const invoicesList = Array.isArray(rawInvoices) ? rawInvoices : [];
+  const productsList = Array.isArray(rawProducts) ? rawProducts : [];
+  const nextLogs: Record<string, any> =
+    rawExitLogs && typeof rawExitLogs === 'object' && !Array.isArray(rawExitLogs)
+      ? { ...rawExitLogs }
+      : {};
+
+  let maxSeq = 1000;
+  for (const log of Object.values(nextLogs)) {
+    const seq = extractExitSeqServer((log as any)?.slipNumber);
+    if (seq > maxSeq) maxSeq = seq;
+  }
+  for (const inv of invoicesList) {
+    const seq = extractExitSeqServer(inv?.exitSlip?.slipNumber);
+    if (seq > maxSeq) maxSeq = seq;
+  }
+  if (maxSeq === 1000) {
+    for (const inv of invoicesList) {
+      if (inv && !inv.isProforma && (!deletedIds || !deletedIds.has(inv.id)) && hasPhysicalGoodsServer(inv, productsList)) {
+        const seq = extractExitSeqServer(inv.invoiceNumber);
+        if (seq > maxSeq) maxSeq = seq;
+      }
+    }
+  }
+
+  const activePhysicalIds = new Set<string>();
+  const nextInvoices = invoicesList.map((inv: any) => {
+    if (!inv || !inv.id) return inv;
+    const isDeleted = Boolean(deletedIds && deletedIds.has(inv.id));
+    if (isDeleted || inv.isProforma || !hasPhysicalGoodsServer(inv, productsList)) {
+      if (nextLogs[inv.id]) {
+        delete nextLogs[inv.id];
+      }
+      if (inv.exitSlip) {
+        const { exitSlip: _removed, ...restInv } = inv;
+        return restInv;
+      }
+      return inv;
+    }
+
+    activePhysicalIds.add(inv.id);
+    const existingLog = nextLogs[inv.id] && typeof nextLogs[inv.id] === 'object' ? nextLogs[inv.id] : null;
+    const invSlip = inv.exitSlip && typeof inv.exitSlip === 'object' ? inv.exitSlip : null;
+
+    let slipNumber = existingLog?.slipNumber || invSlip?.slipNumber || '';
+    if (!slipNumber) {
+      maxSeq += 1;
+      slipNumber = `EXT-${maxSeq}`;
+    }
+
+    const mergedSlip = {
+      ...(invSlip || {}),
+      ...(existingLog || {}),
+      invoiceId: inv.id,
+      slipNumber,
+      printCount: existingLog?.printCount ?? invSlip?.printCount ?? 0,
+      history: Array.isArray(existingLog?.history)
+        ? existingLog.history
+        : Array.isArray(invSlip?.history)
+          ? invSlip.history
+          : [],
+    };
+    nextLogs[inv.id] = mergedSlip;
+    return {
+      ...inv,
+      exitSlip: mergedSlip,
+    };
+  });
+
+  for (const logInvId of Object.keys(nextLogs)) {
+    if (!activePhysicalIds.has(logInvId)) {
+      delete nextLogs[logInvId];
+    }
+  }
+
+  return { invoices: nextInvoices, exitSlipLogs: nextLogs };
+}
+
 function sanitizeDbForClient(data: any, authUser?: AuthSessionPayload): any {
   if (!data || typeof data !== 'object') return data;
   const isAdmin = isAdminUser(authUser);
@@ -1279,8 +1410,20 @@ function sanitizeDbForClient(data: any, authUser?: AuthSessionPayload): any {
       aiApiKey: '',
     };
   }
+  const deletedInvIds = new Set<string>([
+    ...(Array.isArray(data.deletedInvoiceIds) ? data.deletedInvoiceIds : []),
+    ...(Array.isArray(data.tombstones?.invoices) ? data.tombstones.invoices : []),
+  ]);
+  const reconciled = reconcileServerExitSlips(
+    data.invoices,
+    data.products,
+    data.exitSlipLogs,
+    deletedInvIds
+  );
   return {
     ...data,
+    invoices: reconciled.invoices,
+    exitSlipLogs: reconciled.exitSlipLogs,
     users: safeUsers,
     activityLogs: canViewLogs ? mergeActivityLogs(data.activityLogs, []) : [],
     ...(safeSettings ? { settings: safeSettings } : {}),
@@ -3234,13 +3377,17 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         finalCategories.unshift('عمومی');
       }
 
-      // Also clean up exitSlipLogs so deleted invoices never leave ghost slips
-      const currentExitLogs = canWriteWarehouseDocs
+      // Merge & reconcile exitSlipLogs and invoice.exitSlip on the server so every official physical-goods invoice
+      // is guaranteed to have a sequential EXT-xxxx exit slip even across concurrent writes or network delays
+      const rawExitLogs = canWriteWarehouseDocs || canWriteSalesInvoices
         ? { ...(currentDb.exitSlipLogs || {}), ...(incomingData.exitSlipLogs || {}) }
         : { ...(currentDb.exitSlipLogs || {}) };
-      invoiceDelSet.forEach((delId) => {
-        delete currentExitLogs[delId];
-      });
+      const reconciledExit = reconcileServerExitSlips(
+        finalInvoices,
+        finalProducts,
+        rawExitLogs,
+        invoiceDelSet
+      );
 
       // Append-only ID-based union merge for activityLogs: concurrent devices never wipe peer logs & POST /api/db cannot erase audit history
       const finalActivityLogs = Array.isArray(incomingData.activityLogs)
@@ -3249,7 +3396,7 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
 
       const updatedDb: any = {
         ...currentDb,
-        invoices: finalInvoices,
+        invoices: reconciledExit.invoices,
         products: finalProducts,
         customers: finalCustomers,
         purchaseInvoices: finalPurchases,
@@ -3260,7 +3407,7 @@ app.post('/api/db', dbWriteLimiter, async (req, res) => {
         users: finalUsers,
         categories: finalCategories,
         activityLogs: finalActivityLogs,
-        exitSlipLogs: currentExitLogs,
+        exitSlipLogs: reconciledExit.exitSlipLogs,
         deletedInvoiceIds: combinedTombstones.invoices,
         tombstones: combinedTombstones,
         ...(mergedSettings ? { settings: mergedSettings } : {}),
@@ -7623,15 +7770,20 @@ const handlePublicInvoiceRequest: express.RequestHandler = async (req, res) => {
     const allDeposits = [...directDeposits, ...invoicePayments].sort((a: any, b: any) => (b.date || '').localeCompare(a.date || ''));
 
     // 3. Remittances & Delivery Slips (حواله‌های خروج و بارگیری)
+    const serverExitLogsMap =
+      dbData?.exitSlipLogs && typeof dbData.exitSlipLogs === 'object' ? dbData.exitSlipLogs : {};
     const exitSlipRemittances = invoices
-      .filter(
-        (inv: any) =>
-          isMatchCustomer(inv.customerId, inv.customerName, inv.customerPhone) &&
-          inv.exitSlip &&
-          (inv.exitSlip.slipNumber || inv.exitSlip.isDelivered || inv.exitSlip.deliveredAt || inv.exitSlip.receiverName)
-      )
+      .filter((inv: any) => {
+        if (inv.isProforma || !isMatchCustomer(inv.customerId, inv.customerName, inv.customerPhone)) {
+          return false;
+        }
+        const es = inv.exitSlip || serverExitLogsMap[inv.id];
+        return Boolean(
+          es && (es.slipNumber || es.isDelivered || es.deliveredAt || es.receiverName)
+        );
+      })
       .map((inv: any) => {
-        const es = inv.exitSlip;
+        const es = inv.exitSlip || serverExitLogsMap[inv.id];
         return {
           id: `es-${inv.id}`,
           remittanceNumber: es.slipNumber || `حواله-${inv.invoiceNumber}`,

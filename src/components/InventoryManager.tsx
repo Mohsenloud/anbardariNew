@@ -635,15 +635,18 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     [invoices, products]
   );
 
+  const getResolvedSlipLog = (inv: Invoice): ExitSlipData =>
+    exitSlipLogs[inv.id] || inv.exitSlip || { invoiceId: inv.id, printCount: 0, history: [] };
+
   const unprintedSlipsCount = regularInvoices.filter(
-    (inv) => !exitSlipLogs[inv.id] || exitSlipLogs[inv.id].printCount === 0
+    (inv) => (getResolvedSlipLog(inv).printCount || 0) === 0
   ).length;
   const printedSlipsCount = regularInvoices.length - unprintedSlipsCount;
   const pendingDeliverySlipsCount = regularInvoices.filter(
-    (inv) => !exitSlipLogs[inv.id]?.isDelivered
+    (inv) => !getResolvedSlipLog(inv).isDelivered
   ).length;
   const deliveredSlipsCount = regularInvoices.filter(
-    (inv) => Boolean(exitSlipLogs[inv.id]?.isDelivered)
+    (inv) => Boolean(getResolvedSlipLog(inv).isDelivered)
   ).length;
 
   const totalDispatchedUnits = regularInvoices.reduce(
@@ -665,7 +668,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       return;
     }
     // اطمینان از تخصیص شماره ترتیبی و منظم به حواله خروج انبار
-    let currentLog = exitSlipLogs[inv.id];
+    let currentLog = exitSlipLogs[inv.id] || inv.exitSlip;
     if (!currentLog?.slipNumber) {
       const assignedSlipNum = StorageService.getOrAssignExitSlipNumber(inv.id, inv.invoiceNumber);
       currentLog = {
@@ -674,14 +677,15 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
       };
       setExitSlipLogs((prev) => ({
         ...prev,
-        [inv.id]: currentLog,
+        [inv.id]: currentLog!,
       }));
     }
     setSelectedExitSlipInvoice(inv);
   };
 
   const handleRecordExitSlipPrint = (invoiceId: string, currentSlipLog?: ExitSlipData) => {
-    const currentInMemory = currentSlipLog || exitSlipLogs[invoiceId];
+    const targetInv = invoices.find((i) => i.id === invoiceId);
+    const currentInMemory = currentSlipLog || exitSlipLogs[invoiceId] || targetInv?.exitSlip;
     const updated = StorageService.recordExitSlipPrint(
       invoiceId,
       currentUser?.fullName || 'انباردار',
@@ -731,7 +735,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
   const handleQuickToggleDelivery = (invoiceId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const current = exitSlipLogs[invoiceId] || { invoiceId, printCount: 0, history: [] };
+    const targetInv = invoices.find((i) => i.id === invoiceId);
+    const current = exitSlipLogs[invoiceId] || targetInv?.exitSlip || { invoiceId, printCount: 0, history: [] };
     const nextIsDelivered = !current.isDelivered;
     const updated = StorageService.updateExitSlipDelivery(invoiceId, {
       isDelivered: nextIsDelivered,
@@ -805,7 +810,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
   };
 
   const filteredExitSlips = regularInvoices.filter((inv) => {
-    const log: Partial<ExitSlipData> = exitSlipLogs[inv.id] || { printCount: 0, isDelivered: false };
+    const log: Partial<ExitSlipData> = getResolvedSlipLog(inv);
     if (exitSlipFilter === 'pending_delivery' && log.isDelivered) return false;
     if (exitSlipFilter === 'delivered' && !log.isDelivered) return false;
     if (exitSlipFilter === 'unprinted' && (log.printCount || 0) > 0) return false;
@@ -2138,7 +2143,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                 {/* Mobile View: Ultra-Clean 2-Row Cards */}
                 <div className="block sm:hidden divide-y divide-slate-100">
                   {paginateArray(filteredExitSlips, slipsPage, slipsPageSize).map((inv) => {
-                    const slipLog = exitSlipLogs[inv.id] || { invoiceId: inv.id, printCount: 0, history: [] };
+                    const slipLog = getResolvedSlipLog(inv);
                     const isDelivered = Boolean(slipLog.isDelivered);
                     const slipNumber = slipLog.slipNumber || inv.invoiceNumber;
 
@@ -2238,7 +2243,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
                     <tbody className="divide-y divide-slate-100">
                       {paginateArray(filteredExitSlips, slipsPage, slipsPageSize).map((inv, index) => {
                         const globalIndex = slipsPageSize > 0 ? (slipsPage - 1) * slipsPageSize + index : index;
-                        const slipLog = exitSlipLogs[inv.id] || { invoiceId: inv.id, printCount: 0, history: [] };
+                        const slipLog = getResolvedSlipLog(inv);
                         const isDelivered = Boolean(slipLog.isDelivered);
                         const slipNumber = slipLog.slipNumber || inv.invoiceNumber;
 
@@ -2967,7 +2972,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           <ExitSlipDetailsModal
             isOpen={Boolean(detailSlipInvoice)}
             invoice={detailSlipInvoice}
-            slipLog={exitSlipLogs[detailSlipInvoice.id] || { invoiceId: detailSlipInvoice.id, printCount: 0, history: [] }}
+            slipLog={getResolvedSlipLog(detailSlipInvoice)}
             settings={settings}
             currentUser={currentUser}
             onClose={() => setDetailSlipInvoice(null)}
@@ -3008,7 +3013,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             invoice={selectedExitSlipInvoice}
             settings={settings}
             currentUser={currentUser}
-            slipLog={exitSlipLogs[selectedExitSlipInvoice.id] || { invoiceId: selectedExitSlipInvoice.id, printCount: 0, history: [] }}
+            slipLog={getResolvedSlipLog(selectedExitSlipInvoice)}
             onRecordPrint={(currentSlip) => handleRecordExitSlipPrint(selectedExitSlipInvoice.id, currentSlip)}
             onUpdateDelivery={(deliveryData) => handleSaveExitSlipDelivery(selectedExitSlipInvoice.id, deliveryData)}
             onUpdateSettings={onUpdateSettings}
@@ -3023,7 +3028,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           <ExitSlipDeliveryModal
             isOpen={Boolean(deliveryModalInvoice)}
             invoice={deliveryModalInvoice}
-            slipLog={exitSlipLogs[deliveryModalInvoice.id] || { invoiceId: deliveryModalInvoice.id, printCount: 0, history: [] }}
+            slipLog={getResolvedSlipLog(deliveryModalInvoice)}
             settings={settings}
             currentUser={currentUser}
             onClose={() => setDeliveryModalInvoice(null)}
@@ -3040,7 +3045,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
       {/* EXIT SLIP DETAILED PRINT HISTORY MODAL */}
       {historyModalInvoice && (() => {
-        const slipLog = exitSlipLogs[historyModalInvoice.id] || { invoiceId: historyModalInvoice.id, printCount: 0, history: [] };
+        const slipLog = getResolvedSlipLog(historyModalInvoice);
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
             <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden">
